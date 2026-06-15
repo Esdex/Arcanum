@@ -1,0 +1,155 @@
+package zip.arcanum.arcanum.containers.data
+
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import zip.arcanum.arcanum.containers.domain.Container
+import zip.arcanum.core.database.dao.ContainerDao
+import zip.arcanum.core.database.entities.ContainerEntity
+import java.util.UUID
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class ContainerRepository @Inject constructor(
+    private val dao: ContainerDao
+) {
+    // In-memory handle map: containerId → JNI handle
+    private val mountedHandles      = mutableMapOf<String, Long>()
+    // In-memory PIM map: containerId → PIM (0 = default)
+    private val mountedPims         = mutableMapOf<String, Int>()
+    // In-memory volume type: containerId → isHidden (null = unknown/not mounted)
+    private val mountedIsHidden     = mutableMapOf<String, Boolean>()
+    // In-memory hidden-present flag: containerId → hasHiddenVolume
+    private val mountedHasHidden    = mutableMapOf<String, Boolean>()
+
+    fun getAllContainers(): Flow<List<Container>> =
+        dao.getAllContainers().map { list -> list.map { it.toDomain() } }
+
+    fun getAllContainersRaw(): Flow<List<ContainerEntity>> = dao.getAllContainers()
+
+    suspend fun getContainerById(id: String): Container? =
+        dao.getContainerById(id)?.toDomain()
+
+    suspend fun saveContainer(container: Container) =
+        dao.insertContainer(container.toEntity())
+
+    suspend fun deleteContainer(container: Container) =
+        dao.deleteContainerById(container.id)
+
+    suspend fun setMounted(id: String, mounted: Boolean) =
+        dao.setMounted(id, mounted)
+
+    suspend fun mountContainer(
+        id: String, handle: Long, pim: Int = 0,
+        isHidden: Boolean = false, hasHidden: Boolean = false
+    ) {
+        mountedHandles[id] = handle
+        if (pim > 0) mountedPims[id] = pim else mountedPims.remove(id)
+        mountedIsHidden[id]  = isHidden
+        mountedHasHidden[id] = hasHidden
+        dao.setMounted(id, true)
+        dao.updateLastAccessed(id, System.currentTimeMillis())
+    }
+
+    fun getPimForContainer(id: String): Int = mountedPims[id] ?: 0
+
+    suspend fun unmountContainer(id: String) {
+        mountedHandles.remove(id)
+        mountedPims.remove(id)
+        mountedIsHidden.remove(id)
+        mountedHasHidden.remove(id)
+        dao.setMounted(id, false)
+    }
+
+    // Synchronous — safe to call from onDestroy without a coroutine.
+    // Returns all active JNI handles so the caller can close them via nativeCloseContainer.
+    fun closeAllHandlesSync(): List<Long> {
+        val handles = mountedHandles.values.toList()
+        mountedHandles.clear()
+        mountedPims.clear()
+        mountedIsHidden.clear()
+        mountedHasHidden.clear()
+        return handles
+    }
+
+    // Reset isMounted flags that may have been left true after a crash or force-kill.
+    suspend fun resetMountedState() = dao.setAllUnmounted()
+
+    fun getContainerHandle(id: String): Long? = mountedHandles[id]
+
+    suspend fun containsPath(path: String): Boolean = dao.countByPath(path) > 0
+
+    suspend fun updateAlgorithm(id: String, algorithm: String) =
+        dao.updateAlgorithm(id, algorithm)
+
+    suspend fun updatePrf(id: String, prf: String) =
+        dao.updatePrf(id, prf)
+
+    suspend fun updateFilesystem(id: String, filesystem: String) =
+        dao.updateFilesystem(id, filesystem)
+
+    suspend fun updateBiometric(id: String, hasBiometric: Boolean) =
+        dao.updateBiometric(id, hasBiometric)
+
+    suspend fun updateUnmountOnLock(id: String, value: Boolean) =
+        dao.updateUnmountOnLock(id, value)
+
+    suspend fun updateUnmountOnBackground(id: String, value: Boolean) =
+        dao.updateUnmountOnBackground(id, value)
+
+    suspend fun updateContainerPath(id: String, newPath: String) =
+        dao.updatePath(id, newPath)
+
+    suspend fun deleteContainersById(ids: Set<String>) {
+        ids.forEach { id ->
+            mountedHandles.remove(id)
+            dao.deleteContainerById(id)
+        }
+    }
+
+    suspend fun addContainerFromPath(path: String, algorithm: String = "AES-256-XTS"): String {
+        val id   = UUID.randomUUID().toString()
+        val file = java.io.File(path)
+        dao.insertContainer(ContainerEntity(
+            id             = id,
+            name           = file.name,
+            path           = path,
+            size           = file.length(),
+            algorithm      = algorithm,
+            createdAt      = System.currentTimeMillis(),
+            lastAccessedAt = 0L
+        ))
+        return id
+    }
+
+    private fun ContainerEntity.toDomain() = Container(
+        id              = id,
+        name            = name,
+        path            = path,
+        size            = size,
+        algorithm       = algorithm,
+        prf             = prf,
+        filesystem      = filesystem,
+        pim             = mountedPims[id] ?: 0,
+        createdAt       = createdAt,
+        lastAccessedAt  = lastAccessedAt,
+        isFavorite      = isFavorite,
+        isMounted       = isMounted,
+        isHiddenVolume  = mountedIsHidden[id] ?: false,
+        hasHiddenVolume = mountedHasHidden[id] ?: false
+    )
+
+    private fun Container.toEntity() = ContainerEntity(
+        id             = id,
+        name           = name,
+        path           = path,
+        size           = size,
+        algorithm      = algorithm,
+        prf            = prf,
+        filesystem     = filesystem,
+        createdAt      = createdAt,
+        lastAccessedAt = lastAccessedAt,
+        isFavorite     = isFavorite,
+        isMounted      = isMounted
+    )
+}

@@ -1,0 +1,687 @@
+<resources>
+    <string name="app_name">Arcanum</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_containers">Vaults</string>
+    <string name="nav_gallery">Gallery</string>
+    <string name="nav_files">Files</string>
+    <string name="nav_settings">Settings</string>
+    <string name="nav_info">Info</string>
+    <string name="nav_vault_fallback_name">Vault</string>
+    <string name="nav_gallery_search_placeholder">Search media…</string>
+    <string name="nav_gallery_cd_close_search">Close search</string>
+    <string name="nav_gallery_cd_search">Search</string>
+    <string name="nav_gallery_cd_rescan">Rescan vault</string>
+
+    <!-- Unmount animation -->
+    <string name="unmount_vault_unmounted">Vault Unmounted</string>
+    <string name="unmount_data_protected">Your data is protected</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_get_started">Get Started</string>
+
+    <string name="onboarding_welcome_title">Welcome to Arcanum</string>
+    <string name="onboarding_welcome_desc">A secure encrypted container manager disguised as a calculator.</string>
+
+    <string name="onboarding_secure_title">Military-Grade Encryption</string>
+    <string name="onboarding_secure_desc">VeraCrypt-compatible containers protect your files with AES, Twofish, and Serpent encryption.</string>
+
+    <string name="onboarding_calculator_title">Hidden Behind a Calculator</string>
+    <string name="onboarding_calculator_desc">To anyone watching, Arcanum looks like a regular calculator app. Only your secret PIN unlocks it.</string>
+
+    <string name="onboarding_gallery_title">Beautiful Media Gallery</string>
+    <string name="onboarding_gallery_desc">View your photos and videos privately inside encrypted containers, without leaving any traces.</string>
+
+    <string name="onboarding_privacy_title">Panic Mode Ready</string>
+    <string name="onboarding_privacy_desc">Enter your panic PIN to instantly wipe all traces of Arcanum from your device.</string>
+
+    <!-- Vault creation foreground service notification -->
+    <string name="notif_channel_vault_creation">Vault Creation</string>
+    <string name="notif_channel_vault_creation_desc">Shows progress while creating an encrypted vault</string>
+    <string name="notif_creating_vault">Creating vault…</string>
+    <string name="notif_creation_progress">%1$d%% complete</string>
+
+    <!-- In-app notification banners -->
+    <string name="notif_vault_mounted">Vault mounted successfully</string>
+    <string name="notif_vault_unmounted">Vault unmounted</string>
+    <string name="notif_vault_error">Failed to open vault</string>
+    <string name="notif_export_success">File exported successfully</string>
+    <string name="notif_vault_added">Vault added</string>
+    <string name="notif_vault_added_subtitle">Tap to unlock %1$s</string>
+    <string name="notif_vault_already_exists">Already in your list</string>
+    <string name="notif_vault_invalid_file">Invalid vault file</string>
+    <string name="notif_vault_invalid_file_subtitle">File is too small or not sector-aligned</string>
+    <string name="notif_vault_add_error">Failed to add vault</string>
+    <string name="notif_date_updated">Date updated</string>
+    <string name="notif_date_updated_subtitle">EXIF and timeline updated</string>
+    <string name="notif_file_renamed">File renamed</string>
+    <string name="notif_files_pasted_subtitle">Operation completed</string>
+    <string name="notif_files_moved_subtitle">→ %1$s</string>
+    <string name="notif_files_deleted_subtitle">Removed permanently</string>
+    <string name="notif_folder_created">Folder created</string>
+    <string name="notif_files_imported_subtitle">Encrypted and stored in vault</string>
+    <string name="notif_files_exported_subtitle">Saved to selected folder</string>
+    <string name="notif_support_developer">Enjoying Arcanum?</string>
+    <string name="notif_support_developer_subtitle">Consider supporting development</string>
+
+    <plurals name="notif_items_copied">
+        <item quantity="one">%1$d item copied</item>
+        <item quantity="other">%1$d items copied</item>
+    </plurals>
+    <plurals name="notif_items_moved">
+        <item quantity="one">%1$d item moved</item>
+        <item quantity="other">%1$d items moved</item>
+    </plurals>
+    <plurals name="notif_items_deleted">
+        <item quantity="one">%1$d item deleted</item>
+        <item quantity="other">%1$d items deleted</item>
+    </plurals>
+    <plurals name="notif_files_imported">
+        <item quantity="one">%1$d file imported</item>
+        <item quantity="other">%1$d files imported</item>
+    </plurals>
+    <plurals name="notif_files_exported">
+        <item quantity="one">%1$d file exported</item>
+        <item quantity="other">%1$d files exported</item>
+    </plurals>
+
+    <!-- Common / shared -->
+    <string name="common_cancel">Cancel</string>
+    <string name="common_done">Done</string>
+    <string name="common_save">Save</string>
+    <string name="common_back">Back</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_rename">Rename</string>
+    <string name="common_ok">OK</string>
+    <string name="common_close">Close</string>
+    <string name="common_copy">Copy</string>
+    <string name="common_move">Move</string>
+    <string name="common_export">Export</string>
+    <string name="common_search">Search</string>
+    <string name="common_info">Info</string>
+    <string name="common_edit">Edit</string>
+    <string name="common_password">Password</string>
+    <string name="common_cipher">Cipher</string>
+    <string name="common_hash_algorithm">Hash Algorithm</string>
+    <string name="common_mb">MB</string>
+    <string name="common_gb">GB</string>
+    <string name="common_this_cannot_be_undone">This cannot be undone.</string>
+    <string name="common_open_vault">Open Vault</string>
+    <string name="common_pro">Pro</string>
+    <string name="common_continue">Continue</string>
+    <string name="common_confirm">Confirm</string>
+    <string name="common_coming_soon">Coming soon</string>
+
+    <!-- PIN screens (shared) -->
+    <string name="pin_mismatch">PINs don\'t match</string>
+
+    <!-- Setup PIN -->
+    <string name="setup_pin_title">Set your PIN</string>
+    <string name="setup_pin_confirm_title">Confirm your PIN</string>
+    <string name="setup_pin_success_title">PIN Created!</string>
+    <string name="setup_pin_success_desc">To unlock Arcanum, open the calculator and enter your PIN using the number buttons. Then hold = for 2 seconds.</string>
+
+    <!-- Change PIN -->
+    <string name="change_pin_wrong">Wrong PIN</string>
+    <string name="change_pin_enter_current">Enter current PIN</string>
+    <string name="change_pin_enter_new">Enter new PIN</string>
+    <string name="change_pin_confirm_new">Confirm new PIN</string>
+    <string name="change_pin_hint">4–12 digits</string>
+    <string name="change_pin_success_title">PIN Changed!</string>
+    <string name="change_pin_success_desc">Your new PIN is active</string>
+
+
+    <!-- Gallery screen -->
+    <string name="gallery_title">Gallery</string>
+    <string name="gallery_search_placeholder">Search media…</string>
+    <string name="gallery_search_open">Search</string>
+    <string name="gallery_search_close">Close search</string>
+    <string name="gallery_scan">Scan vault</string>
+    <string name="gallery_empty_title">No media found</string>
+    <string name="gallery_empty_subtitle">This vault doesn\'t contain any photos or videos</string>
+    <string name="gallery_scanning">Scanning vault…</string>
+    <string name="gallery_scan_found">%1$d found</string>
+    <string name="gallery_preload_preparing">Preparing thumbnails…</string>
+    <string name="gallery_preload_progress">%1$d / %2$d</string>
+    <string name="gallery_filter_all">All</string>
+    <string name="gallery_filter_photos">Photos</string>
+    <string name="gallery_filter_videos">Videos</string>
+    <string name="gallery_cd_video">Video</string>
+
+    <!-- Media viewer screen -->
+    <string name="viewer_cd_back">Back</string>
+    <string name="viewer_cd_more_options">More options</string>
+    <string name="viewer_action_remove_favorite">Remove from Favorites</string>
+    <string name="viewer_action_add_favorite">Add to Favorites</string>
+    <string name="viewer_action_export">Export</string>
+    <string name="viewer_action_delete">Delete</string>
+    <string name="viewer_action_details">Details</string>
+    <string name="viewer_action_favorite">Favorite</string>
+    <string name="viewer_sheet_info_title">Details</string>
+    <string name="viewer_description_placeholder">Add a description…</string>
+    <string name="viewer_edit_date_title">Edit Date &amp; Time</string>
+    <string name="viewer_edit_date_warning">⚠ This will update the EXIF data inside the file and move it in the timeline.</string>
+    <string name="viewer_exif_title">EXIF Data</string>
+    <string name="viewer_exif_empty">No EXIF data available for this file.</string>
+    <string name="viewer_exif_maps_hint">Tap to open in Maps</string>
+    <string name="viewer_exif_section">EXIF</string>
+    <string name="viewer_exif_view_all">View all EXIF data</string>
+    <string name="viewer_cd_edit">Edit</string>
+    <string name="viewer_rename_title">Rename File</string>
+    <string name="viewer_rename_label">File name</string>
+    <string name="viewer_rename_error_empty">Name cannot be empty</string>
+    <string name="viewer_rename_error_invalid">Name contains invalid characters</string>
+    <string name="viewer_rename_ext_hint">Extension .%1$s will be added automatically</string>
+    <string name="viewer_rename_confirm">Rename</string>
+    <string name="viewer_delete_title">Delete %1$s?</string>
+    <string name="viewer_gps_title">Edit GPS Coordinates</string>
+    <string name="viewer_gps_latitude">Latitude (−90 to 90)</string>
+    <string name="viewer_gps_longitude">Longitude (−180 to 180)</string>
+    <string name="viewer_seek_back">−10s</string>
+    <string name="viewer_seek_forward">+10s</string>
+    <string name="viewer_cd_pause">Pause</string>
+    <string name="viewer_cd_play">Play</string>
+
+    <!-- File manager screen -->
+    <string name="files_title">Files</string>
+    <string name="files_search_placeholder">Search files…</string>
+    <string name="files_search_close">Close search</string>
+    <string name="files_search_open">Search</string>
+    <string name="files_cd_more">More</string>
+    <string name="files_cd_cancel_selection">Cancel selection</string>
+    <string name="files_cd_select_all">Select all</string>
+    <string name="files_selection_count">%1$d selected</string>
+    <string name="files_hide_hidden">Hide hidden files</string>
+    <string name="files_show_hidden">Show hidden files</string>
+    <string name="files_sort_by">Sort by…</string>
+    <string name="files_grid_view">Grid view</string>
+    <string name="files_list_view">List view</string>
+    <string name="files_empty_no_results_title">No results</string>
+    <string name="files_empty_folder_title">Empty folder</string>
+    <string name="files_empty_no_results_subtitle">Try a different search term</string>
+    <string name="files_empty_folder_subtitle">Tap + to import files or create a folder</string>
+    <string name="files_error_cannot_browse">Cannot browse files</string>
+    <string name="files_type_folder">Folder</string>
+    <string name="files_action_rename">Rename</string>
+    <string name="files_action_properties">Properties</string>
+    <string name="files_cd_close_fab">Close</string>
+    <string name="files_cd_file_actions_fab">File actions</string>
+    <string name="files_action_import">Import files</string>
+    <string name="files_action_new_folder">New folder</string>
+    <string name="files_action_copy">Copy</string>
+    <string name="files_action_move">Move</string>
+    <string name="files_action_export">Export</string>
+    <string name="files_action_delete">Delete</string>
+    <string name="files_new_folder_title">New Folder</string>
+    <string name="files_new_folder_label">Folder name</string>
+    <string name="files_new_folder_create">Create</string>
+    <string name="files_rename_title">Rename</string>
+    <string name="files_rename_label">New name</string>
+    <string name="files_delete_title_single">Delete this item?</string>
+    <string name="files_delete_confirm">Delete</string>
+    <string name="files_props_name">Name</string>
+    <string name="files_props_type">Type</string>
+    <string name="files_props_size">Size</string>
+    <string name="files_props_location">Location</string>
+    <string name="files_props_modified">Modified</string>
+    <string name="files_props_type_folder">Folder</string>
+    <string name="files_type_image">Image</string>
+    <string name="files_type_video">Video</string>
+    <string name="files_type_audio">Audio</string>
+    <string name="files_type_pdf">PDF Document</string>
+    <string name="files_type_word">Word Document</string>
+    <string name="files_type_spreadsheet">Spreadsheet</string>
+    <string name="files_type_presentation">Presentation</string>
+    <string name="files_type_text">Text File</string>
+    <string name="files_type_archive">Archive</string>
+    <string name="files_type_apk">Android Package</string>
+    <string name="files_type_file">File</string>
+    <string name="files_open_with_body">To open this file, a temporary decrypted copy will be created. It will be deleted automatically when you return to Arcanum.</string>
+    <string name="files_open_with_cancel">Cancel</string>
+    <string name="files_open_with_confirm">Open with app</string>
+    <string name="files_sort_title">Sort by</string>
+    <string name="files_sort_name">Name</string>
+    <string name="files_sort_date">Date</string>
+    <string name="files_sort_size">Size</string>
+    <string name="files_sort_type">Type</string>
+    <string name="files_sort_cd_ascending">Ascending</string>
+    <string name="files_sort_cd_descending">Descending</string>
+    <string name="files_sort_folders_first">Folders first</string>
+    <string name="files_cd_root">Root</string>
+    <string name="files_no_mounted_vaults">No mounted vaults</string>
+    <string name="files_this_vault">This vault</string>
+    <string name="files_cd_back_to_vaults">Back to vaults</string>
+    <string name="files_move_to_title">Move to…</string>
+    <string name="files_copy_to_title">Copy to…</string>
+    <string name="files_move_here">Move here</string>
+    <string name="files_copy_here">Copy here</string>
+
+    <plurals name="files_paste_clipboard">
+        <item quantity="one">Paste (%1$d item)</item>
+        <item quantity="other">Paste (%1$d items)</item>
+    </plurals>
+    <plurals name="files_delete_count">
+        <item quantity="one">Delete %1$d item?</item>
+        <item quantity="other">Delete %1$d items?</item>
+    </plurals>
+
+    <!-- Audio player screen -->
+    <string name="audio_now_playing">Now Playing</string>
+    <string name="audio_loading">Loading…</string>
+    <string name="audio_cd_shuffle">Shuffle</string>
+    <string name="audio_cd_repeat">Repeat</string>
+    <string name="audio_cd_repeat_all">Repeat All</string>
+    <string name="audio_cd_repeat_one">Repeat 1</string>
+    <string name="audio_cd_previous">Previous</string>
+    <string name="audio_cd_pause">Pause</string>
+    <string name="audio_cd_play">Play</string>
+    <string name="audio_cd_next">Next</string>
+    <string name="audio_cd_album_art">Album art</string>
+    <string name="audio_cd_more">More</string>
+
+    <!-- Vault screen -->
+    <string name="vault_title">Arcanum</string>
+    <string name="vault_cd_sort_group">Sort &amp; group</string>
+    <string name="vault_cd_settings">Settings</string>
+    <string name="vault_cd_exit_selection">Exit selection</string>
+    <string name="vault_selection_count">%1$d selected</string>
+    <string name="vault_select_all">Select all</string>
+    <string name="vault_cd_delete_selected">Delete selected</string>
+    <string name="vault_empty_title">No vaults yet</string>
+    <string name="vault_empty_subtitle">Create or open an existing VeraCrypt container</string>
+    <string name="vault_storage_app">App Storage</string>
+    <string name="vault_storage_local">Local Storage</string>
+    <string name="vault_cd_close_fab">Close</string>
+    <string name="vault_cd_new_vault_fab">New vault</string>
+    <string name="vault_fab_open_existing">Open existing vault</string>
+    <string name="vault_fab_create_new">Create new vault</string>
+    <string name="vault_unmount_title">Unmount \"%1$s\"?</string>
+    <string name="vault_unmount_body">The vault will be locked until you enter the password again.</string>
+    <string name="vault_unmount_confirm">Unmount</string>
+    <string name="vault_remove_title">Remove \"%1$s\"?</string>
+    <string name="vault_remove_body">The vault will be removed from the list. The container file on disk will not be deleted.</string>
+    <string name="vault_remove_confirm">Remove</string>
+    <string name="vault_delete_title">Delete \"%1$s\"?</string>
+    <string name="vault_delete_body">The container file and all encrypted data inside it will be permanently deleted. This cannot be undone.</string>
+    <string name="vault_delete_confirm">Delete</string>
+    <string name="vault_lock_title">Lock Arcanum?</string>
+    <string name="vault_lock_body">You will need to enter your PIN to unlock again.</string>
+    <string name="vault_lock_confirm">Lock</string>
+    <string name="vault_config_unmount_on_lock">Unmount on lock screen</string>
+    <string name="vault_config_unmount_on_lock_desc">Unmount when the device screen locks</string>
+    <string name="vault_config_unmount_on_background">Unmount when in background</string>
+    <string name="vault_config_unmount_on_background_desc">Unmount when the app is sent to background</string>
+    <string name="vault_config_move_to_app">Move to App Storage</string>
+    <string name="vault_config_move_to_app_desc">Store vault in app-private directory</string>
+    <string name="vault_config_unmount_to_move">Unmount the vault before moving</string>
+    <string name="vault_config_move_to_internal">Move to Internal Storage</string>
+    <string name="vault_config_move_to_internal_desc">Move vault to a shared storage folder</string>
+    <string name="vault_sort_title">Sort &amp; Group</string>
+    <string name="vault_sort_name">Name</string>
+    <string name="vault_sort_size">Size</string>
+    <string name="vault_sort_last_opened">Last opened</string>
+    <string name="vault_sort_group_by">Group by</string>
+    <string name="vault_sort_group_none">None</string>
+    <string name="vault_sort_group_location">By location</string>
+    <string name="vault_sort_biometric_first">Biometric vaults first</string>
+    <string name="vault_sort_biometric_first_desc">Pin vaults with biometric unlock to the top</string>
+    <string name="vault_sort_cd_ascending">Ascending</string>
+    <string name="vault_sort_cd_descending">Descending</string>
+    <string name="vault_mount_wrong_password">Wrong password or PIM</string>
+    <string name="vault_mount_algorithm">Algorithm</string>
+    <string name="vault_mount_hash">Hash</string>
+    <string name="vault_mount_biometric_toggle">Biometric unlock</string>
+    <string name="vault_mount_advanced">Advanced</string>
+    <string name="vault_mount_pim_label">PIM (optional)</string>
+    <string name="vault_mount_pim_placeholder">Leave empty if not set</string>
+    <string name="vault_mount_add_keyfile">Add Keyfile (optional)</string>
+    <string name="vault_mount_protect_hidden">Protect hidden volume</string>
+    <string name="vault_mount_protect_hidden_desc">Prevents outer volume writes from reaching the hidden area</string>
+    <string name="vault_mount_hidden_password">Hidden Volume Password</string>
+    <string name="vault_biometric_unlock_title">Unlock %1$s</string>
+    <string name="vault_biometric_unlock_subtitle">Authenticate to open vault</string>
+    <string name="vault_biometric_use_password">Use password instead</string>
+    <string name="vault_biometric_save_title">Save for biometric unlock</string>
+    <string name="vault_biometric_save_subtitle">Authenticate to save vault credentials</string>
+    <string name="vault_biometric_skip">Skip</string>
+    <string name="vault_biometric_indicator">Tap fingerprint sensor to open</string>
+    <string name="vault_biometric_failed">Biometric authentication failed</string>
+    <string name="vault_biometric_try_again">Try Again</string>
+    <string name="vault_biometric_unlock_confirm">Unlock</string>
+    <string name="vault_remove_biometric_title">Remove biometric?</string>
+    <string name="vault_remove_biometric_body">You\'ll need to enter your password manually to unlock \"%1$s\".</string>
+    <string name="vault_menu_select">Select</string>
+    <string name="vault_menu_config">Config</string>
+    <string name="vault_menu_remove">Remove from list</string>
+    <string name="vault_menu_delete">Delete</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_cd_back">Back</string>
+    <string name="settings_card_security">Security</string>
+    <string name="settings_card_security_desc">PIN, biometric, auto-lock</string>
+    <string name="settings_card_panic">Panic Mode</string>
+    <string name="settings_card_panic_desc">Duress password, data wipe</string>
+    <string name="settings_card_appearance">Appearance</string>
+    <string name="settings_card_appearance_desc">Theme, colors, AMOLED</string>
+    <string name="settings_card_about">About</string>
+    <string name="settings_card_about_desc">Version, licenses, GitHub</string>
+    <string name="settings_card_premium">Premium</string>
+    <string name="settings_card_premium_desc">Unlock all features</string>
+    <string name="settings_card_debug">Debug</string>
+    <string name="settings_card_debug_desc">Logs and developer tools</string>
+    <string name="settings_security_title">Security</string>
+    <string name="settings_security_change_pin">Change PIN</string>
+    <string name="settings_security_auto_lock">Auto-lock</string>
+    <string name="settings_security_auto_lock_desc">Lock when app goes to background</string>
+    <string name="settings_security_screen_capture">Screen Capture Protection</string>
+    <string name="settings_security_screen_capture_desc">Block other apps from recording the screen</string>
+    <string name="settings_security_screenshot_warn_title">Disable Screen Protection?</string>
+    <string name="settings_security_screenshot_warn_body">Without screen protection, any app with the "appear on top" permission — or a screen recorder — can capture what\'s shown in Arcanum, including passwords and private files.\n\nOnly disable this if you fully trust your environment.</string>
+    <string name="settings_security_screenshot_warn_disable">Disable in %1$d…</string>
+    <string name="settings_security_screenshot_warn_disable_ready">Disable</string>
+    <string name="settings_security_screenshot_auth_title">Confirm Action</string>
+    <string name="settings_security_screenshot_auth_subtitle">Authenticate to disable screen protection</string>
+    <string name="settings_security_screenshot_pin_label">Arcanum PIN</string>
+    <string name="settings_security_screenshot_pin_error">Incorrect PIN. Try again.</string>
+    <string name="settings_panic_title">Panic Mode</string>
+    <string name="settings_panic_switch_title">Panic Mode</string>
+    <string name="settings_panic_switch_desc">Entering Panic PIN silently wipes selected data</string>
+    <string name="settings_panic_setup_hint">Tap to set up a Panic PIN</string>
+    <string name="settings_panic_pin_section">PANIC PIN</string>
+    <string name="settings_panic_change_pin">Change Panic PIN</string>
+    <string name="settings_panic_wipe_section">WHAT TO WIPE</string>
+    <string name="settings_panic_full_wipe">Full wipe</string>
+    <string name="settings_panic_full_wipe_desc">Delete all vaults and reset app to factory state</string>
+    <string name="settings_panic_clear_settings">Clear settings</string>
+    <string name="settings_panic_clear_history">Clear calculator history</string>
+    <string name="settings_panic_disable_biometric">Disable biometric</string>
+    <string name="settings_panic_disable_biometric_desc">Remove biometric access from all vaults</string>
+    <string name="settings_panic_vaults_section">VAULTS</string>
+    <string name="settings_panic_warning">Wiped data cannot be recovered. Test with a decoy vault first.</string>
+    <string name="settings_panic_disable_title">Disable Panic Mode?</string>
+    <string name="settings_panic_disable_body">Your Panic PIN and all wipe settings will be permanently deleted.</string>
+    <string name="settings_panic_disable_confirm">Disable</string>
+    <string name="settings_panic_vault_delete">Delete</string>
+    <string name="settings_panic_vault_forget">Forget</string>
+    <string name="settings_panic_vault_keep">Keep</string>
+    <string name="settings_appearance_title">Appearance</string>
+    <string name="settings_appearance_theme_section">THEME MODE</string>
+    <string name="settings_appearance_language_section">LANGUAGE</string>
+    <string name="settings_appearance_language">App Language</string>
+    <string name="settings_appearance_language_system">System default</string>
+    <string name="settings_appearance_theme_system">System</string>
+    <string name="settings_appearance_theme_light">Light</string>
+    <string name="settings_appearance_theme_dark">Dark</string>
+    <string name="settings_appearance_display_section">DISPLAY</string>
+    <string name="settings_appearance_amoled">AMOLED Glass</string>
+    <string name="settings_appearance_amoled_desc">Pure black backgrounds with frosted glass</string>
+    <string name="settings_appearance_dynamic_colors">Dynamic colors</string>
+    <string name="settings_appearance_dynamic_colors_desc">Use wallpaper-derived colors (Android 12+)</string>
+    <string name="settings_appearance_dynamic_colors_unavailable">Dynamic colors require Android 12 or higher.</string>
+    <string name="settings_about_title">About</string>
+    <string name="settings_about_app_desc">VeraCrypt-compatible encrypted vault manager for Android</string>
+    <string name="settings_about_licenses">Open-source licenses</string>
+    <string name="settings_about_connect_section">Connect</string>
+    <string name="settings_about_source_code">Source code</string>
+    <string name="settings_about_source_code_desc">View on GitHub</string>
+    <string name="settings_about_website">Website</string>
+    <string name="settings_about_website_desc">arcanum.zip</string>
+    <string name="settings_about_privacy">Privacy Policy</string>
+    <string name="settings_about_bug_report">Report a bug</string>
+    <string name="settings_about_bug_report_desc">Open an issue on GitHub</string>
+    <string name="settings_premium_title">Arcanum Pro</string>
+    <string name="settings_premium_upgrade">Upgrade</string>
+    <string name="settings_debug_title">Debug</string>
+    <string name="settings_debug_cd_copy_all">Copy all</string>
+    <string name="settings_debug_cd_refresh">Refresh</string>
+    <string name="settings_debug_mode">Debug mode</string>
+    <string name="settings_debug_mode_desc">Enable developer tools</string>
+    <string name="settings_debug_section_runtime">RUNTIME</string>
+    <string name="settings_debug_section_mounted">MOUNTED CONTAINERS</string>
+    <string name="settings_debug_section_device">DEVICE SECURITY</string>
+    <string name="settings_debug_section_database">DATABASE</string>
+    <string name="settings_debug_section_tools">TOOLS</string>
+    <string name="settings_debug_no_containers">No containers mounted</string>
+    <string name="settings_debug_dry_run_panic">Dry-run Panic</string>
+    <string name="settings_debug_warning_title">Sensitive Information</string>
+    <string name="settings_debug_warning_body">Debug mode exposes cryptographic handles, keystore type, container paths and other sensitive data. Your device has no screen lock — anyone with physical access can enable this mode.</string>
+    <string name="settings_debug_warning_confirm">I understand, enable</string>
+    <string name="settings_debug_cd_info">Info</string>
+
+    <!-- Set panic PIN screen -->
+    <string name="panic_pin_title">Set Panic PIN</string>
+    <string name="panic_pin_confirm_title">Confirm Panic PIN</string>
+    <string name="panic_pin_success_title">Panic PIN Set</string>
+    <string name="panic_pin_success_desc">Panic Mode is now active. Enter the Panic PIN in the calculator to trigger a silent wipe.</string>
+    <string name="panic_pin_success_warning">Do not confuse your Panic PIN with your main PIN.\n\nEntering the Panic PIN will immediately begin wiping your configured data — this cannot be undone.</string>
+    <string name="panic_pin_success_confirm">I understand</string>
+    <string name="panic_pin_hint">4–12 digits. Must differ from your main PIN.</string>
+    <string name="panic_pin_btn_continue">Continue</string>
+    <string name="panic_pin_btn_confirm">Confirm</string>
+    <string name="panic_pin_cd_backspace">Delete</string>
+
+    <!-- Create container screen (wizard shell) -->
+    <string name="create_title">Create Vault</string>
+    <string name="create_step_counter">Step %1$d/%2$d</string>
+    <string name="create_btn_outer">Create Outer Vault</string>
+    <string name="create_btn_hidden">Create Hidden Volume</string>
+    <string name="create_btn_next">Next</string>
+    <string name="create_cancel">Cancel</string>
+    <string name="create_cancel_dialog_title">Cancel creation?</string>
+    <string name="create_cancel_dialog_body">The incomplete file will be deleted.</string>
+    <string name="create_cancel_dialog_confirm">Cancel creation</string>
+    <string name="create_cancel_dialog_keep">Keep going</string>
+    <string name="create_cd_back">Back</string>
+
+    <!-- Create container steps 1–4 -->
+    <string name="create_step1_title">Select Volume Type</string>
+    <string name="create_volume_standard">Standard Volume</string>
+    <string name="create_volume_standard_desc">A regular encrypted vault protected by a single password.</string>
+    <string name="create_volume_hidden">Hidden Volume</string>
+    <string name="create_volume_hidden_desc">Two passwords, two sets of data. Plausible deniability under coercion.</string>
+    <string name="create_step2_title">Choose Location</string>
+    <string name="create_location_app">App Storage</string>
+    <string name="create_location_app_desc">Private storage inside the app. No extra permissions needed.</string>
+    <string name="create_location_internal">Internal Storage</string>
+    <string name="create_location_internal_desc">Save to a user-accessible folder on your device storage.</string>
+    <string name="create_location_no_folder">No folder selected</string>
+    <string name="create_location_browse">Browse</string>
+    <string name="create_location_permission_title">Storage permission required</string>
+    <string name="create_location_permission_desc">Grant \"All files access\" so the app can create vaults outside its private folder.</string>
+    <string name="create_location_permission_open_settings">Open Settings</string>
+    <string name="create_filename_label">File name</string>
+    <string name="create_filename_placeholder">vault.hc</string>
+    <string name="create_step3_title">Encryption Algorithm</string>
+    <string name="create_step3_subtitle">All algorithms are fully compatible with desktop VeraCrypt</string>
+    <string name="create_step3_cipher">Cipher</string>
+    <string name="create_step3_hash">Hash Algorithm</string>
+    <string name="create_step4_title">Volume Size</string>
+    <string name="create_size_label">Size</string>
+    <string name="create_size_custom">Custom</string>
+    <string name="create_size_available">Available: %1$.1f GB</string>
+    <string name="create_size_quick_est">⚡ Quick format: ~%1$s</string>
+    <string name="create_size_secure_est">🔒 Secure format: ~%1$s</string>
+    <string name="create_size_speed_fast">Fast</string>
+    <string name="create_size_speed_medium">Medium</string>
+    <string name="create_size_speed_slow">Slow</string>
+
+    <!-- Create container steps 5–7 -->
+    <string name="create_step5_outer_title">Set Outer Volume Password</string>
+    <string name="create_step5_subtitle">Use a strong password. If you forget it, your data cannot be recovered.</string>
+    <string name="create_step5_outer_subtitle">This password unlocks the decoy outer volume. You will set a separate hidden volume password later.</string>
+    <string name="create_step5_outer_info">This is the outer (decoy) volume password. Anyone who gets access to it will see the outer volume, not the hidden one.</string>
+    <string name="create_step5_title">Set Password</string>
+    <string name="create_pwd_label">Password</string>
+    <string name="create_pwd_confirm_label">Confirm Password</string>
+    <string name="create_pwd_mismatch">Passwords don\'t match</string>
+    <string name="create_pwd_strength_weak">Weak</string>
+    <string name="create_pwd_strength_fair">Fair</string>
+    <string name="create_pwd_strength_strong">Strong</string>
+    <string name="create_pwd_strength_very_strong">Very Strong</string>
+    <string name="create_pwd_char_count">%1$d chars</string>
+    <string name="create_keyfile_hide">Hide Keyfiles</string>
+    <string name="create_keyfile_add">Add Keyfiles (optional)</string>
+    <string name="create_keyfile_safe_warning">Keep these files safe — they are required to open the vault</string>
+    <string name="create_keyfile_add_item">Add keyfile…</string>
+    <string name="create_keyfile_cd_remove">Remove keyfile</string>
+    <string name="create_keyfile_desc">A keyfile adds a second factor of authentication. Both the password and all keyfiles are required to open the vault.</string>
+    <string name="create_pim_label">PIM (Personal Iterations Multiplier)</string>
+    <string name="create_pim_short_label">PIM</string>
+    <string name="create_pim_placeholder">Leave empty for default</string>
+    <string name="create_pim_status_default">Default security (recommended)</string>
+    <string name="create_pim_status_below">Below default — use a strong password</string>
+    <string name="create_pim_status_similar">Similar to default</string>
+    <string name="create_pim_status_enhanced">Enhanced security, slower to open</string>
+    <string name="create_pim_unlock_est">Estimated unlock time: ~%1$d seconds</string>
+    <string name="create_pwd_warning">There is no way to recover your password. Write it down and keep it safe.</string>
+    <string name="create_step6_title">Format Mode</string>
+    <string name="create_format_quick_title">Quick Format</string>
+    <string name="create_format_secure_title">Secure Format</string>
+    <string name="create_format_quick_desc">~%1$s for any size · Less secure — patterns may be detectable on advanced forensics. Recommended for most users.</string>
+    <string name="create_format_secure_desc">~%1$s · Fills entire volume with random data. Maximum security, no data patterns. Recommended for sensitive data.</string>
+    <string name="create_format_est_text">Estimated time: ~%1$s</string>
+    <string name="create_step7_title">Filesystem</string>
+    <string name="create_fs_subtitle">Choose how files are organized inside the vault</string>
+    <string name="create_fs_recommended">Recommended</string>
+    <string name="create_fs_coming_soon">Coming soon</string>
+    <string name="create_fs_coming_soon_toast">Coming soon</string>
+    <string name="create_fs_got_it">Got it</string>
+    <string name="create_fs_max_file_size">Max file size: %1$s</string>
+    <string name="create_fs_os_read_only"> (read-only)</string>
+    <string name="create_fs_info_cd">Info</string>
+
+    <plurals name="create_keyfile_count">
+        <item quantity="one">%1$d keyfile added</item>
+        <item quantity="other">%1$d keyfiles added</item>
+    </plurals>
+
+    <!-- Create container steps 8–9 -->
+    <string name="create_entropy_title">Move Your Finger</string>
+    <string name="create_entropy_subtitle">Random movement increases the cryptographic strength of the keys</string>
+    <string name="create_entropy_done">Excellent! Cryptographic entropy collected ✓</string>
+    <string name="create_entropy_progress">Move your finger randomly until the bar is full (%1$d%%)</string>
+    <string name="create_done_title">Vault Created!</string>
+
+    <!-- Create container steps 10–15 (hidden volume) -->
+    <string name="create_hidden_intro_title">Hidden Volume</string>
+    <string name="create_hidden_intro_body">Your outer volume has been created. Now set up the hidden volume inside it.</string>
+    <string name="create_hidden_info_text">A hidden volume lives inside the outer volume. When you enter the outer password, only the outer data is visible. Enter the hidden password to reveal the hidden data.</string>
+    <string name="create_hidden_warnings_title">Important warnings</string>
+    <string name="create_hidden_warnings_body">• Use a different password for the hidden volume than the outer volume.\n• The hidden volume occupies the end of the outer volume\'s data area.\n• Writing too many large files to the outer volume may overwrite the hidden volume.</string>
+    <string name="create_hidden_outer_label">Outer volume: %1$s (%2$d MB)</string>
+    <string name="create_hidden_cipher_title">Hidden Volume Encryption</string>
+    <string name="create_hidden_cipher_subtitle">Choose the cipher for the hidden volume</string>
+    <string name="create_hidden_size_title">Hidden Volume Size</string>
+    <string name="create_hidden_size_constraints">Hidden volume must be between %1$d MB and %2$d MB (outer: %3$d MB, 4 MB reserved for outer data)</string>
+    <string name="create_hidden_size_min_error">Minimum size is %1$d MB</string>
+    <string name="create_hidden_size_max_error">Maximum size is %1$d MB</string>
+    <string name="create_hidden_pwd_title">Hidden Volume Password</string>
+    <string name="create_hidden_pwd_subtitle">Must be different from your outer volume password</string>
+    <string name="create_hidden_pwd_same_warning">If the hidden and outer passwords are the same, plausible deniability is compromised.</string>
+    <string name="create_hidden_pwd_label">Hidden Password</string>
+    <string name="create_hidden_pwd_confirm_label">Confirm Hidden Password</string>
+    <string name="create_hidden_pwd_mismatch">Passwords do not match</string>
+    <string name="create_hidden_pim_label">PIM (optional)</string>
+    <string name="create_hidden_pim_hint">PIM controls PBKDF2 iterations. Leave blank for default.</string>
+    <string name="create_hidden_entropy_subtitle">Random movement increases the cryptographic strength of the hidden volume keys</string>
+    <string name="create_hidden_creating_title">Creating Hidden Volume</string>
+    <string name="create_hidden_creating_body">Formatting %1$d MB hidden area…</string>
+    <string name="create_hidden_done_title">Hidden Volume Created!</string>
+    <string name="create_hidden_done_summary">Outer: %1$s · %2$d MB\nHidden: %3$s · %4$d MB</string>
+    <string name="create_hidden_important_title">Important</string>
+    <string name="create_hidden_done_warning_1">The hidden volume has been successfully created. If all instructions were followed, it should be impossible to prove that the hidden volume exists, even when the outer volume is mounted.</string>
+    <string name="create_hidden_done_warning_2">WARNING: If you do not protect the hidden volume when mounting the outer volume, do not write to the outer volume — you may overwrite and damage the hidden volume!</string>
+    <string name="create_hidden_done_warning_3">To protect the hidden volume, enable "Protect hidden volume" and enter the hidden volume password when mounting the outer volume.</string>
+
+    <!-- Mounting overlay -->
+    <string name="mount_unlocking">Unlocking vault…</string>
+    <string name="mount_subtitle_1">This may take a moment.\nPlease don\'t close the app.</string>
+    <string name="mount_subtitle_2">Almost there — some vaults take a bit longer.</string>
+    <string name="mount_subtitle_3">Deriving decryption keys — this is intentionally slow.</string>
+    <string name="mount_subtitle_4">Testing all supported cipher algorithms…</string>
+    <string name="mount_subtitle_5">Nearly done — brute-force protection takes time.</string>
+    <string name="mount_error_title">Operation failed</string>
+    <string name="mount_error_body">This may be due to one or more of the following:</string>
+    <string name="mount_error_reason_password">Incorrect password.</string>
+    <string name="mount_error_reason_pim">Incorrect Volume PIM number.</string>
+    <string name="mount_error_reason_prf">Incorrect PRF (hash).</string>
+    <string name="mount_error_reason_not_valid">Not a valid volume.</string>
+    <string name="mount_error_reason_old_algo">Volume uses an old algorithm that has been removed.</string>
+
+    <!-- Vault info screen -->
+    <string name="vault_info_loading">Loading…</string>
+    <string name="vault_info_section_title">Vault Information</string>
+    <string name="vault_info_label_name">Name</string>
+    <string name="vault_info_label_volume_type">Volume Type</string>
+    <string name="vault_info_type_hidden">Hidden</string>
+    <string name="vault_info_type_outer">Outer</string>
+    <string name="vault_info_type_standard">Standard</string>
+    <string name="vault_info_label_algorithm">Algorithm</string>
+    <string name="vault_info_label_prf">PKCS-5 PRF</string>
+    <string name="vault_info_label_filesystem">Filesystem</string>
+    <string name="vault_info_label_pim">PIM</string>
+    <string name="vault_info_pim_custom">Custom</string>
+    <string name="vault_info_pim_default">Default</string>
+    <string name="vault_info_label_size">Size</string>
+    <string name="vault_info_label_created">Created</string>
+    <string name="vault_info_label_location">Location</string>
+    <string name="vault_info_section_operations">Operations</string>
+    <string name="vault_info_op_change_password">Change Password</string>
+    <string name="vault_info_op_expand_volume">Expand Volume</string>
+    <string name="vault_info_op_backup_header">Backup Header</string>
+    <string name="vault_info_op_change_keyfile">Change Keyfile</string>
+    <string name="vault_info_unmount_button">Unmount Vault</string>
+    <string name="vault_info_unmount_title">Unmount %1$s?</string>
+    <string name="vault_info_unmount_body">Make sure all files are saved before unmounting.</string>
+    <string name="vault_info_fallback_name">vault</string>
+    <string name="vault_card_info_desc">View volume details and metadata</string>
+    <string name="vault_card_change_password_desc">Change the encryption password</string>
+    <string name="vault_card_expand_desc">Increase the size of this volume</string>
+    <string name="vault_card_backup_desc">Save a backup of the volume header</string>
+    <string name="vault_card_keyfile_desc">Update the keyfile for this volume</string>
+    <string name="vault_card_unmount_desc">Lock and unmount this vault</string>
+
+    <!-- Mount success overlay -->
+    <string name="mount_vault_unlocked">Vault Unlocked</string>
+    <string name="mount_indexing_vault">Indexing Vault</string>
+    <string name="mount_scanning">Scanning…</string>
+
+    <plurals name="mount_media_files">
+        <item quantity="one">%1$d media file</item>
+        <item quantity="other">%1$d media files</item>
+    </plurals>
+
+    <!-- Move vault screen -->
+    <string name="move_vault_title_to_app">Move to App Storage</string>
+    <string name="move_vault_title_to_internal">Move to Internal Storage</string>
+    <string name="move_vault_label_vault_size">Vault size</string>
+    <string name="move_vault_label_available">Available at destination</string>
+    <string name="move_vault_not_enough_space">Not enough free space. Free up at least %1$s and try again.</string>
+    <string name="move_vault_section_what">What this does</string>
+    <string name="move_vault_info_app_1">Files are stored in app-private storage, invisible to other apps and file managers.</string>
+    <string name="move_vault_info_app_2">Only Arcanum can read, move, or delete them.</string>
+    <string name="move_vault_info_app_3">Deleted when you uninstall the app (unless backed up).</string>
+    <string name="move_vault_info_int_1">Files are moved to shared internal storage, accessible via file managers.</string>
+    <string name="move_vault_info_int_2">Easier to copy files to a PC or share between devices.</string>
+    <string name="move_vault_info_int_3">Not deleted on uninstall.</string>
+    <string name="move_vault_section_before">Before you start</string>
+    <string name="move_vault_before_1">The operation may take several minutes for large containers.</string>
+    <string name="move_vault_before_2">Keep the app in the foreground and do not lock the screen.</string>
+    <string name="move_vault_backup_label">Include in Android Backup</string>
+    <string name="move_vault_backup_desc">When enabled, Android may back up the vault to your Google account. Disable if you prefer your vault to never leave the device.</string>
+    <string name="move_vault_section_dest_folder">Destination folder</string>
+    <string name="move_vault_choose_folder">Choose folder</string>
+    <string name="move_vault_selected_folder">Selected folder</string>
+    <string name="move_vault_default_folder">Default: Arcanum folder in app storage</string>
+    <string name="move_vault_start_move">Start Move</string>
+    <string name="move_vault_moving_title">Moving vault…</string>
+    <string name="move_vault_moving_progress">%1$d%%  ·  %2$.1f / %3$.1f MB</string>
+    <string name="move_vault_moving_body">Please keep the app open and do not lock your screen.</string>
+    <string name="move_vault_success_title">Vault moved successfully</string>
+    <string name="move_vault_success_body">The vault file has been moved and the database record updated.</string>
+    <string name="move_vault_failure_title">Move failed</string>
+    <string name="move_vault_retry">Retry</string>
+
+</resources>

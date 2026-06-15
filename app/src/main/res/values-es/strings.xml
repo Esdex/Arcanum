@@ -1,0 +1,687 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Arcanum</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_containers">Bóvedas</string>
+    <string name="nav_gallery">Galería</string>
+    <string name="nav_files">Archivos</string>
+    <string name="nav_settings">Ajustes</string>
+    <string name="nav_info">Info</string>
+    <string name="nav_vault_fallback_name">Bóveda</string>
+    <string name="nav_gallery_search_placeholder">Buscar medios…</string>
+    <string name="nav_gallery_cd_close_search">Cerrar búsqueda</string>
+    <string name="nav_gallery_cd_search">Buscar</string>
+    <string name="nav_gallery_cd_rescan">Reescanear bóveda</string>
+
+    <!-- Unmount animation -->
+    <string name="unmount_vault_unmounted">Bóveda desmontada</string>
+    <string name="unmount_data_protected">Sus datos están protegidos</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_next">Siguiente</string>
+    <string name="onboarding_get_started">Comenzar</string>
+
+    <string name="onboarding_welcome_title">Bienvenido a Arcanum</string>
+    <string name="onboarding_welcome_desc">Un gestor seguro de contenedores cifrados disfrazado de calculadora.</string>
+
+    <string name="onboarding_secure_title">Cifrado de grado militar</string>
+    <string name="onboarding_secure_desc">Los contenedores compatibles con VeraCrypt protegen sus archivos con cifrado AES, Twofish y Serpent.</string>
+
+    <string name="onboarding_calculator_title">Oculto tras una calculadora</string>
+    <string name="onboarding_calculator_desc">Para cualquier observador, Arcanum parece una calculadora normal. Solo su PIN secreto lo desbloquea.</string>
+
+    <string name="onboarding_gallery_title">Hermosa galería multimedia</string>
+    <string name="onboarding_gallery_desc">Vea sus fotos y vídeos de forma privada dentro de contenedores cifrados, sin dejar rastro.</string>
+
+    <string name="onboarding_privacy_title">Modo pánico listo</string>
+    <string name="onboarding_privacy_desc">Introduzca su PIN de pánico para borrar instantáneamente todos los rastros de Arcanum de su dispositivo.</string>
+
+    <!-- Vault creation foreground service notification -->
+    <string name="notif_channel_vault_creation">Creación de bóveda</string>
+    <string name="notif_channel_vault_creation_desc">Muestra el progreso al crear una bóveda cifrada</string>
+    <string name="notif_creating_vault">Creando bóveda…</string>
+    <string name="notif_creation_progress">%1$d%% completado</string>
+
+    <!-- In-app notification banners -->
+    <string name="notif_vault_mounted">Bóveda montada correctamente</string>
+    <string name="notif_vault_unmounted">Bóveda desmontada</string>
+    <string name="notif_vault_error">Error al abrir la bóveda</string>
+    <string name="notif_export_success">Archivo exportado correctamente</string>
+    <string name="notif_vault_added">Bóveda añadida</string>
+    <string name="notif_vault_added_subtitle">Toque para desbloquear %1$s</string>
+    <string name="notif_vault_already_exists">Ya está en su lista</string>
+    <string name="notif_vault_invalid_file">Archivo de bóveda no válido</string>
+    <string name="notif_vault_invalid_file_subtitle">El archivo es demasiado pequeño o no está alineado a sectores</string>
+    <string name="notif_vault_add_error">Error al añadir la bóveda</string>
+    <string name="notif_date_updated">Fecha actualizada</string>
+    <string name="notif_date_updated_subtitle">EXIF y línea de tiempo actualizados</string>
+    <string name="notif_file_renamed">Archivo renombrado</string>
+    <string name="notif_files_pasted_subtitle">Operación completada</string>
+    <string name="notif_files_moved_subtitle">→ %1$s</string>
+    <string name="notif_files_deleted_subtitle">Eliminado permanentemente</string>
+    <string name="notif_folder_created">Carpeta creada</string>
+    <string name="notif_files_imported_subtitle">Cifrado y almacenado en la bóveda</string>
+    <string name="notif_files_exported_subtitle">Guardado en la carpeta seleccionada</string>
+    <string name="notif_support_developer">¿Le gusta Arcanum?</string>
+    <string name="notif_support_developer_subtitle">Considere apoyar el desarrollo</string>
+
+    <plurals name="notif_items_copied">
+        <item quantity="one">%1$d elemento copiado</item>
+        <item quantity="other">%1$d elementos copiados</item>
+    </plurals>
+    <plurals name="notif_items_moved">
+        <item quantity="one">%1$d elemento movido</item>
+        <item quantity="other">%1$d elementos movidos</item>
+    </plurals>
+    <plurals name="notif_items_deleted">
+        <item quantity="one">%1$d elemento eliminado</item>
+        <item quantity="other">%1$d elementos eliminados</item>
+    </plurals>
+    <plurals name="notif_files_imported">
+        <item quantity="one">%1$d archivo importado</item>
+        <item quantity="other">%1$d archivos importados</item>
+    </plurals>
+    <plurals name="notif_files_exported">
+        <item quantity="one">%1$d archivo exportado</item>
+        <item quantity="other">%1$d archivos exportados</item>
+    </plurals>
+
+    <!-- Common / shared -->
+    <string name="common_cancel">Cancelar</string>
+    <string name="common_done">Listo</string>
+    <string name="common_save">Guardar</string>
+    <string name="common_back">Atrás</string>
+    <string name="common_delete">Eliminar</string>
+    <string name="common_rename">Renombrar</string>
+    <string name="common_ok">Aceptar</string>
+    <string name="common_close">Cerrar</string>
+    <string name="common_copy">Copiar</string>
+    <string name="common_move">Mover</string>
+    <string name="common_export">Exportar</string>
+    <string name="common_search">Buscar</string>
+    <string name="common_info">Info</string>
+    <string name="common_edit">Editar</string>
+    <string name="common_password">Contraseña</string>
+    <string name="common_cipher">Cifrado</string>
+    <string name="common_hash_algorithm">Algoritmo hash</string>
+    <string name="common_mb">MB</string>
+    <string name="common_gb">GB</string>
+    <string name="common_this_cannot_be_undone">Esta acción no se puede deshacer.</string>
+    <string name="common_open_vault">Abrir bóveda</string>
+    <string name="common_pro">Pro</string>
+    <string name="common_continue">Continuar</string>
+    <string name="common_confirm">Confirmar</string>
+    <string name="common_coming_soon">Próximamente</string>
+
+    <!-- PIN screens (shared) -->
+    <string name="pin_mismatch">Los PIN no coinciden</string>
+
+    <!-- Setup PIN -->
+    <string name="setup_pin_title">Establezca su PIN</string>
+    <string name="setup_pin_confirm_title">Confirme su PIN</string>
+    <string name="setup_pin_success_title">¡PIN creado!</string>
+    <string name="setup_pin_success_desc">Para desbloquear Arcanum, abra la calculadora e introduzca su PIN con los botones numéricos. Luego mantenga pulsado = durante 2 segundos.</string>
+
+    <!-- Change PIN -->
+    <string name="change_pin_wrong">PIN incorrecto</string>
+    <string name="change_pin_enter_current">Introduzca el PIN actual</string>
+    <string name="change_pin_enter_new">Introduzca el nuevo PIN</string>
+    <string name="change_pin_confirm_new">Confirme el nuevo PIN</string>
+    <string name="change_pin_hint">4–12 dígitos</string>
+    <string name="change_pin_success_title">¡PIN cambiado!</string>
+    <string name="change_pin_success_desc">Su nuevo PIN está activo</string>
+
+    <!-- Gallery screen -->
+    <string name="gallery_title">Galería</string>
+    <string name="gallery_search_placeholder">Buscar medios…</string>
+    <string name="gallery_search_open">Buscar</string>
+    <string name="gallery_search_close">Cerrar búsqueda</string>
+    <string name="gallery_scan">Escanear bóveda</string>
+    <string name="gallery_empty_title">No se encontraron medios</string>
+    <string name="gallery_empty_subtitle">Esta bóveda no contiene fotos ni vídeos</string>
+    <string name="gallery_scanning">Escaneando bóveda…</string>
+    <string name="gallery_scan_found">%1$d encontrados</string>
+    <string name="gallery_preload_preparing">Preparando miniaturas…</string>
+    <string name="gallery_preload_progress">%1$d / %2$d</string>
+    <string name="gallery_filter_all">Todos</string>
+    <string name="gallery_filter_photos">Fotos</string>
+    <string name="gallery_filter_videos">Vídeos</string>
+    <string name="gallery_cd_video">Vídeo</string>
+
+    <!-- Media viewer screen -->
+    <string name="viewer_cd_back">Atrás</string>
+    <string name="viewer_cd_more_options">Más opciones</string>
+    <string name="viewer_action_remove_favorite">Quitar de favoritos</string>
+    <string name="viewer_action_add_favorite">Añadir a favoritos</string>
+    <string name="viewer_action_export">Exportar</string>
+    <string name="viewer_action_delete">Eliminar</string>
+    <string name="viewer_action_details">Detalles</string>
+    <string name="viewer_action_favorite">Favorito</string>
+    <string name="viewer_sheet_info_title">Detalles</string>
+    <string name="viewer_description_placeholder">Añadir descripción…</string>
+    <string name="viewer_edit_date_title">Editar fecha &amp; hora</string>
+    <string name="viewer_edit_date_warning">⚠ Esto actualizará los datos EXIF dentro del archivo y lo moverá en la línea de tiempo.</string>
+    <string name="viewer_exif_title">Datos EXIF</string>
+    <string name="viewer_exif_empty">No hay datos EXIF disponibles para este archivo.</string>
+    <string name="viewer_exif_maps_hint">Toque para abrir en Mapas</string>
+    <string name="viewer_exif_section">EXIF</string>
+    <string name="viewer_exif_view_all">Ver todos los datos EXIF</string>
+    <string name="viewer_cd_edit">Editar</string>
+    <string name="viewer_rename_title">Renombrar archivo</string>
+    <string name="viewer_rename_label">Nombre del archivo</string>
+    <string name="viewer_rename_error_empty">El nombre no puede estar vacío</string>
+    <string name="viewer_rename_error_invalid">El nombre contiene caracteres no válidos</string>
+    <string name="viewer_rename_ext_hint">La extensión .%1$s se añadirá automáticamente</string>
+    <string name="viewer_rename_confirm">Renombrar</string>
+    <string name="viewer_delete_title">¿Eliminar %1$s?</string>
+    <string name="viewer_gps_title">Editar coordenadas GPS</string>
+    <string name="viewer_gps_latitude">Latitud (−90 a 90)</string>
+    <string name="viewer_gps_longitude">Longitud (−180 a 180)</string>
+    <string name="viewer_seek_back">−10 s</string>
+    <string name="viewer_seek_forward">+10 s</string>
+    <string name="viewer_cd_pause">Pausar</string>
+    <string name="viewer_cd_play">Reproducir</string>
+
+    <!-- File manager screen -->
+    <string name="files_title">Archivos</string>
+    <string name="files_search_placeholder">Buscar archivos…</string>
+    <string name="files_search_close">Cerrar búsqueda</string>
+    <string name="files_search_open">Buscar</string>
+    <string name="files_cd_more">Más</string>
+    <string name="files_cd_cancel_selection">Cancelar selección</string>
+    <string name="files_cd_select_all">Seleccionar todo</string>
+    <string name="files_selection_count">%1$d seleccionados</string>
+    <string name="files_hide_hidden">Ocultar archivos ocultos</string>
+    <string name="files_show_hidden">Mostrar archivos ocultos</string>
+    <string name="files_sort_by">Ordenar por…</string>
+    <string name="files_grid_view">Vista en cuadrícula</string>
+    <string name="files_list_view">Vista en lista</string>
+    <string name="files_empty_no_results_title">Sin resultados</string>
+    <string name="files_empty_folder_title">Carpeta vacía</string>
+    <string name="files_empty_no_results_subtitle">Pruebe con otro término de búsqueda</string>
+    <string name="files_empty_folder_subtitle">Toque + para importar archivos o crear una carpeta</string>
+    <string name="files_error_cannot_browse">No se pueden explorar los archivos</string>
+    <string name="files_type_folder">Carpeta</string>
+    <string name="files_action_rename">Renombrar</string>
+    <string name="files_action_properties">Propiedades</string>
+    <string name="files_cd_close_fab">Cerrar</string>
+    <string name="files_cd_file_actions_fab">Acciones de archivo</string>
+    <string name="files_action_import">Importar archivos</string>
+    <string name="files_action_new_folder">Nueva carpeta</string>
+    <string name="files_action_copy">Copiar</string>
+    <string name="files_action_move">Mover</string>
+    <string name="files_action_export">Exportar</string>
+    <string name="files_action_delete">Eliminar</string>
+    <string name="files_new_folder_title">Nueva carpeta</string>
+    <string name="files_new_folder_label">Nombre de la carpeta</string>
+    <string name="files_new_folder_create">Crear</string>
+    <string name="files_rename_title">Renombrar</string>
+    <string name="files_rename_label">Nuevo nombre</string>
+    <string name="files_delete_title_single">¿Eliminar este elemento?</string>
+    <string name="files_delete_confirm">Eliminar</string>
+    <string name="files_props_name">Nombre</string>
+    <string name="files_props_type">Tipo</string>
+    <string name="files_props_size">Tamaño</string>
+    <string name="files_props_location">Ubicación</string>
+    <string name="files_props_modified">Modificado</string>
+    <string name="files_props_type_folder">Carpeta</string>
+    <string name="files_type_image">Imagen</string>
+    <string name="files_type_video">Vídeo</string>
+    <string name="files_type_audio">Audio</string>
+    <string name="files_type_pdf">Documento PDF</string>
+    <string name="files_type_word">Documento Word</string>
+    <string name="files_type_spreadsheet">Hoja de cálculo</string>
+    <string name="files_type_presentation">Presentación</string>
+    <string name="files_type_text">Archivo de texto</string>
+    <string name="files_type_archive">Archivo comprimido</string>
+    <string name="files_type_apk">Paquete Android</string>
+    <string name="files_type_file">Archivo</string>
+    <string name="files_open_with_body">Para abrir este archivo, se creará una copia descifrada temporal. Se eliminará automáticamente cuando regrese a Arcanum.</string>
+    <string name="files_open_with_cancel">Cancelar</string>
+    <string name="files_open_with_confirm">Abrir con app</string>
+    <string name="files_sort_title">Ordenar por</string>
+    <string name="files_sort_name">Nombre</string>
+    <string name="files_sort_date">Fecha</string>
+    <string name="files_sort_size">Tamaño</string>
+    <string name="files_sort_type">Tipo</string>
+    <string name="files_sort_cd_ascending">Ascendente</string>
+    <string name="files_sort_cd_descending">Descendente</string>
+    <string name="files_sort_folders_first">Carpetas primero</string>
+    <string name="files_cd_root">Raíz</string>
+    <string name="files_no_mounted_vaults">No hay bóvedas montadas</string>
+    <string name="files_this_vault">Esta bóveda</string>
+    <string name="files_cd_back_to_vaults">Volver a bóvedas</string>
+    <string name="files_move_to_title">Mover a…</string>
+    <string name="files_copy_to_title">Copiar a…</string>
+    <string name="files_move_here">Mover aquí</string>
+    <string name="files_copy_here">Copiar aquí</string>
+
+    <plurals name="files_paste_clipboard">
+        <item quantity="one">Pegar (%1$d elemento)</item>
+        <item quantity="other">Pegar (%1$d elementos)</item>
+    </plurals>
+    <plurals name="files_delete_count">
+        <item quantity="one">¿Eliminar %1$d elemento?</item>
+        <item quantity="other">¿Eliminar %1$d elementos?</item>
+    </plurals>
+
+    <!-- Audio player screen -->
+    <string name="audio_now_playing">Reproduciendo ahora</string>
+    <string name="audio_loading">Cargando…</string>
+    <string name="audio_cd_shuffle">Aleatorio</string>
+    <string name="audio_cd_repeat">Repetir</string>
+    <string name="audio_cd_repeat_all">Repetir todo</string>
+    <string name="audio_cd_repeat_one">Repetir 1</string>
+    <string name="audio_cd_previous">Anterior</string>
+    <string name="audio_cd_pause">Pausar</string>
+    <string name="audio_cd_play">Reproducir</string>
+    <string name="audio_cd_next">Siguiente</string>
+    <string name="audio_cd_album_art">Portada del álbum</string>
+    <string name="audio_cd_more">Más</string>
+
+    <!-- Vault screen -->
+    <string name="vault_title">Arcanum</string>
+    <string name="vault_cd_sort_group">Ordenar &amp; agrupar</string>
+    <string name="vault_cd_settings">Ajustes</string>
+    <string name="vault_cd_exit_selection">Salir de selección</string>
+    <string name="vault_selection_count">%1$d seleccionados</string>
+    <string name="vault_select_all">Seleccionar todo</string>
+    <string name="vault_cd_delete_selected">Eliminar seleccionados</string>
+    <string name="vault_empty_title">Aún no hay bóvedas</string>
+    <string name="vault_empty_subtitle">Cree o abra un contenedor VeraCrypt existente</string>
+    <string name="vault_storage_app">Almacenamiento de la app</string>
+    <string name="vault_storage_local">Almacenamiento local</string>
+    <string name="vault_cd_close_fab">Cerrar</string>
+    <string name="vault_cd_new_vault_fab">Nueva bóveda</string>
+    <string name="vault_fab_open_existing">Abrir bóveda existente</string>
+    <string name="vault_fab_create_new">Crear nueva bóveda</string>
+    <string name="vault_unmount_title">¿Desmontar \"%1$s\"?</string>
+    <string name="vault_unmount_body">La bóveda quedará bloqueada hasta que introduzca la contraseña de nuevo.</string>
+    <string name="vault_unmount_confirm">Desmontar</string>
+    <string name="vault_remove_title">¿Eliminar \"%1$s\"?</string>
+    <string name="vault_remove_body">La bóveda se eliminará de la lista. El archivo del contenedor en el disco no se borrará.</string>
+    <string name="vault_remove_confirm">Eliminar</string>
+    <string name="vault_delete_title">¿Borrar \"%1$s\"?</string>
+    <string name="vault_delete_body">El archivo del contenedor y todos los datos cifrados en su interior se borrarán permanentemente. Esta acción no se puede deshacer.</string>
+    <string name="vault_delete_confirm">Borrar</string>
+    <string name="vault_lock_title">¿Bloquear Arcanum?</string>
+    <string name="vault_lock_body">Necesitará introducir su PIN para volver a desbloquearlo.</string>
+    <string name="vault_lock_confirm">Bloquear</string>
+    <string name="vault_config_unmount_on_lock">Desmontar al bloquear pantalla</string>
+    <string name="vault_config_unmount_on_lock_desc">Desmontar cuando se bloquee la pantalla del dispositivo</string>
+    <string name="vault_config_unmount_on_background">Desmontar en segundo plano</string>
+    <string name="vault_config_unmount_on_background_desc">Desmontar cuando la app pase a segundo plano</string>
+    <string name="vault_config_move_to_app">Mover al almacenamiento de la app</string>
+    <string name="vault_config_move_to_app_desc">Guardar bóveda en directorio privado de la app</string>
+    <string name="vault_config_unmount_to_move">Desmonte la bóveda antes de moverla</string>
+    <string name="vault_config_move_to_internal">Mover al almacenamiento interno</string>
+    <string name="vault_config_move_to_internal_desc">Mover bóveda a carpeta de almacenamiento compartida</string>
+    <string name="vault_sort_title">Ordenar &amp; agrupar</string>
+    <string name="vault_sort_name">Nombre</string>
+    <string name="vault_sort_size">Tamaño</string>
+    <string name="vault_sort_last_opened">Última apertura</string>
+    <string name="vault_sort_group_by">Agrupar por</string>
+    <string name="vault_sort_group_none">Ninguno</string>
+    <string name="vault_sort_group_location">Por ubicación</string>
+    <string name="vault_sort_biometric_first">Bóvedas biométricas primero</string>
+    <string name="vault_sort_biometric_first_desc">Fijar bóvedas con desbloqueo biométrico arriba</string>
+    <string name="vault_sort_cd_ascending">Ascendente</string>
+    <string name="vault_sort_cd_descending">Descendente</string>
+    <string name="vault_mount_wrong_password">Contraseña o PIM incorrectos</string>
+    <string name="vault_mount_algorithm">Algoritmo</string>
+    <string name="vault_mount_hash">Hash</string>
+    <string name="vault_mount_biometric_toggle">Desbloqueo biométrico</string>
+    <string name="vault_mount_advanced">Avanzado</string>
+    <string name="vault_mount_pim_label">PIM (opcional)</string>
+    <string name="vault_mount_pim_placeholder">Deje vacío si no está establecido</string>
+    <string name="vault_mount_add_keyfile">Añadir archivo clave (opcional)</string>
+    <string name="vault_mount_protect_hidden">Proteger volumen oculto</string>
+    <string name="vault_mount_protect_hidden_desc">Evita que las escrituras en el volumen externo lleguen al área oculta</string>
+    <string name="vault_mount_hidden_password">Contraseña del volumen oculto</string>
+    <string name="vault_biometric_unlock_title">Desbloquear %1$s</string>
+    <string name="vault_biometric_unlock_subtitle">Autentíquese para abrir la bóveda</string>
+    <string name="vault_biometric_use_password">Usar contraseña en su lugar</string>
+    <string name="vault_biometric_save_title">Guardar para desbloqueo biométrico</string>
+    <string name="vault_biometric_save_subtitle">Autentíquese para guardar las credenciales</string>
+    <string name="vault_biometric_skip">Omitir</string>
+    <string name="vault_biometric_indicator">Toque el sensor de huella para abrir</string>
+    <string name="vault_biometric_failed">Error en autenticación biométrica</string>
+    <string name="vault_biometric_try_again">Intentar de nuevo</string>
+    <string name="vault_biometric_unlock_confirm">Desbloquear</string>
+    <string name="vault_remove_biometric_title">¿Eliminar biometría?</string>
+    <string name="vault_remove_biometric_body">Necesitará introducir su contraseña manualmente para desbloquear \"%1$s\".</string>
+    <string name="vault_menu_select">Seleccionar</string>
+    <string name="vault_menu_config">Configuración</string>
+    <string name="vault_menu_remove">Quitar de la lista</string>
+    <string name="vault_menu_delete">Eliminar</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Ajustes</string>
+    <string name="settings_cd_back">Atrás</string>
+    <string name="settings_card_security">Seguridad</string>
+    <string name="settings_card_security_desc">PIN, biométrico, bloqueo automático</string>
+    <string name="settings_card_panic">Modo pánico</string>
+    <string name="settings_card_panic_desc">Contraseña de coacción, borrado de datos</string>
+    <string name="settings_card_appearance">Apariencia</string>
+    <string name="settings_card_appearance_desc">Tema, colores, AMOLED</string>
+    <string name="settings_card_about">Acerca de</string>
+    <string name="settings_card_about_desc">Versión, licencias, GitHub</string>
+    <string name="settings_card_premium">Premium</string>
+    <string name="settings_card_premium_desc">Desbloquear todas las funciones</string>
+    <string name="settings_card_debug">Depuración</string>
+    <string name="settings_card_debug_desc">Registros y herramientas de desarrollador</string>
+    <string name="settings_security_title">Seguridad</string>
+    <string name="settings_security_change_pin">Cambiar PIN</string>
+    <string name="settings_security_auto_lock">Bloqueo automático</string>
+    <string name="settings_security_auto_lock_desc">Bloquear cuando la app pase a segundo plano</string>
+    <string name="settings_security_screen_capture">Protección contra capturas de pantalla</string>
+    <string name="settings_security_screen_capture_desc">Impide que otras apps graben la pantalla</string>
+    <string name="settings_security_screenshot_warn_title">¿Desactivar la protección de pantalla?</string>
+    <string name="settings_security_screenshot_warn_body">Sin protección de pantalla, cualquier app con el permiso «mostrar sobre otras apps» o un grabador de pantalla podrá capturar el contenido de Arcanum, incluidas contraseñas y archivos privados.\n\nDesactiva esto solo si confías plenamente en tu entorno.</string>
+    <string name="settings_security_screenshot_warn_disable">Desactivar en %1$d…</string>
+    <string name="settings_security_screenshot_warn_disable_ready">Desactivar</string>
+    <string name="settings_security_screenshot_auth_title">Confirmar acción</string>
+    <string name="settings_security_screenshot_auth_subtitle">Autentícate para desactivar la protección de pantalla</string>
+    <string name="settings_security_screenshot_pin_label">PIN de Arcanum</string>
+    <string name="settings_security_screenshot_pin_error">PIN incorrecto. Inténtalo de nuevo.</string>
+    <string name="settings_panic_title">Modo pánico</string>
+    <string name="settings_panic_switch_title">Modo pánico</string>
+    <string name="settings_panic_switch_desc">Introducir el PIN de pánico borra silenciosamente los datos seleccionados</string>
+    <string name="settings_panic_setup_hint">Toque para configurar un PIN de pánico</string>
+    <string name="settings_panic_pin_section">PIN DE PÁNICO</string>
+    <string name="settings_panic_change_pin">Cambiar PIN de pánico</string>
+    <string name="settings_panic_wipe_section">QUÉ BORRAR</string>
+    <string name="settings_panic_full_wipe">Borrado completo</string>
+    <string name="settings_panic_full_wipe_desc">Eliminar todas las bóvedas y restablecer la app al estado de fábrica</string>
+    <string name="settings_panic_clear_settings">Borrar ajustes</string>
+    <string name="settings_panic_clear_history">Borrar historial de la calculadora</string>
+    <string name="settings_panic_disable_biometric">Deshabilitar biométrico</string>
+    <string name="settings_panic_disable_biometric_desc">Eliminar acceso biométrico de todas las bóvedas</string>
+    <string name="settings_panic_vaults_section">BÓVEDAS</string>
+    <string name="settings_panic_warning">Los datos borrados no se pueden recuperar. Pruebe primero con una bóveda señuelo.</string>
+    <string name="settings_panic_disable_title">¿Deshabilitar modo pánico?</string>
+    <string name="settings_panic_disable_body">Su PIN de pánico y todos los ajustes de borrado se eliminarán permanentemente.</string>
+    <string name="settings_panic_disable_confirm">Deshabilitar</string>
+    <string name="settings_panic_vault_delete">Eliminar</string>
+    <string name="settings_panic_vault_forget">Olvidar</string>
+    <string name="settings_panic_vault_keep">Conservar</string>
+    <string name="settings_appearance_title">Apariencia</string>
+    <string name="settings_appearance_theme_section">MODO DE TEMA</string>
+    <string name="settings_appearance_language_section">IDIOMA</string>
+    <string name="settings_appearance_language">Idioma de la app</string>
+    <string name="settings_appearance_language_system">Predeterminado del sistema</string>
+    <string name="settings_appearance_theme_system">Sistema</string>
+    <string name="settings_appearance_theme_light">Claro</string>
+    <string name="settings_appearance_theme_dark">Oscuro</string>
+    <string name="settings_appearance_display_section">PANTALLA</string>
+    <string name="settings_appearance_amoled">AMOLED Glass</string>
+    <string name="settings_appearance_amoled_desc">Fondos negros puros con efecto de cristal esmerilado</string>
+    <string name="settings_appearance_dynamic_colors">Colores dinámicos</string>
+    <string name="settings_appearance_dynamic_colors_desc">Usar colores derivados del fondo de pantalla (Android 12+)</string>
+    <string name="settings_appearance_dynamic_colors_unavailable">Los colores dinámicos requieren Android 12 o superior.</string>
+    <string name="settings_about_title">Acerca de</string>
+    <string name="settings_about_app_desc">Gestor de bóvedas cifradas compatible con VeraCrypt para Android</string>
+    <string name="settings_about_licenses">Licencias de código abierto</string>
+    <string name="settings_about_connect_section">Conectar</string>
+    <string name="settings_about_source_code">Código fuente</string>
+    <string name="settings_about_source_code_desc">Ver en GitHub</string>
+    <string name="settings_about_website">Sitio web</string>
+    <string name="settings_about_website_desc">arcanum.zip</string>
+    <string name="settings_about_privacy">Política de privacidad</string>
+    <string name="settings_about_bug_report">Reportar un error</string>
+    <string name="settings_about_bug_report_desc">Abrir un issue en GitHub</string>
+    <string name="settings_premium_title">Arcanum Pro</string>
+    <string name="settings_premium_upgrade">Actualizar</string>
+    <string name="settings_debug_title">Depuración</string>
+    <string name="settings_debug_cd_copy_all">Copiar todo</string>
+    <string name="settings_debug_cd_refresh">Actualizar</string>
+    <string name="settings_debug_mode">Modo depuración</string>
+    <string name="settings_debug_mode_desc">Habilitar herramientas de desarrollador</string>
+    <string name="settings_debug_section_runtime">TIEMPO DE EJECUCIÓN</string>
+    <string name="settings_debug_section_mounted">CONTENEDORES MONTADOS</string>
+    <string name="settings_debug_section_device">SEGURIDAD DEL DISPOSITIVO</string>
+    <string name="settings_debug_section_database">BASE DE DATOS</string>
+    <string name="settings_debug_section_tools">HERRAMIENTAS</string>
+    <string name="settings_debug_no_containers">No hay contenedores montados</string>
+    <string name="settings_debug_dry_run_panic">Simulacro de pánico</string>
+    <string name="settings_debug_warning_title">Información sensible</string>
+    <string name="settings_debug_warning_body">El modo depuración expone manejadores criptográficos, tipo de almacén de claves, rutas de contenedores y otros datos sensibles. Su dispositivo no tiene bloqueo de pantalla: cualquiera con acceso físico puede habilitar este modo.</string>
+    <string name="settings_debug_warning_confirm">Entendido, habilitar</string>
+    <string name="settings_debug_cd_info">Info</string>
+
+    <!-- Set panic PIN screen -->
+    <string name="panic_pin_title">Establecer PIN de pánico</string>
+    <string name="panic_pin_confirm_title">Confirmar PIN de pánico</string>
+    <string name="panic_pin_success_title">PIN de pánico establecido</string>
+    <string name="panic_pin_success_desc">El modo pánico está ahora activo. Introduzca el PIN de pánico en la calculadora para activar un borrado silencioso.</string>
+    <string name="panic_pin_success_warning">No confunda su PIN de pánico con su PIN principal.\n\nIntroducir el PIN de pánico comenzará inmediatamente el borrado de sus datos configurados — esta acción no se puede deshacer.</string>
+    <string name="panic_pin_success_confirm">Entendido</string>
+    <string name="panic_pin_hint">4–12 dígitos. Debe diferir de su PIN principal.</string>
+    <string name="panic_pin_btn_continue">Continuar</string>
+    <string name="panic_pin_btn_confirm">Confirmar</string>
+    <string name="panic_pin_cd_backspace">Eliminar</string>
+
+    <!-- Create container screen (wizard shell) -->
+    <string name="create_title">Crear bóveda</string>
+    <string name="create_step_counter">Paso %1$d/%2$d</string>
+    <string name="create_btn_outer">Crear volumen externo</string>
+    <string name="create_btn_hidden">Crear volumen oculto</string>
+    <string name="create_btn_next">Siguiente</string>
+    <string name="create_cancel">Cancelar</string>
+    <string name="create_cancel_dialog_title">¿Cancelar creación?</string>
+    <string name="create_cancel_dialog_body">El archivo incompleto se eliminará.</string>
+    <string name="create_cancel_dialog_confirm">Cancelar creación</string>
+    <string name="create_cancel_dialog_keep">Seguir</string>
+    <string name="create_cd_back">Atrás</string>
+
+    <!-- Create container steps 1–4 -->
+    <string name="create_step1_title">Seleccionar tipo de volumen</string>
+    <string name="create_volume_standard">Volumen estándar</string>
+    <string name="create_volume_standard_desc">Una bóveda cifrada normal protegida por una única contraseña.</string>
+    <string name="create_volume_hidden">Volumen oculto</string>
+    <string name="create_volume_hidden_desc">Dos contraseñas, dos conjuntos de datos. Negación plausible bajo coacción.</string>
+    <string name="create_step2_title">Elegir ubicación</string>
+    <string name="create_location_app">Almacenamiento de la app</string>
+    <string name="create_location_app_desc">Almacenamiento privado dentro de la app. No se necesitan permisos adicionales.</string>
+    <string name="create_location_internal">Almacenamiento interno</string>
+    <string name="create_location_internal_desc">Guardar en una carpeta accesible por el usuario en el almacenamiento del dispositivo.</string>
+    <string name="create_location_no_folder">Ninguna carpeta seleccionada</string>
+    <string name="create_location_browse">Explorar</string>
+    <string name="create_location_permission_title">Permiso de almacenamiento requerido</string>
+    <string name="create_location_permission_desc">Conceda \"Acceso a todos los archivos\" para que la app pueda crear bóvedas fuera de su carpeta privada.</string>
+    <string name="create_location_permission_open_settings">Abrir ajustes</string>
+    <string name="create_filename_label">Nombre del archivo</string>
+    <string name="create_filename_placeholder">vault.hc</string>
+    <string name="create_step3_title">Algoritmo de cifrado</string>
+    <string name="create_step3_subtitle">Todos los algoritmos son totalmente compatibles con VeraCrypt de escritorio</string>
+    <string name="create_step3_cipher">Cifrado</string>
+    <string name="create_step3_hash">Algoritmo hash</string>
+    <string name="create_step4_title">Tamaño del volumen</string>
+    <string name="create_size_label">Tamaño</string>
+    <string name="create_size_custom">Personalizado</string>
+    <string name="create_size_available">Disponible: %1$.1f GB</string>
+    <string name="create_size_quick_est">⚡ Formato rápido: ~%1$s</string>
+    <string name="create_size_secure_est">🔒 Formato seguro: ~%1$s</string>
+    <string name="create_size_speed_fast">Rápido</string>
+    <string name="create_size_speed_medium">Medio</string>
+    <string name="create_size_speed_slow">Lento</string>
+
+    <!-- Create container steps 5–7 -->
+    <string name="create_step5_outer_title">Establecer contraseña del volumen externo</string>
+    <string name="create_step5_subtitle">Use una contraseña segura. Si la olvida, sus datos no podrán recuperarse.</string>
+    <string name="create_step5_outer_subtitle">Esta contraseña desbloquea el volumen externo señuelo. Establecerá una contraseña separada para el volumen oculto más adelante.</string>
+    <string name="create_step5_outer_info">Esta es la contraseña del volumen externo (señuelo). Quien tenga acceso a ella verá el volumen externo, no el oculto.</string>
+    <string name="create_step5_title">Establecer contraseña</string>
+    <string name="create_pwd_label">Contraseña</string>
+    <string name="create_pwd_confirm_label">Confirmar contraseña</string>
+    <string name="create_pwd_mismatch">Las contraseñas no coinciden</string>
+    <string name="create_pwd_strength_weak">Débil</string>
+    <string name="create_pwd_strength_fair">Aceptable</string>
+    <string name="create_pwd_strength_strong">Fuerte</string>
+    <string name="create_pwd_strength_very_strong">Muy fuerte</string>
+    <string name="create_pwd_char_count">%1$d caracteres</string>
+    <string name="create_keyfile_hide">Ocultar archivos clave</string>
+    <string name="create_keyfile_add">Añadir archivos clave (opcional)</string>
+    <string name="create_keyfile_safe_warning">Mantenga estos archivos seguros — son necesarios para abrir la bóveda</string>
+    <string name="create_keyfile_add_item">Añadir archivo clave…</string>
+    <string name="create_keyfile_cd_remove">Eliminar archivo clave</string>
+    <string name="create_keyfile_desc">Un archivo clave añade un segundo factor de autenticación. Se necesitan tanto la contraseña como todos los archivos clave para abrir la bóveda.</string>
+    <string name="create_pim_label">PIM (Personal Iterations Multiplier)</string>
+    <string name="create_pim_short_label">PIM</string>
+    <string name="create_pim_placeholder">Dejar vacío para usar el valor predeterminado</string>
+    <string name="create_pim_status_default">Seguridad predeterminada (recomendado)</string>
+    <string name="create_pim_status_below">Por debajo del predeterminado — use una contraseña fuerte</string>
+    <string name="create_pim_status_similar">Similar al predeterminado</string>
+    <string name="create_pim_status_enhanced">Seguridad mejorada, más lento al abrir</string>
+    <string name="create_pim_unlock_est">Tiempo estimado de desbloqueo: ~%1$d segundos</string>
+    <string name="create_pwd_warning">No hay forma de recuperar su contraseña. Anótela y guárdela en un lugar seguro.</string>
+    <string name="create_step6_title">Modo de formato</string>
+    <string name="create_format_quick_title">Formato rápido</string>
+    <string name="create_format_secure_title">Formato seguro</string>
+    <string name="create_format_quick_desc">~%1$s para cualquier tamaño · Menos seguro — los patrones pueden detectarse en análisis forenses avanzados. Recomendado para la mayoría de usuarios.</string>
+    <string name="create_format_secure_desc">~%1$s · Rellena todo el volumen con datos aleatorios. Máxima seguridad, sin patrones de datos. Recomendado para datos sensibles.</string>
+    <string name="create_format_est_text">Tiempo estimado: ~%1$s</string>
+    <string name="create_step7_title">Sistema de archivos</string>
+    <string name="create_fs_subtitle">Elija cómo se organizan los archivos dentro de la bóveda</string>
+    <string name="create_fs_recommended">Recomendado</string>
+    <string name="create_fs_coming_soon">Próximamente</string>
+    <string name="create_fs_coming_soon_toast">Próximamente</string>
+    <string name="create_fs_got_it">Entendido</string>
+    <string name="create_fs_max_file_size">Tamaño máximo de archivo: %1$s</string>
+    <string name="create_fs_os_read_only"> (solo lectura)</string>
+    <string name="create_fs_info_cd">Info</string>
+
+    <plurals name="create_keyfile_count">
+        <item quantity="one">%1$d archivo clave añadido</item>
+        <item quantity="other">%1$d archivos clave añadidos</item>
+    </plurals>
+
+    <!-- Create container steps 8–9 -->
+    <string name="create_entropy_title">Mueva su dedo</string>
+    <string name="create_entropy_subtitle">El movimiento aleatorio aumenta la fortaleza criptográfica de las claves</string>
+    <string name="create_entropy_done">¡Excelente! Entropía criptográfica recolectada ✓</string>
+    <string name="create_entropy_progress">Mueva el dedo aleatoriamente hasta que la barra esté llena (%1$d%%)</string>
+    <string name="create_done_title">¡Bóveda creada!</string>
+
+    <!-- Create container steps 10–15 (hidden volume) -->
+    <string name="create_hidden_intro_title">Volumen oculto</string>
+    <string name="create_hidden_intro_body">Su volumen externo ha sido creado. Ahora configure el volumen oculto dentro de él.</string>
+    <string name="create_hidden_info_text">Un volumen oculto vive dentro del volumen externo. Al introducir la contraseña externa, solo son visibles los datos externos. Introduzca la contraseña oculta para revelar los datos ocultos.</string>
+    <string name="create_hidden_warnings_title">Advertencias importantes</string>
+    <string name="create_hidden_warnings_body">• Use una contraseña diferente para el volumen oculto que para el externo.\n• El volumen oculto ocupa el final del área de datos del volumen externo.\n• Escribir demasiados archivos grandes en el volumen externo puede sobrescribir el volumen oculto.</string>
+    <string name="create_hidden_outer_label">Volumen externo: %1$s (%2$d MB)</string>
+    <string name="create_hidden_cipher_title">Cifrado del volumen oculto</string>
+    <string name="create_hidden_cipher_subtitle">Elija el cifrado para el volumen oculto</string>
+    <string name="create_hidden_size_title">Tamaño del volumen oculto</string>
+    <string name="create_hidden_size_constraints">El volumen oculto debe estar entre %1$d MB y %2$d MB (externo: %3$d MB, 4 MB reservados para datos externos)</string>
+    <string name="create_hidden_size_min_error">El tamaño mínimo es %1$d MB</string>
+    <string name="create_hidden_size_max_error">El tamaño máximo es %1$d MB</string>
+    <string name="create_hidden_pwd_title">Contraseña del volumen oculto</string>
+    <string name="create_hidden_pwd_subtitle">Debe ser diferente de la contraseña del volumen externo</string>
+    <string name="create_hidden_pwd_same_warning">Si las contraseñas oculta y externa son iguales, la negación plausible queda comprometida.</string>
+    <string name="create_hidden_pwd_label">Contraseña oculta</string>
+    <string name="create_hidden_pwd_confirm_label">Confirmar contraseña oculta</string>
+    <string name="create_hidden_pwd_mismatch">Las contraseñas no coinciden</string>
+    <string name="create_hidden_pim_label">PIM (opcional)</string>
+    <string name="create_hidden_pim_hint">PIM controla las iteraciones PBKDF2. Deje en blanco para usar el valor predeterminado.</string>
+    <string name="create_hidden_entropy_subtitle">El movimiento aleatorio aumenta la fortaleza criptográfica de las claves del volumen oculto</string>
+    <string name="create_hidden_creating_title">Creando volumen oculto</string>
+    <string name="create_hidden_creating_body">Formateando área oculta de %1$d MB…</string>
+    <string name="create_hidden_done_title">¡Volumen oculto creado!</string>
+    <string name="create_hidden_done_summary">Externo: %1$s · %2$d MB\nOculto: %3$s · %4$d MB</string>
+    <string name="create_hidden_important_title">Importante</string>
+    <string name="create_hidden_done_warning_1">El volumen oculto ha sido creado correctamente. Si se siguieron todas las instrucciones, debería ser imposible probar que existe el volumen oculto, incluso cuando el volumen externo está montado.</string>
+    <string name="create_hidden_done_warning_2">ADVERTENCIA: Si no protege el volumen oculto al montar el volumen externo, no escriba en el volumen externo — podría sobrescribir y dañar el volumen oculto.</string>
+    <string name="create_hidden_done_warning_3">Para proteger el volumen oculto, active \"Proteger volumen oculto\" e introduzca la contraseña del volumen oculto al montar el volumen externo.</string>
+
+    <!-- Mounting overlay -->
+    <string name="mount_unlocking">Desbloqueando bóveda…</string>
+    <string name="mount_subtitle_1">Esto puede tardar un momento.\nPor favor, no cierre la app.</string>
+    <string name="mount_subtitle_2">Casi listo — algunas bóvedas tardan un poco más.</string>
+    <string name="mount_subtitle_3">Derivando claves de descifrado — esto es intencionalmente lento.</string>
+    <string name="mount_subtitle_4">Probando todos los algoritmos de cifrado compatibles…</string>
+    <string name="mount_subtitle_5">Casi terminado — la protección contra fuerza bruta requiere tiempo.</string>
+    <string name="mount_error_title">Operación fallida</string>
+    <string name="mount_error_body">Esto puede deberse a uno o más de los siguientes motivos:</string>
+    <string name="mount_error_reason_password">Contraseña incorrecta.</string>
+    <string name="mount_error_reason_pim">Número PIM del volumen incorrecto.</string>
+    <string name="mount_error_reason_prf">PRF (hash) incorrecto.</string>
+    <string name="mount_error_reason_not_valid">No es un volumen válido.</string>
+    <string name="mount_error_reason_old_algo">El volumen usa un algoritmo antiguo que ha sido eliminado.</string>
+
+    <!-- Vault info screen -->
+    <string name="vault_info_loading">Cargando…</string>
+    <string name="vault_info_section_title">Información de la bóveda</string>
+    <string name="vault_info_label_name">Nombre</string>
+    <string name="vault_info_label_volume_type">Tipo de volumen</string>
+    <string name="vault_info_type_hidden">Oculto</string>
+    <string name="vault_info_type_outer">Externo</string>
+    <string name="vault_info_type_standard">Estándar</string>
+    <string name="vault_info_label_algorithm">Algoritmo</string>
+    <string name="vault_info_label_prf">PKCS-5 PRF</string>
+    <string name="vault_info_label_filesystem">Sistema de archivos</string>
+    <string name="vault_info_label_pim">PIM</string>
+    <string name="vault_info_pim_custom">Personalizado</string>
+    <string name="vault_info_pim_default">Predeterminado</string>
+    <string name="vault_info_label_size">Tamaño</string>
+    <string name="vault_info_label_created">Creado</string>
+    <string name="vault_info_label_location">Ubicación</string>
+    <string name="vault_info_section_operations">Operaciones</string>
+    <string name="vault_info_op_change_password">Cambiar contraseña</string>
+    <string name="vault_info_op_expand_volume">Expandir volumen</string>
+    <string name="vault_info_op_backup_header">Copia de seguridad del encabezado</string>
+    <string name="vault_info_op_change_keyfile">Cambiar archivo clave</string>
+    <string name="vault_info_unmount_button">Desmontar bóveda</string>
+    <string name="vault_info_unmount_title">¿Desmontar %1$s?</string>
+    <string name="vault_info_unmount_body">Asegúrese de que todos los archivos estén guardados antes de desmontar.</string>
+    <string name="vault_info_fallback_name">vault</string>
+    <string name="vault_card_info_desc">Ver detalles y metadatos del volumen</string>
+    <string name="vault_card_change_password_desc">Cambiar la contraseña de cifrado</string>
+    <string name="vault_card_expand_desc">Aumentar el tamaño del volumen</string>
+    <string name="vault_card_backup_desc">Guardar copia de seguridad del encabezado</string>
+    <string name="vault_card_keyfile_desc">Actualizar el archivo de clave del volumen</string>
+    <string name="vault_card_unmount_desc">Bloquear y desmontar este vault</string>
+
+    <!-- Mount success overlay -->
+    <string name="mount_vault_unlocked">Bóveda desbloqueada</string>
+    <string name="mount_indexing_vault">Indexando bóveda</string>
+    <string name="mount_scanning">Escaneando…</string>
+
+    <plurals name="mount_media_files">
+        <item quantity="one">%1$d archivo multimedia</item>
+        <item quantity="other">%1$d archivos multimedia</item>
+    </plurals>
+
+    <!-- Move vault screen -->
+    <string name="move_vault_title_to_app">Mover al almacenamiento de la app</string>
+    <string name="move_vault_title_to_internal">Mover al almacenamiento interno</string>
+    <string name="move_vault_label_vault_size">Tamaño de la bóveda</string>
+    <string name="move_vault_label_available">Disponible en destino</string>
+    <string name="move_vault_not_enough_space">Espacio libre insuficiente. Libere al menos %1$s e inténtelo de nuevo.</string>
+    <string name="move_vault_section_what">Qué hace esto</string>
+    <string name="move_vault_info_app_1">Los archivos se almacenan en el almacenamiento privado de la app, invisible para otras apps y gestores de archivos.</string>
+    <string name="move_vault_info_app_2">Solo Arcanum puede leerlos, moverlos o eliminarlos.</string>
+    <string name="move_vault_info_app_3">Se eliminan al desinstalar la app (a menos que estén respaldados).</string>
+    <string name="move_vault_info_int_1">Los archivos se mueven al almacenamiento interno compartido, accesible mediante gestores de archivos.</string>
+    <string name="move_vault_info_int_2">Es más fácil copiar archivos a un PC o compartir entre dispositivos.</string>
+    <string name="move_vault_info_int_3">No se elimina al desinstalar.</string>
+    <string name="move_vault_section_before">Antes de comenzar</string>
+    <string name="move_vault_before_1">La operación puede tardar varios minutos para contenedores grandes.</string>
+    <string name="move_vault_before_2">Mantenga la app en primer plano y no bloquee la pantalla.</string>
+    <string name="move_vault_backup_label">Incluir en copia de seguridad de Android</string>
+    <string name="move_vault_backup_desc">Cuando está habilitado, Android puede hacer una copia de seguridad de la bóveda en su cuenta de Google. Desactívelo si prefiere que su bóveda nunca abandone el dispositivo.</string>
+    <string name="move_vault_section_dest_folder">Carpeta de destino</string>
+    <string name="move_vault_choose_folder">Elegir carpeta</string>
+    <string name="move_vault_selected_folder">Carpeta seleccionada</string>
+    <string name="move_vault_default_folder">Predeterminado: carpeta Arcanum en almacenamiento de la app</string>
+    <string name="move_vault_start_move">Iniciar movimiento</string>
+    <string name="move_vault_moving_title">Moviendo bóveda…</string>
+    <string name="move_vault_moving_progress">%1$d%%  ·  %2$.1f / %3$.1f MB</string>
+    <string name="move_vault_moving_body">Por favor, mantenga la app abierta y no bloquee la pantalla.</string>
+    <string name="move_vault_success_title">Bóveda movida correctamente</string>
+    <string name="move_vault_success_body">El archivo de la bóveda ha sido movido y el registro de base de datos actualizado.</string>
+    <string name="move_vault_failure_title">Movimiento fallido</string>
+    <string name="move_vault_retry">Reintentar</string>
+
+</resources>

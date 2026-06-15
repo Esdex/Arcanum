@@ -1,0 +1,24 @@
+*.iml
+.gradle
+local.properties
+.idea/
+.DS_Store
+/build
+**/build/
+/captures
+.externalNativeBuild
+.cxx
+*.hc
+*.keystore
+*.jks
+
+# Claude Code memory
+.claude/
+CLAUDE.md
+
+# Scratch / test files
+kf_pool_test
+kf_pool_test.c
+test_xts.py
+vera_xts_test.py
+verify_keyfile.py

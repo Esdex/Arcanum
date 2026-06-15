@@ -1,0 +1,73 @@
+package zip.arcanum.core.navigation
+
+sealed class Screen(val route: String) {
+    object Calculator      : Screen("calculator")
+    object SetupPin        : Screen("setup_pin")
+    object Onboarding      : Screen("onboarding")
+    object VaultScreen     : Screen("vault_screen")
+    object CreateContainer : Screen("create_container")
+    object AppSettings     : Screen("app_settings")
+
+    object ContainerScreen : Screen("container/{containerId}") {
+        const val ARG = "containerId"
+        fun buildRoute(id: String) = "container/$id"
+    }
+
+    object Gallery : Screen("gallery/{containerId}") {
+        const val ARG = "containerId"
+        fun buildRoute(containerId: String) = "gallery/$containerId"
+    }
+
+    object PhotoViewer : Screen("photo_viewer/{photoId}") {
+        const val ARG = "photoId"
+        fun buildRoute(photoId: String) = "photo_viewer/$photoId"
+    }
+
+    object VideoPlayer : Screen("video_player/{fileId}") {
+        const val ARG = "fileId"
+        fun buildRoute(fileId: String) = "video_player/$fileId"
+    }
+
+    object AudioPlayer : Screen("audio_player/{fileId}") {
+        const val ARG = "fileId"
+        fun buildRoute(fileId: String) = "audio_player/$fileId"
+    }
+
+    object MediaViewerDirect : Screen("media_viewer_direct?cid={cid}&path={path}&name={name}&size={size}") {
+        const val ARG_CONTAINER = "cid"
+        const val ARG_PATH      = "path"
+        const val ARG_NAME      = "name"
+        const val ARG_SIZE      = "size"
+
+        fun buildRoute(containerId: String, path: String, name: String, size: Long): String {
+            val encodedPath = android.net.Uri.encode(path)
+            val encodedName = android.net.Uri.encode(name)
+            return "media_viewer_direct?cid=$containerId&path=$encodedPath&name=$encodedName&size=$size"
+        }
+    }
+
+    object AudioPlayerDirect : Screen("audio_player_direct?cid={cid}&path={path}&name={name}&size={size}") {
+        const val ARG_CONTAINER = "cid"
+        const val ARG_PATH      = "path"
+        const val ARG_NAME      = "name"
+        const val ARG_SIZE      = "size"
+
+        fun buildRoute(containerId: String, path: String, name: String, size: Long): String {
+            val encodedPath = android.net.Uri.encode(path)
+            val encodedName = android.net.Uri.encode(name)
+            // size passed as StringType to avoid LongType/Int coercion bugs in SavedStateHandle
+            return "audio_player_direct?cid=$containerId&path=$encodedPath&name=$encodedName&size=$size"
+        }
+    }
+
+    object FileManager : Screen("file_manager/{containerId}") {
+        const val ARG = "containerId"
+        fun buildRoute(containerId: String) = "file_manager/$containerId"
+    }
+
+    object MoveVault : Screen("move_vault/{containerId}/{toApp}") {
+        const val ARG_ID    = "containerId"
+        const val ARG_TO_APP = "toApp"
+        fun buildRoute(containerId: String, toApp: Boolean) = "move_vault/$containerId/$toApp"
+    }
+}
