@@ -4,6 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
+import android.os.Environment
 import androidx.biometric.BiometricPrompt
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -29,6 +31,7 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.BiometricCryptoManager
+import zip.arcanum.crypto.CryptoError
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.crypto.Cipher
@@ -137,8 +140,9 @@ class VaultViewModel @Inject constructor(
     }
 
     sealed interface MountState {
-        object Idle    : MountState
-        object Loading : MountState
+        object Idle                  : MountState
+        object Loading               : MountState
+        object NeedsStoragePermission : MountState
         data class Error(val message: String) : MountState
     }
 
@@ -163,6 +167,14 @@ class VaultViewModel @Inject constructor(
         protectHiddenPassword: String? = null,
         onSuccess: (containerId: String) -> Unit
     ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val externalRoot = Environment.getExternalStorageDirectory().absolutePath
+            if (container.path.startsWith(externalRoot) && !Environment.isExternalStorageManager()) {
+                _mountState.value = MountState.NeedsStoragePermission
+                return
+            }
+        }
+
         mountJob = viewModelScope.launch {
             _mountState.value = MountState.Loading
             val result = cryptoEngine.mountContainer(
@@ -201,7 +213,10 @@ class VaultViewModel @Inject constructor(
                     onSuccess(container.id)
                 }
                 is CryptoResult.Failure -> {
-                    _mountState.value = MountState.Error("Wrong password")
+                    _mountState.value = when (result.error) {
+                        CryptoError.IO_ERROR -> MountState.Error("Cannot open container file")
+                        else -> MountState.Error("Wrong password")
+                    }
                 }
             }
         }

@@ -55,6 +55,8 @@ class ContainerCreationService : Service() {
 
         private val _progress = MutableStateFlow<CreationProgress?>(null)
         val progress: StateFlow<CreationProgress?> = _progress.asStateFlow()
+
+        fun resetProgress() { _progress.value = null }
     }
 
     override fun onCreate() {

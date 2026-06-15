@@ -244,6 +244,13 @@ class CreateContainerViewModel @Inject constructor(
         val s = _state.value
         _state.update { it.copy(isCreating = true, creationProgress = 0f) }
 
+        // Clear any stale completed state from a previous run before subscribing.
+        // ContainerCreationService.progress is a StateFlow (companion object), so a new
+        // subscriber would immediately replay the last emitted value — which could be
+        // isComplete=true from the previous container creation, triggering a spurious
+        // registerCreatedContainer() call before the new file exists.
+        ContainerCreationService.resetProgress()
+
         // Observe service progress
         viewModelScope.launch {
             ContainerCreationService.progress
