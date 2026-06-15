@@ -1258,7 +1258,7 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
         JNIEnv *env, jobject /*thiz*/,
         jstring jPath, jstring jPassword, jobjectArray jKeyfilePaths,
-        jint pim)
+        jint pim, jint /*algorithm*/, jint /*hashAlgorithm*/)
 {
     std::string path     = jstring_to_string(env, jPath);
     std::string password = jstring_to_string(env, jPassword);
