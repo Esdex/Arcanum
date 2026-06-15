@@ -17,6 +17,7 @@ import zip.arcanum.core.navigation.AppNavigation
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.theme.AppTheme
 import zip.arcanum.crypto.VeraCryptEngine
+import zip.arcanum.settings.DisguiseOverlay
 import zip.arcanum.settings.SettingsViewModel
 import javax.inject.Inject
 
@@ -49,6 +50,7 @@ class MainActivity : AppCompatActivity() {
             val isAmoledGlass           by settingsViewModel.isAmoledGlass.collectAsStateWithLifecycle()
             val isDynamicColor          by settingsViewModel.isDynamicColor.collectAsStateWithLifecycle()
             val screenCaptureProtection by settingsViewModel.screenCaptureProtection.collectAsStateWithLifecycle()
+            val showDisguiseOverlay     by settingsViewModel.showDisguiseOverlay.collectAsStateWithLifecycle()
 
             androidx.compose.runtime.LaunchedEffect(screenCaptureProtection) {
                 if (screenCaptureProtection) {
@@ -67,6 +69,24 @@ class MainActivity : AppCompatActivity() {
                 dynamicColor = isDynamicColor
             ) {
                 AppNavigation(pinManager = pinManager)
+
+                if (showDisguiseOverlay) {
+                    DisguiseOverlay(
+                        onApply = {
+                            settingsViewModel.applyDisguise {
+                                val intent = packageManager
+                                    .getLaunchIntentForPackage(packageName)
+                                    ?.addFlags(
+                                        android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                        android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                                    )
+                                startActivity(intent)
+                                finishAffinity()
+                                android.os.Process.killProcess(android.os.Process.myPid())
+                            }
+                        }
+                    )
+                }
             }
         }
     }

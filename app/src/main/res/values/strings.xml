@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">Arcanum</string>
+    <string name="app_name_calculator">Calculator</string>
 
     <!-- Bottom navigation -->
     <string name="nav_containers">Vaults</string>
@@ -385,6 +386,12 @@
     <string name="settings_security_screenshot_auth_subtitle">Authenticate to disable screen protection</string>
     <string name="settings_security_screenshot_pin_label">Arcanum PIN</string>
     <string name="settings_security_screenshot_pin_error">Incorrect PIN. Try again.</string>
+    <string name="settings_security_disguise_title">App Disguise</string>
+    <string name="settings_security_disguise_desc">Show as "Calculator" in the launcher</string>
+    <string name="settings_security_disguise_toast">Camouflage already applied</string>
+    <string name="disguise_overlay_title">Improve Your Privacy</string>
+    <string name="disguise_overlay_body">For better concealment, Arcanum can disguise itself as a plain Calculator app on your home screen.\n\nNo one will know what\'s really installed. This action cannot be undone without reinstalling the app.</string>
+    <string name="disguise_overlay_apply">Apply Disguise</string>
     <string name="settings_panic_title">Panic Mode</string>
     <string name="settings_panic_switch_title">Panic Mode</string>
     <string name="settings_panic_switch_desc">Entering Panic PIN silently wipes selected data</string>
@@ -442,9 +449,11 @@
     <string name="settings_debug_section_mounted">MOUNTED CONTAINERS</string>
     <string name="settings_debug_section_device">DEVICE SECURITY</string>
     <string name="settings_debug_section_database">DATABASE</string>
+    <string name="settings_debug_section_icons">LAUNCHER ICONS</string>
     <string name="settings_debug_section_tools">TOOLS</string>
     <string name="settings_debug_no_containers">No containers mounted</string>
     <string name="settings_debug_dry_run_panic">Dry-run Panic</string>
+    <string name="settings_debug_reset_disguise">Reset Disguise</string>
     <string name="settings_debug_warning_title">Sensitive Information</string>
     <string name="settings_debug_warning_body">Debug mode exposes cryptographic handles, keystore type, container paths and other sensitive data. Your device has no screen lock — anyone with physical access can enable this mode.</string>
     <string name="settings_debug_warning_confirm">I understand, enable</string>

@@ -4,11 +4,19 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import zip.arcanum.BuildConfig
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
+import zip.arcanum.core.security.DisguiseManager
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.security.PinResult
 import zip.arcanum.core.theme.ThemeMode
@@ -18,7 +26,8 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val prefs: AppPreferences,
     private val biometricAuth: BiometricAuth,
-    private val pinManager: PinManager
+    private val pinManager: PinManager,
+    private val disguiseManager: DisguiseManager
 ) : ViewModel() {
 
     val autoLockEnabled = prefs.autoLockEnabled.stateIn(
@@ -57,6 +66,18 @@ class SettingsViewModel @Inject constructor(
         initialValue = true
     )
 
+    private val _manualShowDisguise = MutableStateFlow(false)
+    private val _disguiseApplied    = MutableStateFlow(disguiseManager.isDisguiseApplied())
+    val disguiseApplied = _disguiseApplied.asStateFlow()
+
+    val showDisguiseOverlay = combine(
+        pinManager.isPinSetFlow.map { it ?: false },
+        prefs.disguisePromptShown,
+        _manualShowDisguise
+    ) { pinSet, promptShown, manual ->
+        (pinSet && !promptShown && !disguiseManager.isDisguiseApplied()) || manual
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     fun setAutoLock(enabled: Boolean) {
         viewModelScope.launch { prefs.setAutoLock(enabled) }
     }
@@ -79,6 +100,26 @@ class SettingsViewModel @Inject constructor(
 
     fun setScreenCaptureProtection(enabled: Boolean) {
         viewModelScope.launch { prefs.setScreenCaptureProtection(enabled) }
+    }
+
+    fun requestDisguise() { _manualShowDisguise.value = true }
+
+    fun resetDisguise() {
+        viewModelScope.launch {
+            disguiseManager.reset()
+            _disguiseApplied.value = false
+        }
+    }
+
+    fun applyDisguise(onRestart: () -> Unit) {
+        viewModelScope.launch {
+            disguiseManager.apply()
+            _disguiseApplied.value = true
+            _manualShowDisguise.value = false
+            if (!BuildConfig.DEBUG) {
+                withContext(Dispatchers.Main) { onRestart() }
+            }
+        }
     }
 
     fun hasDeviceLock(): Boolean = biometricAuth.hasDeviceLock()

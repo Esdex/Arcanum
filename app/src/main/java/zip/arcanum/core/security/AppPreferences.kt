@@ -27,6 +27,7 @@ class AppPreferences @Inject constructor(
         val AMOLED_GLASS          = booleanPreferencesKey("amoled_glass")
         val DYNAMIC_COLOR         = booleanPreferencesKey("dynamic_color")
         val SCREEN_CAPTURE_PROT   = booleanPreferencesKey("screen_capture_protection")
+        val DISGUISE_PROMPT_SHOWN = booleanPreferencesKey("disguise_prompt_shown")
     }
 
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
@@ -73,5 +74,12 @@ class AppPreferences @Inject constructor(
 
     suspend fun setScreenCaptureProtection(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.SCREEN_CAPTURE_PROT] = enabled }
+    }
+
+    val disguisePromptShown: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.DISGUISE_PROMPT_SHOWN] ?: false }
+
+    suspend fun setDisguisePromptShown(shown: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.DISGUISE_PROMPT_SHOWN] = shown }
     }
 }
