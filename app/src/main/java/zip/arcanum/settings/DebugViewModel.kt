@@ -172,7 +172,7 @@ class DebugViewModel @Inject constructor(
                 appendLine("[Runtime]")
                 appendLine("PID: ${it.pid}  |  UID: ${it.uid}")
                 appendLine("Heap: ${it.heapUsed} / ${it.heapMax}")
-                appendLine("libarcanum.so: ${if (it.nativeLib) "Loaded" else "Not loaded"}")
+                appendLine("libarcanum-native.so: ${if (it.nativeLib) "Loaded" else "Not loaded"}")
                 appendLine()
             }
             s.security?.let {
@@ -218,7 +218,7 @@ class DebugViewModel @Inject constructor(
             uid       = Process.myUid(),
             heapUsed  = "%.1f MB".format((rt.totalMemory() - rt.freeMemory()) / 1_048_576f),
             heapMax   = "%.0f MB".format(rt.maxMemory() / 1_048_576f),
-            nativeLib = try { System.loadLibrary("arcanum"); true } catch (_: UnsatisfiedLinkError) { false }
+            nativeLib = try { System.loadLibrary("arcanum-native"); true } catch (_: UnsatisfiedLinkError) { false }
         )
     }
 

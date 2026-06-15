@@ -1420,7 +1420,7 @@ private fun DebugSubScreen(
                         DebugRow("UID", r.uid.toString())
                         DebugRow("Heap", "${r.heapUsed} / ${r.heapMax}")
                         DebugRow(
-                            label      = "libarcanum.so",
+                            label      = "libarcanum-native.so",
                             value      = if (r.nativeLib) "Loaded" else "Not loaded",
                             valueColor = if (r.nativeLib) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error
                         )
