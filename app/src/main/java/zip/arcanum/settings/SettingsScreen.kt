@@ -115,6 +115,7 @@ import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -137,6 +138,7 @@ import zip.arcanum.core.theme.LocalAmoledMode
 import zip.arcanum.core.theme.LocalDarkMode
 import zip.arcanum.core.theme.LocalDynamicColor
 import zip.arcanum.core.theme.ThemeMode
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.material3.RadioButton
 import androidx.core.os.LocaleListCompat
@@ -178,6 +180,7 @@ fun SettingsScreen(
     val isAmoledGlass           by viewModel.isAmoledGlass.collectAsState()
     val isDynamicColor          by viewModel.isDynamicColor.collectAsState()
     val screenCaptureProtection by viewModel.screenCaptureProtection.collectAsState()
+    val disguiseApplied         by viewModel.disguiseApplied.collectAsState()
     BackHandler(enabled = subScreen != null) {
         subScreen = when (subScreen) {
             SubScreen.SET_PANIC_PIN -> SubScreen.PANIC_MODE
@@ -206,6 +209,7 @@ fun SettingsScreen(
                 autoLockEnabled         = autoLockEnabled,
                 onAutoLockChange        = { viewModel.setAutoLock(it) },
                 screenCaptureProtection = screenCaptureProtection,
+                disguiseApplied         = disguiseApplied,
                 onBack                  = { subScreen = null },
                 onChangePin             = { subScreen = SubScreen.CHANGE_PIN },
                 viewModel               = viewModel
@@ -466,10 +470,12 @@ private fun SecuritySubScreen(
     autoLockEnabled: Boolean,
     onAutoLockChange: (Boolean) -> Unit,
     screenCaptureProtection: Boolean,
+    disguiseApplied: Boolean,
     onBack: () -> Unit,
     onChangePin: () -> Unit,
     viewModel: SettingsViewModel
 ) {
+    val context     = LocalContext.current
     var showWarning by remember { mutableStateOf(false) }
 
     SubScreenScaffold(title = stringResource(R.string.settings_security_title), onBack = onBack) { innerPadding ->
@@ -500,6 +506,28 @@ private fun SecuritySubScreen(
                         else viewModel.setScreenCaptureProtection(true)
                     }
                 )
+                val disguiseToast = stringResource(R.string.settings_security_disguise_toast)
+                Box {
+                    SettingsSwitch(
+                        title           = stringResource(R.string.settings_security_disguise_title),
+                        subtitle        = stringResource(R.string.settings_security_disguise_desc),
+                        checked         = disguiseApplied,
+                        enabled         = !disguiseApplied,
+                        onCheckedChange = { viewModel.requestDisguise() }
+                    )
+                    if (disguiseApplied) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication        = null
+                                ) {
+                                    Toast.makeText(context, disguiseToast, Toast.LENGTH_SHORT).show()
+                                }
+                        )
+                    }
+                }
             }
         }
     }
@@ -672,6 +700,68 @@ private fun ScreenshotWarningOverlay(
                 }
 
                 Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun DisguiseOverlay(onApply: () -> Unit) {
+    BackHandler(enabled = true) { /* non-dismissable */ }
+
+    Dialog(
+        onDismissRequest = { /* non-dismissable */ },
+        properties = DialogProperties(
+            usePlatformDefaultWidth  = false,
+            decorFitsSystemWindows   = false,
+            dismissOnBackPress       = false,
+            dismissOnClickOutside    = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .systemBarsPadding()
+        ) {
+            Column(
+                modifier            = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 28.dp, vertical = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(Modifier.weight(1f))
+
+                Icon(
+                    imageVector        = Icons.Outlined.Security,
+                    contentDescription = null,
+                    modifier           = Modifier.size(72.dp),
+                    tint               = MaterialTheme.colorScheme.primary
+                )
+
+                Text(
+                    text      = stringResource(R.string.disguise_overlay_title),
+                    style     = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center,
+                    color     = MaterialTheme.colorScheme.onBackground
+                )
+
+                Text(
+                    text      = stringResource(R.string.disguise_overlay_body),
+                    style     = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    color     = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(Modifier.weight(1f))
+
+                Button(
+                    onClick  = onApply,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.disguise_overlay_apply))
+                }
             }
         }
     }
@@ -1304,9 +1394,10 @@ private fun DebugSubScreen(
     onBack: () -> Unit
 ) {
     val debugViewModel: DebugViewModel = hiltViewModel()
-    val debugMode = viewModel.debugMode.collectAsState().value
-    val state     = debugViewModel.state.collectAsState().value
-    val activity  = LocalContext.current as FragmentActivity
+    val debugMode      = viewModel.debugMode.collectAsState().value
+    val state          = debugViewModel.state.collectAsState().value
+    val disguiseApplied by viewModel.disguiseApplied.collectAsState()
+    val activity       = LocalContext.current as FragmentActivity
     var showWarningDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(debugMode) {
@@ -1594,6 +1685,30 @@ private fun DebugSubScreen(
                     }
                 }
 
+                // ── Launcher Icons ────────────────────────────────────────────
+                PanicSectionLabel(stringResource(R.string.settings_debug_section_icons))
+                SettingsGroup {
+                    Row(
+                        modifier              = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(20.dp)
+                    ) {
+                        IconPreview(
+                            label   = stringResource(R.string.app_name),
+                            bgColor = Color(0xFF3DDC84),
+                            fgRes   = R.drawable.ic_launcher_foreground,
+                            active  = !disguiseApplied
+                        )
+                        IconPreview(
+                            label   = stringResource(R.string.app_name_calculator),
+                            bgColor = Color(0xFF37474F),
+                            fgRes   = R.drawable.ic_launcher_calc_fg,
+                            active  = disguiseApplied
+                        )
+                    }
+                }
+
                 // ── Tools ─────────────────────────────────────────────────────
                 PanicSectionLabel(stringResource(R.string.settings_debug_section_tools))
                 SettingsGroup {
@@ -1608,6 +1723,14 @@ private fun DebugSubScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(stringResource(R.string.settings_debug_dry_run_panic), style = MaterialTheme.typography.labelMedium)
+                        }
+                        if (disguiseApplied) {
+                            OutlinedButton(
+                                onClick  = { viewModel.resetDisguise() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(stringResource(R.string.settings_debug_reset_disguise), style = MaterialTheme.typography.labelMedium)
+                            }
                         }
                     }
                 }
@@ -1708,6 +1831,37 @@ private fun DebugWarningDialog(
                     )
                 }
         }
+    }
+}
+
+@Composable
+private fun IconPreview(label: String, bgColor: Color, fgRes: Int, active: Boolean) {
+    val borderColor = MaterialTheme.colorScheme.primary
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(60.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(bgColor)
+                .then(
+                    if (active) Modifier.border(2.dp, borderColor, RoundedCornerShape(14.dp))
+                    else Modifier
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter           = painterResource(fgRes),
+                contentDescription = null,
+                modifier          = Modifier.fillMaxSize(),
+                tint              = Color.Unspecified
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text  = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (active) borderColor else MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
