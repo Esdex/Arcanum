@@ -198,7 +198,6 @@ class VeraCryptEngine @Inject constructor() {
             2 -> "Whirlpool"
             3 -> "Streebog"
             4 -> "BLAKE2s-256"
-            5 -> "RIPEMD-160"
             else -> "SHA-512"
         }
 
