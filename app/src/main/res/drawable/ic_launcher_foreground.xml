@@ -5,6 +5,12 @@
     android:viewportWidth="1254"
     android:viewportHeight="1254">
 
+    <group
+        android:pivotX="627"
+        android:pivotY="627"
+        android:scaleX="0.6"
+        android:scaleY="0.6">
+
     <!-- Outer frame — same color as background, blends in to reveal gem -->
     <path
         android:fillColor="#2A2937"
@@ -44,5 +50,7 @@
     <path android:fillColor="#259ad2"  android:pathData="m 627.12024,506.10572 33.52686,102.73046 28.73928,-17.61852 z" />
     <path android:fillColor="#67c0b6"  android:pathData="m 564.69567,674.89532 29.89368,-65.92619 31.89201,105.10748 z" />
     <path android:fillColor="#3a9ab1"  android:pathData="m 626.95322,714.59391 62.34767,-38.38961 -62.34633,79.91647 z" />
+
+    </group>
 
 </vector>
