@@ -1,0 +1,678 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Arcanum</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_containers">보관함</string>
+    <string name="nav_gallery">갤러리</string>
+    <string name="nav_files">파일</string>
+    <string name="nav_settings">설정</string>
+    <string name="nav_info">정보</string>
+    <string name="nav_vault_fallback_name">보관함</string>
+    <string name="nav_gallery_search_placeholder">미디어 검색…</string>
+    <string name="nav_gallery_cd_close_search">검색 닫기</string>
+    <string name="nav_gallery_cd_search">검색</string>
+    <string name="nav_gallery_cd_rescan">보관함 다시 스캔</string>
+
+    <!-- Unmount animation -->
+    <string name="unmount_vault_unmounted">보관함 마운트 해제됨</string>
+    <string name="unmount_data_protected">데이터가 보호되고 있습니다</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_next">다음</string>
+    <string name="onboarding_get_started">시작하기</string>
+
+    <string name="onboarding_welcome_title">Arcanum에 오신 것을 환영합니다</string>
+    <string name="onboarding_welcome_desc">계산기로 위장한 안전한 암호화 컨테이너 관리자입니다.</string>
+
+    <string name="onboarding_secure_title">군사급 암호화</string>
+    <string name="onboarding_secure_desc">VeraCrypt 호환 컨테이너가 AES, Twofish, Serpent 암호화로 파일을 보호합니다.</string>
+
+    <string name="onboarding_calculator_title">계산기 뒤에 숨겨져 있음</string>
+    <string name="onboarding_calculator_desc">외부에서 보면 Arcanum은 평범한 계산기 앱처럼 보입니다. 비밀 PIN만이 잠금을 해제합니다.</string>
+
+    <string name="onboarding_gallery_title">아름다운 미디어 갤러리</string>
+    <string name="onboarding_gallery_desc">암호화된 컨테이너 안에서 사진과 동영상을 비공개로 확인하세요. 흔적을 남기지 않습니다.</string>
+
+    <string name="onboarding_privacy_title">패닉 모드 준비 완료</string>
+    <string name="onboarding_privacy_desc">패닉 PIN을 입력하면 기기에서 Arcanum의 모든 흔적을 즉시 삭제합니다.</string>
+
+    <!-- Vault creation foreground service notification -->
+    <string name="notif_channel_vault_creation">보관함 생성</string>
+    <string name="notif_channel_vault_creation_desc">암호화된 보관함 생성 중 진행 상황을 표시합니다</string>
+    <string name="notif_creating_vault">보관함 생성 중…</string>
+    <string name="notif_creation_progress">%1$d%% 완료</string>
+
+    <!-- In-app notification banners -->
+    <string name="notif_vault_mounted">보관함이 성공적으로 마운트되었습니다</string>
+    <string name="notif_vault_unmounted">보관함 마운트 해제됨</string>
+    <string name="notif_vault_error">보관함을 열지 못했습니다</string>
+    <string name="notif_export_success">파일이 성공적으로 내보내졌습니다</string>
+    <string name="notif_vault_added">보관함 추가됨</string>
+    <string name="notif_vault_added_subtitle">%1$s 잠금 해제하려면 탭하세요</string>
+    <string name="notif_vault_already_exists">이미 목록에 있습니다</string>
+    <string name="notif_vault_invalid_file">유효하지 않은 보관함 파일</string>
+    <string name="notif_vault_invalid_file_subtitle">파일이 너무 작거나 섹터 정렬이 되지 않았습니다</string>
+    <string name="notif_vault_add_error">보관함을 추가하지 못했습니다</string>
+    <string name="notif_date_updated">날짜 업데이트됨</string>
+    <string name="notif_date_updated_subtitle">EXIF 및 타임라인이 업데이트되었습니다</string>
+    <string name="notif_file_renamed">파일 이름이 변경되었습니다</string>
+    <string name="notif_files_pasted_subtitle">작업 완료</string>
+    <string name="notif_files_moved_subtitle">→ %1$s</string>
+    <string name="notif_files_deleted_subtitle">영구적으로 삭제되었습니다</string>
+    <string name="notif_folder_created">폴더 생성됨</string>
+    <string name="notif_files_imported_subtitle">암호화하여 보관함에 저장했습니다</string>
+    <string name="notif_files_exported_subtitle">선택한 폴더에 저장되었습니다</string>
+    <string name="notif_support_developer">Arcanum이 마음에 드시나요?</string>
+    <string name="notif_support_developer_subtitle">개발 지원을 고려해 주세요</string>
+
+    <plurals name="notif_items_copied">
+        <item quantity="other">%1$d개 항목이 복사되었습니다</item>
+    </plurals>
+    <plurals name="notif_items_moved">
+        <item quantity="other">%1$d개 항목이 이동되었습니다</item>
+    </plurals>
+    <plurals name="notif_items_deleted">
+        <item quantity="other">%1$d개 항목이 삭제되었습니다</item>
+    </plurals>
+    <plurals name="notif_files_imported">
+        <item quantity="other">%1$d개 파일을 가져왔습니다</item>
+    </plurals>
+    <plurals name="notif_files_exported">
+        <item quantity="other">%1$d개 파일을 내보냈습니다</item>
+    </plurals>
+
+    <!-- Common / shared -->
+    <string name="common_cancel">취소</string>
+    <string name="common_done">완료</string>
+    <string name="common_save">저장</string>
+    <string name="common_back">뒤로</string>
+    <string name="common_delete">삭제</string>
+    <string name="common_rename">이름 변경</string>
+    <string name="common_ok">확인</string>
+    <string name="common_close">닫기</string>
+    <string name="common_copy">복사</string>
+    <string name="common_move">이동</string>
+    <string name="common_export">내보내기</string>
+    <string name="common_search">검색</string>
+    <string name="common_info">정보</string>
+    <string name="common_edit">편집</string>
+    <string name="common_password">비밀번호</string>
+    <string name="common_cipher">암호</string>
+    <string name="common_hash_algorithm">해시 알고리즘</string>
+    <string name="common_mb">MB</string>
+    <string name="common_gb">GB</string>
+    <string name="common_this_cannot_be_undone">이 작업은 취소할 수 없습니다.</string>
+    <string name="common_open_vault">보관함 열기</string>
+    <string name="common_pro">Pro</string>
+    <string name="common_continue">계속</string>
+    <string name="common_confirm">확인</string>
+    <string name="common_coming_soon">곧 출시 예정</string>
+
+    <!-- PIN screens (shared) -->
+    <string name="pin_mismatch">PIN이 일치하지 않습니다</string>
+
+    <!-- Setup PIN -->
+    <string name="setup_pin_title">PIN 설정</string>
+    <string name="setup_pin_confirm_title">PIN 확인</string>
+    <string name="setup_pin_success_title">PIN이 생성되었습니다!</string>
+    <string name="setup_pin_success_desc">Arcanum의 잠금을 해제하려면 계산기를 열고 숫자 버튼으로 PIN을 입력하세요. 그런 다음 =를 2초 동안 길게 누르세요.</string>
+
+    <!-- Change PIN -->
+    <string name="change_pin_wrong">PIN이 틀렸습니다</string>
+    <string name="change_pin_enter_current">현재 PIN 입력</string>
+    <string name="change_pin_enter_new">새 PIN 입력</string>
+    <string name="change_pin_confirm_new">새 PIN 확인</string>
+    <string name="change_pin_hint">4~12자리</string>
+    <string name="change_pin_success_title">PIN이 변경되었습니다!</string>
+    <string name="change_pin_success_desc">새 PIN이 활성화되었습니다</string>
+
+    <!-- Gallery screen -->
+    <string name="gallery_title">갤러리</string>
+    <string name="gallery_search_placeholder">미디어 검색…</string>
+    <string name="gallery_search_open">검색</string>
+    <string name="gallery_search_close">검색 닫기</string>
+    <string name="gallery_scan">보관함 스캔</string>
+    <string name="gallery_empty_title">미디어를 찾을 수 없습니다</string>
+    <string name="gallery_empty_subtitle">이 보관함에는 사진이나 동영상이 없습니다</string>
+    <string name="gallery_scanning">보관함 스캔 중…</string>
+    <string name="gallery_scan_found">%1$d개 발견됨</string>
+    <string name="gallery_preload_preparing">썸네일 준비 중…</string>
+    <string name="gallery_preload_progress">%1$d / %2$d</string>
+    <string name="gallery_filter_all">전체</string>
+    <string name="gallery_filter_photos">사진</string>
+    <string name="gallery_filter_videos">동영상</string>
+    <string name="gallery_cd_video">동영상</string>
+
+    <!-- Media viewer screen -->
+    <string name="viewer_cd_back">뒤로</string>
+    <string name="viewer_cd_more_options">더 보기</string>
+    <string name="viewer_action_remove_favorite">즐겨찾기에서 제거</string>
+    <string name="viewer_action_add_favorite">즐겨찾기에 추가</string>
+    <string name="viewer_action_export">내보내기</string>
+    <string name="viewer_action_delete">삭제</string>
+    <string name="viewer_action_details">세부 정보</string>
+    <string name="viewer_action_favorite">즐겨찾기</string>
+    <string name="viewer_sheet_info_title">세부 정보</string>
+    <string name="viewer_description_placeholder">설명 추가…</string>
+    <string name="viewer_edit_date_title">날짜 &amp; 시간 편집</string>
+    <string name="viewer_edit_date_warning">⚠ 파일 내의 EXIF 데이터가 업데이트되고 타임라인에서 이동됩니다.</string>
+    <string name="viewer_exif_title">EXIF 데이터</string>
+    <string name="viewer_exif_empty">이 파일에 사용할 수 있는 EXIF 데이터가 없습니다.</string>
+    <string name="viewer_exif_maps_hint">탭하여 지도에서 열기</string>
+    <string name="viewer_exif_section">EXIF</string>
+    <string name="viewer_exif_view_all">모든 EXIF 데이터 보기</string>
+    <string name="viewer_cd_edit">편집</string>
+    <string name="viewer_rename_title">파일 이름 변경</string>
+    <string name="viewer_rename_label">파일 이름</string>
+    <string name="viewer_rename_error_empty">이름을 비워 둘 수 없습니다</string>
+    <string name="viewer_rename_error_invalid">이름에 유효하지 않은 문자가 포함되어 있습니다</string>
+    <string name="viewer_rename_ext_hint">확장자 .%1$s가 자동으로 추가됩니다</string>
+    <string name="viewer_rename_confirm">이름 변경</string>
+    <string name="viewer_delete_title">%1$s을(를) 삭제하시겠습니까?</string>
+    <string name="viewer_gps_title">GPS 좌표 편집</string>
+    <string name="viewer_gps_latitude">위도 (−90~90)</string>
+    <string name="viewer_gps_longitude">경도 (−180~180)</string>
+    <string name="viewer_seek_back">−10초</string>
+    <string name="viewer_seek_forward">+10초</string>
+    <string name="viewer_cd_pause">일시정지</string>
+    <string name="viewer_cd_play">재생</string>
+
+    <!-- File manager screen -->
+    <string name="files_title">파일</string>
+    <string name="files_search_placeholder">파일 검색…</string>
+    <string name="files_search_close">검색 닫기</string>
+    <string name="files_search_open">검색</string>
+    <string name="files_cd_more">더 보기</string>
+    <string name="files_cd_cancel_selection">선택 취소</string>
+    <string name="files_cd_select_all">모두 선택</string>
+    <string name="files_selection_count">%1$d개 선택됨</string>
+    <string name="files_hide_hidden">숨김 파일 숨기기</string>
+    <string name="files_show_hidden">숨김 파일 표시</string>
+    <string name="files_sort_by">정렬 기준…</string>
+    <string name="files_grid_view">격자 보기</string>
+    <string name="files_list_view">목록 보기</string>
+    <string name="files_empty_no_results_title">결과 없음</string>
+    <string name="files_empty_folder_title">빈 폴더</string>
+    <string name="files_empty_no_results_subtitle">다른 검색어를 사용해 보세요</string>
+    <string name="files_empty_folder_subtitle">+를 탭하여 파일을 가져오거나 폴더를 만드세요</string>
+    <string name="files_error_cannot_browse">파일을 탐색할 수 없습니다</string>
+    <string name="files_type_folder">폴더</string>
+    <string name="files_action_rename">이름 변경</string>
+    <string name="files_action_properties">속성</string>
+    <string name="files_cd_close_fab">닫기</string>
+    <string name="files_cd_file_actions_fab">파일 작업</string>
+    <string name="files_action_import">파일 가져오기</string>
+    <string name="files_action_new_folder">새 폴더</string>
+    <string name="files_action_copy">복사</string>
+    <string name="files_action_move">이동</string>
+    <string name="files_action_export">내보내기</string>
+    <string name="files_action_delete">삭제</string>
+    <string name="files_new_folder_title">새 폴더</string>
+    <string name="files_new_folder_label">폴더 이름</string>
+    <string name="files_new_folder_create">만들기</string>
+    <string name="files_rename_title">이름 변경</string>
+    <string name="files_rename_label">새 이름</string>
+    <string name="files_delete_title_single">이 항목을 삭제하시겠습니까?</string>
+    <string name="files_delete_confirm">삭제</string>
+    <string name="files_props_name">이름</string>
+    <string name="files_props_type">유형</string>
+    <string name="files_props_size">크기</string>
+    <string name="files_props_location">위치</string>
+    <string name="files_props_modified">수정됨</string>
+    <string name="files_props_type_folder">폴더</string>
+    <string name="files_type_image">이미지</string>
+    <string name="files_type_video">동영상</string>
+    <string name="files_type_audio">오디오</string>
+    <string name="files_type_pdf">PDF 문서</string>
+    <string name="files_type_word">Word 문서</string>
+    <string name="files_type_spreadsheet">스프레드시트</string>
+    <string name="files_type_presentation">프레젠테이션</string>
+    <string name="files_type_text">텍스트 파일</string>
+    <string name="files_type_archive">압축 파일</string>
+    <string name="files_type_apk">Android 패키지</string>
+    <string name="files_type_file">파일</string>
+    <string name="files_open_with_body">이 파일을 열려면 임시 복호화 사본이 만들어집니다. Arcanum으로 돌아가면 자동으로 삭제됩니다.</string>
+    <string name="files_open_with_cancel">취소</string>
+    <string name="files_open_with_confirm">앱으로 열기</string>
+    <string name="files_sort_title">정렬 기준</string>
+    <string name="files_sort_name">이름</string>
+    <string name="files_sort_date">날짜</string>
+    <string name="files_sort_size">크기</string>
+    <string name="files_sort_type">유형</string>
+    <string name="files_sort_cd_ascending">오름차순</string>
+    <string name="files_sort_cd_descending">내림차순</string>
+    <string name="files_sort_folders_first">폴더 먼저</string>
+    <string name="files_cd_root">루트</string>
+    <string name="files_no_mounted_vaults">마운트된 보관함 없음</string>
+    <string name="files_this_vault">이 보관함</string>
+    <string name="files_cd_back_to_vaults">보관함으로 돌아가기</string>
+    <string name="files_move_to_title">이동할 위치…</string>
+    <string name="files_copy_to_title">복사할 위치…</string>
+    <string name="files_move_here">여기로 이동</string>
+    <string name="files_copy_here">여기에 복사</string>
+
+    <plurals name="files_paste_clipboard">
+        <item quantity="other">붙여넣기 (%1$d개 항목)</item>
+    </plurals>
+    <plurals name="files_delete_count">
+        <item quantity="other">%1$d개 항목을 삭제하시겠습니까?</item>
+    </plurals>
+
+    <!-- Audio player screen -->
+    <string name="audio_now_playing">지금 재생 중</string>
+    <string name="audio_loading">로드 중…</string>
+    <string name="audio_cd_shuffle">셔플</string>
+    <string name="audio_cd_repeat">반복</string>
+    <string name="audio_cd_repeat_all">전체 반복</string>
+    <string name="audio_cd_repeat_one">1곡 반복</string>
+    <string name="audio_cd_previous">이전</string>
+    <string name="audio_cd_pause">일시정지</string>
+    <string name="audio_cd_play">재생</string>
+    <string name="audio_cd_next">다음</string>
+    <string name="audio_cd_album_art">앨범 아트</string>
+    <string name="audio_cd_more">더 보기</string>
+
+    <!-- Vault screen -->
+    <string name="vault_title">Arcanum</string>
+    <string name="vault_cd_sort_group">정렬 &amp; 그룹화</string>
+    <string name="vault_cd_settings">설정</string>
+    <string name="vault_cd_exit_selection">선택 종료</string>
+    <string name="vault_selection_count">%1$d개 선택됨</string>
+    <string name="vault_select_all">모두 선택</string>
+    <string name="vault_cd_delete_selected">선택 항목 삭제</string>
+    <string name="vault_empty_title">보관함이 없습니다</string>
+    <string name="vault_empty_subtitle">기존 VeraCrypt 컨테이너를 만들거나 여세요</string>
+    <string name="vault_storage_app">앱 저장소</string>
+    <string name="vault_storage_local">로컬 저장소</string>
+    <string name="vault_cd_close_fab">닫기</string>
+    <string name="vault_cd_new_vault_fab">새 보관함</string>
+    <string name="vault_fab_open_existing">기존 보관함 열기</string>
+    <string name="vault_fab_create_new">새 보관함 만들기</string>
+    <string name="vault_unmount_title">\"%1$s\"을(를) 마운트 해제하시겠습니까?</string>
+    <string name="vault_unmount_body">비밀번호를 다시 입력할 때까지 보관함이 잠깁니다.</string>
+    <string name="vault_unmount_confirm">마운트 해제</string>
+    <string name="vault_remove_title">\"%1$s\"을(를) 제거하시겠습니까?</string>
+    <string name="vault_remove_body">보관함이 목록에서 제거됩니다. 디스크의 컨테이너 파일은 삭제되지 않습니다.</string>
+    <string name="vault_remove_confirm">제거</string>
+    <string name="vault_delete_title">\"%1$s\"을(를) 삭제하시겠습니까?</string>
+    <string name="vault_delete_body">컨테이너 파일과 그 안의 모든 암호화된 데이터가 영구적으로 삭제됩니다. 이 작업은 취소할 수 없습니다.</string>
+    <string name="vault_delete_confirm">삭제</string>
+    <string name="vault_lock_title">Arcanum을 잠그시겠습니까?</string>
+    <string name="vault_lock_body">다시 잠금 해제하려면 PIN을 입력해야 합니다.</string>
+    <string name="vault_lock_confirm">잠금</string>
+    <string name="vault_config_unmount_on_lock">화면 잠금 시 마운트 해제</string>
+    <string name="vault_config_unmount_on_lock_desc">기기 화면이 잠길 때 마운트 해제</string>
+    <string name="vault_config_unmount_on_background">백그라운드에서 마운트 해제</string>
+    <string name="vault_config_unmount_on_background_desc">앱이 백그라운드로 이동할 때 마운트 해제</string>
+    <string name="vault_config_move_to_app">앱 저장소로 이동</string>
+    <string name="vault_config_move_to_app_desc">앱 전용 디렉터리에 보관함 저장</string>
+    <string name="vault_config_unmount_to_move">이동 전에 보관함을 마운트 해제하세요</string>
+    <string name="vault_config_move_to_internal">내부 저장소로 이동</string>
+    <string name="vault_config_move_to_internal_desc">공유 저장소 폴더로 보관함 이동</string>
+    <string name="vault_sort_title">정렬 &amp; 그룹화</string>
+    <string name="vault_sort_name">이름</string>
+    <string name="vault_sort_size">크기</string>
+    <string name="vault_sort_last_opened">마지막으로 열린 날짜</string>
+    <string name="vault_sort_group_by">그룹화 기준</string>
+    <string name="vault_sort_group_none">없음</string>
+    <string name="vault_sort_group_location">위치별</string>
+    <string name="vault_sort_biometric_first">생체 인식 보관함 먼저</string>
+    <string name="vault_sort_biometric_first_desc">생체 인식 잠금 해제가 있는 보관함을 상단에 고정</string>
+    <string name="vault_sort_cd_ascending">오름차순</string>
+    <string name="vault_sort_cd_descending">내림차순</string>
+    <string name="vault_mount_wrong_password">잘못된 비밀번호 또는 PIM</string>
+    <string name="vault_mount_algorithm">알고리즘</string>
+    <string name="vault_mount_hash">해시</string>
+    <string name="vault_mount_biometric_toggle">생체 인식 잠금 해제</string>
+    <string name="vault_mount_advanced">고급</string>
+    <string name="vault_mount_pim_label">PIM (선택사항)</string>
+    <string name="vault_mount_pim_placeholder">설정되지 않은 경우 비워 두세요</string>
+    <string name="vault_mount_add_keyfile">키 파일 추가 (선택사항)</string>
+    <string name="vault_mount_protect_hidden">숨김 볼륨 보호</string>
+    <string name="vault_mount_protect_hidden_desc">외부 볼륨 쓰기가 숨김 영역에 도달하지 않도록 합니다</string>
+    <string name="vault_mount_hidden_password">숨김 볼륨 비밀번호</string>
+    <string name="vault_biometric_unlock_title">%1$s 잠금 해제</string>
+    <string name="vault_biometric_unlock_subtitle">보관함을 열려면 인증하세요</string>
+    <string name="vault_biometric_use_password">비밀번호 사용</string>
+    <string name="vault_biometric_save_title">생체 인식 잠금 해제를 위해 저장</string>
+    <string name="vault_biometric_save_subtitle">자격 증명을 저장하려면 인증하세요</string>
+    <string name="vault_biometric_skip">건너뛰기</string>
+    <string name="vault_biometric_indicator">열려면 지문 센서를 탭하세요</string>
+    <string name="vault_biometric_failed">생체 인식 인증 실패</string>
+    <string name="vault_biometric_try_again">다시 시도</string>
+    <string name="vault_biometric_unlock_confirm">잠금 해제</string>
+    <string name="vault_remove_biometric_title">생체 인식을 제거하시겠습니까?</string>
+    <string name="vault_remove_biometric_body">\"%1$s\"을(를) 잠금 해제하려면 비밀번호를 수동으로 입력해야 합니다.</string>
+    <string name="vault_menu_select">선택</string>
+    <string name="vault_menu_config">구성</string>
+    <string name="vault_menu_remove">목록에서 제거</string>
+    <string name="vault_menu_delete">삭제</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">설정</string>
+    <string name="settings_cd_back">뒤로</string>
+    <string name="settings_card_security">보안</string>
+    <string name="settings_card_security_desc">PIN, 생체 인식, 자동 잠금</string>
+    <string name="settings_card_panic">패닉 모드</string>
+    <string name="settings_card_panic_desc">강압 비밀번호, 데이터 삭제</string>
+    <string name="settings_card_appearance">외관</string>
+    <string name="settings_card_appearance_desc">테마, 색상, AMOLED</string>
+    <string name="settings_card_about">정보</string>
+    <string name="settings_card_about_desc">버전, 라이선스, GitHub</string>
+    <string name="settings_card_premium">프리미엄</string>
+    <string name="settings_card_premium_desc">모든 기능 잠금 해제</string>
+    <string name="settings_card_debug">디버그</string>
+    <string name="settings_card_debug_desc">로그 및 개발자 도구</string>
+    <string name="settings_security_title">보안</string>
+    <string name="settings_security_change_pin">PIN 변경</string>
+    <string name="settings_security_auto_lock">자동 잠금</string>
+    <string name="settings_security_auto_lock_desc">앱이 백그라운드로 이동할 때 잠금</string>
+    <string name="settings_security_screen_capture">화면 캡처 보호</string>
+    <string name="settings_security_screen_capture_desc">다른 앱이 화면을 녹화하지 못하도록 차단</string>
+    <string name="settings_security_screenshot_warn_title">화면 보호를 비활성화할까요?</string>
+    <string name="settings_security_screenshot_warn_body">화면 보호 없이는 «다른 앱 위에 표시» 권한이 있는 앱이나 화면 녹화 도구가 비밀번호와 개인 파일을 포함한 Arcanum의 내용을 캡처할 수 있습니다.\n\n환경을 완전히 신뢰하는 경우에만 비활성화하세요.</string>
+    <string name="settings_security_screenshot_warn_disable">%1$d초 후 비활성화…</string>
+    <string name="settings_security_screenshot_warn_disable_ready">비활성화</string>
+    <string name="settings_security_screenshot_auth_title">작업 확인</string>
+    <string name="settings_security_screenshot_auth_subtitle">화면 보호를 비활성화하려면 인증하세요</string>
+    <string name="settings_security_screenshot_pin_label">Arcanum PIN</string>
+    <string name="settings_security_screenshot_pin_error">PIN이 잘못되었습니다. 다시 시도하세요.</string>
+    <string name="settings_panic_title">패닉 모드</string>
+    <string name="settings_panic_switch_title">패닉 모드</string>
+    <string name="settings_panic_switch_desc">패닉 PIN을 입력하면 선택한 데이터가 자동으로 삭제됩니다</string>
+    <string name="settings_panic_setup_hint">탭하여 패닉 PIN 설정</string>
+    <string name="settings_panic_pin_section">패닉 PIN</string>
+    <string name="settings_panic_change_pin">패닉 PIN 변경</string>
+    <string name="settings_panic_wipe_section">삭제 대상</string>
+    <string name="settings_panic_full_wipe">완전 삭제</string>
+    <string name="settings_panic_full_wipe_desc">모든 보관함 삭제 및 앱을 초기 상태로 재설정</string>
+    <string name="settings_panic_clear_settings">설정 지우기</string>
+    <string name="settings_panic_clear_history">계산기 기록 지우기</string>
+    <string name="settings_panic_disable_biometric">생체 인식 비활성화</string>
+    <string name="settings_panic_disable_biometric_desc">모든 보관함에서 생체 인식 액세스 제거</string>
+    <string name="settings_panic_vaults_section">보관함</string>
+    <string name="settings_panic_warning">삭제된 데이터는 복구할 수 없습니다. 먼저 더미 보관함으로 테스트하세요.</string>
+    <string name="settings_panic_disable_title">패닉 모드를 비활성화하시겠습니까?</string>
+    <string name="settings_panic_disable_body">패닉 PIN과 모든 삭제 설정이 영구적으로 삭제됩니다.</string>
+    <string name="settings_panic_disable_confirm">비활성화</string>
+    <string name="settings_panic_vault_delete">삭제</string>
+    <string name="settings_panic_vault_forget">잊기</string>
+    <string name="settings_panic_vault_keep">유지</string>
+    <string name="settings_appearance_title">외관</string>
+    <string name="settings_appearance_theme_section">테마 모드</string>
+    <string name="settings_appearance_language_section">언어</string>
+    <string name="settings_appearance_language">앱 언어</string>
+    <string name="settings_appearance_language_system">시스템 기본값</string>
+    <string name="settings_appearance_theme_system">시스템</string>
+    <string name="settings_appearance_theme_light">라이트</string>
+    <string name="settings_appearance_theme_dark">다크</string>
+    <string name="settings_appearance_display_section">디스플레이</string>
+    <string name="settings_appearance_amoled">AMOLED Glass</string>
+    <string name="settings_appearance_amoled_desc">서리 유리 효과의 순수 검정 배경</string>
+    <string name="settings_appearance_dynamic_colors">다이나믹 컬러</string>
+    <string name="settings_appearance_dynamic_colors_desc">배경화면에서 파생된 색상 사용 (Android 12+)</string>
+    <string name="settings_appearance_dynamic_colors_unavailable">다이나믹 컬러는 Android 12 이상이 필요합니다.</string>
+    <string name="settings_about_title">정보</string>
+    <string name="settings_about_app_desc">Android용 VeraCrypt 호환 암호화 보관함 관리자</string>
+    <string name="settings_about_licenses">오픈 소스 라이선스</string>
+    <string name="settings_about_connect_section">연결</string>
+    <string name="settings_about_source_code">소스 코드</string>
+    <string name="settings_about_source_code_desc">GitHub에서 보기</string>
+    <string name="settings_about_website">웹사이트</string>
+    <string name="settings_about_website_desc">arcanum.zip</string>
+    <string name="settings_about_privacy">개인정보 처리방침</string>
+    <string name="settings_about_bug_report">버그 신고</string>
+    <string name="settings_about_bug_report_desc">GitHub에서 이슈 열기</string>
+    <string name="settings_premium_title">Arcanum Pro</string>
+    <string name="settings_premium_upgrade">업그레이드</string>
+    <string name="settings_debug_title">디버그</string>
+    <string name="settings_debug_cd_copy_all">모두 복사</string>
+    <string name="settings_debug_cd_refresh">새로고침</string>
+    <string name="settings_debug_mode">디버그 모드</string>
+    <string name="settings_debug_mode_desc">개발자 도구 활성화</string>
+    <string name="settings_debug_section_runtime">런타임</string>
+    <string name="settings_debug_section_mounted">마운트된 컨테이너</string>
+    <string name="settings_debug_section_device">기기 보안</string>
+    <string name="settings_debug_section_database">데이터베이스</string>
+    <string name="settings_debug_section_tools">도구</string>
+    <string name="settings_debug_no_containers">마운트된 컨테이너 없음</string>
+    <string name="settings_debug_dry_run_panic">패닉 드라이런</string>
+    <string name="settings_debug_warning_title">민감한 정보</string>
+    <string name="settings_debug_warning_body">디버그 모드는 암호화 핸들, 키스토어 유형, 컨테이너 경로 및 기타 민감한 데이터를 노출합니다. 기기에 화면 잠금이 없으므로 물리적 액세스 권한이 있는 누구나 이 모드를 활성화할 수 있습니다.</string>
+    <string name="settings_debug_warning_confirm">이해했습니다, 활성화</string>
+    <string name="settings_debug_cd_info">정보</string>
+
+    <!-- Set panic PIN screen -->
+    <string name="panic_pin_title">패닉 PIN 설정</string>
+    <string name="panic_pin_confirm_title">패닉 PIN 확인</string>
+    <string name="panic_pin_success_title">패닉 PIN 설정됨</string>
+    <string name="panic_pin_success_desc">패닉 모드가 활성화되었습니다. 계산기에 패닉 PIN을 입력하면 조용한 삭제가 시작됩니다.</string>
+    <string name="panic_pin_success_warning">패닉 PIN을 기본 PIN과 혼동하지 마세요.\n\n패닉 PIN을 입력하면 설정된 데이터 삭제가 즉시 시작됩니다. 이 작업은 취소할 수 없습니다.</string>
+    <string name="panic_pin_success_confirm">이해했습니다</string>
+    <string name="panic_pin_hint">4~12자리. 기본 PIN과 달라야 합니다.</string>
+    <string name="panic_pin_btn_continue">계속</string>
+    <string name="panic_pin_btn_confirm">확인</string>
+    <string name="panic_pin_cd_backspace">삭제</string>
+
+    <!-- Create container screen (wizard shell) -->
+    <string name="create_title">보관함 만들기</string>
+    <string name="create_step_counter">%1$d/%2$d 단계</string>
+    <string name="create_btn_outer">외부 볼륨 만들기</string>
+    <string name="create_btn_hidden">숨김 볼륨 만들기</string>
+    <string name="create_btn_next">다음</string>
+    <string name="create_cancel">취소</string>
+    <string name="create_cancel_dialog_title">만들기를 취소하시겠습니까?</string>
+    <string name="create_cancel_dialog_body">불완전한 파일이 삭제됩니다.</string>
+    <string name="create_cancel_dialog_confirm">만들기 취소</string>
+    <string name="create_cancel_dialog_keep">계속하기</string>
+    <string name="create_cd_back">뒤로</string>
+
+    <!-- Create container steps 1–4 -->
+    <string name="create_step1_title">볼륨 유형 선택</string>
+    <string name="create_volume_standard">표준 볼륨</string>
+    <string name="create_volume_standard_desc">단일 비밀번호로 보호된 일반 암호화 보관함.</string>
+    <string name="create_volume_hidden">숨김 볼륨</string>
+    <string name="create_volume_hidden_desc">두 개의 비밀번호, 두 개의 데이터 세트. 강압 하에서의 합리적 부인.</string>
+    <string name="create_step2_title">위치 선택</string>
+    <string name="create_location_app">앱 저장소</string>
+    <string name="create_location_app_desc">앱 내의 개인 저장소. 추가 권한이 필요하지 않습니다.</string>
+    <string name="create_location_internal">내부 저장소</string>
+    <string name="create_location_internal_desc">기기 저장소의 사용자가 접근할 수 있는 폴더에 저장합니다.</string>
+    <string name="create_location_no_folder">폴더가 선택되지 않았습니다</string>
+    <string name="create_location_browse">찾아보기</string>
+    <string name="create_location_permission_title">저장소 권한 필요</string>
+    <string name="create_location_permission_desc">앱이 개인 폴더 외부에 보관함을 만들 수 있도록 \"모든 파일 액세스\"를 허용하세요.</string>
+    <string name="create_location_permission_open_settings">설정 열기</string>
+    <string name="create_filename_label">파일 이름</string>
+    <string name="create_filename_placeholder">vault.hc</string>
+    <string name="create_step3_title">암호화 알고리즘</string>
+    <string name="create_step3_subtitle">모든 알고리즘은 데스크톱 VeraCrypt와 완전히 호환됩니다</string>
+    <string name="create_step3_cipher">암호</string>
+    <string name="create_step3_hash">해시 알고리즘</string>
+    <string name="create_step4_title">볼륨 크기</string>
+    <string name="create_size_label">크기</string>
+    <string name="create_size_custom">사용자 지정</string>
+    <string name="create_size_available">사용 가능: %1$.1f GB</string>
+    <string name="create_size_quick_est">⚡ 빠른 포맷: ~%1$s</string>
+    <string name="create_size_secure_est">🔒 보안 포맷: ~%1$s</string>
+    <string name="create_size_speed_fast">빠름</string>
+    <string name="create_size_speed_medium">보통</string>
+    <string name="create_size_speed_slow">느림</string>
+
+    <!-- Create container steps 5–7 -->
+    <string name="create_step5_outer_title">외부 볼륨 비밀번호 설정</string>
+    <string name="create_step5_subtitle">강력한 비밀번호를 사용하세요. 잊어버리면 데이터를 복구할 수 없습니다.</string>
+    <string name="create_step5_outer_subtitle">이 비밀번호는 더미 외부 볼륨을 잠금 해제합니다. 나중에 숨김 볼륨 비밀번호를 설정합니다.</string>
+    <string name="create_step5_outer_info">이것은 외부(더미) 볼륨 비밀번호입니다. 이에 접근하는 사람은 외부 볼륨을 볼 수 있고 숨김 볼륨은 볼 수 없습니다.</string>
+    <string name="create_step5_title">비밀번호 설정</string>
+    <string name="create_pwd_label">비밀번호</string>
+    <string name="create_pwd_confirm_label">비밀번호 확인</string>
+    <string name="create_pwd_mismatch">비밀번호가 일치하지 않습니다</string>
+    <string name="create_pwd_strength_weak">약함</string>
+    <string name="create_pwd_strength_fair">보통</string>
+    <string name="create_pwd_strength_strong">강함</string>
+    <string name="create_pwd_strength_very_strong">매우 강함</string>
+    <string name="create_pwd_char_count">%1$d자</string>
+    <string name="create_keyfile_hide">키 파일 숨기기</string>
+    <string name="create_keyfile_add">키 파일 추가 (선택사항)</string>
+    <string name="create_keyfile_safe_warning">이 파일들을 안전하게 보관하세요 — 보관함을 열기 위해 필요합니다</string>
+    <string name="create_keyfile_add_item">키 파일 추가…</string>
+    <string name="create_keyfile_cd_remove">키 파일 제거</string>
+    <string name="create_keyfile_desc">키 파일은 두 번째 인증 요소를 추가합니다. 보관함을 열려면 비밀번호와 모든 키 파일이 필요합니다.</string>
+    <string name="create_pim_label">PIM (Personal Iterations Multiplier)</string>
+    <string name="create_pim_short_label">PIM</string>
+    <string name="create_pim_placeholder">기본값 사용 시 비워 두세요</string>
+    <string name="create_pim_status_default">기본 보안 (권장)</string>
+    <string name="create_pim_status_below">기본값 미만 — 강력한 비밀번호를 사용하세요</string>
+    <string name="create_pim_status_similar">기본값과 유사</string>
+    <string name="create_pim_status_enhanced">보안 강화, 열기가 느려짐</string>
+    <string name="create_pim_unlock_est">예상 잠금 해제 시간: 약 %1$d초</string>
+    <string name="create_pwd_warning">비밀번호를 복구하는 방법이 없습니다. 적어 두고 안전한 곳에 보관하세요.</string>
+    <string name="create_step6_title">포맷 모드</string>
+    <string name="create_format_quick_title">빠른 포맷</string>
+    <string name="create_format_secure_title">보안 포맷</string>
+    <string name="create_format_quick_desc">~%1$s (모든 크기) · 덜 안전함 — 고급 포렌식에서 패턴이 감지될 수 있습니다. 대부분의 사용자에게 권장됩니다.</string>
+    <string name="create_format_secure_desc">~%1$s · 전체 볼륨을 임의 데이터로 채웁니다. 최대 보안, 데이터 패턴 없음. 민감한 데이터에 권장됩니다.</string>
+    <string name="create_format_est_text">예상 시간: 약 %1$s</string>
+    <string name="create_step7_title">파일 시스템</string>
+    <string name="create_fs_subtitle">보관함 내에서 파일을 구성하는 방법을 선택하세요</string>
+    <string name="create_fs_recommended">권장</string>
+    <string name="create_fs_coming_soon">곧 출시</string>
+    <string name="create_fs_coming_soon_toast">곧 출시</string>
+    <string name="create_fs_got_it">확인</string>
+    <string name="create_fs_max_file_size">최대 파일 크기: %1$s</string>
+    <string name="create_fs_os_read_only"> (읽기 전용)</string>
+    <string name="create_fs_info_cd">정보</string>
+
+    <plurals name="create_keyfile_count">
+        <item quantity="other">%1$d개 키 파일 추가됨</item>
+    </plurals>
+
+    <!-- Create container steps 8–9 -->
+    <string name="create_entropy_title">손가락을 움직이세요</string>
+    <string name="create_entropy_subtitle">무작위 움직임으로 키의 암호 강도가 향상됩니다</string>
+    <string name="create_entropy_done">훌륭합니다! 암호화 엔트로피가 수집되었습니다 ✓</string>
+    <string name="create_entropy_progress">막대가 가득 찰 때까지 손가락을 무작위로 움직이세요 (%1$d%%)</string>
+    <string name="create_done_title">보관함이 만들어졌습니다!</string>
+
+    <!-- Create container steps 10–15 (hidden volume) -->
+    <string name="create_hidden_intro_title">숨김 볼륨</string>
+    <string name="create_hidden_intro_body">외부 볼륨이 만들어졌습니다. 이제 그 안에 숨김 볼륨을 설정하세요.</string>
+    <string name="create_hidden_info_text">숨김 볼륨은 외부 볼륨 안에 있습니다. 외부 비밀번호를 입력하면 외부 데이터만 표시됩니다. 숨김 비밀번호를 입력하면 숨겨진 데이터가 표시됩니다.</string>
+    <string name="create_hidden_warnings_title">중요 경고</string>
+    <string name="create_hidden_warnings_body">• 숨김 볼륨에는 외부 볼륨과 다른 비밀번호를 사용하세요.\n• 숨김 볼륨은 외부 볼륨의 데이터 영역 끝을 차지합니다.\n• 외부 볼륨에 너무 많은 대용량 파일을 쓰면 숨김 볼륨을 덮어쓸 수 있습니다.</string>
+    <string name="create_hidden_outer_label">외부 볼륨: %1$s (%2$d MB)</string>
+    <string name="create_hidden_cipher_title">숨김 볼륨 암호화</string>
+    <string name="create_hidden_cipher_subtitle">숨김 볼륨의 암호를 선택하세요</string>
+    <string name="create_hidden_size_title">숨김 볼륨 크기</string>
+    <string name="create_hidden_size_constraints">숨김 볼륨은 %1$d MB에서 %2$d MB 사이여야 합니다 (외부: %3$d MB, 외부 데이터를 위해 4 MB 예약됨)</string>
+    <string name="create_hidden_size_min_error">최소 크기는 %1$d MB입니다</string>
+    <string name="create_hidden_size_max_error">최대 크기는 %1$d MB입니다</string>
+    <string name="create_hidden_pwd_title">숨김 볼륨 비밀번호</string>
+    <string name="create_hidden_pwd_subtitle">외부 볼륨 비밀번호와 달라야 합니다</string>
+    <string name="create_hidden_pwd_same_warning">숨김 비밀번호와 외부 비밀번호가 같으면 합리적 부인이 손상됩니다.</string>
+    <string name="create_hidden_pwd_label">숨김 비밀번호</string>
+    <string name="create_hidden_pwd_confirm_label">숨김 비밀번호 확인</string>
+    <string name="create_hidden_pwd_mismatch">비밀번호가 일치하지 않습니다</string>
+    <string name="create_hidden_pim_label">PIM (선택사항)</string>
+    <string name="create_hidden_pim_hint">PIM은 PBKDF2 반복 횟수를 제어합니다. 기본값을 사용하려면 비워 두세요.</string>
+    <string name="create_hidden_entropy_subtitle">무작위 움직임으로 숨김 볼륨 키의 암호 강도가 향상됩니다</string>
+    <string name="create_hidden_creating_title">숨김 볼륨 생성 중</string>
+    <string name="create_hidden_creating_body">%1$d MB 숨김 영역 포맷 중…</string>
+    <string name="create_hidden_done_title">숨김 볼륨이 만들어졌습니다!</string>
+    <string name="create_hidden_done_summary">외부: %1$s · %2$d MB\n숨김: %3$s · %4$d MB</string>
+    <string name="create_hidden_important_title">중요</string>
+    <string name="create_hidden_done_warning_1">숨김 볼륨이 성공적으로 만들어졌습니다. 모든 지침을 따랐다면 외부 볼륨이 마운트된 경우에도 숨김 볼륨의 존재를 증명하는 것이 불가능해야 합니다.</string>
+    <string name="create_hidden_done_warning_2">경고: 외부 볼륨을 마운트할 때 숨김 볼륨을 보호하지 않으면 외부 볼륨에 쓰지 마세요 — 숨김 볼륨을 덮어쓰고 손상시킬 수 있습니다!</string>
+    <string name="create_hidden_done_warning_3">숨김 볼륨을 보호하려면 외부 볼륨을 마운트할 때 "숨김 볼륨 보호"를 활성화하고 숨김 볼륨 비밀번호를 입력하세요.</string>
+
+    <!-- Mounting overlay -->
+    <string name="mount_unlocking">보관함 잠금 해제 중…</string>
+    <string name="mount_subtitle_1">잠시 시간이 걸릴 수 있습니다.\n앱을 닫지 마세요.</string>
+    <string name="mount_subtitle_2">거의 다 됐습니다 — 일부 보관함은 조금 더 걸립니다.</string>
+    <string name="mount_subtitle_3">복호화 키 파생 중 — 이것은 의도적으로 느립니다.</string>
+    <string name="mount_subtitle_4">지원되는 모든 암호 알고리즘 테스트 중…</string>
+    <string name="mount_subtitle_5">거의 완료됨 — 무차별 대입 보호에는 시간이 걸립니다.</string>
+    <string name="mount_error_title">작업 실패</string>
+    <string name="mount_error_body">다음 중 하나 이상이 원인일 수 있습니다:</string>
+    <string name="mount_error_reason_password">잘못된 비밀번호.</string>
+    <string name="mount_error_reason_pim">잘못된 볼륨 PIM 번호.</string>
+    <string name="mount_error_reason_prf">잘못된 PRF (해시).</string>
+    <string name="mount_error_reason_not_valid">유효한 볼륨이 아닙니다.</string>
+    <string name="mount_error_reason_old_algo">볼륨이 제거된 오래된 알고리즘을 사용합니다.</string>
+
+    <!-- Vault info screen -->
+    <string name="vault_info_loading">로드 중…</string>
+    <string name="vault_info_section_title">보관함 정보</string>
+    <string name="vault_info_label_name">이름</string>
+    <string name="vault_info_label_volume_type">볼륨 유형</string>
+    <string name="vault_info_type_hidden">숨김</string>
+    <string name="vault_info_type_outer">외부</string>
+    <string name="vault_info_type_standard">표준</string>
+    <string name="vault_info_label_algorithm">알고리즘</string>
+    <string name="vault_info_label_prf">PKCS-5 PRF</string>
+    <string name="vault_info_label_filesystem">파일 시스템</string>
+    <string name="vault_info_label_pim">PIM</string>
+    <string name="vault_info_pim_custom">사용자 지정</string>
+    <string name="vault_info_pim_default">기본값</string>
+    <string name="vault_info_label_size">크기</string>
+    <string name="vault_info_label_created">생성됨</string>
+    <string name="vault_info_label_location">위치</string>
+    <string name="vault_info_section_operations">작업</string>
+    <string name="vault_info_op_change_password">비밀번호 변경</string>
+    <string name="vault_info_op_expand_volume">볼륨 확장</string>
+    <string name="vault_info_op_backup_header">헤더 백업</string>
+    <string name="vault_info_op_change_keyfile">키 파일 변경</string>
+    <string name="vault_info_unmount_button">보관함 마운트 해제</string>
+    <string name="vault_info_unmount_title">%1$s을(를) 마운트 해제하시겠습니까?</string>
+    <string name="vault_info_unmount_body">마운트 해제하기 전에 모든 파일이 저장되어 있는지 확인하세요.</string>
+    <string name="vault_info_fallback_name">vault</string>
+    <string name="vault_card_info_desc">볼륨 세부 정보 및 메타데이터 보기</string>
+    <string name="vault_card_change_password_desc">암호화 비밀번호 변경</string>
+    <string name="vault_card_expand_desc">볼륨 크기 늘리기</string>
+    <string name="vault_card_backup_desc">볼륨 헤더 백업 저장</string>
+    <string name="vault_card_keyfile_desc">볼륨의 키 파일 업데이트</string>
+    <string name="vault_card_unmount_desc">이 볼트 잠금 및 마운트 해제</string>
+
+    <!-- Mount success overlay -->
+    <string name="mount_vault_unlocked">보관함 잠금 해제됨</string>
+    <string name="mount_indexing_vault">보관함 색인 생성 중</string>
+    <string name="mount_scanning">스캔 중…</string>
+
+    <plurals name="mount_media_files">
+        <item quantity="other">%1$d개 미디어 파일</item>
+    </plurals>
+
+    <!-- Move vault screen -->
+    <string name="move_vault_title_to_app">앱 저장소로 이동</string>
+    <string name="move_vault_title_to_internal">내부 저장소로 이동</string>
+    <string name="move_vault_label_vault_size">보관함 크기</string>
+    <string name="move_vault_label_available">대상에서 사용 가능</string>
+    <string name="move_vault_not_enough_space">여유 공간이 부족합니다. 최소 %1$s를 확보하고 다시 시도하세요.</string>
+    <string name="move_vault_section_what">이 작업의 내용</string>
+    <string name="move_vault_info_app_1">파일은 다른 앱 및 파일 관리자에게 보이지 않는 앱 전용 저장소에 저장됩니다.</string>
+    <string name="move_vault_info_app_2">Arcanum만 파일을 읽고, 이동하고, 삭제할 수 있습니다.</string>
+    <string name="move_vault_info_app_3">앱 삭제 시 삭제됩니다 (백업이 없는 경우).</string>
+    <string name="move_vault_info_int_1">파일은 파일 관리자를 통해 접근할 수 있는 공유 내부 저장소로 이동됩니다.</string>
+    <string name="move_vault_info_int_2">PC에 파일을 복사하거나 기기 간에 공유하기가 더 쉽습니다.</string>
+    <string name="move_vault_info_int_3">앱 삭제 시 삭제되지 않습니다.</string>
+    <string name="move_vault_section_before">시작하기 전에</string>
+    <string name="move_vault_before_1">대용량 컨테이너의 경우 작업에 몇 분이 걸릴 수 있습니다.</string>
+    <string name="move_vault_before_2">앱을 포그라운드에 유지하고 화면을 잠그지 마세요.</string>
+    <string name="move_vault_backup_label">Android 백업에 포함</string>
+    <string name="move_vault_backup_desc">활성화하면 Android가 보관함을 Google 계정에 백업할 수 있습니다. 보관함이 기기를 떠나지 않길 원한다면 비활성화하세요.</string>
+    <string name="move_vault_section_dest_folder">대상 폴더</string>
+    <string name="move_vault_choose_folder">폴더 선택</string>
+    <string name="move_vault_selected_folder">선택한 폴더</string>
+    <string name="move_vault_default_folder">기본값: 앱 저장소의 Arcanum 폴더</string>
+    <string name="move_vault_start_move">이동 시작</string>
+    <string name="move_vault_moving_title">보관함 이동 중…</string>
+    <string name="move_vault_moving_progress">%1$d%%  ·  %2$.1f / %3$.1f MB</string>
+    <string name="move_vault_moving_body">앱을 열어 두고 화면을 잠그지 마세요.</string>
+    <string name="move_vault_success_title">보관함이 성공적으로 이동되었습니다</string>
+    <string name="move_vault_success_body">보관함 파일이 이동되었고 데이터베이스 레코드가 업데이트되었습니다.</string>
+    <string name="move_vault_failure_title">이동 실패</string>
+    <string name="move_vault_retry">재시도</string>
+
+</resources>

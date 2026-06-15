@@ -1,0 +1,705 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Arcanum</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_containers">Сховища</string>
+    <string name="nav_gallery">Галерея</string>
+    <string name="nav_files">Файли</string>
+    <string name="nav_settings">Налаштування</string>
+    <string name="nav_info">Інфо</string>
+    <string name="nav_vault_fallback_name">Сховище</string>
+    <string name="nav_gallery_search_placeholder">Пошук медіа…</string>
+    <string name="nav_gallery_cd_close_search">Закрити пошук</string>
+    <string name="nav_gallery_cd_search">Пошук</string>
+    <string name="nav_gallery_cd_rescan">Повторно сканувати сховище</string>
+
+    <!-- Unmount animation -->
+    <string name="unmount_vault_unmounted">Сховище відключено</string>
+    <string name="unmount_data_protected">Ваші дані захищено</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_next">Далі</string>
+    <string name="onboarding_get_started">Почати</string>
+
+    <string name="onboarding_welcome_title">Ласкаво просимо до Arcanum</string>
+    <string name="onboarding_welcome_desc">Безпечний менеджер зашифрованих контейнерів у вигляді калькулятора.</string>
+
+    <string name="onboarding_secure_title">Шифрування військового рівня</string>
+    <string name="onboarding_secure_desc">Контейнери, сумісні з VeraCrypt, захищають ваші файли за допомогою шифрування AES, Twofish та Serpent.</string>
+
+    <string name="onboarding_calculator_title">Прихований за калькулятором</string>
+    <string name="onboarding_calculator_desc">Для стороннього спостерігача Arcanum виглядає як звичайний калькулятор. Лише ваш секретний PIN розблоковує його.</string>
+
+    <string name="onboarding_gallery_title">Красива медіагалерея</string>
+    <string name="onboarding_gallery_desc">Переглядайте фотографії та відео приватно в зашифрованих контейнерах, не залишаючи жодних слідів.</string>
+
+    <string name="onboarding_privacy_title">Режим паніки готовий</string>
+    <string name="onboarding_privacy_desc">Введіть PIN паніки, щоб миттєво видалити всі сліди Arcanum з вашого пристрою.</string>
+
+    <!-- Vault creation foreground service notification -->
+    <string name="notif_channel_vault_creation">Створення сховища</string>
+    <string name="notif_channel_vault_creation_desc">Показує прогрес під час створення зашифрованого сховища</string>
+    <string name="notif_creating_vault">Створення сховища…</string>
+    <string name="notif_creation_progress">%1$d%% завершено</string>
+
+    <!-- In-app notification banners -->
+    <string name="notif_vault_mounted">Сховище успішно підключено</string>
+    <string name="notif_vault_unmounted">Сховище відключено</string>
+    <string name="notif_vault_error">Не вдалося відкрити сховище</string>
+    <string name="notif_export_success">Файл успішно експортовано</string>
+    <string name="notif_vault_added">Сховище додано</string>
+    <string name="notif_vault_added_subtitle">Торкніться, щоб відкрити %1$s</string>
+    <string name="notif_vault_already_exists">Вже є у вашому списку</string>
+    <string name="notif_vault_invalid_file">Недійсний файл сховища</string>
+    <string name="notif_vault_invalid_file_subtitle">Файл занадто малий або не вирівняний по секторах</string>
+    <string name="notif_vault_add_error">Не вдалося додати сховище</string>
+    <string name="notif_date_updated">Дату оновлено</string>
+    <string name="notif_date_updated_subtitle">EXIF та хронологію оновлено</string>
+    <string name="notif_file_renamed">Файл перейменовано</string>
+    <string name="notif_files_pasted_subtitle">Операцію завершено</string>
+    <string name="notif_files_moved_subtitle">→ %1$s</string>
+    <string name="notif_files_deleted_subtitle">Видалено назавжди</string>
+    <string name="notif_folder_created">Папку створено</string>
+    <string name="notif_files_imported_subtitle">Зашифровано та збережено у сховищі</string>
+    <string name="notif_files_exported_subtitle">Збережено у вибрану папку</string>
+    <string name="notif_support_developer">Подобається Arcanum?</string>
+    <string name="notif_support_developer_subtitle">Розгляньте можливість підтримки розробки</string>
+
+    <plurals name="notif_items_copied">
+        <item quantity="one">%1$d елемент скопійовано</item>
+        <item quantity="few">%1$d елементи скопійовано</item>
+        <item quantity="many">%1$d елементів скопійовано</item>
+        <item quantity="other">%1$d елемента скопійовано</item>
+    </plurals>
+    <plurals name="notif_items_moved">
+        <item quantity="one">%1$d елемент переміщено</item>
+        <item quantity="few">%1$d елементи переміщено</item>
+        <item quantity="many">%1$d елементів переміщено</item>
+        <item quantity="other">%1$d елемента переміщено</item>
+    </plurals>
+    <plurals name="notif_items_deleted">
+        <item quantity="one">%1$d елемент видалено</item>
+        <item quantity="few">%1$d елементи видалено</item>
+        <item quantity="many">%1$d елементів видалено</item>
+        <item quantity="other">%1$d елемента видалено</item>
+    </plurals>
+    <plurals name="notif_files_imported">
+        <item quantity="one">%1$d файл імпортовано</item>
+        <item quantity="few">%1$d файли імпортовано</item>
+        <item quantity="many">%1$d файлів імпортовано</item>
+        <item quantity="other">%1$d файла імпортовано</item>
+    </plurals>
+    <plurals name="notif_files_exported">
+        <item quantity="one">%1$d файл експортовано</item>
+        <item quantity="few">%1$d файли експортовано</item>
+        <item quantity="many">%1$d файлів експортовано</item>
+        <item quantity="other">%1$d файла експортовано</item>
+    </plurals>
+
+    <!-- Common / shared -->
+    <string name="common_cancel">Скасувати</string>
+    <string name="common_done">Готово</string>
+    <string name="common_save">Зберегти</string>
+    <string name="common_back">Назад</string>
+    <string name="common_delete">Видалити</string>
+    <string name="common_rename">Перейменувати</string>
+    <string name="common_ok">OK</string>
+    <string name="common_close">Закрити</string>
+    <string name="common_copy">Копіювати</string>
+    <string name="common_move">Перемістити</string>
+    <string name="common_export">Експортувати</string>
+    <string name="common_search">Пошук</string>
+    <string name="common_info">Інфо</string>
+    <string name="common_edit">Редагувати</string>
+    <string name="common_password">Пароль</string>
+    <string name="common_cipher">Шифр</string>
+    <string name="common_hash_algorithm">Алгоритм хешування</string>
+    <string name="common_mb">MB</string>
+    <string name="common_gb">GB</string>
+    <string name="common_this_cannot_be_undone">Цю дію не можна скасувати.</string>
+    <string name="common_open_vault">Відкрити сховище</string>
+    <string name="common_pro">Pro</string>
+    <string name="common_continue">Продовжити</string>
+    <string name="common_confirm">Підтвердити</string>
+    <string name="common_coming_soon">Незабаром</string>
+
+    <!-- PIN screens (shared) -->
+    <string name="pin_mismatch">PIN-коди не збігаються</string>
+
+    <!-- Setup PIN -->
+    <string name="setup_pin_title">Встановіть PIN-код</string>
+    <string name="setup_pin_confirm_title">Підтвердіть PIN-код</string>
+    <string name="setup_pin_success_title">PIN-код створено!</string>
+    <string name="setup_pin_success_desc">Щоб розблокувати Arcanum, відкрийте калькулятор і введіть PIN-код за допомогою цифрових кнопок. Потім утримуйте = протягом 2 секунд.</string>
+
+    <!-- Change PIN -->
+    <string name="change_pin_wrong">Невірний PIN-код</string>
+    <string name="change_pin_enter_current">Введіть поточний PIN-код</string>
+    <string name="change_pin_enter_new">Введіть новий PIN-код</string>
+    <string name="change_pin_confirm_new">Підтвердіть новий PIN-код</string>
+    <string name="change_pin_hint">4–12 цифр</string>
+    <string name="change_pin_success_title">PIN-код змінено!</string>
+    <string name="change_pin_success_desc">Ваш новий PIN-код активний</string>
+
+    <!-- Gallery screen -->
+    <string name="gallery_title">Галерея</string>
+    <string name="gallery_search_placeholder">Пошук медіа…</string>
+    <string name="gallery_search_open">Пошук</string>
+    <string name="gallery_search_close">Закрити пошук</string>
+    <string name="gallery_scan">Сканувати сховище</string>
+    <string name="gallery_empty_title">Медіа не знайдено</string>
+    <string name="gallery_empty_subtitle">Це сховище не містить фотографій або відео</string>
+    <string name="gallery_scanning">Сканування сховища…</string>
+    <string name="gallery_scan_found">%1$d знайдено</string>
+    <string name="gallery_preload_preparing">Підготовка мініатюр…</string>
+    <string name="gallery_preload_progress">%1$d / %2$d</string>
+    <string name="gallery_filter_all">Всі</string>
+    <string name="gallery_filter_photos">Фото</string>
+    <string name="gallery_filter_videos">Відео</string>
+    <string name="gallery_cd_video">Відео</string>
+
+    <!-- Media viewer screen -->
+    <string name="viewer_cd_back">Назад</string>
+    <string name="viewer_cd_more_options">Більше параметрів</string>
+    <string name="viewer_action_remove_favorite">Видалити з обраного</string>
+    <string name="viewer_action_add_favorite">Додати до обраного</string>
+    <string name="viewer_action_export">Експортувати</string>
+    <string name="viewer_action_delete">Видалити</string>
+    <string name="viewer_action_details">Деталі</string>
+    <string name="viewer_action_favorite">Обране</string>
+    <string name="viewer_sheet_info_title">Деталі</string>
+    <string name="viewer_description_placeholder">Додати опис…</string>
+    <string name="viewer_edit_date_title">Редагувати дату &amp; час</string>
+    <string name="viewer_edit_date_warning">⚠ Це оновить дані EXIF всередині файлу та перемістить його в хронології.</string>
+    <string name="viewer_exif_title">Дані EXIF</string>
+    <string name="viewer_exif_empty">Для цього файлу немає даних EXIF.</string>
+    <string name="viewer_exif_maps_hint">Торкніться, щоб відкрити на картах</string>
+    <string name="viewer_exif_section">EXIF</string>
+    <string name="viewer_exif_view_all">Переглянути всі дані EXIF</string>
+    <string name="viewer_cd_edit">Редагувати</string>
+    <string name="viewer_rename_title">Перейменувати файл</string>
+    <string name="viewer_rename_label">Ім\'я файлу</string>
+    <string name="viewer_rename_error_empty">Ім\'я не може бути порожнім</string>
+    <string name="viewer_rename_error_invalid">Ім\'я містить недійсні символи</string>
+    <string name="viewer_rename_ext_hint">Розширення .%1$s буде додано автоматично</string>
+    <string name="viewer_rename_confirm">Перейменувати</string>
+    <string name="viewer_delete_title">Видалити %1$s?</string>
+    <string name="viewer_gps_title">Редагувати координати GPS</string>
+    <string name="viewer_gps_latitude">Широта (−90 до 90)</string>
+    <string name="viewer_gps_longitude">Довгота (−180 до 180)</string>
+    <string name="viewer_seek_back">−10с</string>
+    <string name="viewer_seek_forward">+10с</string>
+    <string name="viewer_cd_pause">Пауза</string>
+    <string name="viewer_cd_play">Відтворити</string>
+
+    <!-- File manager screen -->
+    <string name="files_title">Файли</string>
+    <string name="files_search_placeholder">Пошук файлів…</string>
+    <string name="files_search_close">Закрити пошук</string>
+    <string name="files_search_open">Пошук</string>
+    <string name="files_cd_more">Більше</string>
+    <string name="files_cd_cancel_selection">Скасувати вибір</string>
+    <string name="files_cd_select_all">Вибрати все</string>
+    <string name="files_selection_count">%1$d вибрано</string>
+    <string name="files_hide_hidden">Приховати приховані файли</string>
+    <string name="files_show_hidden">Показати приховані файли</string>
+    <string name="files_sort_by">Сортувати…</string>
+    <string name="files_grid_view">Вигляд сітки</string>
+    <string name="files_list_view">Вигляд списку</string>
+    <string name="files_empty_no_results_title">Немає результатів</string>
+    <string name="files_empty_folder_title">Порожня папка</string>
+    <string name="files_empty_no_results_subtitle">Спробуйте інший пошуковий запит</string>
+    <string name="files_empty_folder_subtitle">Натисніть +, щоб імпортувати файли або створити папку</string>
+    <string name="files_error_cannot_browse">Неможливо переглянути файли</string>
+    <string name="files_type_folder">Папка</string>
+    <string name="files_action_rename">Перейменувати</string>
+    <string name="files_action_properties">Властивості</string>
+    <string name="files_cd_close_fab">Закрити</string>
+    <string name="files_cd_file_actions_fab">Дії з файлами</string>
+    <string name="files_action_import">Імпортувати файли</string>
+    <string name="files_action_new_folder">Нова папка</string>
+    <string name="files_action_copy">Копіювати</string>
+    <string name="files_action_move">Перемістити</string>
+    <string name="files_action_export">Експортувати</string>
+    <string name="files_action_delete">Видалити</string>
+    <string name="files_new_folder_title">Нова папка</string>
+    <string name="files_new_folder_label">Ім\'я папки</string>
+    <string name="files_new_folder_create">Створити</string>
+    <string name="files_rename_title">Перейменувати</string>
+    <string name="files_rename_label">Нова назва</string>
+    <string name="files_delete_title_single">Видалити цей елемент?</string>
+    <string name="files_delete_confirm">Видалити</string>
+    <string name="files_props_name">Назва</string>
+    <string name="files_props_type">Тип</string>
+    <string name="files_props_size">Розмір</string>
+    <string name="files_props_location">Розташування</string>
+    <string name="files_props_modified">Змінено</string>
+    <string name="files_props_type_folder">Папка</string>
+    <string name="files_type_image">Зображення</string>
+    <string name="files_type_video">Відео</string>
+    <string name="files_type_audio">Аудіо</string>
+    <string name="files_type_pdf">Документ PDF</string>
+    <string name="files_type_word">Документ Word</string>
+    <string name="files_type_spreadsheet">Електронна таблиця</string>
+    <string name="files_type_presentation">Презентація</string>
+    <string name="files_type_text">Текстовий файл</string>
+    <string name="files_type_archive">Архів</string>
+    <string name="files_type_apk">Пакет Android</string>
+    <string name="files_type_file">Файл</string>
+    <string name="files_open_with_body">Щоб відкрити цей файл, буде створено тимчасову розшифровану копію. Вона буде автоматично видалена, коли ви повернетеся до Arcanum.</string>
+    <string name="files_open_with_cancel">Скасувати</string>
+    <string name="files_open_with_confirm">Відкрити у додатку</string>
+    <string name="files_sort_title">Сортувати за</string>
+    <string name="files_sort_name">Назва</string>
+    <string name="files_sort_date">Дата</string>
+    <string name="files_sort_size">Розмір</string>
+    <string name="files_sort_type">Тип</string>
+    <string name="files_sort_cd_ascending">За зростанням</string>
+    <string name="files_sort_cd_descending">За спаданням</string>
+    <string name="files_sort_folders_first">Папки спочатку</string>
+    <string name="files_cd_root">Корінь</string>
+    <string name="files_no_mounted_vaults">Немає підключених сховищ</string>
+    <string name="files_this_vault">Це сховище</string>
+    <string name="files_cd_back_to_vaults">Назад до сховищ</string>
+    <string name="files_move_to_title">Перемістити до…</string>
+    <string name="files_copy_to_title">Копіювати до…</string>
+    <string name="files_move_here">Перемістити сюди</string>
+    <string name="files_copy_here">Копіювати сюди</string>
+
+    <plurals name="files_paste_clipboard">
+        <item quantity="one">Вставити (%1$d елемент)</item>
+        <item quantity="few">Вставити (%1$d елементи)</item>
+        <item quantity="many">Вставити (%1$d елементів)</item>
+        <item quantity="other">Вставити (%1$d елемента)</item>
+    </plurals>
+    <plurals name="files_delete_count">
+        <item quantity="one">Видалити %1$d елемент?</item>
+        <item quantity="few">Видалити %1$d елементи?</item>
+        <item quantity="many">Видалити %1$d елементів?</item>
+        <item quantity="other">Видалити %1$d елемента?</item>
+    </plurals>
+
+    <!-- Audio player screen -->
+    <string name="audio_now_playing">Зараз відтворюється</string>
+    <string name="audio_loading">Завантаження…</string>
+    <string name="audio_cd_shuffle">Перемішати</string>
+    <string name="audio_cd_repeat">Повторити</string>
+    <string name="audio_cd_repeat_all">Повторити все</string>
+    <string name="audio_cd_repeat_one">Повторити 1</string>
+    <string name="audio_cd_previous">Попередній</string>
+    <string name="audio_cd_pause">Пауза</string>
+    <string name="audio_cd_play">Відтворити</string>
+    <string name="audio_cd_next">Наступний</string>
+    <string name="audio_cd_album_art">Обкладинка альбому</string>
+    <string name="audio_cd_more">Більше</string>
+
+    <!-- Vault screen -->
+    <string name="vault_title">Arcanum</string>
+    <string name="vault_cd_sort_group">Сортування &amp; групування</string>
+    <string name="vault_cd_settings">Налаштування</string>
+    <string name="vault_cd_exit_selection">Вийти з вибору</string>
+    <string name="vault_selection_count">%1$d вибрано</string>
+    <string name="vault_select_all">Вибрати все</string>
+    <string name="vault_cd_delete_selected">Видалити вибране</string>
+    <string name="vault_empty_title">Сховищ ще немає</string>
+    <string name="vault_empty_subtitle">Створіть або відкрийте наявний контейнер VeraCrypt</string>
+    <string name="vault_storage_app">Сховище додатку</string>
+    <string name="vault_storage_local">Локальне сховище</string>
+    <string name="vault_cd_close_fab">Закрити</string>
+    <string name="vault_cd_new_vault_fab">Нове сховище</string>
+    <string name="vault_fab_open_existing">Відкрити наявне сховище</string>
+    <string name="vault_fab_create_new">Створити нове сховище</string>
+    <string name="vault_unmount_title">Від\'єднати \"%1$s\"?</string>
+    <string name="vault_unmount_body">Сховище буде заблоковано до повторного введення пароля.</string>
+    <string name="vault_unmount_confirm">Від\'єднати</string>
+    <string name="vault_remove_title">Видалити \"%1$s\"?</string>
+    <string name="vault_remove_body">Сховище буде видалено зі списку. Файл контейнера на диску не буде видалено.</string>
+    <string name="vault_remove_confirm">Видалити</string>
+    <string name="vault_delete_title">Видалити \"%1$s\"?</string>
+    <string name="vault_delete_body">Файл контейнера та всі зашифровані дані всередині будуть остаточно видалені. Цю дію не можна скасувати.</string>
+    <string name="vault_delete_confirm">Видалити</string>
+    <string name="vault_lock_title">Заблокувати Arcanum?</string>
+    <string name="vault_lock_body">Для повторного розблокування потрібно буде ввести PIN-код.</string>
+    <string name="vault_lock_confirm">Заблокувати</string>
+    <string name="vault_config_unmount_on_lock">Від\'єднати при блокуванні екрана</string>
+    <string name="vault_config_unmount_on_lock_desc">Від\'єднати при блокуванні екрана пристрою</string>
+    <string name="vault_config_unmount_on_background">Від\'єднати при згортанні</string>
+    <string name="vault_config_unmount_on_background_desc">Від\'єднати при переведенні додатку у фоновий режим</string>
+    <string name="vault_config_move_to_app">Перемістити до сховища додатку</string>
+    <string name="vault_config_move_to_app_desc">Зберігати сховище у приватній директорії додатку</string>
+    <string name="vault_config_unmount_to_move">Від\'єднайте сховище перед переміщенням</string>
+    <string name="vault_config_move_to_internal">Перемістити до внутрішнього сховища</string>
+    <string name="vault_config_move_to_internal_desc">Перемістити сховище до папки спільного сховища</string>
+    <string name="vault_sort_title">Сортування &amp; групування</string>
+    <string name="vault_sort_name">Назва</string>
+    <string name="vault_sort_size">Розмір</string>
+    <string name="vault_sort_last_opened">Останнє відкриття</string>
+    <string name="vault_sort_group_by">Групувати за</string>
+    <string name="vault_sort_group_none">Жодного</string>
+    <string name="vault_sort_group_location">За розташуванням</string>
+    <string name="vault_sort_biometric_first">Біометричні сховища спочатку</string>
+    <string name="vault_sort_biometric_first_desc">Закріпити сховища з біометричним розблокуванням вгорі</string>
+    <string name="vault_sort_cd_ascending">За зростанням</string>
+    <string name="vault_sort_cd_descending">За спаданням</string>
+    <string name="vault_mount_wrong_password">Невірний пароль або PIM</string>
+    <string name="vault_mount_algorithm">Алгоритм</string>
+    <string name="vault_mount_hash">Хеш</string>
+    <string name="vault_mount_biometric_toggle">Біометричне розблокування</string>
+    <string name="vault_mount_advanced">Додатково</string>
+    <string name="vault_mount_pim_label">PIM (необов\'язково)</string>
+    <string name="vault_mount_pim_placeholder">Залиште порожнім, якщо не встановлено</string>
+    <string name="vault_mount_add_keyfile">Додати ключовий файл (необов\'язково)</string>
+    <string name="vault_mount_protect_hidden">Захистити прихований том</string>
+    <string name="vault_mount_protect_hidden_desc">Запобігає запису зовнішнього тому у прихований простір</string>
+    <string name="vault_mount_hidden_password">Пароль прихованого тому</string>
+    <string name="vault_biometric_unlock_title">Відкрити %1$s</string>
+    <string name="vault_biometric_unlock_subtitle">Автентифікуйтеся, щоб відкрити сховище</string>
+    <string name="vault_biometric_use_password">Використовувати пароль</string>
+    <string name="vault_biometric_save_title">Зберегти для біометричного розблокування</string>
+    <string name="vault_biometric_save_subtitle">Автентифікуйтеся, щоб зберегти облікові дані сховища</string>
+    <string name="vault_biometric_skip">Пропустити</string>
+    <string name="vault_biometric_indicator">Торкніться датчика відбитків пальців для відкриття</string>
+    <string name="vault_biometric_failed">Біометрична автентифікація не вдалася</string>
+    <string name="vault_biometric_try_again">Спробувати ще</string>
+    <string name="vault_biometric_unlock_confirm">Відкрити</string>
+    <string name="vault_remove_biometric_title">Видалити біометрику?</string>
+    <string name="vault_remove_biometric_body">Для відкриття \"%1$s\" потрібно буде вводити пароль вручну.</string>
+    <string name="vault_menu_select">Вибрати</string>
+    <string name="vault_menu_config">Налаштувати</string>
+    <string name="vault_menu_remove">Видалити зі списку</string>
+    <string name="vault_menu_delete">Видалити</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Налаштування</string>
+    <string name="settings_cd_back">Назад</string>
+    <string name="settings_card_security">Безпека</string>
+    <string name="settings_card_security_desc">PIN, біометрія, автоблокування</string>
+    <string name="settings_card_panic">Режим паніки</string>
+    <string name="settings_card_panic_desc">Пароль примусу, очищення даних</string>
+    <string name="settings_card_appearance">Зовнішній вигляд</string>
+    <string name="settings_card_appearance_desc">Тема, кольори, AMOLED</string>
+    <string name="settings_card_about">Про додаток</string>
+    <string name="settings_card_about_desc">Версія, ліцензії, GitHub</string>
+    <string name="settings_card_premium">Premium</string>
+    <string name="settings_card_premium_desc">Розблокувати всі функції</string>
+    <string name="settings_card_debug">Налагодження</string>
+    <string name="settings_card_debug_desc">Журнали та інструменти розробника</string>
+    <string name="settings_security_title">Безпека</string>
+    <string name="settings_security_change_pin">Змінити PIN-код</string>
+    <string name="settings_security_auto_lock">Автоблокування</string>
+    <string name="settings_security_auto_lock_desc">Блокувати при переведенні додатку у фоновий режим</string>
+    <string name="settings_security_screen_capture">Захист від захоплення екрана</string>
+    <string name="settings_security_screen_capture_desc">Забороняє іншим додаткам записувати екран</string>
+    <string name="settings_security_screenshot_warn_title">Вимкнути захист екрана?</string>
+    <string name="settings_security_screenshot_warn_body">Без захисту екрана будь-який додаток із дозволом «відображатися поверх інших» або програма запису екрана зможе захоплювати вміст Arcanum, зокрема паролі та особисті файли.\n\nВимикайте це лише якщо повністю довіряєте своєму оточенню.</string>
+    <string name="settings_security_screenshot_warn_disable">Вимкнути через %1$d…</string>
+    <string name="settings_security_screenshot_warn_disable_ready">Вимкнути</string>
+    <string name="settings_security_screenshot_auth_title">Підтвердження дії</string>
+    <string name="settings_security_screenshot_auth_subtitle">Пройдіть аутентифікацію для вимкнення захисту</string>
+    <string name="settings_security_screenshot_pin_label">PIN Arcanum</string>
+    <string name="settings_security_screenshot_pin_error">Невірний PIN. Спробуйте ще раз.</string>
+    <string name="settings_panic_title">Режим паніки</string>
+    <string name="settings_panic_switch_title">Режим паніки</string>
+    <string name="settings_panic_switch_desc">Введення PIN паніки безшумно очищує вибрані дані</string>
+    <string name="settings_panic_setup_hint">Торкніться, щоб налаштувати PIN паніки</string>
+    <string name="settings_panic_pin_section">PIN ПАНІКИ</string>
+    <string name="settings_panic_change_pin">Змінити PIN паніки</string>
+    <string name="settings_panic_wipe_section">ЩО ОЧИЩАТИ</string>
+    <string name="settings_panic_full_wipe">Повне очищення</string>
+    <string name="settings_panic_full_wipe_desc">Видалити всі сховища та скинути додаток до заводських налаштувань</string>
+    <string name="settings_panic_clear_settings">Очистити налаштування</string>
+    <string name="settings_panic_clear_history">Очистити історію калькулятора</string>
+    <string name="settings_panic_disable_biometric">Вимкнути біометрику</string>
+    <string name="settings_panic_disable_biometric_desc">Видалити біометричний доступ до всіх сховищ</string>
+    <string name="settings_panic_vaults_section">СХОВИЩА</string>
+    <string name="settings_panic_warning">Очищені дані не можна відновити. Спочатку протестуйте з підставним сховищем.</string>
+    <string name="settings_panic_disable_title">Вимкнути режим паніки?</string>
+    <string name="settings_panic_disable_body">PIN паніки та всі налаштування очищення будуть остаточно видалені.</string>
+    <string name="settings_panic_disable_confirm">Вимкнути</string>
+    <string name="settings_panic_vault_delete">Видалити</string>
+    <string name="settings_panic_vault_forget">Забути</string>
+    <string name="settings_panic_vault_keep">Зберегти</string>
+    <string name="settings_appearance_title">Зовнішній вигляд</string>
+    <string name="settings_appearance_theme_section">РЕЖИМ ТЕМИ</string>
+    <string name="settings_appearance_language_section">МОВА</string>
+    <string name="settings_appearance_language">Мова додатку</string>
+    <string name="settings_appearance_language_system">Системна за замовчуванням</string>
+    <string name="settings_appearance_theme_system">Системна</string>
+    <string name="settings_appearance_theme_light">Світла</string>
+    <string name="settings_appearance_theme_dark">Темна</string>
+    <string name="settings_appearance_display_section">ДИСПЛЕЙ</string>
+    <string name="settings_appearance_amoled">AMOLED Glass</string>
+    <string name="settings_appearance_amoled_desc">Чорний фон з ефектом матового скла</string>
+    <string name="settings_appearance_dynamic_colors">Динамічні кольори</string>
+    <string name="settings_appearance_dynamic_colors_desc">Кольори, похідні від шпалер (Android 12+)</string>
+    <string name="settings_appearance_dynamic_colors_unavailable">Динамічні кольори потребують Android 12 або вище.</string>
+    <string name="settings_about_title">Про додаток</string>
+    <string name="settings_about_app_desc">Менеджер зашифрованих сховищ, сумісний із VeraCrypt, для Android</string>
+    <string name="settings_about_licenses">Ліцензії відкритого програмного забезпечення</string>
+    <string name="settings_about_connect_section">Зв\'язок</string>
+    <string name="settings_about_source_code">Вихідний код</string>
+    <string name="settings_about_source_code_desc">Переглянути на GitHub</string>
+    <string name="settings_about_website">Веб-сайт</string>
+    <string name="settings_about_website_desc">arcanum.zip</string>
+    <string name="settings_about_privacy">Політика конфіденційності</string>
+    <string name="settings_about_bug_report">Повідомити про помилку</string>
+    <string name="settings_about_bug_report_desc">Відкрити проблему на GitHub</string>
+    <string name="settings_premium_title">Arcanum Pro</string>
+    <string name="settings_premium_upgrade">Оновити</string>
+    <string name="settings_debug_title">Налагодження</string>
+    <string name="settings_debug_cd_copy_all">Копіювати все</string>
+    <string name="settings_debug_cd_refresh">Оновити</string>
+    <string name="settings_debug_mode">Режим налагодження</string>
+    <string name="settings_debug_mode_desc">Увімкнути інструменти розробника</string>
+    <string name="settings_debug_section_runtime">СЕРЕДОВИЩЕ ВИКОНАННЯ</string>
+    <string name="settings_debug_section_mounted">ПІДКЛЮЧЕНІ КОНТЕЙНЕРИ</string>
+    <string name="settings_debug_section_device">БЕЗПЕКА ПРИСТРОЮ</string>
+    <string name="settings_debug_section_database">БАЗА ДАНИХ</string>
+    <string name="settings_debug_section_tools">ІНСТРУМЕНТИ</string>
+    <string name="settings_debug_no_containers">Немає підключених контейнерів</string>
+    <string name="settings_debug_dry_run_panic">Тестовий запуск паніки</string>
+    <string name="settings_debug_warning_title">Конфіденційна інформація</string>
+    <string name="settings_debug_warning_body">Режим налагодження відкриває криптографічні дескриптори, тип сховища ключів, шляхи контейнерів та інші конфіденційні дані. Ваш пристрій не має блокування екрана — будь-хто з фізичним доступом може увімкнути цей режим.</string>
+    <string name="settings_debug_warning_confirm">Розумію, увімкнути</string>
+    <string name="settings_debug_cd_info">Інфо</string>
+
+    <!-- Set panic PIN screen -->
+    <string name="panic_pin_title">Встановити PIN паніки</string>
+    <string name="panic_pin_confirm_title">Підтвердити PIN паніки</string>
+    <string name="panic_pin_success_title">PIN паніки встановлено</string>
+    <string name="panic_pin_success_desc">Режим паніки тепер активний. Введіть PIN паніки в калькуляторі для запуску безшумного очищення.</string>
+    <string name="panic_pin_success_warning">Не плутайте PIN паніки зі своїм основним PIN-кодом.\n\nВведення PIN паніки негайно розпочне очищення налаштованих даних — цю дію не можна скасувати.</string>
+    <string name="panic_pin_success_confirm">Розумію</string>
+    <string name="panic_pin_hint">4–12 цифр. Має відрізнятися від основного PIN.</string>
+    <string name="panic_pin_btn_continue">Продовжити</string>
+    <string name="panic_pin_btn_confirm">Підтвердити</string>
+    <string name="panic_pin_cd_backspace">Видалити</string>
+
+    <!-- Create container screen (wizard shell) -->
+    <string name="create_title">Створити сховище</string>
+    <string name="create_step_counter">Крок %1$d/%2$d</string>
+    <string name="create_btn_outer">Створити зовнішнє сховище</string>
+    <string name="create_btn_hidden">Створити прихований том</string>
+    <string name="create_btn_next">Далі</string>
+    <string name="create_cancel">Скасувати</string>
+    <string name="create_cancel_dialog_title">Скасувати створення?</string>
+    <string name="create_cancel_dialog_body">Незавершений файл буде видалено.</string>
+    <string name="create_cancel_dialog_confirm">Скасувати створення</string>
+    <string name="create_cancel_dialog_keep">Продовжити</string>
+    <string name="create_cd_back">Назад</string>
+
+    <!-- Create container steps 1–4 -->
+    <string name="create_step1_title">Вибрати тип тому</string>
+    <string name="create_volume_standard">Стандартний том</string>
+    <string name="create_volume_standard_desc">Звичайне зашифроване сховище, захищене одним паролем.</string>
+    <string name="create_volume_hidden">Прихований том</string>
+    <string name="create_volume_hidden_desc">Два паролі, два набори даних. Правдоподібне заперечення під примусом.</string>
+    <string name="create_step2_title">Вибрати розташування</string>
+    <string name="create_location_app">Сховище додатку</string>
+    <string name="create_location_app_desc">Приватне сховище у додатку. Додаткових дозволів не потрібно.</string>
+    <string name="create_location_internal">Внутрішнє сховище</string>
+    <string name="create_location_internal_desc">Зберегти у доступну користувачу папку на сховищі пристрою.</string>
+    <string name="create_location_no_folder">Папку не вибрано</string>
+    <string name="create_location_browse">Огляд</string>
+    <string name="create_location_permission_title">Потрібен дозвіл на сховище</string>
+    <string name="create_location_permission_desc">Надайте «Доступ до всіх файлів», щоб додаток міг створювати сховища поза приватною папкою.</string>
+    <string name="create_location_permission_open_settings">Відкрити налаштування</string>
+    <string name="create_filename_label">Ім\'я файлу</string>
+    <string name="create_filename_placeholder">vault.hc</string>
+    <string name="create_step3_title">Алгоритм шифрування</string>
+    <string name="create_step3_subtitle">Усі алгоритми повністю сумісні з настільним VeraCrypt</string>
+    <string name="create_step3_cipher">Шифр</string>
+    <string name="create_step3_hash">Алгоритм хешування</string>
+    <string name="create_step4_title">Розмір тому</string>
+    <string name="create_size_label">Розмір</string>
+    <string name="create_size_custom">Власний</string>
+    <string name="create_size_available">Доступно: %1$.1f GB</string>
+    <string name="create_size_quick_est">⚡ Швидке форматування: ~%1$s</string>
+    <string name="create_size_secure_est">🔒 Безпечне форматування: ~%1$s</string>
+    <string name="create_size_speed_fast">Швидко</string>
+    <string name="create_size_speed_medium">Середньо</string>
+    <string name="create_size_speed_slow">Повільно</string>
+
+    <!-- Create container steps 5–7 -->
+    <string name="create_step5_outer_title">Встановити пароль зовнішнього тому</string>
+    <string name="create_step5_subtitle">Використовуйте надійний пароль. Якщо забудете, дані не можна буде відновити.</string>
+    <string name="create_step5_outer_subtitle">Цей пароль розблоковує підставний зовнішній том. Пароль прихованого тому ви встановите пізніше.</string>
+    <string name="create_step5_outer_info">Це пароль зовнішнього (підставного) тому. Той, хто отримає до нього доступ, побачить зовнішній том, а не прихований.</string>
+    <string name="create_step5_title">Встановити пароль</string>
+    <string name="create_pwd_label">Пароль</string>
+    <string name="create_pwd_confirm_label">Підтвердити пароль</string>
+    <string name="create_pwd_mismatch">Паролі не збігаються</string>
+    <string name="create_pwd_strength_weak">Слабкий</string>
+    <string name="create_pwd_strength_fair">Задовільний</string>
+    <string name="create_pwd_strength_strong">Надійний</string>
+    <string name="create_pwd_strength_very_strong">Дуже надійний</string>
+    <string name="create_pwd_char_count">%1$d симв.</string>
+    <string name="create_keyfile_hide">Приховати ключові файли</string>
+    <string name="create_keyfile_add">Додати ключові файли (необов\'язково)</string>
+    <string name="create_keyfile_safe_warning">Зберігайте ці файли в безпеці — вони потрібні для відкриття сховища</string>
+    <string name="create_keyfile_add_item">Додати ключовий файл…</string>
+    <string name="create_keyfile_cd_remove">Видалити ключовий файл</string>
+    <string name="create_keyfile_desc">Ключовий файл додає другий фактор автентифікації. Для відкриття сховища потрібні як пароль, так і всі ключові файли.</string>
+    <string name="create_pim_label">PIM (Особистий множник ітерацій)</string>
+    <string name="create_pim_short_label">PIM</string>
+    <string name="create_pim_placeholder">Залиште порожнім для значення за замовчуванням</string>
+    <string name="create_pim_status_default">Безпека за замовчуванням (рекомендовано)</string>
+    <string name="create_pim_status_below">Нижче стандартного — використовуйте надійний пароль</string>
+    <string name="create_pim_status_similar">Подібне до стандартного</string>
+    <string name="create_pim_status_enhanced">Підвищена безпека, повільніше відкривається</string>
+    <string name="create_pim_unlock_est">Орієнтовний час відкриття: ~%1$d секунд</string>
+    <string name="create_pwd_warning">Відновити пароль неможливо. Запишіть його та зберігайте в безпечному місці.</string>
+    <string name="create_step6_title">Режим форматування</string>
+    <string name="create_format_quick_title">Швидке форматування</string>
+    <string name="create_format_secure_title">Безпечне форматування</string>
+    <string name="create_format_quick_desc">~%1$s для будь-якого розміру · Менш безпечно — патерни можуть бути виявлені при поглибленій криміналістиці. Рекомендовано для більшості користувачів.</string>
+    <string name="create_format_secure_desc">~%1$s · Заповнює весь том випадковими даними. Максимальна безпека, без патернів даних. Рекомендовано для конфіденційних даних.</string>
+    <string name="create_format_est_text">Орієнтовний час: ~%1$s</string>
+    <string name="create_step7_title">Файлова система</string>
+    <string name="create_fs_subtitle">Виберіть, як файли організовано всередині сховища</string>
+    <string name="create_fs_recommended">Рекомендовано</string>
+    <string name="create_fs_coming_soon">Незабаром</string>
+    <string name="create_fs_coming_soon_toast">Незабаром</string>
+    <string name="create_fs_got_it">Зрозуміло</string>
+    <string name="create_fs_max_file_size">Макс. розмір файлу: %1$s</string>
+    <string name="create_fs_os_read_only"> (лише для читання)</string>
+    <string name="create_fs_info_cd">Інфо</string>
+
+    <plurals name="create_keyfile_count">
+        <item quantity="one">%1$d ключовий файл додано</item>
+        <item quantity="few">%1$d ключових файли додано</item>
+        <item quantity="many">%1$d ключових файлів додано</item>
+        <item quantity="other">%1$d ключового файлу додано</item>
+    </plurals>
+
+    <!-- Create container steps 8–9 -->
+    <string name="create_entropy_title">Рухайте пальцем</string>
+    <string name="create_entropy_subtitle">Випадковий рух збільшує криптографічну стійкість ключів</string>
+    <string name="create_entropy_done">Чудово! Криптографічну ентропію зібрано ✓</string>
+    <string name="create_entropy_progress">Рухайте пальцем довільно, поки смуга не заповниться (%1$d%%)</string>
+    <string name="create_done_title">Сховище створено!</string>
+
+    <!-- Create container steps 10–15 (hidden volume) -->
+    <string name="create_hidden_intro_title">Прихований том</string>
+    <string name="create_hidden_intro_body">Ваш зовнішній том створено. Тепер налаштуйте прихований том всередині нього.</string>
+    <string name="create_hidden_info_text">Прихований том розміщується всередині зовнішнього тому. Коли ви вводите зовнішній пароль, відображаються лише зовнішні дані. Введіть прихований пароль, щоб побачити приховані дані.</string>
+    <string name="create_hidden_warnings_title">Важливі попередження</string>
+    <string name="create_hidden_warnings_body">• Використовуйте інший пароль для прихованого тому, ніж для зовнішнього.\n• Прихований том займає кінець области даних зовнішнього тому.\n• Запис великої кількості файлів до зовнішнього тому може перезаписати прихований том.</string>
+    <string name="create_hidden_outer_label">Зовнішній том: %1$s (%2$d MB)</string>
+    <string name="create_hidden_cipher_title">Шифрування прихованого тому</string>
+    <string name="create_hidden_cipher_subtitle">Виберіть шифр для прихованого тому</string>
+    <string name="create_hidden_size_title">Розмір прихованого тому</string>
+    <string name="create_hidden_size_constraints">Прихований том має бути від %1$d MB до %2$d MB (зовнішній: %3$d MB, 4 MB зарезервовано для зовнішніх даних)</string>
+    <string name="create_hidden_size_min_error">Мінімальний розмір: %1$d MB</string>
+    <string name="create_hidden_size_max_error">Максимальний розмір: %1$d MB</string>
+    <string name="create_hidden_pwd_title">Пароль прихованого тому</string>
+    <string name="create_hidden_pwd_subtitle">Має відрізнятися від пароля зовнішнього тому</string>
+    <string name="create_hidden_pwd_same_warning">Якщо паролі прихованого та зовнішнього томів однакові, правдоподібне заперечення буде скомпрометовано.</string>
+    <string name="create_hidden_pwd_label">Прихований пароль</string>
+    <string name="create_hidden_pwd_confirm_label">Підтвердити прихований пароль</string>
+    <string name="create_hidden_pwd_mismatch">Паролі не збігаються</string>
+    <string name="create_hidden_pim_label">PIM (необов\'язково)</string>
+    <string name="create_hidden_pim_hint">PIM контролює ітерації PBKDF2. Залиште порожнім для значення за замовчуванням.</string>
+    <string name="create_hidden_entropy_subtitle">Випадковий рух збільшує криптографічну стійкість ключів прихованого тому</string>
+    <string name="create_hidden_creating_title">Створення прихованого тому</string>
+    <string name="create_hidden_creating_body">Форматування прихованої области %1$d MB…</string>
+    <string name="create_hidden_done_title">Прихований том створено!</string>
+    <string name="create_hidden_done_summary">Зовнішній: %1$s · %2$d MB\nПрихований: %3$s · %4$d MB</string>
+    <string name="create_hidden_important_title">Важливо</string>
+    <string name="create_hidden_done_warning_1">Прихований том успішно створено. Якщо всі інструкції дотримано, має бути неможливо довести існування прихованого тому, навіть коли зовнішній том підключено.</string>
+    <string name="create_hidden_done_warning_2">ПОПЕРЕДЖЕННЯ: Якщо ви не захищаєте прихований том під час підключення зовнішнього тому, не записуйте дані до зовнішнього тому — ви можете перезаписати та пошкодити прихований том!</string>
+    <string name="create_hidden_done_warning_3">Для захисту прихованого тому ввімкніть «Захистити прихований том» та введіть пароль прихованого тому під час підключення зовнішнього тому.</string>
+
+    <!-- Mounting overlay -->
+    <string name="mount_unlocking">Розблокування сховища…</string>
+    <string name="mount_subtitle_1">Це може зайняти кілька хвилин.\nБудь ласка, не закривайте додаток.</string>
+    <string name="mount_subtitle_2">Майже готово — деякі сховища вимагають більше часу.</string>
+    <string name="mount_subtitle_3">Похідні ключі дешифрування — це навмисно повільно.</string>
+    <string name="mount_subtitle_4">Тестування всіх підтримуваних алгоритмів шифру…</string>
+    <string name="mount_subtitle_5">Майже завершено — захист від перебору займає час.</string>
+    <string name="mount_error_title">Операція не вдалася</string>
+    <string name="mount_error_body">Це може бути спричинено одним або кількома з наступного:</string>
+    <string name="mount_error_reason_password">Невірний пароль.</string>
+    <string name="mount_error_reason_pim">Невірний номер PIM тому.</string>
+    <string name="mount_error_reason_prf">Невірний PRF (хеш).</string>
+    <string name="mount_error_reason_not_valid">Недійсний том.</string>
+    <string name="mount_error_reason_old_algo">Том використовує старий алгоритм, який було видалено.</string>
+
+    <!-- Vault info screen -->
+    <string name="vault_info_loading">Завантаження…</string>
+    <string name="vault_info_section_title">Інформація про сховище</string>
+    <string name="vault_info_label_name">Назва</string>
+    <string name="vault_info_label_volume_type">Тип тому</string>
+    <string name="vault_info_type_hidden">Прихований</string>
+    <string name="vault_info_type_outer">Зовнішній</string>
+    <string name="vault_info_type_standard">Стандартний</string>
+    <string name="vault_info_label_algorithm">Алгоритм</string>
+    <string name="vault_info_label_prf">PKCS-5 PRF</string>
+    <string name="vault_info_label_filesystem">Файлова система</string>
+    <string name="vault_info_label_pim">PIM</string>
+    <string name="vault_info_pim_custom">Власний</string>
+    <string name="vault_info_pim_default">За замовчуванням</string>
+    <string name="vault_info_label_size">Розмір</string>
+    <string name="vault_info_label_created">Створено</string>
+    <string name="vault_info_label_location">Розташування</string>
+    <string name="vault_info_section_operations">Операції</string>
+    <string name="vault_info_op_change_password">Змінити пароль</string>
+    <string name="vault_info_op_expand_volume">Розширити том</string>
+    <string name="vault_info_op_backup_header">Резервна копія заголовка</string>
+    <string name="vault_info_op_change_keyfile">Змінити ключовий файл</string>
+    <string name="vault_info_unmount_button">Від\'єднати сховище</string>
+    <string name="vault_info_unmount_title">Від\'єднати %1$s?</string>
+    <string name="vault_info_unmount_body">Переконайтеся, що всі файли збережено перед від\'єднанням.</string>
+    <string name="vault_info_fallback_name">vault</string>
+    <string name="vault_card_info_desc">Перегляд відомостей і метаданих тому</string>
+    <string name="vault_card_change_password_desc">Змінити пароль шифрування</string>
+    <string name="vault_card_expand_desc">Збільшити розмір тому</string>
+    <string name="vault_card_backup_desc">Зберегти резервну копію заголовка тому</string>
+    <string name="vault_card_keyfile_desc">Оновити ключовий файл тому</string>
+    <string name="vault_card_unmount_desc">Заблокувати та розмонтувати сховище</string>
+
+    <!-- Mount success overlay -->
+    <string name="mount_vault_unlocked">Сховище розблоковано</string>
+    <string name="mount_indexing_vault">Індексування сховища</string>
+    <string name="mount_scanning">Сканування…</string>
+
+    <plurals name="mount_media_files">
+        <item quantity="one">%1$d медіафайл</item>
+        <item quantity="few">%1$d медіафайли</item>
+        <item quantity="many">%1$d медіафайлів</item>
+        <item quantity="other">%1$d медіафайла</item>
+    </plurals>
+
+    <!-- Move vault screen -->
+    <string name="move_vault_title_to_app">Перемістити до сховища додатку</string>
+    <string name="move_vault_title_to_internal">Перемістити до внутрішнього сховища</string>
+    <string name="move_vault_label_vault_size">Розмір сховища</string>
+    <string name="move_vault_label_available">Доступно в місці призначення</string>
+    <string name="move_vault_not_enough_space">Недостатньо вільного місця. Звільніть принаймні %1$s і спробуйте ще раз.</string>
+    <string name="move_vault_section_what">Що це робить</string>
+    <string name="move_vault_info_app_1">Файли зберігаються у приватному сховищі додатку, невидимому для інших додатків та файлових менеджерів.</string>
+    <string name="move_vault_info_app_2">Лише Arcanum може читати, переміщати або видаляти їх.</string>
+    <string name="move_vault_info_app_3">Видаляються при видаленні додатку (якщо не є резервною копією).</string>
+    <string name="move_vault_info_int_1">Файли переміщуються до спільного внутрішнього сховища, доступного через файлові менеджери.</string>
+    <string name="move_vault_info_int_2">Легше копіювати файли на ПК або ділитися між пристроями.</string>
+    <string name="move_vault_info_int_3">Не видаляються при видаленні додатку.</string>
+    <string name="move_vault_section_before">Перед початком</string>
+    <string name="move_vault_before_1">Операція може зайняти кілька хвилин для великих контейнерів.</string>
+    <string name="move_vault_before_2">Тримайте додаток на передньому плані та не блокуйте екран.</string>
+    <string name="move_vault_backup_label">Включити до резервного копіювання Android</string>
+    <string name="move_vault_backup_desc">Якщо ввімкнено, Android може зробити резервну копію сховища до вашого облікового запису Google. Вимкніть, якщо хочете, щоб сховище ніколи не покидало пристрій.</string>
+    <string name="move_vault_section_dest_folder">Папка призначення</string>
+    <string name="move_vault_choose_folder">Вибрати папку</string>
+    <string name="move_vault_selected_folder">Вибрана папка</string>
+    <string name="move_vault_default_folder">За замовчуванням: папка Arcanum у сховищі додатку</string>
+    <string name="move_vault_start_move">Почати переміщення</string>
+    <string name="move_vault_moving_title">Переміщення сховища…</string>
+    <string name="move_vault_moving_progress">%1$d%%  ·  %2$.1f / %3$.1f MB</string>
+    <string name="move_vault_moving_body">Будь ласка, тримайте додаток відкритим і не блокуйте екран.</string>
+    <string name="move_vault_success_title">Сховище успішно переміщено</string>
+    <string name="move_vault_success_body">Файл сховища переміщено, а запис у базі даних оновлено.</string>
+    <string name="move_vault_failure_title">Переміщення не вдалося</string>
+    <string name="move_vault_retry">Повторити</string>
+
+</resources>

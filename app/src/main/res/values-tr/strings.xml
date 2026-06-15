@@ -1,0 +1,687 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Arcanum</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_containers">Kasalar</string>
+    <string name="nav_gallery">Galeri</string>
+    <string name="nav_files">Dosyalar</string>
+    <string name="nav_settings">Ayarlar</string>
+    <string name="nav_info">Bilgi</string>
+    <string name="nav_vault_fallback_name">Kasa</string>
+    <string name="nav_gallery_search_placeholder">Medya ara…</string>
+    <string name="nav_gallery_cd_close_search">Aramayı kapat</string>
+    <string name="nav_gallery_cd_search">Ara</string>
+    <string name="nav_gallery_cd_rescan">Kasayı yeniden tara</string>
+
+    <!-- Unmount animation -->
+    <string name="unmount_vault_unmounted">Kasa Bağlantısı Kesildi</string>
+    <string name="unmount_data_protected">Verileriniz korunuyor</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_next">İleri</string>
+    <string name="onboarding_get_started">Başlayın</string>
+
+    <string name="onboarding_welcome_title">Arcanum\'a Hoş Geldiniz</string>
+    <string name="onboarding_welcome_desc">Hesap makinesi görünümüne sahip güvenli bir şifreli kasa yöneticisi.</string>
+
+    <string name="onboarding_secure_title">Askeri Düzeyde Şifreleme</string>
+    <string name="onboarding_secure_desc">VeraCrypt uyumlu kasalar, dosyalarınızı AES, Twofish ve Serpent şifrelemesiyle korur.</string>
+
+    <string name="onboarding_calculator_title">Hesap Makinesi Arkasında Gizli</string>
+    <string name="onboarding_calculator_desc">Arcanum, dışarıdan bakıldığında sıradan bir hesap makinesi uygulaması gibi görünür. Yalnızca gizli PIN\'iniz kilidi açar.</string>
+
+    <string name="onboarding_gallery_title">Güzel Medya Galerisi</string>
+    <string name="onboarding_gallery_desc">Fotoğraflarınızı ve videolarınızı şifreli kasaların içinde özel olarak, iz bırakmadan görüntüleyin.</string>
+
+    <string name="onboarding_privacy_title">Panik Modu Hazır</string>
+    <string name="onboarding_privacy_desc">Panik PIN\'inizi girerek Arcanum\'un tüm izlerini cihazınızdan anında silin.</string>
+
+    <!-- Vault creation foreground service notification -->
+    <string name="notif_channel_vault_creation">Kasa Oluşturma</string>
+    <string name="notif_channel_vault_creation_desc">Şifreli kasa oluşturulurken ilerlemeyi gösterir</string>
+    <string name="notif_creating_vault">Kasa oluşturuluyor…</string>
+    <string name="notif_creation_progress">%1$d%% tamamlandı</string>
+
+    <!-- In-app notification banners -->
+    <string name="notif_vault_mounted">Kasa başarıyla bağlandı</string>
+    <string name="notif_vault_unmounted">Kasa bağlantısı kesildi</string>
+    <string name="notif_vault_error">Kasa açılamadı</string>
+    <string name="notif_export_success">Dosya başarıyla dışa aktarıldı</string>
+    <string name="notif_vault_added">Kasa eklendi</string>
+    <string name="notif_vault_added_subtitle">%1$s\'i açmak için dokunun</string>
+    <string name="notif_vault_already_exists">Zaten listenizde var</string>
+    <string name="notif_vault_invalid_file">Geçersiz kasa dosyası</string>
+    <string name="notif_vault_invalid_file_subtitle">Dosya çok küçük veya sektörle hizalanmamış</string>
+    <string name="notif_vault_add_error">Kasa eklenemedi</string>
+    <string name="notif_date_updated">Tarih güncellendi</string>
+    <string name="notif_date_updated_subtitle">EXIF ve zaman çizelgesi güncellendi</string>
+    <string name="notif_file_renamed">Dosya yeniden adlandırıldı</string>
+    <string name="notif_files_pasted_subtitle">İşlem tamamlandı</string>
+    <string name="notif_files_moved_subtitle">→ %1$s</string>
+    <string name="notif_files_deleted_subtitle">Kalıcı olarak silindi</string>
+    <string name="notif_folder_created">Klasör oluşturuldu</string>
+    <string name="notif_files_imported_subtitle">Şifrelendi ve kasada saklandı</string>
+    <string name="notif_files_exported_subtitle">Seçilen klasöre kaydedildi</string>
+    <string name="notif_support_developer">Arcanum\'dan memnun musunuz?</string>
+    <string name="notif_support_developer_subtitle">Geliştirmeyi desteklemeyi düşünün</string>
+
+    <plurals name="notif_items_copied">
+        <item quantity="one">%1$d öğe kopyalandı</item>
+        <item quantity="other">%1$d öğe kopyalandı</item>
+    </plurals>
+    <plurals name="notif_items_moved">
+        <item quantity="one">%1$d öğe taşındı</item>
+        <item quantity="other">%1$d öğe taşındı</item>
+    </plurals>
+    <plurals name="notif_items_deleted">
+        <item quantity="one">%1$d öğe silindi</item>
+        <item quantity="other">%1$d öğe silindi</item>
+    </plurals>
+    <plurals name="notif_files_imported">
+        <item quantity="one">%1$d dosya içe aktarıldı</item>
+        <item quantity="other">%1$d dosya içe aktarıldı</item>
+    </plurals>
+    <plurals name="notif_files_exported">
+        <item quantity="one">%1$d dosya dışa aktarıldı</item>
+        <item quantity="other">%1$d dosya dışa aktarıldı</item>
+    </plurals>
+
+    <!-- Common / shared -->
+    <string name="common_cancel">İptal</string>
+    <string name="common_done">Tamam</string>
+    <string name="common_save">Kaydet</string>
+    <string name="common_back">Geri</string>
+    <string name="common_delete">Sil</string>
+    <string name="common_rename">Yeniden Adlandır</string>
+    <string name="common_ok">Tamam</string>
+    <string name="common_close">Kapat</string>
+    <string name="common_copy">Kopyala</string>
+    <string name="common_move">Taşı</string>
+    <string name="common_export">Dışa Aktar</string>
+    <string name="common_search">Ara</string>
+    <string name="common_info">Bilgi</string>
+    <string name="common_edit">Düzenle</string>
+    <string name="common_password">Parola</string>
+    <string name="common_cipher">Şifreleme</string>
+    <string name="common_hash_algorithm">Hash Algoritması</string>
+    <string name="common_mb">MB</string>
+    <string name="common_gb">GB</string>
+    <string name="common_this_cannot_be_undone">Bu işlem geri alınamaz.</string>
+    <string name="common_open_vault">Kasayı Aç</string>
+    <string name="common_pro">Pro</string>
+    <string name="common_continue">Devam Et</string>
+    <string name="common_confirm">Onayla</string>
+    <string name="common_coming_soon">Yakında</string>
+
+    <!-- PIN screens (shared) -->
+    <string name="pin_mismatch">PIN\'ler eşleşmiyor</string>
+
+    <!-- Setup PIN -->
+    <string name="setup_pin_title">PIN\'inizi ayarlayın</string>
+    <string name="setup_pin_confirm_title">PIN\'inizi onaylayın</string>
+    <string name="setup_pin_success_title">PIN Oluşturuldu!</string>
+    <string name="setup_pin_success_desc">Arcanum\'u açmak için hesap makinesini açın ve PIN\'inizi sayı tuşlarıyla girin. Ardından = tuşunu 2 saniye basılı tutun.</string>
+
+    <!-- Change PIN -->
+    <string name="change_pin_wrong">Yanlış PIN</string>
+    <string name="change_pin_enter_current">Mevcut PIN\'i girin</string>
+    <string name="change_pin_enter_new">Yeni PIN girin</string>
+    <string name="change_pin_confirm_new">Yeni PIN\'i onaylayın</string>
+    <string name="change_pin_hint">4–12 rakam</string>
+    <string name="change_pin_success_title">PIN Değiştirildi!</string>
+    <string name="change_pin_success_desc">Yeni PIN\'iniz aktif</string>
+
+    <!-- Gallery screen -->
+    <string name="gallery_title">Galeri</string>
+    <string name="gallery_search_placeholder">Medya ara…</string>
+    <string name="gallery_search_open">Ara</string>
+    <string name="gallery_search_close">Aramayı kapat</string>
+    <string name="gallery_scan">Kasayı tara</string>
+    <string name="gallery_empty_title">Medya bulunamadı</string>
+    <string name="gallery_empty_subtitle">Bu kasa fotoğraf veya video içermiyor</string>
+    <string name="gallery_scanning">Kasa taranıyor…</string>
+    <string name="gallery_scan_found">%1$d bulundu</string>
+    <string name="gallery_preload_preparing">Küçük resimler hazırlanıyor…</string>
+    <string name="gallery_preload_progress">%1$d / %2$d</string>
+    <string name="gallery_filter_all">Tümü</string>
+    <string name="gallery_filter_photos">Fotoğraflar</string>
+    <string name="gallery_filter_videos">Videolar</string>
+    <string name="gallery_cd_video">Video</string>
+
+    <!-- Media viewer screen -->
+    <string name="viewer_cd_back">Geri</string>
+    <string name="viewer_cd_more_options">Daha fazla seçenek</string>
+    <string name="viewer_action_remove_favorite">Favorilerden Kaldır</string>
+    <string name="viewer_action_add_favorite">Favorilere Ekle</string>
+    <string name="viewer_action_export">Dışa Aktar</string>
+    <string name="viewer_action_delete">Sil</string>
+    <string name="viewer_action_details">Ayrıntılar</string>
+    <string name="viewer_action_favorite">Favori</string>
+    <string name="viewer_sheet_info_title">Ayrıntılar</string>
+    <string name="viewer_description_placeholder">Açıklama ekle…</string>
+    <string name="viewer_edit_date_title">Tarih &amp; Saati Düzenle</string>
+    <string name="viewer_edit_date_warning">⚠ Bu işlem dosyanın içindeki EXIF verilerini güncelleyecek ve zaman çizelgesinde konumunu değiştirecek.</string>
+    <string name="viewer_exif_title">EXIF Verileri</string>
+    <string name="viewer_exif_empty">Bu dosya için EXIF verisi mevcut değil.</string>
+    <string name="viewer_exif_maps_hint">Haritada açmak için dokunun</string>
+    <string name="viewer_exif_section">EXIF</string>
+    <string name="viewer_exif_view_all">Tüm EXIF verilerini görüntüle</string>
+    <string name="viewer_cd_edit">Düzenle</string>
+    <string name="viewer_rename_title">Dosyayı Yeniden Adlandır</string>
+    <string name="viewer_rename_label">Dosya adı</string>
+    <string name="viewer_rename_error_empty">Ad boş olamaz</string>
+    <string name="viewer_rename_error_invalid">Ad geçersiz karakterler içeriyor</string>
+    <string name="viewer_rename_ext_hint">.%1$s uzantısı otomatik eklenecek</string>
+    <string name="viewer_rename_confirm">Yeniden Adlandır</string>
+    <string name="viewer_delete_title">%1$s silinsin mi?</string>
+    <string name="viewer_gps_title">GPS Koordinatlarını Düzenle</string>
+    <string name="viewer_gps_latitude">Enlem (−90 ile 90)</string>
+    <string name="viewer_gps_longitude">Boylam (−180 ile 180)</string>
+    <string name="viewer_seek_back">−10s</string>
+    <string name="viewer_seek_forward">+10s</string>
+    <string name="viewer_cd_pause">Duraklat</string>
+    <string name="viewer_cd_play">Oynat</string>
+
+    <!-- File manager screen -->
+    <string name="files_title">Dosyalar</string>
+    <string name="files_search_placeholder">Dosya ara…</string>
+    <string name="files_search_close">Aramayı kapat</string>
+    <string name="files_search_open">Ara</string>
+    <string name="files_cd_more">Daha fazla</string>
+    <string name="files_cd_cancel_selection">Seçimi iptal et</string>
+    <string name="files_cd_select_all">Tümünü seç</string>
+    <string name="files_selection_count">%1$d seçildi</string>
+    <string name="files_hide_hidden">Gizli dosyaları gizle</string>
+    <string name="files_show_hidden">Gizli dosyaları göster</string>
+    <string name="files_sort_by">Sırala…</string>
+    <string name="files_grid_view">Izgara görünümü</string>
+    <string name="files_list_view">Liste görünümü</string>
+    <string name="files_empty_no_results_title">Sonuç bulunamadı</string>
+    <string name="files_empty_folder_title">Boş klasör</string>
+    <string name="files_empty_no_results_subtitle">Farklı bir arama terimi deneyin</string>
+    <string name="files_empty_folder_subtitle">Dosya içe aktarmak veya klasör oluşturmak için + tuşuna dokunun</string>
+    <string name="files_error_cannot_browse">Dosyalara göz atılamıyor</string>
+    <string name="files_type_folder">Klasör</string>
+    <string name="files_action_rename">Yeniden Adlandır</string>
+    <string name="files_action_properties">Özellikler</string>
+    <string name="files_cd_close_fab">Kapat</string>
+    <string name="files_cd_file_actions_fab">Dosya işlemleri</string>
+    <string name="files_action_import">Dosya içe aktar</string>
+    <string name="files_action_new_folder">Yeni klasör</string>
+    <string name="files_action_copy">Kopyala</string>
+    <string name="files_action_move">Taşı</string>
+    <string name="files_action_export">Dışa Aktar</string>
+    <string name="files_action_delete">Sil</string>
+    <string name="files_new_folder_title">Yeni Klasör</string>
+    <string name="files_new_folder_label">Klasör adı</string>
+    <string name="files_new_folder_create">Oluştur</string>
+    <string name="files_rename_title">Yeniden Adlandır</string>
+    <string name="files_rename_label">Yeni ad</string>
+    <string name="files_delete_title_single">Bu öğe silinsin mi?</string>
+    <string name="files_delete_confirm">Sil</string>
+    <string name="files_props_name">Ad</string>
+    <string name="files_props_type">Tür</string>
+    <string name="files_props_size">Boyut</string>
+    <string name="files_props_location">Konum</string>
+    <string name="files_props_modified">Değiştirilme</string>
+    <string name="files_props_type_folder">Klasör</string>
+    <string name="files_type_image">Görüntü</string>
+    <string name="files_type_video">Video</string>
+    <string name="files_type_audio">Ses</string>
+    <string name="files_type_pdf">PDF Belgesi</string>
+    <string name="files_type_word">Word Belgesi</string>
+    <string name="files_type_spreadsheet">Elektronik Tablo</string>
+    <string name="files_type_presentation">Sunum</string>
+    <string name="files_type_text">Metin Dosyası</string>
+    <string name="files_type_archive">Arşiv</string>
+    <string name="files_type_apk">Android Paketi</string>
+    <string name="files_type_file">Dosya</string>
+    <string name="files_open_with_body">Bu dosyayı açmak için geçici şifresi çözülmüş bir kopya oluşturulacak. Arcanum\'a döndüğünüzde otomatik olarak silinecek.</string>
+    <string name="files_open_with_cancel">İptal</string>
+    <string name="files_open_with_confirm">Uygulamayla aç</string>
+    <string name="files_sort_title">Sırala</string>
+    <string name="files_sort_name">Ad</string>
+    <string name="files_sort_date">Tarih</string>
+    <string name="files_sort_size">Boyut</string>
+    <string name="files_sort_type">Tür</string>
+    <string name="files_sort_cd_ascending">Artan</string>
+    <string name="files_sort_cd_descending">Azalan</string>
+    <string name="files_sort_folders_first">Klasörler önce</string>
+    <string name="files_cd_root">Kök</string>
+    <string name="files_no_mounted_vaults">Bağlı kasa yok</string>
+    <string name="files_this_vault">Bu kasa</string>
+    <string name="files_cd_back_to_vaults">Kasalara geri dön</string>
+    <string name="files_move_to_title">Taşı…</string>
+    <string name="files_copy_to_title">Kopyala…</string>
+    <string name="files_move_here">Buraya taşı</string>
+    <string name="files_copy_here">Buraya kopyala</string>
+
+    <plurals name="files_paste_clipboard">
+        <item quantity="one">Yapıştır (%1$d öğe)</item>
+        <item quantity="other">Yapıştır (%1$d öğe)</item>
+    </plurals>
+    <plurals name="files_delete_count">
+        <item quantity="one">%1$d öğe silinsin mi?</item>
+        <item quantity="other">%1$d öğe silinsin mi?</item>
+    </plurals>
+
+    <!-- Audio player screen -->
+    <string name="audio_now_playing">Şu An Çalıyor</string>
+    <string name="audio_loading">Yükleniyor…</string>
+    <string name="audio_cd_shuffle">Karıştır</string>
+    <string name="audio_cd_repeat">Tekrarla</string>
+    <string name="audio_cd_repeat_all">Tümünü Tekrarla</string>
+    <string name="audio_cd_repeat_one">1\'i Tekrarla</string>
+    <string name="audio_cd_previous">Önceki</string>
+    <string name="audio_cd_pause">Duraklat</string>
+    <string name="audio_cd_play">Oynat</string>
+    <string name="audio_cd_next">Sonraki</string>
+    <string name="audio_cd_album_art">Albüm kapağı</string>
+    <string name="audio_cd_more">Daha fazla</string>
+
+    <!-- Vault screen -->
+    <string name="vault_title">Arcanum</string>
+    <string name="vault_cd_sort_group">Sırala &amp; grupla</string>
+    <string name="vault_cd_settings">Ayarlar</string>
+    <string name="vault_cd_exit_selection">Seçimden çık</string>
+    <string name="vault_selection_count">%1$d seçildi</string>
+    <string name="vault_select_all">Tümünü seç</string>
+    <string name="vault_cd_delete_selected">Seçilenleri sil</string>
+    <string name="vault_empty_title">Henüz kasa yok</string>
+    <string name="vault_empty_subtitle">Mevcut bir VeraCrypt kapsayıcısı oluşturun veya açın</string>
+    <string name="vault_storage_app">Uygulama Depolama</string>
+    <string name="vault_storage_local">Yerel Depolama</string>
+    <string name="vault_cd_close_fab">Kapat</string>
+    <string name="vault_cd_new_vault_fab">Yeni kasa</string>
+    <string name="vault_fab_open_existing">Mevcut kasayı aç</string>
+    <string name="vault_fab_create_new">Yeni kasa oluştur</string>
+    <string name="vault_unmount_title">\"%1$s\" bağlantısı kesilsin mi?</string>
+    <string name="vault_unmount_body">Parolayı tekrar girene kadar kasa kilitli kalacak.</string>
+    <string name="vault_unmount_confirm">Bağlantıyı Kes</string>
+    <string name="vault_remove_title">\"%1$s\" kaldırılsın mı?</string>
+    <string name="vault_remove_body">Kasa listeden kaldırılacak. Diskteki kapsayıcı dosyası silinmeyecek.</string>
+    <string name="vault_remove_confirm">Kaldır</string>
+    <string name="vault_delete_title">\"%1$s\" silinsin mi?</string>
+    <string name="vault_delete_body">Kapsayıcı dosyası ve içindeki tüm şifreli veriler kalıcı olarak silinecek. Bu işlem geri alınamaz.</string>
+    <string name="vault_delete_confirm">Sil</string>
+    <string name="vault_lock_title">Arcanum kilitlensin mi?</string>
+    <string name="vault_lock_body">Tekrar açmak için PIN\'inizi girmeniz gerekecek.</string>
+    <string name="vault_lock_confirm">Kilitle</string>
+    <string name="vault_config_unmount_on_lock">Kilit ekranında bağlantıyı kes</string>
+    <string name="vault_config_unmount_on_lock_desc">Cihaz ekranı kilitlendiğinde bağlantıyı kes</string>
+    <string name="vault_config_unmount_on_background">Arka plana geçince bağlantıyı kes</string>
+    <string name="vault_config_unmount_on_background_desc">Uygulama arka plana gönderildiğinde bağlantıyı kes</string>
+    <string name="vault_config_move_to_app">Uygulama Depolamaya Taşı</string>
+    <string name="vault_config_move_to_app_desc">Kasayı uygulamaya özel dizinde sakla</string>
+    <string name="vault_config_unmount_to_move">Taşımadan önce kasanın bağlantısını kesin</string>
+    <string name="vault_config_move_to_internal">Dahili Depolamaya Taşı</string>
+    <string name="vault_config_move_to_internal_desc">Kasayı paylaşılan bir depolama klasörüne taşı</string>
+    <string name="vault_sort_title">Sırala &amp; Grupla</string>
+    <string name="vault_sort_name">Ad</string>
+    <string name="vault_sort_size">Boyut</string>
+    <string name="vault_sort_last_opened">Son açılma</string>
+    <string name="vault_sort_group_by">Gruplandır</string>
+    <string name="vault_sort_group_none">Yok</string>
+    <string name="vault_sort_group_location">Konuma göre</string>
+    <string name="vault_sort_biometric_first">Biyometrik kasalar önce</string>
+    <string name="vault_sort_biometric_first_desc">Biyometrik kilit açma özellikli kasaları en üste sabitle</string>
+    <string name="vault_sort_cd_ascending">Artan</string>
+    <string name="vault_sort_cd_descending">Azalan</string>
+    <string name="vault_mount_wrong_password">Yanlış parola veya PIM</string>
+    <string name="vault_mount_algorithm">Algoritma</string>
+    <string name="vault_mount_hash">Hash</string>
+    <string name="vault_mount_biometric_toggle">Biyometrik kilit açma</string>
+    <string name="vault_mount_advanced">Gelişmiş</string>
+    <string name="vault_mount_pim_label">PIM (isteğe bağlı)</string>
+    <string name="vault_mount_pim_placeholder">Ayarlanmadıysa boş bırakın</string>
+    <string name="vault_mount_add_keyfile">Anahtar Dosyası Ekle (isteğe bağlı)</string>
+    <string name="vault_mount_protect_hidden">Gizli birimi koru</string>
+    <string name="vault_mount_protect_hidden_desc">Dış birim yazma işlemlerinin gizli alana ulaşmasını önler</string>
+    <string name="vault_mount_hidden_password">Gizli Birim Parolası</string>
+    <string name="vault_biometric_unlock_title">%1$s\'i Aç</string>
+    <string name="vault_biometric_unlock_subtitle">Kasayı açmak için kimliğinizi doğrulayın</string>
+    <string name="vault_biometric_use_password">Parolayı kullan</string>
+    <string name="vault_biometric_save_title">Biyometrik kilit açma için kaydet</string>
+    <string name="vault_biometric_save_subtitle">Kasa kimlik bilgilerini kaydetmek için kimliğinizi doğrulayın</string>
+    <string name="vault_biometric_skip">Atla</string>
+    <string name="vault_biometric_indicator">Açmak için parmak izi sensörüne dokunun</string>
+    <string name="vault_biometric_failed">Biyometrik doğrulama başarısız</string>
+    <string name="vault_biometric_try_again">Tekrar Dene</string>
+    <string name="vault_biometric_unlock_confirm">Aç</string>
+    <string name="vault_remove_biometric_title">Biyometrik kaldırılsın mı?</string>
+    <string name="vault_remove_biometric_body">\"%1$s\"\'i açmak için parolanızı manuel olarak girmeniz gerekecek.</string>
+    <string name="vault_menu_select">Seç</string>
+    <string name="vault_menu_config">Yapılandır</string>
+    <string name="vault_menu_remove">Listeden kaldır</string>
+    <string name="vault_menu_delete">Sil</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Ayarlar</string>
+    <string name="settings_cd_back">Geri</string>
+    <string name="settings_card_security">Güvenlik</string>
+    <string name="settings_card_security_desc">PIN, biyometrik, otomatik kilitleme</string>
+    <string name="settings_card_panic">Panik Modu</string>
+    <string name="settings_card_panic_desc">Zorlama parolası, veri silme</string>
+    <string name="settings_card_appearance">Görünüm</string>
+    <string name="settings_card_appearance_desc">Tema, renkler, AMOLED</string>
+    <string name="settings_card_about">Hakkında</string>
+    <string name="settings_card_about_desc">Sürüm, lisanslar, GitHub</string>
+    <string name="settings_card_premium">Premium</string>
+    <string name="settings_card_premium_desc">Tüm özelliklerin kilidini açın</string>
+    <string name="settings_card_debug">Hata Ayıklama</string>
+    <string name="settings_card_debug_desc">Günlükler ve geliştirici araçları</string>
+    <string name="settings_security_title">Güvenlik</string>
+    <string name="settings_security_change_pin">PIN\'i Değiştir</string>
+    <string name="settings_security_auto_lock">Otomatik kilitleme</string>
+    <string name="settings_security_auto_lock_desc">Uygulama arka plana geçtiğinde kilitle</string>
+    <string name="settings_security_screen_capture">Ekran Yakalama Koruması</string>
+    <string name="settings_security_screen_capture_desc">Diğer uygulamaların ekranı kaydetmesini engeller</string>
+    <string name="settings_security_screenshot_warn_title">Ekran Koruması Devre Dışı Bırakılsın mı?</string>
+    <string name="settings_security_screenshot_warn_body">Ekran koruması olmadan, «diğer uygulamaların üzerinde göster» iznine sahip herhangi bir uygulama veya ekran kaydedici, şifreler ve özel dosyalar dahil Arcanum\'da görüntülenen içerikleri yakalayabilir.\n\nBunu yalnızca ortamınıza tamamen güveniyorsanız devre dışı bırakın.</string>
+    <string name="settings_security_screenshot_warn_disable">%1$d saniye sonra devre dışı…</string>
+    <string name="settings_security_screenshot_warn_disable_ready">Devre Dışı Bırak</string>
+    <string name="settings_security_screenshot_auth_title">İşlemi Onayla</string>
+    <string name="settings_security_screenshot_auth_subtitle">Ekran korumasını devre dışı bırakmak için kimlik doğrulayın</string>
+    <string name="settings_security_screenshot_pin_label">Arcanum PIN</string>
+    <string name="settings_security_screenshot_pin_error">Yanlış PIN. Tekrar deneyin.</string>
+    <string name="settings_panic_title">Panik Modu</string>
+    <string name="settings_panic_switch_title">Panik Modu</string>
+    <string name="settings_panic_switch_desc">Panik PIN\'i girilince seçili veriler sessizce silinir</string>
+    <string name="settings_panic_setup_hint">Panik PIN\'i ayarlamak için dokunun</string>
+    <string name="settings_panic_pin_section">PANİK PIN</string>
+    <string name="settings_panic_change_pin">Panik PIN\'i Değiştir</string>
+    <string name="settings_panic_wipe_section">NELERİ SİL</string>
+    <string name="settings_panic_full_wipe">Tam silme</string>
+    <string name="settings_panic_full_wipe_desc">Tüm kasaları sil ve uygulamayı fabrika ayarlarına sıfırla</string>
+    <string name="settings_panic_clear_settings">Ayarları temizle</string>
+    <string name="settings_panic_clear_history">Hesap makinesi geçmişini temizle</string>
+    <string name="settings_panic_disable_biometric">Biyometriği devre dışı bırak</string>
+    <string name="settings_panic_disable_biometric_desc">Tüm kasalardaki biyometrik erişimi kaldır</string>
+    <string name="settings_panic_vaults_section">KASALAR</string>
+    <string name="settings_panic_warning">Silinen veriler kurtarılamaz. Önce bir sahte kasayla test edin.</string>
+    <string name="settings_panic_disable_title">Panik Modu Devre Dışı Bırakılsın mı?</string>
+    <string name="settings_panic_disable_body">Panik PIN\'iniz ve tüm silme ayarlarınız kalıcı olarak silinecek.</string>
+    <string name="settings_panic_disable_confirm">Devre Dışı Bırak</string>
+    <string name="settings_panic_vault_delete">Sil</string>
+    <string name="settings_panic_vault_forget">Unut</string>
+    <string name="settings_panic_vault_keep">Tut</string>
+    <string name="settings_appearance_title">Görünüm</string>
+    <string name="settings_appearance_theme_section">TEMA MODU</string>
+    <string name="settings_appearance_language_section">DİL</string>
+    <string name="settings_appearance_language">Uygulama Dili</string>
+    <string name="settings_appearance_language_system">Sistem varsayılanı</string>
+    <string name="settings_appearance_theme_system">Sistem</string>
+    <string name="settings_appearance_theme_light">Açık</string>
+    <string name="settings_appearance_theme_dark">Koyu</string>
+    <string name="settings_appearance_display_section">EKRAN</string>
+    <string name="settings_appearance_amoled">AMOLED Cam</string>
+    <string name="settings_appearance_amoled_desc">Saf siyah arka planlar ve buzlu cam efekti</string>
+    <string name="settings_appearance_dynamic_colors">Dinamik renkler</string>
+    <string name="settings_appearance_dynamic_colors_desc">Duvar kağıdından türetilen renkler (Android 12+)</string>
+    <string name="settings_appearance_dynamic_colors_unavailable">Dinamik renkler Android 12 veya üzerini gerektirir.</string>
+    <string name="settings_about_title">Hakkında</string>
+    <string name="settings_about_app_desc">Android için VeraCrypt uyumlu şifreli kasa yöneticisi</string>
+    <string name="settings_about_licenses">Açık kaynak lisansları</string>
+    <string name="settings_about_connect_section">Bağlantı</string>
+    <string name="settings_about_source_code">Kaynak kodu</string>
+    <string name="settings_about_source_code_desc">GitHub\'da görüntüle</string>
+    <string name="settings_about_website">Web sitesi</string>
+    <string name="settings_about_website_desc">arcanum.zip</string>
+    <string name="settings_about_privacy">Gizlilik Politikası</string>
+    <string name="settings_about_bug_report">Hata bildir</string>
+    <string name="settings_about_bug_report_desc">GitHub\'da sorun aç</string>
+    <string name="settings_premium_title">Arcanum Pro</string>
+    <string name="settings_premium_upgrade">Yükselt</string>
+    <string name="settings_debug_title">Hata Ayıklama</string>
+    <string name="settings_debug_cd_copy_all">Tümünü kopyala</string>
+    <string name="settings_debug_cd_refresh">Yenile</string>
+    <string name="settings_debug_mode">Hata ayıklama modu</string>
+    <string name="settings_debug_mode_desc">Geliştirici araçlarını etkinleştir</string>
+    <string name="settings_debug_section_runtime">ÇALIŞMA ZAMANI</string>
+    <string name="settings_debug_section_mounted">BAĞLI KAPSAYICILAR</string>
+    <string name="settings_debug_section_device">CİHAZ GÜVENLİĞİ</string>
+    <string name="settings_debug_section_database">VERİTABANI</string>
+    <string name="settings_debug_section_tools">ARAÇLAR</string>
+    <string name="settings_debug_no_containers">Bağlı kapsayıcı yok</string>
+    <string name="settings_debug_dry_run_panic">Panik Kuru Çalıştırma</string>
+    <string name="settings_debug_warning_title">Hassas Bilgiler</string>
+    <string name="settings_debug_warning_body">Hata ayıklama modu, şifreli tanıtıcıları, anahtar deposu türünü, kapsayıcı yollarını ve diğer hassas verileri ifşa eder. Cihazınızda ekran kilidi yok; fiziksel erişimi olan herkes bu modu etkinleştirebilir.</string>
+    <string name="settings_debug_warning_confirm">Anlıyorum, etkinleştir</string>
+    <string name="settings_debug_cd_info">Bilgi</string>
+
+    <!-- Set panic PIN screen -->
+    <string name="panic_pin_title">Panik PIN\'i Ayarla</string>
+    <string name="panic_pin_confirm_title">Panik PIN\'i Onayla</string>
+    <string name="panic_pin_success_title">Panik PIN\'i Ayarlandı</string>
+    <string name="panic_pin_success_desc">Panik Modu artık aktif. Sessiz silmeyi tetiklemek için hesap makinesine Panik PIN\'i girin.</string>
+    <string name="panic_pin_success_warning">Panik PIN\'inizi ana PIN\'inizle karıştırmayın.\n\nPanik PIN\'i girildiğinde yapılandırılmış verilerinizin silinmesi hemen başlar — bu işlem geri alınamaz.</string>
+    <string name="panic_pin_success_confirm">Anlıyorum</string>
+    <string name="panic_pin_hint">4–12 rakam. Ana PIN\'inizden farklı olmalı.</string>
+    <string name="panic_pin_btn_continue">Devam Et</string>
+    <string name="panic_pin_btn_confirm">Onayla</string>
+    <string name="panic_pin_cd_backspace">Sil</string>
+
+    <!-- Create container screen (wizard shell) -->
+    <string name="create_title">Kasa Oluştur</string>
+    <string name="create_step_counter">Adım %1$d/%2$d</string>
+    <string name="create_btn_outer">Dış Kasayı Oluştur</string>
+    <string name="create_btn_hidden">Gizli Birim Oluştur</string>
+    <string name="create_btn_next">İleri</string>
+    <string name="create_cancel">İptal</string>
+    <string name="create_cancel_dialog_title">Oluşturma iptal edilsin mi?</string>
+    <string name="create_cancel_dialog_body">Tamamlanmamış dosya silinecek.</string>
+    <string name="create_cancel_dialog_confirm">Oluşturmayı iptal et</string>
+    <string name="create_cancel_dialog_keep">Devam et</string>
+    <string name="create_cd_back">Geri</string>
+
+    <!-- Create container steps 1–4 -->
+    <string name="create_step1_title">Birim Türünü Seçin</string>
+    <string name="create_volume_standard">Standart Birim</string>
+    <string name="create_volume_standard_desc">Tek bir parola ile korunan normal şifreli kasa.</string>
+    <string name="create_volume_hidden">Gizli Birim</string>
+    <string name="create_volume_hidden_desc">İki parola, iki veri kümesi. Zorlamalara karşı makul inkâr edilebilirlik.</string>
+    <string name="create_step2_title">Konum Seçin</string>
+    <string name="create_location_app">Uygulama Depolama</string>
+    <string name="create_location_app_desc">Uygulama içindeki özel depolama. Ek izin gerekmez.</string>
+    <string name="create_location_internal">Dahili Depolama</string>
+    <string name="create_location_internal_desc">Cihaz depolama alanındaki kullanıcı erişilebilir klasöre kaydet.</string>
+    <string name="create_location_no_folder">Klasör seçilmedi</string>
+    <string name="create_location_browse">Gözat</string>
+    <string name="create_location_permission_title">Depolama izni gerekli</string>
+    <string name="create_location_permission_desc">Uygulamanın özel klasörü dışında kasa oluşturabilmesi için \"Tüm dosyalara erişim\" izni verin.</string>
+    <string name="create_location_permission_open_settings">Ayarları Aç</string>
+    <string name="create_filename_label">Dosya adı</string>
+    <string name="create_filename_placeholder">vault.hc</string>
+    <string name="create_step3_title">Şifreleme Algoritması</string>
+    <string name="create_step3_subtitle">Tüm algoritmalar masaüstü VeraCrypt ile tam uyumludur</string>
+    <string name="create_step3_cipher">Şifreleme</string>
+    <string name="create_step3_hash">Hash Algoritması</string>
+    <string name="create_step4_title">Birim Boyutu</string>
+    <string name="create_size_label">Boyut</string>
+    <string name="create_size_custom">Özel</string>
+    <string name="create_size_available">Kullanılabilir: %1$.1f GB</string>
+    <string name="create_size_quick_est">⚡ Hızlı biçimlendirme: ~%1$s</string>
+    <string name="create_size_secure_est">🔒 Güvenli biçimlendirme: ~%1$s</string>
+    <string name="create_size_speed_fast">Hızlı</string>
+    <string name="create_size_speed_medium">Orta</string>
+    <string name="create_size_speed_slow">Yavaş</string>
+
+    <!-- Create container steps 5–7 -->
+    <string name="create_step5_outer_title">Dış Birim Parolasını Ayarlayın</string>
+    <string name="create_step5_subtitle">Güçlü bir parola kullanın. Unutursanız verileriniz kurtarılamaz.</string>
+    <string name="create_step5_outer_subtitle">Bu parola yem olarak kullanılan dış birimi açar. Gizli birim parolasını daha sonra ayarlayacaksınız.</string>
+    <string name="create_step5_outer_info">Bu, dış (yem) birim parolasıdır. Erişim sağlayan herkes dış birimi görür, gizli olanı değil.</string>
+    <string name="create_step5_title">Parola Ayarla</string>
+    <string name="create_pwd_label">Parola</string>
+    <string name="create_pwd_confirm_label">Parolayı Onayla</string>
+    <string name="create_pwd_mismatch">Parolalar eşleşmiyor</string>
+    <string name="create_pwd_strength_weak">Zayıf</string>
+    <string name="create_pwd_strength_fair">Orta</string>
+    <string name="create_pwd_strength_strong">Güçlü</string>
+    <string name="create_pwd_strength_very_strong">Çok Güçlü</string>
+    <string name="create_pwd_char_count">%1$d karakter</string>
+    <string name="create_keyfile_hide">Anahtar Dosyalarını Gizle</string>
+    <string name="create_keyfile_add">Anahtar Dosyaları Ekle (isteğe bağlı)</string>
+    <string name="create_keyfile_safe_warning">Bu dosyaları güvende tutun — kasayı açmak için gereklidir</string>
+    <string name="create_keyfile_add_item">Anahtar dosyası ekle…</string>
+    <string name="create_keyfile_cd_remove">Anahtar dosyasını kaldır</string>
+    <string name="create_keyfile_desc">Anahtar dosyası ikinci bir doğrulama faktörü ekler. Kasayı açmak için hem parola hem de tüm anahtar dosyaları gereklidir.</string>
+    <string name="create_pim_label">PIM (Kişisel İterasyon Çarpanı)</string>
+    <string name="create_pim_short_label">PIM</string>
+    <string name="create_pim_placeholder">Varsayılan için boş bırakın</string>
+    <string name="create_pim_status_default">Varsayılan güvenlik (önerilen)</string>
+    <string name="create_pim_status_below">Varsayılanın altında — güçlü bir parola kullanın</string>
+    <string name="create_pim_status_similar">Varsayılana benzer</string>
+    <string name="create_pim_status_enhanced">Gelişmiş güvenlik, açılması daha yavaş</string>
+    <string name="create_pim_unlock_est">Tahmini açılma süresi: ~%1$d saniye</string>
+    <string name="create_pwd_warning">Parolanızı kurtarmanın yolu yoktur. Yazın ve güvende tutun.</string>
+    <string name="create_step6_title">Biçimlendirme Modu</string>
+    <string name="create_format_quick_title">Hızlı Biçimlendirme</string>
+    <string name="create_format_secure_title">Güvenli Biçimlendirme</string>
+    <string name="create_format_quick_desc">Herhangi bir boyut için ~%1$s · Daha az güvenli — gelişmiş adli analizde desenler tespit edilebilir. Çoğu kullanıcı için önerilir.</string>
+    <string name="create_format_secure_desc">~%1$s · Tüm birimi rastgele verilerle doldurur. Maksimum güvenlik, veri deseni yok. Hassas veriler için önerilir.</string>
+    <string name="create_format_est_text">Tahmini süre: ~%1$s</string>
+    <string name="create_step7_title">Dosya Sistemi</string>
+    <string name="create_fs_subtitle">Kasanın içindeki dosyaların nasıl düzenleneceğini seçin</string>
+    <string name="create_fs_recommended">Önerilen</string>
+    <string name="create_fs_coming_soon">Yakında</string>
+    <string name="create_fs_coming_soon_toast">Yakında</string>
+    <string name="create_fs_got_it">Anladım</string>
+    <string name="create_fs_max_file_size">Maks. dosya boyutu: %1$s</string>
+    <string name="create_fs_os_read_only"> (yalnızca okunur)</string>
+    <string name="create_fs_info_cd">Bilgi</string>
+
+    <plurals name="create_keyfile_count">
+        <item quantity="one">%1$d anahtar dosyası eklendi</item>
+        <item quantity="other">%1$d anahtar dosyası eklendi</item>
+    </plurals>
+
+    <!-- Create container steps 8–9 -->
+    <string name="create_entropy_title">Parmağınızı Hareket Ettirin</string>
+    <string name="create_entropy_subtitle">Rastgele hareket, anahtarların kriptografik gücünü artırır</string>
+    <string name="create_entropy_done">Mükemmel! Kriptografik entropi toplandı ✓</string>
+    <string name="create_entropy_progress">Çubuk dolana kadar parmağınızı rastgele hareket ettirin (%1$d%%)</string>
+    <string name="create_done_title">Kasa Oluşturuldu!</string>
+
+    <!-- Create container steps 10–15 (hidden volume) -->
+    <string name="create_hidden_intro_title">Gizli Birim</string>
+    <string name="create_hidden_intro_body">Dış birminiz oluşturuldu. Şimdi içindeki gizli birimi ayarlayın.</string>
+    <string name="create_hidden_info_text">Gizli birim, dış birimin içinde bulunur. Dış parolayı girdiğinizde yalnızca dış veriler görünür. Gizli verileri görmek için gizli parolayı girin.</string>
+    <string name="create_hidden_warnings_title">Önemli uyarılar</string>
+    <string name="create_hidden_warnings_body">• Gizli birim için dış birimden farklı bir parola kullanın.\n• Gizli birim, dış birimin veri alanının sonunu kaplar.\n• Dış birime çok fazla büyük dosya yazmak gizli birimin üzerine yazabilir.</string>
+    <string name="create_hidden_outer_label">Dış birim: %1$s (%2$d MB)</string>
+    <string name="create_hidden_cipher_title">Gizli Birim Şifrelemesi</string>
+    <string name="create_hidden_cipher_subtitle">Gizli birim için şifreleme algoritmasını seçin</string>
+    <string name="create_hidden_size_title">Gizli Birim Boyutu</string>
+    <string name="create_hidden_size_constraints">Gizli birim %1$d MB ile %2$d MB arasında olmalı (dış: %3$d MB, dış veriler için 4 MB ayrıldı)</string>
+    <string name="create_hidden_size_min_error">Minimum boyut %1$d MB\'dir</string>
+    <string name="create_hidden_size_max_error">Maksimum boyut %1$d MB\'dir</string>
+    <string name="create_hidden_pwd_title">Gizli Birim Parolası</string>
+    <string name="create_hidden_pwd_subtitle">Dış birim parolanızdan farklı olmalı</string>
+    <string name="create_hidden_pwd_same_warning">Gizli ve dış parolalar aynıysa makul inkâr edilebilirlik ortadan kalkar.</string>
+    <string name="create_hidden_pwd_label">Gizli Parola</string>
+    <string name="create_hidden_pwd_confirm_label">Gizli Parolayı Onayla</string>
+    <string name="create_hidden_pwd_mismatch">Parolalar eşleşmiyor</string>
+    <string name="create_hidden_pim_label">PIM (isteğe bağlı)</string>
+    <string name="create_hidden_pim_hint">PIM, PBKDF2 iterasyonlarını kontrol eder. Varsayılan için boş bırakın.</string>
+    <string name="create_hidden_entropy_subtitle">Rastgele hareket, gizli birim anahtarlarının kriptografik gücünü artırır</string>
+    <string name="create_hidden_creating_title">Gizli Birim Oluşturuluyor</string>
+    <string name="create_hidden_creating_body">%1$d MB gizli alan biçimlendiriliyor…</string>
+    <string name="create_hidden_done_title">Gizli Birim Oluşturuldu!</string>
+    <string name="create_hidden_done_summary">Dış: %1$s · %2$d MB\nGizli: %3$s · %4$d MB</string>
+    <string name="create_hidden_important_title">Önemli</string>
+    <string name="create_hidden_done_warning_1">Gizli birim başarıyla oluşturuldu. Tüm talimatlara uyulduysa, dış birim bağlı olsa bile gizli birimin varlığını kanıtlamak imkânsız olmalıdır.</string>
+    <string name="create_hidden_done_warning_2">UYARI: Dış birimi bağlarken gizli birimi korumuyorsanız, dış birime dosya yazmayın — gizli birimin üzerine yazabilir ve hasar verebilirsiniz!</string>
+    <string name="create_hidden_done_warning_3">Gizli birimi korumak için dış birimi bağlarken \"Gizli birimi koru\" seçeneğini etkinleştirin ve gizli birim parolasını girin.</string>
+
+    <!-- Mounting overlay -->
+    <string name="mount_unlocking">Kasa açılıyor…</string>
+    <string name="mount_subtitle_1">Bu biraz sürebilir.\nLütfen uygulamayı kapatmayın.</string>
+    <string name="mount_subtitle_2">Neredeyse bitti — bazı kasalar biraz daha uzun sürebilir.</string>
+    <string name="mount_subtitle_3">Şifre çözme anahtarları türetiliyor — bu kasıtlı olarak yavaştır.</string>
+    <string name="mount_subtitle_4">Desteklenen tüm şifre algoritmaları test ediliyor…</string>
+    <string name="mount_subtitle_5">Neredeyse tamamlandı — kaba kuvvet koruması zaman alır.</string>
+    <string name="mount_error_title">İşlem başarısız</string>
+    <string name="mount_error_body">Bu aşağıdakilerden bir veya birkaçından kaynaklanıyor olabilir:</string>
+    <string name="mount_error_reason_password">Yanlış parola.</string>
+    <string name="mount_error_reason_pim">Yanlış Birim PIM numarası.</string>
+    <string name="mount_error_reason_prf">Yanlış PRF (hash).</string>
+    <string name="mount_error_reason_not_valid">Geçerli bir birim değil.</string>
+    <string name="mount_error_reason_old_algo">Birim, kaldırılmış eski bir algoritma kullanıyor.</string>
+
+    <!-- Vault info screen -->
+    <string name="vault_info_loading">Yükleniyor…</string>
+    <string name="vault_info_section_title">Kasa Bilgisi</string>
+    <string name="vault_info_label_name">Ad</string>
+    <string name="vault_info_label_volume_type">Birim Türü</string>
+    <string name="vault_info_type_hidden">Gizli</string>
+    <string name="vault_info_type_outer">Dış</string>
+    <string name="vault_info_type_standard">Standart</string>
+    <string name="vault_info_label_algorithm">Algoritma</string>
+    <string name="vault_info_label_prf">PKCS-5 PRF</string>
+    <string name="vault_info_label_filesystem">Dosya Sistemi</string>
+    <string name="vault_info_label_pim">PIM</string>
+    <string name="vault_info_pim_custom">Özel</string>
+    <string name="vault_info_pim_default">Varsayılan</string>
+    <string name="vault_info_label_size">Boyut</string>
+    <string name="vault_info_label_created">Oluşturulma</string>
+    <string name="vault_info_label_location">Konum</string>
+    <string name="vault_info_section_operations">İşlemler</string>
+    <string name="vault_info_op_change_password">Parolayı Değiştir</string>
+    <string name="vault_info_op_expand_volume">Birimi Genişlet</string>
+    <string name="vault_info_op_backup_header">Başlığı Yedekle</string>
+    <string name="vault_info_op_change_keyfile">Anahtar Dosyasını Değiştir</string>
+    <string name="vault_info_unmount_button">Kasanın Bağlantısını Kes</string>
+    <string name="vault_info_unmount_title">%1$s bağlantısı kesilsin mi?</string>
+    <string name="vault_info_unmount_body">Bağlantıyı kesmeden önce tüm dosyaların kaydedildiğinden emin olun.</string>
+    <string name="vault_info_fallback_name">vault</string>
+    <string name="vault_card_info_desc">Birim ayrıntılarını ve meta verileri görüntüle</string>
+    <string name="vault_card_change_password_desc">Şifreleme parolasını değiştir</string>
+    <string name="vault_card_expand_desc">Bu birimin boyutunu artır</string>
+    <string name="vault_card_backup_desc">Birim başlığının yedeğini kaydet</string>
+    <string name="vault_card_keyfile_desc">Bu birimin anahtar dosyasını güncelle</string>
+    <string name="vault_card_unmount_desc">Bu vault\'u kilitle ve bağlantıyı kes</string>
+
+    <!-- Mount success overlay -->
+    <string name="mount_vault_unlocked">Kasa Açıldı</string>
+    <string name="mount_indexing_vault">Kasa İndeksleniyor</string>
+    <string name="mount_scanning">Taranıyor…</string>
+
+    <plurals name="mount_media_files">
+        <item quantity="one">%1$d medya dosyası</item>
+        <item quantity="other">%1$d medya dosyası</item>
+    </plurals>
+
+    <!-- Move vault screen -->
+    <string name="move_vault_title_to_app">Uygulama Depolamaya Taşı</string>
+    <string name="move_vault_title_to_internal">Dahili Depolamaya Taşı</string>
+    <string name="move_vault_label_vault_size">Kasa boyutu</string>
+    <string name="move_vault_label_available">Hedefte kullanılabilir</string>
+    <string name="move_vault_not_enough_space">Yeterli boş alan yok. En az %1$s boşaltın ve tekrar deneyin.</string>
+    <string name="move_vault_section_what">Bu ne yapar</string>
+    <string name="move_vault_info_app_1">Dosyalar, diğer uygulamalara ve dosya yöneticilerine görünmez olan uygulamaya özel depolamada saklanır.</string>
+    <string name="move_vault_info_app_2">Yalnızca Arcanum onları okuyabilir, taşıyabilir veya silebilir.</string>
+    <string name="move_vault_info_app_3">Uygulama kaldırıldığında silinir (yedeklenmediği sürece).</string>
+    <string name="move_vault_info_int_1">Dosyalar, dosya yöneticilerinden erişilebilen paylaşımlı dahili depolamaya taşınır.</string>
+    <string name="move_vault_info_int_2">Dosyaları bir bilgisayara kopyalamak veya cihazlar arasında paylaşmak daha kolaydır.</string>
+    <string name="move_vault_info_int_3">Kaldırma işleminde silinmez.</string>
+    <string name="move_vault_section_before">Başlamadan önce</string>
+    <string name="move_vault_before_1">İşlem, büyük kapsayıcılar için birkaç dakika sürebilir.</string>
+    <string name="move_vault_before_2">Uygulamayı ön planda tutun ve ekranı kilitlemeyin.</string>
+    <string name="move_vault_backup_label">Android Yedeklemeye Dahil Et</string>
+    <string name="move_vault_backup_desc">Etkinleştirildiğinde Android, kasayı Google hesabınıza yedekleyebilir. Kasanın cihazı hiç terk etmemesini tercih ediyorsanız devre dışı bırakın.</string>
+    <string name="move_vault_section_dest_folder">Hedef klasör</string>
+    <string name="move_vault_choose_folder">Klasör seç</string>
+    <string name="move_vault_selected_folder">Seçilen klasör</string>
+    <string name="move_vault_default_folder">Varsayılan: Uygulama depolamasındaki Arcanum klasörü</string>
+    <string name="move_vault_start_move">Taşımayı Başlat</string>
+    <string name="move_vault_moving_title">Kasa taşınıyor…</string>
+    <string name="move_vault_moving_progress">%1$d%%  ·  %2$.1f / %3$.1f MB</string>
+    <string name="move_vault_moving_body">Lütfen uygulamayı açık tutun ve ekranınızı kilitlemeyin.</string>
+    <string name="move_vault_success_title">Kasa başarıyla taşındı</string>
+    <string name="move_vault_success_body">Kasa dosyası taşındı ve veritabanı kaydı güncellendi.</string>
+    <string name="move_vault_failure_title">Taşıma başarısız</string>
+    <string name="move_vault_retry">Tekrar Dene</string>
+
+</resources>

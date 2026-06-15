@@ -1,0 +1,247 @@
+package zip.arcanum.crypto
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class VeraCryptEngine @Inject constructor() {
+
+    // ── Progress callback interface ────────────────────────────────────
+    interface CreationProgressListener {
+        /** Called from a background thread during container creation. */
+        fun onProgress(progressFraction: Float, speedMbps: Float, bytesWritten: Long)
+    }
+
+    // ── High-level suspend API ─────────────────────────────────────────
+
+    suspend fun createContainer(
+        path: String,
+        sizeBytes: Long,
+        password: String,
+        algorithm: Int  = 0,
+        hashAlgorithm: Int = 0,
+        filesystem: Int = 0,
+        quickFormat: Boolean = true,
+        entropyBytes: ByteArray = ByteArray(0),
+        keyfilePaths: List<String> = emptyList(),
+        progressListener: CreationProgressListener? = null,
+        pim: Int = 0
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        val rc = nativeCreateContainer(
+            path, sizeBytes, password,
+            keyfilePaths.toTypedArray().ifEmpty { null },
+            algorithm, hashAlgorithm, filesystem, quickFormat, entropyBytes,
+            progressListener, pim
+        )
+        rc.toResult()
+    }
+
+    suspend fun mountContainer(
+        path: String,
+        password: String,
+        keyfilePaths: List<String> = emptyList(),
+        pim: Int = 0,
+        algorithm: Int = ALGO_AUTO,
+        hashAlgorithm: Int = HASH_AUTO
+    ): CryptoResult<Long> = withContext(Dispatchers.IO) {
+        val handle = nativeOpenContainer(
+            path, password,
+            keyfilePaths.toTypedArray().ifEmpty { null },
+            pim, algorithm, hashAlgorithm
+        )
+        if (handle >= 0) CryptoResult.Success(handle)
+        else CryptoResult.Failure(handle.toInt().toError())
+    }
+
+    suspend fun unmountContainer(handle: Long): CryptoResult<Unit> =
+        withContext(Dispatchers.IO) {
+            nativeCloseContainer(handle).toResult()
+        }
+
+    suspend fun createHiddenVolume(
+        path: String,
+        hiddenSizeBytes: Long,
+        outerPassword: String,
+        outerKeyfilePaths: List<String> = emptyList(),
+        outerPim: Int = 0,
+        hiddenPassword: String,
+        hiddenKeyfilePaths: List<String> = emptyList(),
+        hiddenPim: Int = 0,
+        hiddenAlgorithm: Int = 0,
+        hiddenHashAlgorithm: Int = 0,
+        quickFormat: Boolean = true,
+        entropyBytes: ByteArray = ByteArray(0),
+        progressListener: CreationProgressListener? = null
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        val rc = nativeCreateHiddenVolume(
+            path, hiddenSizeBytes,
+            outerPassword, outerKeyfilePaths.toTypedArray().ifEmpty { null }, outerPim,
+            hiddenPassword, hiddenKeyfilePaths.toTypedArray().ifEmpty { null }, hiddenPim,
+            hiddenAlgorithm, hiddenHashAlgorithm,
+            quickFormat, entropyBytes, progressListener
+        )
+        rc.toResult()
+    }
+
+    fun getVolumeType(handle: Long): Int = nativeGetVolumeType(handle)
+    fun hasHiddenVolume(handle: Long): Boolean = nativeHasHiddenVolume(handle)
+
+    // ── JNI external declarations ──────────────────────────────────────
+
+    external fun nativeCreateContainer(
+        path: String,
+        sizeBytes: Long,
+        password: String,
+        keyfilePaths: Array<String>?,
+        algorithm: Int,
+        hashAlgorithm: Int,
+        filesystem: Int,
+        quickFormat: Boolean,
+        entropyBytes: ByteArray,
+        progressListener: CreationProgressListener?,
+        pim: Int
+    ): Int
+
+    external fun nativeOpenContainer(
+        path: String,
+        password: String,
+        keyfilePaths: Array<String>?,
+        pim: Int,
+        algorithm: Int,
+        hashAlgorithm: Int
+    ): Long
+
+    external fun nativeListFiles(
+        handle: Long,
+        dirPath: String
+    ): Array<NativeFileInfo>
+
+    external fun nativeReadFile(
+        handle: Long,
+        filePath: String,
+        offset: Long,
+        length: Int
+    ): ByteArray?
+
+    external fun nativeWriteFile(
+        handle: Long,
+        filePath: String,
+        data: ByteArray,
+        offset: Long
+    ): Int
+
+    external fun nativeDeleteFile(handle: Long, filePath: String): Int
+
+    external fun nativeDeleteDirectory(handle: Long, dirPath: String): Int
+
+    external fun nativeCreateDirectory(handle: Long, dirPath: String): Int
+
+    external fun nativeRenameFile(handle: Long, oldPath: String, newPath: String): Int
+
+    external fun nativeCloseContainer(handle: Long): Int
+
+    external fun nativeCreateHiddenVolume(
+        path: String,
+        hiddenSizeBytes: Long,
+        outerPassword: String,
+        outerKeyfilePaths: Array<String>?,
+        outerPim: Int,
+        hiddenPassword: String,
+        hiddenKeyfilePaths: Array<String>?,
+        hiddenPim: Int,
+        hiddenAlgorithm: Int,
+        hiddenHashAlgorithm: Int,
+        quickFormat: Boolean,
+        entropyBytes: ByteArray,
+        progressListener: CreationProgressListener?
+    ): Int
+
+    external fun nativeGetVolumeType(handle: Long): Int
+
+    external fun nativeHasHiddenVolume(handle: Long): Boolean
+
+    external fun nativeGetAlgorithmId(handle: Long): Int
+
+    external fun nativeGetHashId(handle: Long): Int
+
+    external fun nativeGetFilesystem(handle: Long): Int
+
+    // ── Companion ──────────────────────────────────────────────────────
+    companion object {
+        const val ALGO_AUTO = -1
+        const val HASH_AUTO = -1
+
+        const val ERR_OK             = 0
+        const val ERR_FILE           = -1
+        const val ERR_READ           = -2
+        const val ERR_WRONG_PASSWORD = -3
+        const val ERR_UNSUPPORTED    = -4
+        const val ERR_NO_SPACE       = -5
+        const val ERR_NO_SLOT        = -6
+        const val ERR_FS             = -7
+
+        fun filesystemIdToString(fsType: Int): String = when (fsType) {
+            1 -> "FAT12"
+            2 -> "FAT16"
+            3 -> "FAT32"
+            4 -> "exFAT"
+            else -> "—"
+        }
+
+        const val HASH_BLAKE2S = 4
+
+        fun hashIdToString(hashId: Int): String = when (hashId) {
+            0 -> "SHA-512"
+            1 -> "SHA-256"
+            2 -> "Whirlpool"
+            3 -> "Streebog"
+            4 -> "BLAKE2s-256"
+            5 -> "RIPEMD-160"
+            else -> "SHA-512"
+        }
+
+        fun algorithmIdToString(algId: Int): String = when (algId) {
+            0  -> "AES-256-XTS"
+            1  -> "Serpent-256-XTS"
+            2  -> "Twofish-256-XTS"
+            3  -> "Camellia-256-XTS"
+            4  -> "Kuznyechik-256-XTS"
+            5  -> "AES-Twofish"
+            6  -> "AES-Twofish-Serpent"
+            7  -> "Serpent-AES"
+            8  -> "Serpent-Twofish-AES"
+            9  -> "Twofish-Serpent"
+            10 -> "Camellia-Kuznyechik"
+            11 -> "Camellia-Serpent"
+            12 -> "Kuznyechik-AES"
+            13 -> "Kuznyechik-Serpent-Camellia"
+            14 -> "Kuznyechik-Twofish"
+            else -> "AES-256-XTS"
+        }
+
+        init {
+            try {
+                System.loadLibrary("arcanum-native")
+            } catch (_: UnsatisfiedLinkError) {
+                // Native library not yet compiled — stub mode active
+            }
+        }
+    }
+}
+
+// ── Result mapping helpers ─────────────────────────────────────────────
+
+private fun Int.toError(): CryptoError = when (this) {
+    VeraCryptEngine.ERR_WRONG_PASSWORD -> CryptoError.WRONG_PASSWORD
+    VeraCryptEngine.ERR_FILE,
+    VeraCryptEngine.ERR_READ           -> CryptoError.IO_ERROR
+    VeraCryptEngine.ERR_UNSUPPORTED    -> CryptoError.UNSUPPORTED_ALGORITHM
+    else                               -> CryptoError.UNKNOWN
+}
+
+private fun Int.toResult(): CryptoResult<Unit> = when (this) {
+    VeraCryptEngine.ERR_OK -> CryptoResult.Success(Unit)
+    else                   -> CryptoResult.Failure(this.toError())
+}

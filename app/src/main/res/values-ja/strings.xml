@@ -1,0 +1,678 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Arcanum</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_containers">ボールト</string>
+    <string name="nav_gallery">ギャラリー</string>
+    <string name="nav_files">ファイル</string>
+    <string name="nav_settings">設定</string>
+    <string name="nav_info">情報</string>
+    <string name="nav_vault_fallback_name">ボールト</string>
+    <string name="nav_gallery_search_placeholder">メディアを検索…</string>
+    <string name="nav_gallery_cd_close_search">検索を閉じる</string>
+    <string name="nav_gallery_cd_search">検索</string>
+    <string name="nav_gallery_cd_rescan">ボールトを再スキャン</string>
+
+    <!-- Unmount animation -->
+    <string name="unmount_vault_unmounted">ボールトをアンマウントしました</string>
+    <string name="unmount_data_protected">データは保護されています</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_next">次へ</string>
+    <string name="onboarding_get_started">始める</string>
+
+    <string name="onboarding_welcome_title">Arcanumへようこそ</string>
+    <string name="onboarding_welcome_desc">電卓に偽装した安全な暗号化コンテナマネージャーです。</string>
+
+    <string name="onboarding_secure_title">軍事レベルの暗号化</string>
+    <string name="onboarding_secure_desc">VeraCrypt対応コンテナがAES、Twofish、Serpent暗号化でファイルを保護します。</string>
+
+    <string name="onboarding_calculator_title">電卓の裏に隠れています</string>
+    <string name="onboarding_calculator_desc">外から見ると、Arcanumは普通の電卓アプリに見えます。秘密のPINだけがロックを解除します。</string>
+
+    <string name="onboarding_gallery_title">美しいメディアギャラリー</string>
+    <string name="onboarding_gallery_desc">暗号化コンテナ内で写真や動画をプライベートに閲覧できます。痕跡は残りません。</string>
+
+    <string name="onboarding_privacy_title">パニックモード準備完了</string>
+    <string name="onboarding_privacy_desc">パニックPINを入力すると、デバイスからArcanumの痕跡を即座に消去します。</string>
+
+    <!-- Vault creation foreground service notification -->
+    <string name="notif_channel_vault_creation">ボールト作成</string>
+    <string name="notif_channel_vault_creation_desc">暗号化ボールト作成中の進行状況を表示します</string>
+    <string name="notif_creating_vault">ボールトを作成中…</string>
+    <string name="notif_creation_progress">%1$d%% 完了</string>
+
+    <!-- In-app notification banners -->
+    <string name="notif_vault_mounted">ボールトを正常にマウントしました</string>
+    <string name="notif_vault_unmounted">ボールトをアンマウントしました</string>
+    <string name="notif_vault_error">ボールトを開けませんでした</string>
+    <string name="notif_export_success">ファイルを正常にエクスポートしました</string>
+    <string name="notif_vault_added">ボールトを追加しました</string>
+    <string name="notif_vault_added_subtitle">タップして %1$s をアンロック</string>
+    <string name="notif_vault_already_exists">すでにリストにあります</string>
+    <string name="notif_vault_invalid_file">無効なボールトファイル</string>
+    <string name="notif_vault_invalid_file_subtitle">ファイルが小さすぎるかセクター境界に合っていません</string>
+    <string name="notif_vault_add_error">ボールトを追加できませんでした</string>
+    <string name="notif_date_updated">日付を更新しました</string>
+    <string name="notif_date_updated_subtitle">EXIFとタイムラインを更新しました</string>
+    <string name="notif_file_renamed">ファイルの名前を変更しました</string>
+    <string name="notif_files_pasted_subtitle">操作が完了しました</string>
+    <string name="notif_files_moved_subtitle">→ %1$s</string>
+    <string name="notif_files_deleted_subtitle">完全に削除されました</string>
+    <string name="notif_folder_created">フォルダーを作成しました</string>
+    <string name="notif_files_imported_subtitle">暗号化してボールトに保存しました</string>
+    <string name="notif_files_exported_subtitle">選択したフォルダーに保存しました</string>
+    <string name="notif_support_developer">Arcanumはいかがですか？</string>
+    <string name="notif_support_developer_subtitle">開発のサポートをご検討ください</string>
+
+    <plurals name="notif_items_copied">
+        <item quantity="other">%1$d 個のアイテムをコピーしました</item>
+    </plurals>
+    <plurals name="notif_items_moved">
+        <item quantity="other">%1$d 個のアイテムを移動しました</item>
+    </plurals>
+    <plurals name="notif_items_deleted">
+        <item quantity="other">%1$d 個のアイテムを削除しました</item>
+    </plurals>
+    <plurals name="notif_files_imported">
+        <item quantity="other">%1$d 個のファイルをインポートしました</item>
+    </plurals>
+    <plurals name="notif_files_exported">
+        <item quantity="other">%1$d 個のファイルをエクスポートしました</item>
+    </plurals>
+
+    <!-- Common / shared -->
+    <string name="common_cancel">キャンセル</string>
+    <string name="common_done">完了</string>
+    <string name="common_save">保存</string>
+    <string name="common_back">戻る</string>
+    <string name="common_delete">削除</string>
+    <string name="common_rename">名前変更</string>
+    <string name="common_ok">OK</string>
+    <string name="common_close">閉じる</string>
+    <string name="common_copy">コピー</string>
+    <string name="common_move">移動</string>
+    <string name="common_export">エクスポート</string>
+    <string name="common_search">検索</string>
+    <string name="common_info">情報</string>
+    <string name="common_edit">編集</string>
+    <string name="common_password">パスワード</string>
+    <string name="common_cipher">暗号</string>
+    <string name="common_hash_algorithm">ハッシュアルゴリズム</string>
+    <string name="common_mb">MB</string>
+    <string name="common_gb">GB</string>
+    <string name="common_this_cannot_be_undone">この操作は元に戻せません。</string>
+    <string name="common_open_vault">ボールトを開く</string>
+    <string name="common_pro">Pro</string>
+    <string name="common_continue">続ける</string>
+    <string name="common_confirm">確認</string>
+    <string name="common_coming_soon">近日公開</string>
+
+    <!-- PIN screens (shared) -->
+    <string name="pin_mismatch">PINが一致しません</string>
+
+    <!-- Setup PIN -->
+    <string name="setup_pin_title">PINを設定</string>
+    <string name="setup_pin_confirm_title">PINを確認</string>
+    <string name="setup_pin_success_title">PINを作成しました！</string>
+    <string name="setup_pin_success_desc">Arcanumのロックを解除するには、電卓を開いて数字ボタンでPINを入力してください。その後、＝を2秒間長押ししてください。</string>
+
+    <!-- Change PIN -->
+    <string name="change_pin_wrong">PINが違います</string>
+    <string name="change_pin_enter_current">現在のPINを入力</string>
+    <string name="change_pin_enter_new">新しいPINを入力</string>
+    <string name="change_pin_confirm_new">新しいPINを確認</string>
+    <string name="change_pin_hint">4〜12桁</string>
+    <string name="change_pin_success_title">PINを変更しました！</string>
+    <string name="change_pin_success_desc">新しいPINが有効です</string>
+
+    <!-- Gallery screen -->
+    <string name="gallery_title">ギャラリー</string>
+    <string name="gallery_search_placeholder">メディアを検索…</string>
+    <string name="gallery_search_open">検索</string>
+    <string name="gallery_search_close">検索を閉じる</string>
+    <string name="gallery_scan">ボールトをスキャン</string>
+    <string name="gallery_empty_title">メディアが見つかりません</string>
+    <string name="gallery_empty_subtitle">このボールトには写真も動画もありません</string>
+    <string name="gallery_scanning">ボールトをスキャン中…</string>
+    <string name="gallery_scan_found">%1$d 件見つかりました</string>
+    <string name="gallery_preload_preparing">サムネイルを準備中…</string>
+    <string name="gallery_preload_progress">%1$d / %2$d</string>
+    <string name="gallery_filter_all">すべて</string>
+    <string name="gallery_filter_photos">写真</string>
+    <string name="gallery_filter_videos">動画</string>
+    <string name="gallery_cd_video">動画</string>
+
+    <!-- Media viewer screen -->
+    <string name="viewer_cd_back">戻る</string>
+    <string name="viewer_cd_more_options">その他のオプション</string>
+    <string name="viewer_action_remove_favorite">お気に入りから削除</string>
+    <string name="viewer_action_add_favorite">お気に入りに追加</string>
+    <string name="viewer_action_export">エクスポート</string>
+    <string name="viewer_action_delete">削除</string>
+    <string name="viewer_action_details">詳細</string>
+    <string name="viewer_action_favorite">お気に入り</string>
+    <string name="viewer_sheet_info_title">詳細</string>
+    <string name="viewer_description_placeholder">説明を追加…</string>
+    <string name="viewer_edit_date_title">日付 &amp; 時刻を編集</string>
+    <string name="viewer_edit_date_warning">⚠ これによりファイル内のEXIFデータが更新され、タイムラインで移動します。</string>
+    <string name="viewer_exif_title">EXIFデータ</string>
+    <string name="viewer_exif_empty">このファイルのEXIFデータはありません。</string>
+    <string name="viewer_exif_maps_hint">タップしてマップで開く</string>
+    <string name="viewer_exif_section">EXIF</string>
+    <string name="viewer_exif_view_all">すべてのEXIFデータを表示</string>
+    <string name="viewer_cd_edit">編集</string>
+    <string name="viewer_rename_title">ファイルの名前変更</string>
+    <string name="viewer_rename_label">ファイル名</string>
+    <string name="viewer_rename_error_empty">名前を空にはできません</string>
+    <string name="viewer_rename_error_invalid">名前に無効な文字が含まれています</string>
+    <string name="viewer_rename_ext_hint">拡張子 .%1$s が自動的に追加されます</string>
+    <string name="viewer_rename_confirm">名前変更</string>
+    <string name="viewer_delete_title">%1$s を削除しますか？</string>
+    <string name="viewer_gps_title">GPS座標を編集</string>
+    <string name="viewer_gps_latitude">緯度（−90〜90）</string>
+    <string name="viewer_gps_longitude">経度（−180〜180）</string>
+    <string name="viewer_seek_back">−10秒</string>
+    <string name="viewer_seek_forward">+10秒</string>
+    <string name="viewer_cd_pause">一時停止</string>
+    <string name="viewer_cd_play">再生</string>
+
+    <!-- File manager screen -->
+    <string name="files_title">ファイル</string>
+    <string name="files_search_placeholder">ファイルを検索…</string>
+    <string name="files_search_close">検索を閉じる</string>
+    <string name="files_search_open">検索</string>
+    <string name="files_cd_more">その他</string>
+    <string name="files_cd_cancel_selection">選択をキャンセル</string>
+    <string name="files_cd_select_all">すべて選択</string>
+    <string name="files_selection_count">%1$d 件選択中</string>
+    <string name="files_hide_hidden">隠しファイルを非表示</string>
+    <string name="files_show_hidden">隠しファイルを表示</string>
+    <string name="files_sort_by">並べ替え…</string>
+    <string name="files_grid_view">グリッド表示</string>
+    <string name="files_list_view">リスト表示</string>
+    <string name="files_empty_no_results_title">結果なし</string>
+    <string name="files_empty_folder_title">空のフォルダー</string>
+    <string name="files_empty_no_results_subtitle">別の検索語を試してください</string>
+    <string name="files_empty_folder_subtitle">＋をタップしてファイルをインポートするかフォルダーを作成してください</string>
+    <string name="files_error_cannot_browse">ファイルを参照できません</string>
+    <string name="files_type_folder">フォルダー</string>
+    <string name="files_action_rename">名前変更</string>
+    <string name="files_action_properties">プロパティ</string>
+    <string name="files_cd_close_fab">閉じる</string>
+    <string name="files_cd_file_actions_fab">ファイル操作</string>
+    <string name="files_action_import">ファイルをインポート</string>
+    <string name="files_action_new_folder">新しいフォルダー</string>
+    <string name="files_action_copy">コピー</string>
+    <string name="files_action_move">移動</string>
+    <string name="files_action_export">エクスポート</string>
+    <string name="files_action_delete">削除</string>
+    <string name="files_new_folder_title">新しいフォルダー</string>
+    <string name="files_new_folder_label">フォルダー名</string>
+    <string name="files_new_folder_create">作成</string>
+    <string name="files_rename_title">名前変更</string>
+    <string name="files_rename_label">新しい名前</string>
+    <string name="files_delete_title_single">このアイテムを削除しますか？</string>
+    <string name="files_delete_confirm">削除</string>
+    <string name="files_props_name">名前</string>
+    <string name="files_props_type">種類</string>
+    <string name="files_props_size">サイズ</string>
+    <string name="files_props_location">場所</string>
+    <string name="files_props_modified">更新日時</string>
+    <string name="files_props_type_folder">フォルダー</string>
+    <string name="files_type_image">画像</string>
+    <string name="files_type_video">動画</string>
+    <string name="files_type_audio">オーディオ</string>
+    <string name="files_type_pdf">PDFドキュメント</string>
+    <string name="files_type_word">Wordドキュメント</string>
+    <string name="files_type_spreadsheet">スプレッドシート</string>
+    <string name="files_type_presentation">プレゼンテーション</string>
+    <string name="files_type_text">テキストファイル</string>
+    <string name="files_type_archive">アーカイブ</string>
+    <string name="files_type_apk">Androidパッケージ</string>
+    <string name="files_type_file">ファイル</string>
+    <string name="files_open_with_body">このファイルを開くには、一時的な復号コピーが作成されます。Arcanumに戻ると自動的に削除されます。</string>
+    <string name="files_open_with_cancel">キャンセル</string>
+    <string name="files_open_with_confirm">アプリで開く</string>
+    <string name="files_sort_title">並べ替え</string>
+    <string name="files_sort_name">名前</string>
+    <string name="files_sort_date">日付</string>
+    <string name="files_sort_size">サイズ</string>
+    <string name="files_sort_type">種類</string>
+    <string name="files_sort_cd_ascending">昇順</string>
+    <string name="files_sort_cd_descending">降順</string>
+    <string name="files_sort_folders_first">フォルダーを先頭に</string>
+    <string name="files_cd_root">ルート</string>
+    <string name="files_no_mounted_vaults">マウント済みボールトなし</string>
+    <string name="files_this_vault">このボールト</string>
+    <string name="files_cd_back_to_vaults">ボールトに戻る</string>
+    <string name="files_move_to_title">移動先…</string>
+    <string name="files_copy_to_title">コピー先…</string>
+    <string name="files_move_here">ここに移動</string>
+    <string name="files_copy_here">ここにコピー</string>
+
+    <plurals name="files_paste_clipboard">
+        <item quantity="other">貼り付け（%1$d 件）</item>
+    </plurals>
+    <plurals name="files_delete_count">
+        <item quantity="other">%1$d 件のアイテムを削除しますか？</item>
+    </plurals>
+
+    <!-- Audio player screen -->
+    <string name="audio_now_playing">再生中</string>
+    <string name="audio_loading">読み込み中…</string>
+    <string name="audio_cd_shuffle">シャッフル</string>
+    <string name="audio_cd_repeat">繰り返し</string>
+    <string name="audio_cd_repeat_all">すべて繰り返し</string>
+    <string name="audio_cd_repeat_one">1曲繰り返し</string>
+    <string name="audio_cd_previous">前へ</string>
+    <string name="audio_cd_pause">一時停止</string>
+    <string name="audio_cd_play">再生</string>
+    <string name="audio_cd_next">次へ</string>
+    <string name="audio_cd_album_art">アルバムアート</string>
+    <string name="audio_cd_more">その他</string>
+
+    <!-- Vault screen -->
+    <string name="vault_title">Arcanum</string>
+    <string name="vault_cd_sort_group">並べ替え &amp; グループ化</string>
+    <string name="vault_cd_settings">設定</string>
+    <string name="vault_cd_exit_selection">選択を終了</string>
+    <string name="vault_selection_count">%1$d 件選択中</string>
+    <string name="vault_select_all">すべて選択</string>
+    <string name="vault_cd_delete_selected">選択項目を削除</string>
+    <string name="vault_empty_title">ボールトがありません</string>
+    <string name="vault_empty_subtitle">既存のVeraCryptコンテナを作成または開いてください</string>
+    <string name="vault_storage_app">アプリストレージ</string>
+    <string name="vault_storage_local">ローカルストレージ</string>
+    <string name="vault_cd_close_fab">閉じる</string>
+    <string name="vault_cd_new_vault_fab">新しいボールト</string>
+    <string name="vault_fab_open_existing">既存のボールトを開く</string>
+    <string name="vault_fab_create_new">新しいボールトを作成</string>
+    <string name="vault_unmount_title">\"%1$s\" をアンマウントしますか？</string>
+    <string name="vault_unmount_body">パスワードを再入力するまでボールトはロックされます。</string>
+    <string name="vault_unmount_confirm">アンマウント</string>
+    <string name="vault_remove_title">\"%1$s\" を削除しますか？</string>
+    <string name="vault_remove_body">ボールトはリストから削除されます。ディスク上のコンテナファイルは削除されません。</string>
+    <string name="vault_remove_confirm">削除</string>
+    <string name="vault_delete_title">\"%1$s\" を消去しますか？</string>
+    <string name="vault_delete_body">コンテナファイルとその中のすべての暗号化データが完全に削除されます。この操作は元に戻せません。</string>
+    <string name="vault_delete_confirm">消去</string>
+    <string name="vault_lock_title">Arcanumをロックしますか？</string>
+    <string name="vault_lock_body">再度アンロックするにはPINの入力が必要です。</string>
+    <string name="vault_lock_confirm">ロック</string>
+    <string name="vault_config_unmount_on_lock">画面ロック時にアンマウント</string>
+    <string name="vault_config_unmount_on_lock_desc">デバイスの画面がロックされるときにアンマウント</string>
+    <string name="vault_config_unmount_on_background">バックグラウンドでアンマウント</string>
+    <string name="vault_config_unmount_on_background_desc">アプリがバックグラウンドに移行するときにアンマウント</string>
+    <string name="vault_config_move_to_app">アプリストレージに移動</string>
+    <string name="vault_config_move_to_app_desc">アプリのプライベートディレクトリにボールトを保存</string>
+    <string name="vault_config_unmount_to_move">移動前にボールトをアンマウントしてください</string>
+    <string name="vault_config_move_to_internal">内部ストレージに移動</string>
+    <string name="vault_config_move_to_internal_desc">共有ストレージフォルダーにボールトを移動</string>
+    <string name="vault_sort_title">並べ替え &amp; グループ化</string>
+    <string name="vault_sort_name">名前</string>
+    <string name="vault_sort_size">サイズ</string>
+    <string name="vault_sort_last_opened">最後に開いた日時</string>
+    <string name="vault_sort_group_by">グループ化基準</string>
+    <string name="vault_sort_group_none">なし</string>
+    <string name="vault_sort_group_location">場所別</string>
+    <string name="vault_sort_biometric_first">生体認証ボールトを先頭に</string>
+    <string name="vault_sort_biometric_first_desc">生体認証アンロック付きのボールトを上に固定</string>
+    <string name="vault_sort_cd_ascending">昇順</string>
+    <string name="vault_sort_cd_descending">降順</string>
+    <string name="vault_mount_wrong_password">パスワードまたはPIMが間違っています</string>
+    <string name="vault_mount_algorithm">アルゴリズム</string>
+    <string name="vault_mount_hash">ハッシュ</string>
+    <string name="vault_mount_biometric_toggle">生体認証アンロック</string>
+    <string name="vault_mount_advanced">詳細設定</string>
+    <string name="vault_mount_pim_label">PIM（任意）</string>
+    <string name="vault_mount_pim_placeholder">設定していない場合は空白のまま</string>
+    <string name="vault_mount_add_keyfile">キーファイルを追加（任意）</string>
+    <string name="vault_mount_protect_hidden">隠しボリュームを保護</string>
+    <string name="vault_mount_protect_hidden_desc">外部ボリュームへの書き込みが隠し領域に届かないようにします</string>
+    <string name="vault_mount_hidden_password">隠しボリュームのパスワード</string>
+    <string name="vault_biometric_unlock_title">%1$s をアンロック</string>
+    <string name="vault_biometric_unlock_subtitle">ボールトを開くために認証してください</string>
+    <string name="vault_biometric_use_password">代わりにパスワードを使用</string>
+    <string name="vault_biometric_save_title">生体認証アンロック用に保存</string>
+    <string name="vault_biometric_save_subtitle">認証情報を保存するために認証してください</string>
+    <string name="vault_biometric_skip">スキップ</string>
+    <string name="vault_biometric_indicator">指紋センサーをタップして開く</string>
+    <string name="vault_biometric_failed">生体認証に失敗しました</string>
+    <string name="vault_biometric_try_again">もう一度試す</string>
+    <string name="vault_biometric_unlock_confirm">アンロック</string>
+    <string name="vault_remove_biometric_title">生体認証を削除しますか？</string>
+    <string name="vault_remove_biometric_body">\"%1$s\" をアンロックするにはパスワードを手動で入力する必要があります。</string>
+    <string name="vault_menu_select">選択</string>
+    <string name="vault_menu_config">設定</string>
+    <string name="vault_menu_remove">リストから削除</string>
+    <string name="vault_menu_delete">削除</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">設定</string>
+    <string name="settings_cd_back">戻る</string>
+    <string name="settings_card_security">セキュリティ</string>
+    <string name="settings_card_security_desc">PIN、生体認証、自動ロック</string>
+    <string name="settings_card_panic">パニックモード</string>
+    <string name="settings_card_panic_desc">強制パスワード、データ消去</string>
+    <string name="settings_card_appearance">外観</string>
+    <string name="settings_card_appearance_desc">テーマ、カラー、AMOLED</string>
+    <string name="settings_card_about">バージョン情報</string>
+    <string name="settings_card_about_desc">バージョン、ライセンス、GitHub</string>
+    <string name="settings_card_premium">プレミアム</string>
+    <string name="settings_card_premium_desc">すべての機能をアンロック</string>
+    <string name="settings_card_debug">デバッグ</string>
+    <string name="settings_card_debug_desc">ログと開発者ツール</string>
+    <string name="settings_security_title">セキュリティ</string>
+    <string name="settings_security_change_pin">PINを変更</string>
+    <string name="settings_security_auto_lock">自動ロック</string>
+    <string name="settings_security_auto_lock_desc">アプリがバックグラウンドに移行するとロック</string>
+    <string name="settings_security_screen_capture">画面キャプチャ保護</string>
+    <string name="settings_security_screen_capture_desc">他のアプリによる画面録画をブロック</string>
+    <string name="settings_security_screenshot_warn_title">画面保護を無効にしますか？</string>
+    <string name="settings_security_screenshot_warn_body">画面保護がない場合、「他のアプリの上に表示」権限を持つアプリや画面録画ツールが、パスワードやプライベートファイルを含むArcanumの内容を取得できます。\n\n環境を完全に信頼できる場合にのみ無効にしてください。</string>
+    <string name="settings_security_screenshot_warn_disable">%1$d秒後に無効化…</string>
+    <string name="settings_security_screenshot_warn_disable_ready">無効にする</string>
+    <string name="settings_security_screenshot_auth_title">操作の確認</string>
+    <string name="settings_security_screenshot_auth_subtitle">画面保護を無効にするには認証してください</string>
+    <string name="settings_security_screenshot_pin_label">Arcanum PIN</string>
+    <string name="settings_security_screenshot_pin_error">PINが正しくありません。もう一度お試しください。</string>
+    <string name="settings_panic_title">パニックモード</string>
+    <string name="settings_panic_switch_title">パニックモード</string>
+    <string name="settings_panic_switch_desc">パニックPINを入力すると選択したデータが静かに消去されます</string>
+    <string name="settings_panic_setup_hint">タップしてパニックPINを設定</string>
+    <string name="settings_panic_pin_section">パニックPIN</string>
+    <string name="settings_panic_change_pin">パニックPINを変更</string>
+    <string name="settings_panic_wipe_section">消去対象</string>
+    <string name="settings_panic_full_wipe">完全消去</string>
+    <string name="settings_panic_full_wipe_desc">すべてのボールトを削除してアプリを初期状態にリセット</string>
+    <string name="settings_panic_clear_settings">設定を消去</string>
+    <string name="settings_panic_clear_history">電卓の履歴を消去</string>
+    <string name="settings_panic_disable_biometric">生体認証を無効化</string>
+    <string name="settings_panic_disable_biometric_desc">すべてのボールトから生体認証アクセスを削除</string>
+    <string name="settings_panic_vaults_section">ボールト</string>
+    <string name="settings_panic_warning">消去されたデータは復元できません。まずはダミーボールトでテストしてください。</string>
+    <string name="settings_panic_disable_title">パニックモードを無効化しますか？</string>
+    <string name="settings_panic_disable_body">パニックPINとすべての消去設定が完全に削除されます。</string>
+    <string name="settings_panic_disable_confirm">無効化</string>
+    <string name="settings_panic_vault_delete">削除</string>
+    <string name="settings_panic_vault_forget">忘れる</string>
+    <string name="settings_panic_vault_keep">保持</string>
+    <string name="settings_appearance_title">外観</string>
+    <string name="settings_appearance_theme_section">テーマモード</string>
+    <string name="settings_appearance_language_section">言語</string>
+    <string name="settings_appearance_language">アプリの言語</string>
+    <string name="settings_appearance_language_system">システムのデフォルト</string>
+    <string name="settings_appearance_theme_system">システム</string>
+    <string name="settings_appearance_theme_light">ライト</string>
+    <string name="settings_appearance_theme_dark">ダーク</string>
+    <string name="settings_appearance_display_section">ディスプレイ</string>
+    <string name="settings_appearance_amoled">AMOLED Glass</string>
+    <string name="settings_appearance_amoled_desc">すりガラス効果の純黒背景</string>
+    <string name="settings_appearance_dynamic_colors">ダイナミックカラー</string>
+    <string name="settings_appearance_dynamic_colors_desc">壁紙から派生したカラーを使用（Android 12+）</string>
+    <string name="settings_appearance_dynamic_colors_unavailable">ダイナミックカラーにはAndroid 12以上が必要です。</string>
+    <string name="settings_about_title">バージョン情報</string>
+    <string name="settings_about_app_desc">Android向けVeraCrypt対応暗号化ボールトマネージャー</string>
+    <string name="settings_about_licenses">オープンソースライセンス</string>
+    <string name="settings_about_connect_section">接続</string>
+    <string name="settings_about_source_code">ソースコード</string>
+    <string name="settings_about_source_code_desc">GitHubで見る</string>
+    <string name="settings_about_website">ウェブサイト</string>
+    <string name="settings_about_website_desc">arcanum.zip</string>
+    <string name="settings_about_privacy">プライバシーポリシー</string>
+    <string name="settings_about_bug_report">バグを報告</string>
+    <string name="settings_about_bug_report_desc">GitHubにIssueを開く</string>
+    <string name="settings_premium_title">Arcanum Pro</string>
+    <string name="settings_premium_upgrade">アップグレード</string>
+    <string name="settings_debug_title">デバッグ</string>
+    <string name="settings_debug_cd_copy_all">すべてコピー</string>
+    <string name="settings_debug_cd_refresh">更新</string>
+    <string name="settings_debug_mode">デバッグモード</string>
+    <string name="settings_debug_mode_desc">開発者ツールを有効化</string>
+    <string name="settings_debug_section_runtime">ランタイム</string>
+    <string name="settings_debug_section_mounted">マウント済みコンテナ</string>
+    <string name="settings_debug_section_device">デバイスセキュリティ</string>
+    <string name="settings_debug_section_database">データベース</string>
+    <string name="settings_debug_section_tools">ツール</string>
+    <string name="settings_debug_no_containers">マウント済みコンテナなし</string>
+    <string name="settings_debug_dry_run_panic">パニックのドライラン</string>
+    <string name="settings_debug_warning_title">機密情報</string>
+    <string name="settings_debug_warning_body">デバッグモードは、暗号化ハンドル、キーストアの種類、コンテナのパス、その他の機密データを公開します。デバイスに画面ロックが設定されていません。物理的にアクセスできる人なら誰でもこのモードを有効にできます。</string>
+    <string name="settings_debug_warning_confirm">理解しました、有効にします</string>
+    <string name="settings_debug_cd_info">情報</string>
+
+    <!-- Set panic PIN screen -->
+    <string name="panic_pin_title">パニックPINを設定</string>
+    <string name="panic_pin_confirm_title">パニックPINを確認</string>
+    <string name="panic_pin_success_title">パニックPINを設定しました</string>
+    <string name="panic_pin_success_desc">パニックモードが有効になりました。電卓でパニックPINを入力すると、静かな消去が開始されます。</string>
+    <string name="panic_pin_success_warning">パニックPINとメインPINを混同しないでください。\n\nパニックPINを入力すると、設定されたデータの消去が即座に開始されます。この操作は元に戻せません。</string>
+    <string name="panic_pin_success_confirm">理解しました</string>
+    <string name="panic_pin_hint">4〜12桁。メインPINとは異なる必要があります。</string>
+    <string name="panic_pin_btn_continue">続ける</string>
+    <string name="panic_pin_btn_confirm">確認</string>
+    <string name="panic_pin_cd_backspace">削除</string>
+
+    <!-- Create container screen (wizard shell) -->
+    <string name="create_title">ボールトを作成</string>
+    <string name="create_step_counter">ステップ %1$d/%2$d</string>
+    <string name="create_btn_outer">外部ボリュームを作成</string>
+    <string name="create_btn_hidden">隠しボリュームを作成</string>
+    <string name="create_btn_next">次へ</string>
+    <string name="create_cancel">キャンセル</string>
+    <string name="create_cancel_dialog_title">作成をキャンセルしますか？</string>
+    <string name="create_cancel_dialog_body">未完了のファイルは削除されます。</string>
+    <string name="create_cancel_dialog_confirm">作成をキャンセル</string>
+    <string name="create_cancel_dialog_keep">続ける</string>
+    <string name="create_cd_back">戻る</string>
+
+    <!-- Create container steps 1–4 -->
+    <string name="create_step1_title">ボリュームタイプを選択</string>
+    <string name="create_volume_standard">標準ボリューム</string>
+    <string name="create_volume_standard_desc">単一のパスワードで保護された通常の暗号化ボールト。</string>
+    <string name="create_volume_hidden">隠しボリューム</string>
+    <string name="create_volume_hidden_desc">2つのパスワード、2つのデータセット。強制下での合理的な否認。</string>
+    <string name="create_step2_title">保存場所を選択</string>
+    <string name="create_location_app">アプリストレージ</string>
+    <string name="create_location_app_desc">アプリ内のプライベートストレージ。追加の権限は不要です。</string>
+    <string name="create_location_internal">内部ストレージ</string>
+    <string name="create_location_internal_desc">デバイスストレージ上のユーザーがアクセスできるフォルダーに保存。</string>
+    <string name="create_location_no_folder">フォルダーが選択されていません</string>
+    <string name="create_location_browse">参照</string>
+    <string name="create_location_permission_title">ストレージの許可が必要です</string>
+    <string name="create_location_permission_desc">アプリがプライベートフォルダー以外にボールトを作成できるように「全ファイルへのアクセス」を許可してください。</string>
+    <string name="create_location_permission_open_settings">設定を開く</string>
+    <string name="create_filename_label">ファイル名</string>
+    <string name="create_filename_placeholder">vault.hc</string>
+    <string name="create_step3_title">暗号化アルゴリズム</string>
+    <string name="create_step3_subtitle">すべてのアルゴリズムはデスクトップ版VeraCryptと完全互換です</string>
+    <string name="create_step3_cipher">暗号</string>
+    <string name="create_step3_hash">ハッシュアルゴリズム</string>
+    <string name="create_step4_title">ボリュームサイズ</string>
+    <string name="create_size_label">サイズ</string>
+    <string name="create_size_custom">カスタム</string>
+    <string name="create_size_available">利用可能: %1$.1f GB</string>
+    <string name="create_size_quick_est">⚡ クイックフォーマット: ~%1$s</string>
+    <string name="create_size_secure_est">🔒 セキュアフォーマット: ~%1$s</string>
+    <string name="create_size_speed_fast">高速</string>
+    <string name="create_size_speed_medium">中速</string>
+    <string name="create_size_speed_slow">低速</string>
+
+    <!-- Create container steps 5–7 -->
+    <string name="create_step5_outer_title">外部ボリュームのパスワードを設定</string>
+    <string name="create_step5_subtitle">強力なパスワードを使用してください。忘れるとデータは復元できません。</string>
+    <string name="create_step5_outer_subtitle">このパスワードはダミーの外部ボリュームをアンロックします。隠しボリュームのパスワードは後で設定します。</string>
+    <string name="create_step5_outer_info">これは外部（ダミー）ボリュームのパスワードです。これにアクセスした人には外部ボリュームが表示され、隠しボリュームは表示されません。</string>
+    <string name="create_step5_title">パスワードを設定</string>
+    <string name="create_pwd_label">パスワード</string>
+    <string name="create_pwd_confirm_label">パスワードを確認</string>
+    <string name="create_pwd_mismatch">パスワードが一致しません</string>
+    <string name="create_pwd_strength_weak">弱い</string>
+    <string name="create_pwd_strength_fair">まあまあ</string>
+    <string name="create_pwd_strength_strong">強い</string>
+    <string name="create_pwd_strength_very_strong">非常に強い</string>
+    <string name="create_pwd_char_count">%1$d 文字</string>
+    <string name="create_keyfile_hide">キーファイルを非表示</string>
+    <string name="create_keyfile_add">キーファイルを追加（任意）</string>
+    <string name="create_keyfile_safe_warning">これらのファイルを安全に保管してください — ボールトを開くために必要です</string>
+    <string name="create_keyfile_add_item">キーファイルを追加…</string>
+    <string name="create_keyfile_cd_remove">キーファイルを削除</string>
+    <string name="create_keyfile_desc">キーファイルは第2の認証要素を追加します。ボールトを開くにはパスワードとすべてのキーファイルが必要です。</string>
+    <string name="create_pim_label">PIM（Personal Iterations Multiplier）</string>
+    <string name="create_pim_short_label">PIM</string>
+    <string name="create_pim_placeholder">デフォルトを使用する場合は空白のまま</string>
+    <string name="create_pim_status_default">デフォルトのセキュリティ（推奨）</string>
+    <string name="create_pim_status_below">デフォルト以下 — 強力なパスワードを使用してください</string>
+    <string name="create_pim_status_similar">デフォルトと同様</string>
+    <string name="create_pim_status_enhanced">セキュリティ強化、開くのが遅くなります</string>
+    <string name="create_pim_unlock_est">推定アンロック時間: 約%1$d秒</string>
+    <string name="create_pwd_warning">パスワードを回復する方法はありません。書き留めて安全な場所に保管してください。</string>
+    <string name="create_step6_title">フォーマットモード</string>
+    <string name="create_format_quick_title">クイックフォーマット</string>
+    <string name="create_format_secure_title">セキュアフォーマット</string>
+    <string name="create_format_quick_desc">~%1$s（任意のサイズ）· セキュリティが低い — 高度なフォレンジックでパターンが検出される可能性があります。ほとんどのユーザーに推奨。</string>
+    <string name="create_format_secure_desc">~%1$s · ボリューム全体をランダムデータで埋めます。最大のセキュリティ、データパターンなし。機密データに推奨。</string>
+    <string name="create_format_est_text">推定時間: 約%1$s</string>
+    <string name="create_step7_title">ファイルシステム</string>
+    <string name="create_fs_subtitle">ボールト内のファイルの整理方法を選択</string>
+    <string name="create_fs_recommended">推奨</string>
+    <string name="create_fs_coming_soon">近日公開</string>
+    <string name="create_fs_coming_soon_toast">近日公開</string>
+    <string name="create_fs_got_it">わかりました</string>
+    <string name="create_fs_max_file_size">最大ファイルサイズ: %1$s</string>
+    <string name="create_fs_os_read_only">（読み取り専用）</string>
+    <string name="create_fs_info_cd">情報</string>
+
+    <plurals name="create_keyfile_count">
+        <item quantity="other">%1$d 個のキーファイルを追加しました</item>
+    </plurals>
+
+    <!-- Create container steps 8–9 -->
+    <string name="create_entropy_title">指を動かしてください</string>
+    <string name="create_entropy_subtitle">ランダムな動きで鍵の暗号強度が向上します</string>
+    <string name="create_entropy_done">素晴らしい！暗号エントロピーを収集しました ✓</string>
+    <string name="create_entropy_progress">バーがいっぱいになるまで指をランダムに動かしてください（%1$d%%）</string>
+    <string name="create_done_title">ボールトを作成しました！</string>
+
+    <!-- Create container steps 10–15 (hidden volume) -->
+    <string name="create_hidden_intro_title">隠しボリューム</string>
+    <string name="create_hidden_intro_body">外部ボリュームが作成されました。次にその中の隠しボリュームを設定します。</string>
+    <string name="create_hidden_info_text">隠しボリュームは外部ボリュームの中にあります。外部パスワードを入力すると外部データのみが表示されます。隠しパスワードを入力すると隠しデータが表示されます。</string>
+    <string name="create_hidden_warnings_title">重要な警告</string>
+    <string name="create_hidden_warnings_body">• 隠しボリュームには外部ボリュームとは異なるパスワードを使用してください。\n• 隠しボリュームは外部ボリュームのデータ領域の末尾を占有します。\n• 外部ボリュームに大きなファイルを多く書き込むと、隠しボリュームが上書きされる可能性があります。</string>
+    <string name="create_hidden_outer_label">外部ボリューム: %1$s（%2$d MB）</string>
+    <string name="create_hidden_cipher_title">隠しボリュームの暗号化</string>
+    <string name="create_hidden_cipher_subtitle">隠しボリュームの暗号を選択</string>
+    <string name="create_hidden_size_title">隠しボリュームのサイズ</string>
+    <string name="create_hidden_size_constraints">隠しボリュームは %1$d MB〜%2$d MB の間でなければなりません（外部: %3$d MB、外部データのために4 MB確保）</string>
+    <string name="create_hidden_size_min_error">最小サイズは %1$d MB です</string>
+    <string name="create_hidden_size_max_error">最大サイズは %1$d MB です</string>
+    <string name="create_hidden_pwd_title">隠しボリュームのパスワード</string>
+    <string name="create_hidden_pwd_subtitle">外部ボリュームのパスワードとは異なる必要があります</string>
+    <string name="create_hidden_pwd_same_warning">隠しパスワードと外部パスワードが同じ場合、合理的な否認が損なわれます。</string>
+    <string name="create_hidden_pwd_label">隠しパスワード</string>
+    <string name="create_hidden_pwd_confirm_label">隠しパスワードを確認</string>
+    <string name="create_hidden_pwd_mismatch">パスワードが一致しません</string>
+    <string name="create_hidden_pim_label">PIM（任意）</string>
+    <string name="create_hidden_pim_hint">PIMはPBKDF2の反復回数を制御します。デフォルトの場合は空白のまま。</string>
+    <string name="create_hidden_entropy_subtitle">ランダムな動きで隠しボリュームの鍵の暗号強度が向上します</string>
+    <string name="create_hidden_creating_title">隠しボリュームを作成中</string>
+    <string name="create_hidden_creating_body">%1$d MB の隠し領域をフォーマット中…</string>
+    <string name="create_hidden_done_title">隠しボリュームを作成しました！</string>
+    <string name="create_hidden_done_summary">外部: %1$s · %2$d MB\n隠し: %3$s · %4$d MB</string>
+    <string name="create_hidden_important_title">重要</string>
+    <string name="create_hidden_done_warning_1">隠しボリュームは正常に作成されました。すべての手順に従った場合、外部ボリュームがマウントされていても隠しボリュームの存在を証明することは不可能なはずです。</string>
+    <string name="create_hidden_done_warning_2">警告: 外部ボリュームをマウントする際に隠しボリュームを保護しない場合、外部ボリュームへの書き込みは行わないでください — 隠しボリュームを上書きして破損させる可能性があります！</string>
+    <string name="create_hidden_done_warning_3">隠しボリュームを保護するには、外部ボリュームをマウントする際に「隠しボリュームを保護」を有効にして隠しボリュームのパスワードを入力してください。</string>
+
+    <!-- Mounting overlay -->
+    <string name="mount_unlocking">ボールトをアンロック中…</string>
+    <string name="mount_subtitle_1">少し時間がかかる場合があります。\nアプリを閉じないでください。</string>
+    <string name="mount_subtitle_2">もうすぐです — 一部のボールトはもう少し時間がかかります。</string>
+    <string name="mount_subtitle_3">復号キーを導出中 — これは意図的に遅くなっています。</string>
+    <string name="mount_subtitle_4">サポートされているすべての暗号アルゴリズムをテスト中…</string>
+    <string name="mount_subtitle_5">もうすぐ完了 — ブルートフォース保護には時間がかかります。</string>
+    <string name="mount_error_title">操作に失敗しました</string>
+    <string name="mount_error_body">次のいずれかまたは複数が原因と考えられます:</string>
+    <string name="mount_error_reason_password">パスワードが間違っています。</string>
+    <string name="mount_error_reason_pim">ボリュームのPIM番号が間違っています。</string>
+    <string name="mount_error_reason_prf">PRF（ハッシュ）が間違っています。</string>
+    <string name="mount_error_reason_not_valid">有効なボリュームではありません。</string>
+    <string name="mount_error_reason_old_algo">ボリュームは削除された古いアルゴリズムを使用しています。</string>
+
+    <!-- Vault info screen -->
+    <string name="vault_info_loading">読み込み中…</string>
+    <string name="vault_info_section_title">ボールト情報</string>
+    <string name="vault_info_label_name">名前</string>
+    <string name="vault_info_label_volume_type">ボリュームタイプ</string>
+    <string name="vault_info_type_hidden">隠し</string>
+    <string name="vault_info_type_outer">外部</string>
+    <string name="vault_info_type_standard">標準</string>
+    <string name="vault_info_label_algorithm">アルゴリズム</string>
+    <string name="vault_info_label_prf">PKCS-5 PRF</string>
+    <string name="vault_info_label_filesystem">ファイルシステム</string>
+    <string name="vault_info_label_pim">PIM</string>
+    <string name="vault_info_pim_custom">カスタム</string>
+    <string name="vault_info_pim_default">デフォルト</string>
+    <string name="vault_info_label_size">サイズ</string>
+    <string name="vault_info_label_created">作成日</string>
+    <string name="vault_info_label_location">場所</string>
+    <string name="vault_info_section_operations">操作</string>
+    <string name="vault_info_op_change_password">パスワードを変更</string>
+    <string name="vault_info_op_expand_volume">ボリュームを拡張</string>
+    <string name="vault_info_op_backup_header">ヘッダーをバックアップ</string>
+    <string name="vault_info_op_change_keyfile">キーファイルを変更</string>
+    <string name="vault_info_unmount_button">ボールトをアンマウント</string>
+    <string name="vault_info_unmount_title">%1$s をアンマウントしますか？</string>
+    <string name="vault_info_unmount_body">アンマウントする前にすべてのファイルが保存されていることを確認してください。</string>
+    <string name="vault_info_fallback_name">vault</string>
+    <string name="vault_card_info_desc">ボリュームの詳細とメタデータを表示</string>
+    <string name="vault_card_change_password_desc">暗号化パスワードを変更</string>
+    <string name="vault_card_expand_desc">このボリュームのサイズを拡張</string>
+    <string name="vault_card_backup_desc">ボリュームヘッダのバックアップを保存</string>
+    <string name="vault_card_keyfile_desc">このボリュームのキーファイルを更新</string>
+    <string name="vault_card_unmount_desc">このボールトをロックしてアンマウント</string>
+
+    <!-- Mount success overlay -->
+    <string name="mount_vault_unlocked">ボールトをアンロックしました</string>
+    <string name="mount_indexing_vault">ボールトをインデックス化中</string>
+    <string name="mount_scanning">スキャン中…</string>
+
+    <plurals name="mount_media_files">
+        <item quantity="other">%1$d 個のメディアファイル</item>
+    </plurals>
+
+    <!-- Move vault screen -->
+    <string name="move_vault_title_to_app">アプリストレージに移動</string>
+    <string name="move_vault_title_to_internal">内部ストレージに移動</string>
+    <string name="move_vault_label_vault_size">ボールトサイズ</string>
+    <string name="move_vault_label_available">移動先の利用可能容量</string>
+    <string name="move_vault_not_enough_space">空き容量が不足しています。少なくとも %1$s を解放して再試行してください。</string>
+    <string name="move_vault_section_what">この操作について</string>
+    <string name="move_vault_info_app_1">ファイルはアプリのプライベートストレージに保存され、他のアプリやファイルマネージャーからは見えません。</string>
+    <string name="move_vault_info_app_2">Arcanumだけが読み取り、移動、削除できます。</string>
+    <string name="move_vault_info_app_3">アプリをアンインストールすると削除されます（バックアップがない場合）。</string>
+    <string name="move_vault_info_int_1">ファイルはファイルマネージャーでアクセスできる共有内部ストレージに移動されます。</string>
+    <string name="move_vault_info_int_2">PCへのファイルコピーやデバイス間での共有が容易になります。</string>
+    <string name="move_vault_info_int_3">アンインストール時に削除されません。</string>
+    <string name="move_vault_section_before">開始前に</string>
+    <string name="move_vault_before_1">大きなコンテナの場合、操作に数分かかることがあります。</string>
+    <string name="move_vault_before_2">アプリをフォアグラウンドに保ち、画面をロックしないでください。</string>
+    <string name="move_vault_backup_label">Androidバックアップに含める</string>
+    <string name="move_vault_backup_desc">有効にすると、AndroidがボールトをGoogleアカウントにバックアップする場合があります。ボールトをデバイスから出したくない場合は無効にしてください。</string>
+    <string name="move_vault_section_dest_folder">移動先フォルダー</string>
+    <string name="move_vault_choose_folder">フォルダーを選択</string>
+    <string name="move_vault_selected_folder">選択したフォルダー</string>
+    <string name="move_vault_default_folder">デフォルト: アプリストレージのArcanumフォルダー</string>
+    <string name="move_vault_start_move">移動を開始</string>
+    <string name="move_vault_moving_title">ボールトを移動中…</string>
+    <string name="move_vault_moving_progress">%1$d%%  ·  %2$.1f / %3$.1f MB</string>
+    <string name="move_vault_moving_body">アプリを開いたまま画面をロックしないでください。</string>
+    <string name="move_vault_success_title">ボールトを正常に移動しました</string>
+    <string name="move_vault_success_body">ボールトファイルが移動され、データベースレコードが更新されました。</string>
+    <string name="move_vault_failure_title">移動に失敗しました</string>
+    <string name="move_vault_retry">再試行</string>
+
+</resources>

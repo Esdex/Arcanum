@@ -1,0 +1,678 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Arcanum</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_containers">保险库</string>
+    <string name="nav_gallery">相册</string>
+    <string name="nav_files">文件</string>
+    <string name="nav_settings">设置</string>
+    <string name="nav_info">信息</string>
+    <string name="nav_vault_fallback_name">保险库</string>
+    <string name="nav_gallery_search_placeholder">搜索媒体…</string>
+    <string name="nav_gallery_cd_close_search">关闭搜索</string>
+    <string name="nav_gallery_cd_search">搜索</string>
+    <string name="nav_gallery_cd_rescan">重新扫描保险库</string>
+
+    <!-- Unmount animation -->
+    <string name="unmount_vault_unmounted">保险库已卸载</string>
+    <string name="unmount_data_protected">您的数据已受到保护</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_next">下一步</string>
+    <string name="onboarding_get_started">开始使用</string>
+
+    <string name="onboarding_welcome_title">欢迎使用 Arcanum</string>
+    <string name="onboarding_welcome_desc">一款伪装成计算器的安全加密容器管理器。</string>
+
+    <string name="onboarding_secure_title">军事级加密</string>
+    <string name="onboarding_secure_desc">兼容 VeraCrypt 的容器使用 AES、Twofish 和 Serpent 加密保护您的文件。</string>
+
+    <string name="onboarding_calculator_title">隐藏在计算器背后</string>
+    <string name="onboarding_calculator_desc">对任何旁观者来说，Arcanum 看起来就像一个普通的计算器应用。只有您的秘密 PIN 才能解锁它。</string>
+
+    <string name="onboarding_gallery_title">精美媒体相册</string>
+    <string name="onboarding_gallery_desc">在加密容器中私密查看您的照片和视频，不留任何痕迹。</string>
+
+    <string name="onboarding_privacy_title">紧急模式就绪</string>
+    <string name="onboarding_privacy_desc">输入紧急 PIN 可立即从设备上清除 Arcanum 的所有痕迹。</string>
+
+    <!-- Vault creation foreground service notification -->
+    <string name="notif_channel_vault_creation">创建保险库</string>
+    <string name="notif_channel_vault_creation_desc">在创建加密保险库时显示进度</string>
+    <string name="notif_creating_vault">正在创建保险库…</string>
+    <string name="notif_creation_progress">已完成 %1$d%%</string>
+
+    <!-- In-app notification banners -->
+    <string name="notif_vault_mounted">保险库已成功挂载</string>
+    <string name="notif_vault_unmounted">保险库已卸载</string>
+    <string name="notif_vault_error">无法打开保险库</string>
+    <string name="notif_export_success">文件已成功导出</string>
+    <string name="notif_vault_added">保险库已添加</string>
+    <string name="notif_vault_added_subtitle">点击以解锁 %1$s</string>
+    <string name="notif_vault_already_exists">已在您的列表中</string>
+    <string name="notif_vault_invalid_file">无效的保险库文件</string>
+    <string name="notif_vault_invalid_file_subtitle">文件太小或未按扇区对齐</string>
+    <string name="notif_vault_add_error">添加保险库失败</string>
+    <string name="notif_date_updated">日期已更新</string>
+    <string name="notif_date_updated_subtitle">EXIF 和时间线已更新</string>
+    <string name="notif_file_renamed">文件已重命名</string>
+    <string name="notif_files_pasted_subtitle">操作已完成</string>
+    <string name="notif_files_moved_subtitle">→ %1$s</string>
+    <string name="notif_files_deleted_subtitle">已永久删除</string>
+    <string name="notif_folder_created">文件夹已创建</string>
+    <string name="notif_files_imported_subtitle">已加密并存储在保险库中</string>
+    <string name="notif_files_exported_subtitle">已保存到所选文件夹</string>
+    <string name="notif_support_developer">喜欢 Arcanum 吗？</string>
+    <string name="notif_support_developer_subtitle">考虑支持开发</string>
+
+    <plurals name="notif_items_copied">
+        <item quantity="other">已复制 %1$d 个项目</item>
+    </plurals>
+    <plurals name="notif_items_moved">
+        <item quantity="other">已移动 %1$d 个项目</item>
+    </plurals>
+    <plurals name="notif_items_deleted">
+        <item quantity="other">已删除 %1$d 个项目</item>
+    </plurals>
+    <plurals name="notif_files_imported">
+        <item quantity="other">已导入 %1$d 个文件</item>
+    </plurals>
+    <plurals name="notif_files_exported">
+        <item quantity="other">已导出 %1$d 个文件</item>
+    </plurals>
+
+    <!-- Common / shared -->
+    <string name="common_cancel">取消</string>
+    <string name="common_done">完成</string>
+    <string name="common_save">保存</string>
+    <string name="common_back">返回</string>
+    <string name="common_delete">删除</string>
+    <string name="common_rename">重命名</string>
+    <string name="common_ok">确定</string>
+    <string name="common_close">关闭</string>
+    <string name="common_copy">复制</string>
+    <string name="common_move">移动</string>
+    <string name="common_export">导出</string>
+    <string name="common_search">搜索</string>
+    <string name="common_info">信息</string>
+    <string name="common_edit">编辑</string>
+    <string name="common_password">密码</string>
+    <string name="common_cipher">加密算法</string>
+    <string name="common_hash_algorithm">哈希算法</string>
+    <string name="common_mb">MB</string>
+    <string name="common_gb">GB</string>
+    <string name="common_this_cannot_be_undone">此操作无法撤销。</string>
+    <string name="common_open_vault">打开保险库</string>
+    <string name="common_pro">Pro</string>
+    <string name="common_continue">继续</string>
+    <string name="common_confirm">确认</string>
+    <string name="common_coming_soon">即将推出</string>
+
+    <!-- PIN screens (shared) -->
+    <string name="pin_mismatch">PIN 不匹配</string>
+
+    <!-- Setup PIN -->
+    <string name="setup_pin_title">设置您的 PIN</string>
+    <string name="setup_pin_confirm_title">确认您的 PIN</string>
+    <string name="setup_pin_success_title">PIN 已创建！</string>
+    <string name="setup_pin_success_desc">要解锁 Arcanum，请打开计算器并使用数字按钮输入您的 PIN，然后长按 = 键 2 秒。</string>
+
+    <!-- Change PIN -->
+    <string name="change_pin_wrong">PIN 错误</string>
+    <string name="change_pin_enter_current">输入当前 PIN</string>
+    <string name="change_pin_enter_new">输入新 PIN</string>
+    <string name="change_pin_confirm_new">确认新 PIN</string>
+    <string name="change_pin_hint">4–12 位数字</string>
+    <string name="change_pin_success_title">PIN 已更改！</string>
+    <string name="change_pin_success_desc">您的新 PIN 已生效</string>
+
+    <!-- Gallery screen -->
+    <string name="gallery_title">相册</string>
+    <string name="gallery_search_placeholder">搜索媒体…</string>
+    <string name="gallery_search_open">搜索</string>
+    <string name="gallery_search_close">关闭搜索</string>
+    <string name="gallery_scan">扫描保险库</string>
+    <string name="gallery_empty_title">未找到媒体</string>
+    <string name="gallery_empty_subtitle">此保险库不包含任何照片或视频</string>
+    <string name="gallery_scanning">正在扫描保险库…</string>
+    <string name="gallery_scan_found">找到 %1$d 个</string>
+    <string name="gallery_preload_preparing">正在准备缩略图…</string>
+    <string name="gallery_preload_progress">%1$d / %2$d</string>
+    <string name="gallery_filter_all">全部</string>
+    <string name="gallery_filter_photos">照片</string>
+    <string name="gallery_filter_videos">视频</string>
+    <string name="gallery_cd_video">视频</string>
+
+    <!-- Media viewer screen -->
+    <string name="viewer_cd_back">返回</string>
+    <string name="viewer_cd_more_options">更多选项</string>
+    <string name="viewer_action_remove_favorite">从收藏中移除</string>
+    <string name="viewer_action_add_favorite">添加到收藏</string>
+    <string name="viewer_action_export">导出</string>
+    <string name="viewer_action_delete">删除</string>
+    <string name="viewer_action_details">详情</string>
+    <string name="viewer_action_favorite">收藏</string>
+    <string name="viewer_sheet_info_title">详情</string>
+    <string name="viewer_description_placeholder">添加描述…</string>
+    <string name="viewer_edit_date_title">编辑日期 &amp; 时间</string>
+    <string name="viewer_edit_date_warning">⚠ 这将更新文件内的 EXIF 数据并在时间线中移动它。</string>
+    <string name="viewer_exif_title">EXIF 数据</string>
+    <string name="viewer_exif_empty">此文件没有可用的 EXIF 数据。</string>
+    <string name="viewer_exif_maps_hint">点击在地图中打开</string>
+    <string name="viewer_exif_section">EXIF</string>
+    <string name="viewer_exif_view_all">查看所有 EXIF 数据</string>
+    <string name="viewer_cd_edit">编辑</string>
+    <string name="viewer_rename_title">重命名文件</string>
+    <string name="viewer_rename_label">文件名</string>
+    <string name="viewer_rename_error_empty">名称不能为空</string>
+    <string name="viewer_rename_error_invalid">名称包含无效字符</string>
+    <string name="viewer_rename_ext_hint">将自动添加扩展名 .%1$s</string>
+    <string name="viewer_rename_confirm">重命名</string>
+    <string name="viewer_delete_title">删除 %1$s？</string>
+    <string name="viewer_gps_title">编辑 GPS 坐标</string>
+    <string name="viewer_gps_latitude">纬度（−90 至 90）</string>
+    <string name="viewer_gps_longitude">经度（−180 至 180）</string>
+    <string name="viewer_seek_back">−10秒</string>
+    <string name="viewer_seek_forward">+10秒</string>
+    <string name="viewer_cd_pause">暂停</string>
+    <string name="viewer_cd_play">播放</string>
+
+    <!-- File manager screen -->
+    <string name="files_title">文件</string>
+    <string name="files_search_placeholder">搜索文件…</string>
+    <string name="files_search_close">关闭搜索</string>
+    <string name="files_search_open">搜索</string>
+    <string name="files_cd_more">更多</string>
+    <string name="files_cd_cancel_selection">取消选择</string>
+    <string name="files_cd_select_all">全选</string>
+    <string name="files_selection_count">已选 %1$d 个</string>
+    <string name="files_hide_hidden">隐藏隐藏文件</string>
+    <string name="files_show_hidden">显示隐藏文件</string>
+    <string name="files_sort_by">排序方式…</string>
+    <string name="files_grid_view">网格视图</string>
+    <string name="files_list_view">列表视图</string>
+    <string name="files_empty_no_results_title">无结果</string>
+    <string name="files_empty_folder_title">空文件夹</string>
+    <string name="files_empty_no_results_subtitle">请尝试其他搜索词</string>
+    <string name="files_empty_folder_subtitle">点击 + 导入文件或创建文件夹</string>
+    <string name="files_error_cannot_browse">无法浏览文件</string>
+    <string name="files_type_folder">文件夹</string>
+    <string name="files_action_rename">重命名</string>
+    <string name="files_action_properties">属性</string>
+    <string name="files_cd_close_fab">关闭</string>
+    <string name="files_cd_file_actions_fab">文件操作</string>
+    <string name="files_action_import">导入文件</string>
+    <string name="files_action_new_folder">新建文件夹</string>
+    <string name="files_action_copy">复制</string>
+    <string name="files_action_move">移动</string>
+    <string name="files_action_export">导出</string>
+    <string name="files_action_delete">删除</string>
+    <string name="files_new_folder_title">新建文件夹</string>
+    <string name="files_new_folder_label">文件夹名称</string>
+    <string name="files_new_folder_create">创建</string>
+    <string name="files_rename_title">重命名</string>
+    <string name="files_rename_label">新名称</string>
+    <string name="files_delete_title_single">删除此项目？</string>
+    <string name="files_delete_confirm">删除</string>
+    <string name="files_props_name">名称</string>
+    <string name="files_props_type">类型</string>
+    <string name="files_props_size">大小</string>
+    <string name="files_props_location">位置</string>
+    <string name="files_props_modified">修改时间</string>
+    <string name="files_props_type_folder">文件夹</string>
+    <string name="files_type_image">图片</string>
+    <string name="files_type_video">视频</string>
+    <string name="files_type_audio">音频</string>
+    <string name="files_type_pdf">PDF 文档</string>
+    <string name="files_type_word">Word 文档</string>
+    <string name="files_type_spreadsheet">电子表格</string>
+    <string name="files_type_presentation">演示文稿</string>
+    <string name="files_type_text">文本文件</string>
+    <string name="files_type_archive">压缩包</string>
+    <string name="files_type_apk">Android 安装包</string>
+    <string name="files_type_file">文件</string>
+    <string name="files_open_with_body">要打开此文件，将创建一个临时解密副本。当您返回 Arcanum 时，它将自动删除。</string>
+    <string name="files_open_with_cancel">取消</string>
+    <string name="files_open_with_confirm">使用应用打开</string>
+    <string name="files_sort_title">排序方式</string>
+    <string name="files_sort_name">名称</string>
+    <string name="files_sort_date">日期</string>
+    <string name="files_sort_size">大小</string>
+    <string name="files_sort_type">类型</string>
+    <string name="files_sort_cd_ascending">升序</string>
+    <string name="files_sort_cd_descending">降序</string>
+    <string name="files_sort_folders_first">文件夹优先</string>
+    <string name="files_cd_root">根目录</string>
+    <string name="files_no_mounted_vaults">没有已挂载的保险库</string>
+    <string name="files_this_vault">此保险库</string>
+    <string name="files_cd_back_to_vaults">返回保险库</string>
+    <string name="files_move_to_title">移动到…</string>
+    <string name="files_copy_to_title">复制到…</string>
+    <string name="files_move_here">移动到此处</string>
+    <string name="files_copy_here">复制到此处</string>
+
+    <plurals name="files_paste_clipboard">
+        <item quantity="other">粘贴（%1$d 个项目）</item>
+    </plurals>
+    <plurals name="files_delete_count">
+        <item quantity="other">删除 %1$d 个项目？</item>
+    </plurals>
+
+    <!-- Audio player screen -->
+    <string name="audio_now_playing">正在播放</string>
+    <string name="audio_loading">加载中…</string>
+    <string name="audio_cd_shuffle">随机播放</string>
+    <string name="audio_cd_repeat">重复</string>
+    <string name="audio_cd_repeat_all">全部重复</string>
+    <string name="audio_cd_repeat_one">单曲重复</string>
+    <string name="audio_cd_previous">上一首</string>
+    <string name="audio_cd_pause">暂停</string>
+    <string name="audio_cd_play">播放</string>
+    <string name="audio_cd_next">下一首</string>
+    <string name="audio_cd_album_art">专辑封面</string>
+    <string name="audio_cd_more">更多</string>
+
+    <!-- Vault screen -->
+    <string name="vault_title">Arcanum</string>
+    <string name="vault_cd_sort_group">排序 &amp; 分组</string>
+    <string name="vault_cd_settings">设置</string>
+    <string name="vault_cd_exit_selection">退出选择</string>
+    <string name="vault_selection_count">已选 %1$d 个</string>
+    <string name="vault_select_all">全选</string>
+    <string name="vault_cd_delete_selected">删除所选</string>
+    <string name="vault_empty_title">暂无保险库</string>
+    <string name="vault_empty_subtitle">创建或打开现有的 VeraCrypt 容器</string>
+    <string name="vault_storage_app">应用存储</string>
+    <string name="vault_storage_local">本地存储</string>
+    <string name="vault_cd_close_fab">关闭</string>
+    <string name="vault_cd_new_vault_fab">新建保险库</string>
+    <string name="vault_fab_open_existing">打开现有保险库</string>
+    <string name="vault_fab_create_new">创建新保险库</string>
+    <string name="vault_unmount_title">卸载"%1$s"？</string>
+    <string name="vault_unmount_body">保险库将被锁定，直到您再次输入密码。</string>
+    <string name="vault_unmount_confirm">卸载</string>
+    <string name="vault_remove_title">移除"%1$s"？</string>
+    <string name="vault_remove_body">保险库将从列表中移除。磁盘上的容器文件不会被删除。</string>
+    <string name="vault_remove_confirm">移除</string>
+    <string name="vault_delete_title">删除"%1$s"？</string>
+    <string name="vault_delete_body">容器文件及其中所有加密数据将被永久删除。此操作无法撤销。</string>
+    <string name="vault_delete_confirm">删除</string>
+    <string name="vault_lock_title">锁定 Arcanum？</string>
+    <string name="vault_lock_body">您需要输入 PIN 才能再次解锁。</string>
+    <string name="vault_lock_confirm">锁定</string>
+    <string name="vault_config_unmount_on_lock">锁屏时卸载</string>
+    <string name="vault_config_unmount_on_lock_desc">设备锁屏时卸载</string>
+    <string name="vault_config_unmount_on_background">后台时卸载</string>
+    <string name="vault_config_unmount_on_background_desc">应用进入后台时卸载</string>
+    <string name="vault_config_move_to_app">移至应用存储</string>
+    <string name="vault_config_move_to_app_desc">将保险库存储在应用私有目录中</string>
+    <string name="vault_config_unmount_to_move">移动前请先卸载保险库</string>
+    <string name="vault_config_move_to_internal">移至内部存储</string>
+    <string name="vault_config_move_to_internal_desc">将保险库移至共享存储文件夹</string>
+    <string name="vault_sort_title">排序 &amp; 分组</string>
+    <string name="vault_sort_name">名称</string>
+    <string name="vault_sort_size">大小</string>
+    <string name="vault_sort_last_opened">最近打开</string>
+    <string name="vault_sort_group_by">分组方式</string>
+    <string name="vault_sort_group_none">无</string>
+    <string name="vault_sort_group_location">按位置</string>
+    <string name="vault_sort_biometric_first">生物识别保险库优先</string>
+    <string name="vault_sort_biometric_first_desc">将支持生物识别解锁的保险库置顶</string>
+    <string name="vault_sort_cd_ascending">升序</string>
+    <string name="vault_sort_cd_descending">降序</string>
+    <string name="vault_mount_wrong_password">密码或 PIM 错误</string>
+    <string name="vault_mount_algorithm">算法</string>
+    <string name="vault_mount_hash">哈希</string>
+    <string name="vault_mount_biometric_toggle">生物识别解锁</string>
+    <string name="vault_mount_advanced">高级</string>
+    <string name="vault_mount_pim_label">PIM（可选）</string>
+    <string name="vault_mount_pim_placeholder">未设置则留空</string>
+    <string name="vault_mount_add_keyfile">添加密钥文件（可选）</string>
+    <string name="vault_mount_protect_hidden">保护隐藏卷</string>
+    <string name="vault_mount_protect_hidden_desc">防止外层卷写入到达隐藏区域</string>
+    <string name="vault_mount_hidden_password">隐藏卷密码</string>
+    <string name="vault_biometric_unlock_title">解锁 %1$s</string>
+    <string name="vault_biometric_unlock_subtitle">验证身份以打开保险库</string>
+    <string name="vault_biometric_use_password">使用密码</string>
+    <string name="vault_biometric_save_title">保存用于生物识别解锁</string>
+    <string name="vault_biometric_save_subtitle">验证身份以保存保险库凭据</string>
+    <string name="vault_biometric_skip">跳过</string>
+    <string name="vault_biometric_indicator">点击指纹传感器以打开</string>
+    <string name="vault_biometric_failed">生物识别验证失败</string>
+    <string name="vault_biometric_try_again">重试</string>
+    <string name="vault_biometric_unlock_confirm">解锁</string>
+    <string name="vault_remove_biometric_title">移除生物识别？</string>
+    <string name="vault_remove_biometric_body">您需要手动输入密码才能解锁"%1$s"。</string>
+    <string name="vault_menu_select">选择</string>
+    <string name="vault_menu_config">配置</string>
+    <string name="vault_menu_remove">从列表中移除</string>
+    <string name="vault_menu_delete">删除</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">设置</string>
+    <string name="settings_cd_back">返回</string>
+    <string name="settings_card_security">安全</string>
+    <string name="settings_card_security_desc">PIN、生物识别、自动锁定</string>
+    <string name="settings_card_panic">紧急模式</string>
+    <string name="settings_card_panic_desc">胁迫密码、数据清除</string>
+    <string name="settings_card_appearance">外观</string>
+    <string name="settings_card_appearance_desc">主题、颜色、AMOLED</string>
+    <string name="settings_card_about">关于</string>
+    <string name="settings_card_about_desc">版本、许可证、GitHub</string>
+    <string name="settings_card_premium">高级版</string>
+    <string name="settings_card_premium_desc">解锁所有功能</string>
+    <string name="settings_card_debug">调试</string>
+    <string name="settings_card_debug_desc">日志和开发者工具</string>
+    <string name="settings_security_title">安全</string>
+    <string name="settings_security_change_pin">更改 PIN</string>
+    <string name="settings_security_auto_lock">自动锁定</string>
+    <string name="settings_security_auto_lock_desc">应用进入后台时锁定</string>
+    <string name="settings_security_screen_capture">屏幕捕获保护</string>
+    <string name="settings_security_screen_capture_desc">阻止其他应用录制屏幕</string>
+    <string name="settings_security_screenshot_warn_title">禁用屏幕保护？</string>
+    <string name="settings_security_screenshot_warn_body">没有屏幕保护，任何拥有"显示在其他应用上方"权限的应用或屏幕录制工具都可以捕获 Arcanum 中显示的内容，包括密码和私人文件。\n\n仅在完全信任您的环境时才禁用此功能。</string>
+    <string name="settings_security_screenshot_warn_disable">%1$d 秒后禁用…</string>
+    <string name="settings_security_screenshot_warn_disable_ready">禁用</string>
+    <string name="settings_security_screenshot_auth_title">确认操作</string>
+    <string name="settings_security_screenshot_auth_subtitle">请验证身份以禁用屏幕保护</string>
+    <string name="settings_security_screenshot_pin_label">Arcanum PIN</string>
+    <string name="settings_security_screenshot_pin_error">PIN 错误，请重试。</string>
+    <string name="settings_panic_title">紧急模式</string>
+    <string name="settings_panic_switch_title">紧急模式</string>
+    <string name="settings_panic_switch_desc">输入紧急 PIN 会静默清除所选数据</string>
+    <string name="settings_panic_setup_hint">点击设置紧急 PIN</string>
+    <string name="settings_panic_pin_section">紧急 PIN</string>
+    <string name="settings_panic_change_pin">更改紧急 PIN</string>
+    <string name="settings_panic_wipe_section">清除内容</string>
+    <string name="settings_panic_full_wipe">完全清除</string>
+    <string name="settings_panic_full_wipe_desc">删除所有保险库并将应用重置为出厂状态</string>
+    <string name="settings_panic_clear_settings">清除设置</string>
+    <string name="settings_panic_clear_history">清除计算器历史记录</string>
+    <string name="settings_panic_disable_biometric">禁用生物识别</string>
+    <string name="settings_panic_disable_biometric_desc">移除所有保险库的生物识别访问</string>
+    <string name="settings_panic_vaults_section">保险库</string>
+    <string name="settings_panic_warning">已清除的数据无法恢复。请先使用诱饵保险库进行测试。</string>
+    <string name="settings_panic_disable_title">禁用紧急模式？</string>
+    <string name="settings_panic_disable_body">您的紧急 PIN 和所有清除设置将被永久删除。</string>
+    <string name="settings_panic_disable_confirm">禁用</string>
+    <string name="settings_panic_vault_delete">删除</string>
+    <string name="settings_panic_vault_forget">遗忘</string>
+    <string name="settings_panic_vault_keep">保留</string>
+    <string name="settings_appearance_title">外观</string>
+    <string name="settings_appearance_theme_section">主题模式</string>
+    <string name="settings_appearance_language_section">语言</string>
+    <string name="settings_appearance_language">应用语言</string>
+    <string name="settings_appearance_language_system">系统默认</string>
+    <string name="settings_appearance_theme_system">系统</string>
+    <string name="settings_appearance_theme_light">浅色</string>
+    <string name="settings_appearance_theme_dark">深色</string>
+    <string name="settings_appearance_display_section">显示</string>
+    <string name="settings_appearance_amoled">AMOLED 玻璃</string>
+    <string name="settings_appearance_amoled_desc">纯黑背景与磨砂玻璃效果</string>
+    <string name="settings_appearance_dynamic_colors">动态颜色</string>
+    <string name="settings_appearance_dynamic_colors_desc">使用壁纸派生的颜色（Android 12+）</string>
+    <string name="settings_appearance_dynamic_colors_unavailable">动态颜色需要 Android 12 或更高版本。</string>
+    <string name="settings_about_title">关于</string>
+    <string name="settings_about_app_desc">适用于 Android 的 VeraCrypt 兼容加密保险库管理器</string>
+    <string name="settings_about_licenses">开源许可证</string>
+    <string name="settings_about_connect_section">联系</string>
+    <string name="settings_about_source_code">源代码</string>
+    <string name="settings_about_source_code_desc">在 GitHub 上查看</string>
+    <string name="settings_about_website">网站</string>
+    <string name="settings_about_website_desc">arcanum.zip</string>
+    <string name="settings_about_privacy">隐私政策</string>
+    <string name="settings_about_bug_report">报告错误</string>
+    <string name="settings_about_bug_report_desc">在 GitHub 上提交问题</string>
+    <string name="settings_premium_title">Arcanum Pro</string>
+    <string name="settings_premium_upgrade">升级</string>
+    <string name="settings_debug_title">调试</string>
+    <string name="settings_debug_cd_copy_all">复制全部</string>
+    <string name="settings_debug_cd_refresh">刷新</string>
+    <string name="settings_debug_mode">调试模式</string>
+    <string name="settings_debug_mode_desc">启用开发者工具</string>
+    <string name="settings_debug_section_runtime">运行时</string>
+    <string name="settings_debug_section_mounted">已挂载容器</string>
+    <string name="settings_debug_section_device">设备安全</string>
+    <string name="settings_debug_section_database">数据库</string>
+    <string name="settings_debug_section_tools">工具</string>
+    <string name="settings_debug_no_containers">无已挂载容器</string>
+    <string name="settings_debug_dry_run_panic">模拟紧急触发</string>
+    <string name="settings_debug_warning_title">敏感信息</string>
+    <string name="settings_debug_warning_body">调试模式会暴露加密句柄、密钥库类型、容器路径和其他敏感数据。您的设备没有屏幕锁 — 任何有物理访问权限的人都可以启用此模式。</string>
+    <string name="settings_debug_warning_confirm">我已了解，启用</string>
+    <string name="settings_debug_cd_info">信息</string>
+
+    <!-- Set panic PIN screen -->
+    <string name="panic_pin_title">设置紧急 PIN</string>
+    <string name="panic_pin_confirm_title">确认紧急 PIN</string>
+    <string name="panic_pin_success_title">紧急 PIN 已设置</string>
+    <string name="panic_pin_success_desc">紧急模式现已激活。在计算器中输入紧急 PIN 即可触发静默清除。</string>
+    <string name="panic_pin_success_warning">请勿将紧急 PIN 与主 PIN 混淆。\n\n输入紧急 PIN 将立即开始清除已配置的数据 — 此操作无法撤销。</string>
+    <string name="panic_pin_success_confirm">我已了解</string>
+    <string name="panic_pin_hint">4–12 位数字。必须与主 PIN 不同。</string>
+    <string name="panic_pin_btn_continue">继续</string>
+    <string name="panic_pin_btn_confirm">确认</string>
+    <string name="panic_pin_cd_backspace">删除</string>
+
+    <!-- Create container screen (wizard shell) -->
+    <string name="create_title">创建保险库</string>
+    <string name="create_step_counter">第 %1$d/%2$d 步</string>
+    <string name="create_btn_outer">创建外层保险库</string>
+    <string name="create_btn_hidden">创建隐藏卷</string>
+    <string name="create_btn_next">下一步</string>
+    <string name="create_cancel">取消</string>
+    <string name="create_cancel_dialog_title">取消创建？</string>
+    <string name="create_cancel_dialog_body">未完成的文件将被删除。</string>
+    <string name="create_cancel_dialog_confirm">取消创建</string>
+    <string name="create_cancel_dialog_keep">继续</string>
+    <string name="create_cd_back">返回</string>
+
+    <!-- Create container steps 1–4 -->
+    <string name="create_step1_title">选择卷类型</string>
+    <string name="create_volume_standard">标准卷</string>
+    <string name="create_volume_standard_desc">由单个密码保护的普通加密保险库。</string>
+    <string name="create_volume_hidden">隐藏卷</string>
+    <string name="create_volume_hidden_desc">两个密码，两套数据。在胁迫下具有合理的否认性。</string>
+    <string name="create_step2_title">选择位置</string>
+    <string name="create_location_app">应用存储</string>
+    <string name="create_location_app_desc">应用内的私有存储。无需额外权限。</string>
+    <string name="create_location_internal">内部存储</string>
+    <string name="create_location_internal_desc">保存到设备存储上用户可访问的文件夹。</string>
+    <string name="create_location_no_folder">未选择文件夹</string>
+    <string name="create_location_browse">浏览</string>
+    <string name="create_location_permission_title">需要存储权限</string>
+    <string name="create_location_permission_desc">授予"所有文件访问权限"，以便应用可以在其私有文件夹之外创建保险库。</string>
+    <string name="create_location_permission_open_settings">打开设置</string>
+    <string name="create_filename_label">文件名</string>
+    <string name="create_filename_placeholder">vault.hc</string>
+    <string name="create_step3_title">加密算法</string>
+    <string name="create_step3_subtitle">所有算法与桌面版 VeraCrypt 完全兼容</string>
+    <string name="create_step3_cipher">加密算法</string>
+    <string name="create_step3_hash">哈希算法</string>
+    <string name="create_step4_title">卷大小</string>
+    <string name="create_size_label">大小</string>
+    <string name="create_size_custom">自定义</string>
+    <string name="create_size_available">可用：%1$.1f GB</string>
+    <string name="create_size_quick_est">⚡ 快速格式化：~%1$s</string>
+    <string name="create_size_secure_est">🔒 安全格式化：~%1$s</string>
+    <string name="create_size_speed_fast">快速</string>
+    <string name="create_size_speed_medium">中等</string>
+    <string name="create_size_speed_slow">慢速</string>
+
+    <!-- Create container steps 5–7 -->
+    <string name="create_step5_outer_title">设置外层卷密码</string>
+    <string name="create_step5_subtitle">使用强密码。如果忘记，您的数据将无法恢复。</string>
+    <string name="create_step5_outer_subtitle">此密码解锁诱饵外层卷。您稍后将设置单独的隐藏卷密码。</string>
+    <string name="create_step5_outer_info">这是外层（诱饵）卷密码。获得访问权限的人将看到外层卷，而不是隐藏卷。</string>
+    <string name="create_step5_title">设置密码</string>
+    <string name="create_pwd_label">密码</string>
+    <string name="create_pwd_confirm_label">确认密码</string>
+    <string name="create_pwd_mismatch">密码不匹配</string>
+    <string name="create_pwd_strength_weak">弱</string>
+    <string name="create_pwd_strength_fair">一般</string>
+    <string name="create_pwd_strength_strong">强</string>
+    <string name="create_pwd_strength_very_strong">非常强</string>
+    <string name="create_pwd_char_count">%1$d 个字符</string>
+    <string name="create_keyfile_hide">隐藏密钥文件</string>
+    <string name="create_keyfile_add">添加密钥文件（可选）</string>
+    <string name="create_keyfile_safe_warning">请妥善保管这些文件 — 打开保险库时需要它们</string>
+    <string name="create_keyfile_add_item">添加密钥文件…</string>
+    <string name="create_keyfile_cd_remove">移除密钥文件</string>
+    <string name="create_keyfile_desc">密钥文件添加第二个身份验证因素。打开保险库需要密码和所有密钥文件。</string>
+    <string name="create_pim_label">PIM（个人迭代乘数）</string>
+    <string name="create_pim_short_label">PIM</string>
+    <string name="create_pim_placeholder">留空使用默认值</string>
+    <string name="create_pim_status_default">默认安全性（推荐）</string>
+    <string name="create_pim_status_below">低于默认值 — 请使用强密码</string>
+    <string name="create_pim_status_similar">与默认值相似</string>
+    <string name="create_pim_status_enhanced">增强安全性，打开较慢</string>
+    <string name="create_pim_unlock_est">预计解锁时间：约 %1$d 秒</string>
+    <string name="create_pwd_warning">无法恢复您的密码。请记录下来并妥善保管。</string>
+    <string name="create_step6_title">格式化模式</string>
+    <string name="create_format_quick_title">快速格式化</string>
+    <string name="create_format_secure_title">安全格式化</string>
+    <string name="create_format_quick_desc">任意大小约 %1$s · 安全性较低 — 在高级取证中可能检测到模式。适合大多数用户。</string>
+    <string name="create_format_secure_desc">~%1$s · 用随机数据填充整个卷。最高安全性，无数据模式。适合敏感数据。</string>
+    <string name="create_format_est_text">预计时间：~%1$s</string>
+    <string name="create_step7_title">文件系统</string>
+    <string name="create_fs_subtitle">选择保险库内文件的组织方式</string>
+    <string name="create_fs_recommended">推荐</string>
+    <string name="create_fs_coming_soon">即将推出</string>
+    <string name="create_fs_coming_soon_toast">即将推出</string>
+    <string name="create_fs_got_it">知道了</string>
+    <string name="create_fs_max_file_size">最大文件大小：%1$s</string>
+    <string name="create_fs_os_read_only">（只读）</string>
+    <string name="create_fs_info_cd">信息</string>
+
+    <plurals name="create_keyfile_count">
+        <item quantity="other">已添加 %1$d 个密钥文件</item>
+    </plurals>
+
+    <!-- Create container steps 8–9 -->
+    <string name="create_entropy_title">移动您的手指</string>
+    <string name="create_entropy_subtitle">随机移动可增加密钥的密码学强度</string>
+    <string name="create_entropy_done">出色！已收集密码学熵 ✓</string>
+    <string name="create_entropy_progress">随机移动手指直到进度条填满（%1$d%%）</string>
+    <string name="create_done_title">保险库已创建！</string>
+
+    <!-- Create container steps 10–15 (hidden volume) -->
+    <string name="create_hidden_intro_title">隐藏卷</string>
+    <string name="create_hidden_intro_body">您的外层卷已创建。现在在其中设置隐藏卷。</string>
+    <string name="create_hidden_info_text">隐藏卷位于外层卷内部。输入外层密码时，只有外层数据可见。输入隐藏密码才能显示隐藏数据。</string>
+    <string name="create_hidden_warnings_title">重要警告</string>
+    <string name="create_hidden_warnings_body">• 隐藏卷的密码必须与外层卷不同。\n• 隐藏卷占用外层卷数据区的末尾。\n• 向外层卷写入过多大文件可能会覆盖隐藏卷。</string>
+    <string name="create_hidden_outer_label">外层卷：%1$s（%2$d MB）</string>
+    <string name="create_hidden_cipher_title">隐藏卷加密</string>
+    <string name="create_hidden_cipher_subtitle">选择隐藏卷的加密算法</string>
+    <string name="create_hidden_size_title">隐藏卷大小</string>
+    <string name="create_hidden_size_constraints">隐藏卷必须在 %1$d MB 至 %2$d MB 之间（外层：%3$d MB，为外层数据保留 4 MB）</string>
+    <string name="create_hidden_size_min_error">最小大小为 %1$d MB</string>
+    <string name="create_hidden_size_max_error">最大大小为 %1$d MB</string>
+    <string name="create_hidden_pwd_title">隐藏卷密码</string>
+    <string name="create_hidden_pwd_subtitle">必须与外层卷密码不同</string>
+    <string name="create_hidden_pwd_same_warning">如果隐藏卷和外层卷密码相同，合理的否认性将被破坏。</string>
+    <string name="create_hidden_pwd_label">隐藏密码</string>
+    <string name="create_hidden_pwd_confirm_label">确认隐藏密码</string>
+    <string name="create_hidden_pwd_mismatch">密码不匹配</string>
+    <string name="create_hidden_pim_label">PIM（可选）</string>
+    <string name="create_hidden_pim_hint">PIM 控制 PBKDF2 迭代次数。留空使用默认值。</string>
+    <string name="create_hidden_entropy_subtitle">随机移动可增加隐藏卷密钥的密码学强度</string>
+    <string name="create_hidden_creating_title">正在创建隐藏卷</string>
+    <string name="create_hidden_creating_body">正在格式化 %1$d MB 隐藏区域…</string>
+    <string name="create_hidden_done_title">隐藏卷已创建！</string>
+    <string name="create_hidden_done_summary">外层：%1$s · %2$d MB\n隐藏：%3$s · %4$d MB</string>
+    <string name="create_hidden_important_title">重要</string>
+    <string name="create_hidden_done_warning_1">隐藏卷已成功创建。如果遵循了所有说明，即使挂载外层卷，也应该无法证明隐藏卷的存在。</string>
+    <string name="create_hidden_done_warning_2">警告：如果在挂载外层卷时不保护隐藏卷，请勿向外层卷写入数据 — 您可能会覆盖并损坏隐藏卷！</string>
+    <string name="create_hidden_done_warning_3">要保护隐藏卷，请在挂载外层卷时启用"保护隐藏卷"并输入隐藏卷密码。</string>
+
+    <!-- Mounting overlay -->
+    <string name="mount_unlocking">正在解锁保险库…</string>
+    <string name="mount_subtitle_1">这可能需要一点时间。\n请勿关闭应用。</string>
+    <string name="mount_subtitle_2">快完成了 — 某些保险库需要更长时间。</string>
+    <string name="mount_subtitle_3">正在派生解密密钥 — 这是故意设计为缓慢的。</string>
+    <string name="mount_subtitle_4">正在测试所有支持的加密算法…</string>
+    <string name="mount_subtitle_5">即将完成 — 暴力破解保护需要时间。</string>
+    <string name="mount_error_title">操作失败</string>
+    <string name="mount_error_body">这可能由以下一个或多个原因造成：</string>
+    <string name="mount_error_reason_password">密码不正确。</string>
+    <string name="mount_error_reason_pim">卷 PIM 编号不正确。</string>
+    <string name="mount_error_reason_prf">PRF（哈希）不正确。</string>
+    <string name="mount_error_reason_not_valid">不是有效的卷。</string>
+    <string name="mount_error_reason_old_algo">卷使用了已被移除的旧算法。</string>
+
+    <!-- Vault info screen -->
+    <string name="vault_info_loading">加载中…</string>
+    <string name="vault_info_section_title">保险库信息</string>
+    <string name="vault_info_label_name">名称</string>
+    <string name="vault_info_label_volume_type">卷类型</string>
+    <string name="vault_info_type_hidden">隐藏</string>
+    <string name="vault_info_type_outer">外层</string>
+    <string name="vault_info_type_standard">标准</string>
+    <string name="vault_info_label_algorithm">算法</string>
+    <string name="vault_info_label_prf">PKCS-5 PRF</string>
+    <string name="vault_info_label_filesystem">文件系统</string>
+    <string name="vault_info_label_pim">PIM</string>
+    <string name="vault_info_pim_custom">自定义</string>
+    <string name="vault_info_pim_default">默认</string>
+    <string name="vault_info_label_size">大小</string>
+    <string name="vault_info_label_created">创建时间</string>
+    <string name="vault_info_label_location">位置</string>
+    <string name="vault_info_section_operations">操作</string>
+    <string name="vault_info_op_change_password">更改密码</string>
+    <string name="vault_info_op_expand_volume">扩展卷</string>
+    <string name="vault_info_op_backup_header">备份头部</string>
+    <string name="vault_info_op_change_keyfile">更改密钥文件</string>
+    <string name="vault_info_unmount_button">卸载保险库</string>
+    <string name="vault_info_unmount_title">卸载 %1$s？</string>
+    <string name="vault_info_unmount_body">卸载前请确保所有文件已保存。</string>
+    <string name="vault_info_fallback_name">vault</string>
+    <string name="vault_card_info_desc">查看卷详情和元数据</string>
+    <string name="vault_card_change_password_desc">更改加密密码</string>
+    <string name="vault_card_expand_desc">扩大此卷的大小</string>
+    <string name="vault_card_backup_desc">保存卷标头的备份</string>
+    <string name="vault_card_keyfile_desc">更新此卷的密钥文件</string>
+    <string name="vault_card_unmount_desc">锁定并卸载此保险库</string>
+
+    <!-- Mount success overlay -->
+    <string name="mount_vault_unlocked">保险库已解锁</string>
+    <string name="mount_indexing_vault">正在索引保险库</string>
+    <string name="mount_scanning">扫描中…</string>
+
+    <plurals name="mount_media_files">
+        <item quantity="other">%1$d 个媒体文件</item>
+    </plurals>
+
+    <!-- Move vault screen -->
+    <string name="move_vault_title_to_app">移至应用存储</string>
+    <string name="move_vault_title_to_internal">移至内部存储</string>
+    <string name="move_vault_label_vault_size">保险库大小</string>
+    <string name="move_vault_label_available">目标可用空间</string>
+    <string name="move_vault_not_enough_space">可用空间不足。请至少释放 %1$s 后重试。</string>
+    <string name="move_vault_section_what">此操作的作用</string>
+    <string name="move_vault_info_app_1">文件存储在应用私有存储中，其他应用和文件管理器无法看到。</string>
+    <string name="move_vault_info_app_2">只有 Arcanum 可以读取、移动或删除它们。</string>
+    <string name="move_vault_info_app_3">卸载应用时删除（除非已备份）。</string>
+    <string name="move_vault_info_int_1">文件移至可通过文件管理器访问的共享内部存储。</string>
+    <string name="move_vault_info_int_2">更易于将文件复制到电脑或在设备间共享。</string>
+    <string name="move_vault_info_int_3">卸载应用时不删除。</string>
+    <string name="move_vault_section_before">开始之前</string>
+    <string name="move_vault_before_1">对于大型容器，操作可能需要几分钟。</string>
+    <string name="move_vault_before_2">请将应用保持在前台，不要锁定屏幕。</string>
+    <string name="move_vault_backup_label">包含在 Android 备份中</string>
+    <string name="move_vault_backup_desc">启用后，Android 可能会将保险库备份到您的 Google 账户。如果您希望保险库永远不离开设备，请禁用此选项。</string>
+    <string name="move_vault_section_dest_folder">目标文件夹</string>
+    <string name="move_vault_choose_folder">选择文件夹</string>
+    <string name="move_vault_selected_folder">已选文件夹</string>
+    <string name="move_vault_default_folder">默认：应用存储中的 Arcanum 文件夹</string>
+    <string name="move_vault_start_move">开始移动</string>
+    <string name="move_vault_moving_title">正在移动保险库…</string>
+    <string name="move_vault_moving_progress">%1$d%%  ·  %2$.1f / %3$.1f MB</string>
+    <string name="move_vault_moving_body">请保持应用打开，不要锁定屏幕。</string>
+    <string name="move_vault_success_title">保险库已成功移动</string>
+    <string name="move_vault_success_body">保险库文件已移动，数据库记录已更新。</string>
+    <string name="move_vault_failure_title">移动失败</string>
+    <string name="move_vault_retry">重试</string>
+
+</resources>

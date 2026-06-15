@@ -1,0 +1,687 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Arcanum</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_containers">Cofres</string>
+    <string name="nav_gallery">Galeria</string>
+    <string name="nav_files">Ficheiros</string>
+    <string name="nav_settings">Definições</string>
+    <string name="nav_info">Info</string>
+    <string name="nav_vault_fallback_name">Cofre</string>
+    <string name="nav_gallery_search_placeholder">Pesquisar média…</string>
+    <string name="nav_gallery_cd_close_search">Fechar pesquisa</string>
+    <string name="nav_gallery_cd_search">Pesquisar</string>
+    <string name="nav_gallery_cd_rescan">Reanalisar cofre</string>
+
+    <!-- Unmount animation -->
+    <string name="unmount_vault_unmounted">Cofre desmontado</string>
+    <string name="unmount_data_protected">Os seus dados estão protegidos</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_next">Seguinte</string>
+    <string name="onboarding_get_started">Começar</string>
+
+    <string name="onboarding_welcome_title">Bem-vindo ao Arcanum</string>
+    <string name="onboarding_welcome_desc">Um gestor seguro de contentores encriptados disfarçado de calculadora.</string>
+
+    <string name="onboarding_secure_title">Encriptação de grau militar</string>
+    <string name="onboarding_secure_desc">Os contentores compatíveis com VeraCrypt protegem os seus ficheiros com encriptação AES, Twofish e Serpent.</string>
+
+    <string name="onboarding_calculator_title">Escondido atrás de uma calculadora</string>
+    <string name="onboarding_calculator_desc">Para qualquer observador, o Arcanum parece uma aplicação de calculadora normal. Apenas o seu PIN secreto o desbloqueia.</string>
+
+    <string name="onboarding_gallery_title">Linda galeria de média</string>
+    <string name="onboarding_gallery_desc">Veja as suas fotos e vídeos em privado dentro de contentores encriptados, sem deixar rastos.</string>
+
+    <string name="onboarding_privacy_title">Modo de pânico pronto</string>
+    <string name="onboarding_privacy_desc">Introduza o seu PIN de pânico para apagar instantaneamente todos os rastos do Arcanum do seu dispositivo.</string>
+
+    <!-- Vault creation foreground service notification -->
+    <string name="notif_channel_vault_creation">Criação de cofre</string>
+    <string name="notif_channel_vault_creation_desc">Mostra o progresso durante a criação de um cofre encriptado</string>
+    <string name="notif_creating_vault">A criar cofre…</string>
+    <string name="notif_creation_progress">%1$d%% concluído</string>
+
+    <!-- In-app notification banners -->
+    <string name="notif_vault_mounted">Cofre montado com sucesso</string>
+    <string name="notif_vault_unmounted">Cofre desmontado</string>
+    <string name="notif_vault_error">Falha ao abrir o cofre</string>
+    <string name="notif_export_success">Ficheiro exportado com sucesso</string>
+    <string name="notif_vault_added">Cofre adicionado</string>
+    <string name="notif_vault_added_subtitle">Toque para desbloquear %1$s</string>
+    <string name="notif_vault_already_exists">Já está na sua lista</string>
+    <string name="notif_vault_invalid_file">Ficheiro de cofre inválido</string>
+    <string name="notif_vault_invalid_file_subtitle">O ficheiro é demasiado pequeno ou não está alinhado aos sectores</string>
+    <string name="notif_vault_add_error">Falha ao adicionar o cofre</string>
+    <string name="notif_date_updated">Data actualizada</string>
+    <string name="notif_date_updated_subtitle">EXIF e linha do tempo actualizados</string>
+    <string name="notif_file_renamed">Ficheiro renomeado</string>
+    <string name="notif_files_pasted_subtitle">Operação concluída</string>
+    <string name="notif_files_moved_subtitle">→ %1$s</string>
+    <string name="notif_files_deleted_subtitle">Removido permanentemente</string>
+    <string name="notif_folder_created">Pasta criada</string>
+    <string name="notif_files_imported_subtitle">Encriptado e guardado no cofre</string>
+    <string name="notif_files_exported_subtitle">Guardado na pasta seleccionada</string>
+    <string name="notif_support_developer">Gosta do Arcanum?</string>
+    <string name="notif_support_developer_subtitle">Considere apoiar o desenvolvimento</string>
+
+    <plurals name="notif_items_copied">
+        <item quantity="one">%1$d item copiado</item>
+        <item quantity="other">%1$d itens copiados</item>
+    </plurals>
+    <plurals name="notif_items_moved">
+        <item quantity="one">%1$d item movido</item>
+        <item quantity="other">%1$d itens movidos</item>
+    </plurals>
+    <plurals name="notif_items_deleted">
+        <item quantity="one">%1$d item eliminado</item>
+        <item quantity="other">%1$d itens eliminados</item>
+    </plurals>
+    <plurals name="notif_files_imported">
+        <item quantity="one">%1$d ficheiro importado</item>
+        <item quantity="other">%1$d ficheiros importados</item>
+    </plurals>
+    <plurals name="notif_files_exported">
+        <item quantity="one">%1$d ficheiro exportado</item>
+        <item quantity="other">%1$d ficheiros exportados</item>
+    </plurals>
+
+    <!-- Common / shared -->
+    <string name="common_cancel">Cancelar</string>
+    <string name="common_done">Concluído</string>
+    <string name="common_save">Guardar</string>
+    <string name="common_back">Voltar</string>
+    <string name="common_delete">Eliminar</string>
+    <string name="common_rename">Renomear</string>
+    <string name="common_ok">OK</string>
+    <string name="common_close">Fechar</string>
+    <string name="common_copy">Copiar</string>
+    <string name="common_move">Mover</string>
+    <string name="common_export">Exportar</string>
+    <string name="common_search">Pesquisar</string>
+    <string name="common_info">Info</string>
+    <string name="common_edit">Editar</string>
+    <string name="common_password">Palavra-passe</string>
+    <string name="common_cipher">Cifra</string>
+    <string name="common_hash_algorithm">Algoritmo de hash</string>
+    <string name="common_mb">MB</string>
+    <string name="common_gb">GB</string>
+    <string name="common_this_cannot_be_undone">Esta acção não pode ser desfeita.</string>
+    <string name="common_open_vault">Abrir cofre</string>
+    <string name="common_pro">Pro</string>
+    <string name="common_continue">Continuar</string>
+    <string name="common_confirm">Confirmar</string>
+    <string name="common_coming_soon">Em breve</string>
+
+    <!-- PIN screens (shared) -->
+    <string name="pin_mismatch">Os PINs não coincidem</string>
+
+    <!-- Setup PIN -->
+    <string name="setup_pin_title">Definir o seu PIN</string>
+    <string name="setup_pin_confirm_title">Confirmar o seu PIN</string>
+    <string name="setup_pin_success_title">PIN criado!</string>
+    <string name="setup_pin_success_desc">Para desbloquear o Arcanum, abra a calculadora e introduza o seu PIN com os botões numéricos. Depois mantenha pressionado = durante 2 segundos.</string>
+
+    <!-- Change PIN -->
+    <string name="change_pin_wrong">PIN incorrecto</string>
+    <string name="change_pin_enter_current">Introduzir PIN actual</string>
+    <string name="change_pin_enter_new">Introduzir novo PIN</string>
+    <string name="change_pin_confirm_new">Confirmar novo PIN</string>
+    <string name="change_pin_hint">4–12 dígitos</string>
+    <string name="change_pin_success_title">PIN alterado!</string>
+    <string name="change_pin_success_desc">O seu novo PIN está activo</string>
+
+    <!-- Gallery screen -->
+    <string name="gallery_title">Galeria</string>
+    <string name="gallery_search_placeholder">Pesquisar média…</string>
+    <string name="gallery_search_open">Pesquisar</string>
+    <string name="gallery_search_close">Fechar pesquisa</string>
+    <string name="gallery_scan">Analisar cofre</string>
+    <string name="gallery_empty_title">Nenhuma média encontrada</string>
+    <string name="gallery_empty_subtitle">Este cofre não contém fotos nem vídeos</string>
+    <string name="gallery_scanning">A analisar cofre…</string>
+    <string name="gallery_scan_found">%1$d encontrados</string>
+    <string name="gallery_preload_preparing">A preparar miniaturas…</string>
+    <string name="gallery_preload_progress">%1$d / %2$d</string>
+    <string name="gallery_filter_all">Todos</string>
+    <string name="gallery_filter_photos">Fotos</string>
+    <string name="gallery_filter_videos">Vídeos</string>
+    <string name="gallery_cd_video">Vídeo</string>
+
+    <!-- Media viewer screen -->
+    <string name="viewer_cd_back">Voltar</string>
+    <string name="viewer_cd_more_options">Mais opções</string>
+    <string name="viewer_action_remove_favorite">Remover dos favoritos</string>
+    <string name="viewer_action_add_favorite">Adicionar aos favoritos</string>
+    <string name="viewer_action_export">Exportar</string>
+    <string name="viewer_action_delete">Eliminar</string>
+    <string name="viewer_action_details">Detalhes</string>
+    <string name="viewer_action_favorite">Favorito</string>
+    <string name="viewer_sheet_info_title">Detalhes</string>
+    <string name="viewer_description_placeholder">Adicionar descrição…</string>
+    <string name="viewer_edit_date_title">Editar data &amp; hora</string>
+    <string name="viewer_edit_date_warning">⚠ Isto irá actualizar os dados EXIF dentro do ficheiro e movê-lo na linha do tempo.</string>
+    <string name="viewer_exif_title">Dados EXIF</string>
+    <string name="viewer_exif_empty">Não há dados EXIF disponíveis para este ficheiro.</string>
+    <string name="viewer_exif_maps_hint">Toque para abrir nos Mapas</string>
+    <string name="viewer_exif_section">EXIF</string>
+    <string name="viewer_exif_view_all">Ver todos os dados EXIF</string>
+    <string name="viewer_cd_edit">Editar</string>
+    <string name="viewer_rename_title">Renomear ficheiro</string>
+    <string name="viewer_rename_label">Nome do ficheiro</string>
+    <string name="viewer_rename_error_empty">O nome não pode estar vazio</string>
+    <string name="viewer_rename_error_invalid">O nome contém caracteres inválidos</string>
+    <string name="viewer_rename_ext_hint">A extensão .%1$s será adicionada automaticamente</string>
+    <string name="viewer_rename_confirm">Renomear</string>
+    <string name="viewer_delete_title">Eliminar %1$s?</string>
+    <string name="viewer_gps_title">Editar coordenadas GPS</string>
+    <string name="viewer_gps_latitude">Latitude (−90 a 90)</string>
+    <string name="viewer_gps_longitude">Longitude (−180 a 180)</string>
+    <string name="viewer_seek_back">−10 s</string>
+    <string name="viewer_seek_forward">+10 s</string>
+    <string name="viewer_cd_pause">Pausar</string>
+    <string name="viewer_cd_play">Reproduzir</string>
+
+    <!-- File manager screen -->
+    <string name="files_title">Ficheiros</string>
+    <string name="files_search_placeholder">Pesquisar ficheiros…</string>
+    <string name="files_search_close">Fechar pesquisa</string>
+    <string name="files_search_open">Pesquisar</string>
+    <string name="files_cd_more">Mais</string>
+    <string name="files_cd_cancel_selection">Cancelar selecção</string>
+    <string name="files_cd_select_all">Seleccionar tudo</string>
+    <string name="files_selection_count">%1$d seleccionados</string>
+    <string name="files_hide_hidden">Ocultar ficheiros ocultos</string>
+    <string name="files_show_hidden">Mostrar ficheiros ocultos</string>
+    <string name="files_sort_by">Ordenar por…</string>
+    <string name="files_grid_view">Vista em grelha</string>
+    <string name="files_list_view">Vista em lista</string>
+    <string name="files_empty_no_results_title">Sem resultados</string>
+    <string name="files_empty_folder_title">Pasta vazia</string>
+    <string name="files_empty_no_results_subtitle">Tente um termo de pesquisa diferente</string>
+    <string name="files_empty_folder_subtitle">Toque em + para importar ficheiros ou criar uma pasta</string>
+    <string name="files_error_cannot_browse">Não é possível procurar ficheiros</string>
+    <string name="files_type_folder">Pasta</string>
+    <string name="files_action_rename">Renomear</string>
+    <string name="files_action_properties">Propriedades</string>
+    <string name="files_cd_close_fab">Fechar</string>
+    <string name="files_cd_file_actions_fab">Acções de ficheiro</string>
+    <string name="files_action_import">Importar ficheiros</string>
+    <string name="files_action_new_folder">Nova pasta</string>
+    <string name="files_action_copy">Copiar</string>
+    <string name="files_action_move">Mover</string>
+    <string name="files_action_export">Exportar</string>
+    <string name="files_action_delete">Eliminar</string>
+    <string name="files_new_folder_title">Nova pasta</string>
+    <string name="files_new_folder_label">Nome da pasta</string>
+    <string name="files_new_folder_create">Criar</string>
+    <string name="files_rename_title">Renomear</string>
+    <string name="files_rename_label">Novo nome</string>
+    <string name="files_delete_title_single">Eliminar este item?</string>
+    <string name="files_delete_confirm">Eliminar</string>
+    <string name="files_props_name">Nome</string>
+    <string name="files_props_type">Tipo</string>
+    <string name="files_props_size">Tamanho</string>
+    <string name="files_props_location">Localização</string>
+    <string name="files_props_modified">Modificado</string>
+    <string name="files_props_type_folder">Pasta</string>
+    <string name="files_type_image">Imagem</string>
+    <string name="files_type_video">Vídeo</string>
+    <string name="files_type_audio">Áudio</string>
+    <string name="files_type_pdf">Documento PDF</string>
+    <string name="files_type_word">Documento Word</string>
+    <string name="files_type_spreadsheet">Folha de cálculo</string>
+    <string name="files_type_presentation">Apresentação</string>
+    <string name="files_type_text">Ficheiro de texto</string>
+    <string name="files_type_archive">Arquivo</string>
+    <string name="files_type_apk">Pacote Android</string>
+    <string name="files_type_file">Ficheiro</string>
+    <string name="files_open_with_body">Para abrir este ficheiro, será criada uma cópia desencriptada temporária. Será eliminada automaticamente quando regressar ao Arcanum.</string>
+    <string name="files_open_with_cancel">Cancelar</string>
+    <string name="files_open_with_confirm">Abrir com aplicação</string>
+    <string name="files_sort_title">Ordenar por</string>
+    <string name="files_sort_name">Nome</string>
+    <string name="files_sort_date">Data</string>
+    <string name="files_sort_size">Tamanho</string>
+    <string name="files_sort_type">Tipo</string>
+    <string name="files_sort_cd_ascending">Ascendente</string>
+    <string name="files_sort_cd_descending">Descendente</string>
+    <string name="files_sort_folders_first">Pastas primeiro</string>
+    <string name="files_cd_root">Raiz</string>
+    <string name="files_no_mounted_vaults">Nenhum cofre montado</string>
+    <string name="files_this_vault">Este cofre</string>
+    <string name="files_cd_back_to_vaults">Voltar aos cofres</string>
+    <string name="files_move_to_title">Mover para…</string>
+    <string name="files_copy_to_title">Copiar para…</string>
+    <string name="files_move_here">Mover para aqui</string>
+    <string name="files_copy_here">Copiar para aqui</string>
+
+    <plurals name="files_paste_clipboard">
+        <item quantity="one">Colar (%1$d item)</item>
+        <item quantity="other">Colar (%1$d itens)</item>
+    </plurals>
+    <plurals name="files_delete_count">
+        <item quantity="one">Eliminar %1$d item?</item>
+        <item quantity="other">Eliminar %1$d itens?</item>
+    </plurals>
+
+    <!-- Audio player screen -->
+    <string name="audio_now_playing">A reproduzir agora</string>
+    <string name="audio_loading">A carregar…</string>
+    <string name="audio_cd_shuffle">Aleatório</string>
+    <string name="audio_cd_repeat">Repetir</string>
+    <string name="audio_cd_repeat_all">Repetir tudo</string>
+    <string name="audio_cd_repeat_one">Repetir 1</string>
+    <string name="audio_cd_previous">Anterior</string>
+    <string name="audio_cd_pause">Pausar</string>
+    <string name="audio_cd_play">Reproduzir</string>
+    <string name="audio_cd_next">Seguinte</string>
+    <string name="audio_cd_album_art">Capa do álbum</string>
+    <string name="audio_cd_more">Mais</string>
+
+    <!-- Vault screen -->
+    <string name="vault_title">Arcanum</string>
+    <string name="vault_cd_sort_group">Ordenar &amp; agrupar</string>
+    <string name="vault_cd_settings">Definições</string>
+    <string name="vault_cd_exit_selection">Sair da selecção</string>
+    <string name="vault_selection_count">%1$d seleccionados</string>
+    <string name="vault_select_all">Seleccionar tudo</string>
+    <string name="vault_cd_delete_selected">Eliminar seleccionados</string>
+    <string name="vault_empty_title">Sem cofres ainda</string>
+    <string name="vault_empty_subtitle">Crie ou abra um contentor VeraCrypt existente</string>
+    <string name="vault_storage_app">Armazenamento da aplicação</string>
+    <string name="vault_storage_local">Armazenamento local</string>
+    <string name="vault_cd_close_fab">Fechar</string>
+    <string name="vault_cd_new_vault_fab">Novo cofre</string>
+    <string name="vault_fab_open_existing">Abrir cofre existente</string>
+    <string name="vault_fab_create_new">Criar novo cofre</string>
+    <string name="vault_unmount_title">Desmontar \"%1$s\"?</string>
+    <string name="vault_unmount_body">O cofre ficará bloqueado até introduzir a palavra-passe novamente.</string>
+    <string name="vault_unmount_confirm">Desmontar</string>
+    <string name="vault_remove_title">Remover \"%1$s\"?</string>
+    <string name="vault_remove_body">O cofre será removido da lista. O ficheiro do contentor no disco não será eliminado.</string>
+    <string name="vault_remove_confirm">Remover</string>
+    <string name="vault_delete_title">Apagar \"%1$s\"?</string>
+    <string name="vault_delete_body">O ficheiro do contentor e todos os dados encriptados nele contidos serão eliminados permanentemente. Esta acção não pode ser desfeita.</string>
+    <string name="vault_delete_confirm">Apagar</string>
+    <string name="vault_lock_title">Bloquear o Arcanum?</string>
+    <string name="vault_lock_body">Precisará de introduzir o seu PIN para desbloquear novamente.</string>
+    <string name="vault_lock_confirm">Bloquear</string>
+    <string name="vault_config_unmount_on_lock">Desmontar ao bloquear o ecrã</string>
+    <string name="vault_config_unmount_on_lock_desc">Desmontar quando o ecrã do dispositivo bloquear</string>
+    <string name="vault_config_unmount_on_background">Desmontar em segundo plano</string>
+    <string name="vault_config_unmount_on_background_desc">Desmontar quando a aplicação for enviada para segundo plano</string>
+    <string name="vault_config_move_to_app">Mover para armazenamento da aplicação</string>
+    <string name="vault_config_move_to_app_desc">Guardar o cofre no directório privado da aplicação</string>
+    <string name="vault_config_unmount_to_move">Desmonte o cofre antes de mover</string>
+    <string name="vault_config_move_to_internal">Mover para armazenamento interno</string>
+    <string name="vault_config_move_to_internal_desc">Mover cofre para pasta de armazenamento partilhado</string>
+    <string name="vault_sort_title">Ordenar &amp; agrupar</string>
+    <string name="vault_sort_name">Nome</string>
+    <string name="vault_sort_size">Tamanho</string>
+    <string name="vault_sort_last_opened">Última abertura</string>
+    <string name="vault_sort_group_by">Agrupar por</string>
+    <string name="vault_sort_group_none">Nenhum</string>
+    <string name="vault_sort_group_location">Por localização</string>
+    <string name="vault_sort_biometric_first">Cofres biométricos primeiro</string>
+    <string name="vault_sort_biometric_first_desc">Fixar cofres com desbloqueio biométrico no topo</string>
+    <string name="vault_sort_cd_ascending">Ascendente</string>
+    <string name="vault_sort_cd_descending">Descendente</string>
+    <string name="vault_mount_wrong_password">Palavra-passe ou PIM incorrectos</string>
+    <string name="vault_mount_algorithm">Algoritmo</string>
+    <string name="vault_mount_hash">Hash</string>
+    <string name="vault_mount_biometric_toggle">Desbloqueio biométrico</string>
+    <string name="vault_mount_advanced">Avançado</string>
+    <string name="vault_mount_pim_label">PIM (opcional)</string>
+    <string name="vault_mount_pim_placeholder">Deixar em branco se não definido</string>
+    <string name="vault_mount_add_keyfile">Adicionar ficheiro de chave (opcional)</string>
+    <string name="vault_mount_protect_hidden">Proteger volume oculto</string>
+    <string name="vault_mount_protect_hidden_desc">Impede que escritas no volume externo alcancem a área oculta</string>
+    <string name="vault_mount_hidden_password">Palavra-passe do volume oculto</string>
+    <string name="vault_biometric_unlock_title">Desbloquear %1$s</string>
+    <string name="vault_biometric_unlock_subtitle">Autentique-se para abrir o cofre</string>
+    <string name="vault_biometric_use_password">Usar palavra-passe</string>
+    <string name="vault_biometric_save_title">Guardar para desbloqueio biométrico</string>
+    <string name="vault_biometric_save_subtitle">Autentique-se para guardar as credenciais</string>
+    <string name="vault_biometric_skip">Ignorar</string>
+    <string name="vault_biometric_indicator">Toque no sensor de impressão digital para abrir</string>
+    <string name="vault_biometric_failed">Falha na autenticação biométrica</string>
+    <string name="vault_biometric_try_again">Tentar novamente</string>
+    <string name="vault_biometric_unlock_confirm">Desbloquear</string>
+    <string name="vault_remove_biometric_title">Remover biometria?</string>
+    <string name="vault_remove_biometric_body">Precisará de introduzir a sua palavra-passe manualmente para desbloquear \"%1$s\".</string>
+    <string name="vault_menu_select">Seleccionar</string>
+    <string name="vault_menu_config">Configuração</string>
+    <string name="vault_menu_remove">Remover da lista</string>
+    <string name="vault_menu_delete">Eliminar</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Definições</string>
+    <string name="settings_cd_back">Voltar</string>
+    <string name="settings_card_security">Segurança</string>
+    <string name="settings_card_security_desc">PIN, biometria, bloqueio automático</string>
+    <string name="settings_card_panic">Modo de pânico</string>
+    <string name="settings_card_panic_desc">Palavra-passe de coacção, eliminação de dados</string>
+    <string name="settings_card_appearance">Aparência</string>
+    <string name="settings_card_appearance_desc">Tema, cores, AMOLED</string>
+    <string name="settings_card_about">Acerca de</string>
+    <string name="settings_card_about_desc">Versão, licenças, GitHub</string>
+    <string name="settings_card_premium">Premium</string>
+    <string name="settings_card_premium_desc">Desbloquear todas as funcionalidades</string>
+    <string name="settings_card_debug">Depuração</string>
+    <string name="settings_card_debug_desc">Registos e ferramentas de programador</string>
+    <string name="settings_security_title">Segurança</string>
+    <string name="settings_security_change_pin">Alterar PIN</string>
+    <string name="settings_security_auto_lock">Bloqueio automático</string>
+    <string name="settings_security_auto_lock_desc">Bloquear quando a aplicação for para segundo plano</string>
+    <string name="settings_security_screen_capture">Proteção contra captura de tela</string>
+    <string name="settings_security_screen_capture_desc">Impede que outros aplicativos gravem a tela</string>
+    <string name="settings_security_screenshot_warn_title">Desativar a proteção de tela?</string>
+    <string name="settings_security_screenshot_warn_body">Sem proteção de tela, qualquer app com a permissão «aparecer sobre outros apps» ou um gravador de tela pode capturar o conteúdo do Arcanum, incluindo senhas e arquivos privados.\n\nDesative isso somente se confiar totalmente no seu ambiente.</string>
+    <string name="settings_security_screenshot_warn_disable">Desativar em %1$d…</string>
+    <string name="settings_security_screenshot_warn_disable_ready">Desativar</string>
+    <string name="settings_security_screenshot_auth_title">Confirmar ação</string>
+    <string name="settings_security_screenshot_auth_subtitle">Autentique-se para desativar a proteção de tela</string>
+    <string name="settings_security_screenshot_pin_label">PIN do Arcanum</string>
+    <string name="settings_security_screenshot_pin_error">PIN incorreto. Tente novamente.</string>
+    <string name="settings_panic_title">Modo de pânico</string>
+    <string name="settings_panic_switch_title">Modo de pânico</string>
+    <string name="settings_panic_switch_desc">Introduzir o PIN de pânico apaga silenciosamente os dados seleccionados</string>
+    <string name="settings_panic_setup_hint">Toque para configurar um PIN de pânico</string>
+    <string name="settings_panic_pin_section">PIN DE PÂNICO</string>
+    <string name="settings_panic_change_pin">Alterar PIN de pânico</string>
+    <string name="settings_panic_wipe_section">O QUE APAGAR</string>
+    <string name="settings_panic_full_wipe">Limpeza completa</string>
+    <string name="settings_panic_full_wipe_desc">Eliminar todos os cofres e repor a aplicação para o estado de fábrica</string>
+    <string name="settings_panic_clear_settings">Limpar definições</string>
+    <string name="settings_panic_clear_history">Limpar histórico da calculadora</string>
+    <string name="settings_panic_disable_biometric">Desactivar biometria</string>
+    <string name="settings_panic_disable_biometric_desc">Remover acesso biométrico de todos os cofres</string>
+    <string name="settings_panic_vaults_section">COFRES</string>
+    <string name="settings_panic_warning">Os dados apagados não podem ser recuperados. Teste primeiro com um cofre de engodo.</string>
+    <string name="settings_panic_disable_title">Desactivar modo de pânico?</string>
+    <string name="settings_panic_disable_body">O seu PIN de pânico e todas as definições de limpeza serão eliminados permanentemente.</string>
+    <string name="settings_panic_disable_confirm">Desactivar</string>
+    <string name="settings_panic_vault_delete">Eliminar</string>
+    <string name="settings_panic_vault_forget">Esquecer</string>
+    <string name="settings_panic_vault_keep">Manter</string>
+    <string name="settings_appearance_title">Aparência</string>
+    <string name="settings_appearance_theme_section">MODO DE TEMA</string>
+    <string name="settings_appearance_language_section">IDIOMA</string>
+    <string name="settings_appearance_language">Idioma do app</string>
+    <string name="settings_appearance_language_system">Padrão do sistema</string>
+    <string name="settings_appearance_theme_system">Sistema</string>
+    <string name="settings_appearance_theme_light">Claro</string>
+    <string name="settings_appearance_theme_dark">Escuro</string>
+    <string name="settings_appearance_display_section">ECRÃ</string>
+    <string name="settings_appearance_amoled">AMOLED Glass</string>
+    <string name="settings_appearance_amoled_desc">Fundos pretos puros com efeito de vidro fosco</string>
+    <string name="settings_appearance_dynamic_colors">Cores dinâmicas</string>
+    <string name="settings_appearance_dynamic_colors_desc">Usar cores derivadas do fundo de ecrã (Android 12+)</string>
+    <string name="settings_appearance_dynamic_colors_unavailable">As cores dinâmicas requerem Android 12 ou superior.</string>
+    <string name="settings_about_title">Acerca de</string>
+    <string name="settings_about_app_desc">Gestor de cofres encriptados compatível com VeraCrypt para Android</string>
+    <string name="settings_about_licenses">Licenças open source</string>
+    <string name="settings_about_connect_section">Ligar</string>
+    <string name="settings_about_source_code">Código-fonte</string>
+    <string name="settings_about_source_code_desc">Ver no GitHub</string>
+    <string name="settings_about_website">Website</string>
+    <string name="settings_about_website_desc">arcanum.zip</string>
+    <string name="settings_about_privacy">Política de privacidade</string>
+    <string name="settings_about_bug_report">Reportar um erro</string>
+    <string name="settings_about_bug_report_desc">Abrir um problema no GitHub</string>
+    <string name="settings_premium_title">Arcanum Pro</string>
+    <string name="settings_premium_upgrade">Actualizar</string>
+    <string name="settings_debug_title">Depuração</string>
+    <string name="settings_debug_cd_copy_all">Copiar tudo</string>
+    <string name="settings_debug_cd_refresh">Actualizar</string>
+    <string name="settings_debug_mode">Modo de depuração</string>
+    <string name="settings_debug_mode_desc">Activar ferramentas de programador</string>
+    <string name="settings_debug_section_runtime">TEMPO DE EXECUÇÃO</string>
+    <string name="settings_debug_section_mounted">CONTENTORES MONTADOS</string>
+    <string name="settings_debug_section_device">SEGURANÇA DO DISPOSITIVO</string>
+    <string name="settings_debug_section_database">BASE DE DADOS</string>
+    <string name="settings_debug_section_tools">FERRAMENTAS</string>
+    <string name="settings_debug_no_containers">Nenhum contentor montado</string>
+    <string name="settings_debug_dry_run_panic">Simulação de pânico</string>
+    <string name="settings_debug_warning_title">Informação sensível</string>
+    <string name="settings_debug_warning_body">O modo de depuração expõe handles criptográficos, tipo de armazenamento de chaves, caminhos de contentores e outros dados sensíveis. O seu dispositivo não tem bloqueio de ecrã — qualquer pessoa com acesso físico pode activar este modo.</string>
+    <string name="settings_debug_warning_confirm">Compreendo, activar</string>
+    <string name="settings_debug_cd_info">Info</string>
+
+    <!-- Set panic PIN screen -->
+    <string name="panic_pin_title">Definir PIN de pânico</string>
+    <string name="panic_pin_confirm_title">Confirmar PIN de pânico</string>
+    <string name="panic_pin_success_title">PIN de pânico definido</string>
+    <string name="panic_pin_success_desc">O modo de pânico está agora activo. Introduza o PIN de pânico na calculadora para desencadear uma limpeza silenciosa.</string>
+    <string name="panic_pin_success_warning">Não confunda o seu PIN de pânico com o seu PIN principal.\n\nIntroduzir o PIN de pânico iniciará imediatamente a limpeza dos seus dados configurados — esta acção não pode ser desfeita.</string>
+    <string name="panic_pin_success_confirm">Compreendo</string>
+    <string name="panic_pin_hint">4–12 dígitos. Deve ser diferente do seu PIN principal.</string>
+    <string name="panic_pin_btn_continue">Continuar</string>
+    <string name="panic_pin_btn_confirm">Confirmar</string>
+    <string name="panic_pin_cd_backspace">Eliminar</string>
+
+    <!-- Create container screen (wizard shell) -->
+    <string name="create_title">Criar cofre</string>
+    <string name="create_step_counter">Passo %1$d/%2$d</string>
+    <string name="create_btn_outer">Criar volume externo</string>
+    <string name="create_btn_hidden">Criar volume oculto</string>
+    <string name="create_btn_next">Seguinte</string>
+    <string name="create_cancel">Cancelar</string>
+    <string name="create_cancel_dialog_title">Cancelar criação?</string>
+    <string name="create_cancel_dialog_body">O ficheiro incompleto será eliminado.</string>
+    <string name="create_cancel_dialog_confirm">Cancelar criação</string>
+    <string name="create_cancel_dialog_keep">Continuar</string>
+    <string name="create_cd_back">Voltar</string>
+
+    <!-- Create container steps 1–4 -->
+    <string name="create_step1_title">Seleccionar tipo de volume</string>
+    <string name="create_volume_standard">Volume padrão</string>
+    <string name="create_volume_standard_desc">Um cofre encriptado normal protegido por uma única palavra-passe.</string>
+    <string name="create_volume_hidden">Volume oculto</string>
+    <string name="create_volume_hidden_desc">Duas palavras-passe, dois conjuntos de dados. Negação plausível sob coacção.</string>
+    <string name="create_step2_title">Escolher localização</string>
+    <string name="create_location_app">Armazenamento da aplicação</string>
+    <string name="create_location_app_desc">Armazenamento privado dentro da aplicação. Não são necessárias permissões adicionais.</string>
+    <string name="create_location_internal">Armazenamento interno</string>
+    <string name="create_location_internal_desc">Guardar numa pasta acessível pelo utilizador no armazenamento do dispositivo.</string>
+    <string name="create_location_no_folder">Nenhuma pasta seleccionada</string>
+    <string name="create_location_browse">Procurar</string>
+    <string name="create_location_permission_title">Permissão de armazenamento necessária</string>
+    <string name="create_location_permission_desc">Conceda \"Acesso a todos os ficheiros\" para que a aplicação possa criar cofres fora da sua pasta privada.</string>
+    <string name="create_location_permission_open_settings">Abrir definições</string>
+    <string name="create_filename_label">Nome do ficheiro</string>
+    <string name="create_filename_placeholder">vault.hc</string>
+    <string name="create_step3_title">Algoritmo de encriptação</string>
+    <string name="create_step3_subtitle">Todos os algoritmos são totalmente compatíveis com o VeraCrypt para computador</string>
+    <string name="create_step3_cipher">Cifra</string>
+    <string name="create_step3_hash">Algoritmo de hash</string>
+    <string name="create_step4_title">Tamanho do volume</string>
+    <string name="create_size_label">Tamanho</string>
+    <string name="create_size_custom">Personalizado</string>
+    <string name="create_size_available">Disponível: %1$.1f GB</string>
+    <string name="create_size_quick_est">⚡ Formatação rápida: ~%1$s</string>
+    <string name="create_size_secure_est">🔒 Formatação segura: ~%1$s</string>
+    <string name="create_size_speed_fast">Rápido</string>
+    <string name="create_size_speed_medium">Médio</string>
+    <string name="create_size_speed_slow">Lento</string>
+
+    <!-- Create container steps 5–7 -->
+    <string name="create_step5_outer_title">Definir palavra-passe do volume externo</string>
+    <string name="create_step5_subtitle">Use uma palavra-passe forte. Se a esquecer, os seus dados não poderão ser recuperados.</string>
+    <string name="create_step5_outer_subtitle">Esta palavra-passe desbloqueia o volume externo de engodo. Definirá uma palavra-passe separada para o volume oculto mais tarde.</string>
+    <string name="create_step5_outer_info">Esta é a palavra-passe do volume externo (engodo). Quem tiver acesso a ela verá o volume externo, não o oculto.</string>
+    <string name="create_step5_title">Definir palavra-passe</string>
+    <string name="create_pwd_label">Palavra-passe</string>
+    <string name="create_pwd_confirm_label">Confirmar palavra-passe</string>
+    <string name="create_pwd_mismatch">As palavras-passe não coincidem</string>
+    <string name="create_pwd_strength_weak">Fraca</string>
+    <string name="create_pwd_strength_fair">Aceitável</string>
+    <string name="create_pwd_strength_strong">Forte</string>
+    <string name="create_pwd_strength_very_strong">Muito forte</string>
+    <string name="create_pwd_char_count">%1$d caracteres</string>
+    <string name="create_keyfile_hide">Ocultar ficheiros de chave</string>
+    <string name="create_keyfile_add">Adicionar ficheiros de chave (opcional)</string>
+    <string name="create_keyfile_safe_warning">Guarde estes ficheiros em segurança — são necessários para abrir o cofre</string>
+    <string name="create_keyfile_add_item">Adicionar ficheiro de chave…</string>
+    <string name="create_keyfile_cd_remove">Remover ficheiro de chave</string>
+    <string name="create_keyfile_desc">Um ficheiro de chave adiciona um segundo factor de autenticação. A palavra-passe e todos os ficheiros de chave são necessários para abrir o cofre.</string>
+    <string name="create_pim_label">PIM (Personal Iterations Multiplier)</string>
+    <string name="create_pim_short_label">PIM</string>
+    <string name="create_pim_placeholder">Deixar em branco para o valor predefinido</string>
+    <string name="create_pim_status_default">Segurança predefinida (recomendada)</string>
+    <string name="create_pim_status_below">Abaixo do predefinido — use uma palavra-passe forte</string>
+    <string name="create_pim_status_similar">Semelhante ao predefinido</string>
+    <string name="create_pim_status_enhanced">Segurança melhorada, abertura mais lenta</string>
+    <string name="create_pim_unlock_est">Tempo estimado de desbloqueio: ~%1$d segundos</string>
+    <string name="create_pwd_warning">Não há forma de recuperar a sua palavra-passe. Escreva-a e guarde-a num lugar seguro.</string>
+    <string name="create_step6_title">Modo de formatação</string>
+    <string name="create_format_quick_title">Formatação rápida</string>
+    <string name="create_format_secure_title">Formatação segura</string>
+    <string name="create_format_quick_desc">~%1$s para qualquer tamanho · Menos seguro — padrões podem ser detectáveis em análise forense avançada. Recomendado para a maioria dos utilizadores.</string>
+    <string name="create_format_secure_desc">~%1$s · Preenche todo o volume com dados aleatórios. Segurança máxima, sem padrões de dados. Recomendado para dados sensíveis.</string>
+    <string name="create_format_est_text">Tempo estimado: ~%1$s</string>
+    <string name="create_step7_title">Sistema de ficheiros</string>
+    <string name="create_fs_subtitle">Escolha como os ficheiros são organizados dentro do cofre</string>
+    <string name="create_fs_recommended">Recomendado</string>
+    <string name="create_fs_coming_soon">Brevemente</string>
+    <string name="create_fs_coming_soon_toast">Brevemente</string>
+    <string name="create_fs_got_it">Entendido</string>
+    <string name="create_fs_max_file_size">Tamanho máx. de ficheiro: %1$s</string>
+    <string name="create_fs_os_read_only"> (só de leitura)</string>
+    <string name="create_fs_info_cd">Info</string>
+
+    <plurals name="create_keyfile_count">
+        <item quantity="one">%1$d ficheiro de chave adicionado</item>
+        <item quantity="other">%1$d ficheiros de chave adicionados</item>
+    </plurals>
+
+    <!-- Create container steps 8–9 -->
+    <string name="create_entropy_title">Mova o dedo</string>
+    <string name="create_entropy_subtitle">O movimento aleatório aumenta a força criptográfica das chaves</string>
+    <string name="create_entropy_done">Excelente! Entropia criptográfica recolhida ✓</string>
+    <string name="create_entropy_progress">Mova o dedo aleatoriamente até a barra estar cheia (%1$d%%)</string>
+    <string name="create_done_title">Cofre criado!</string>
+
+    <!-- Create container steps 10–15 (hidden volume) -->
+    <string name="create_hidden_intro_title">Volume oculto</string>
+    <string name="create_hidden_intro_body">O seu volume externo foi criado. Agora configure o volume oculto no seu interior.</string>
+    <string name="create_hidden_info_text">Um volume oculto reside dentro do volume externo. Ao introduzir a palavra-passe externa, apenas os dados externos são visíveis. Introduza a palavra-passe oculta para revelar os dados ocultos.</string>
+    <string name="create_hidden_warnings_title">Avisos importantes</string>
+    <string name="create_hidden_warnings_body">• Use uma palavra-passe diferente para o volume oculto em relação ao externo.\n• O volume oculto ocupa o final da área de dados do volume externo.\n• Escrever demasiados ficheiros grandes no volume externo pode sobrescrever o volume oculto.</string>
+    <string name="create_hidden_outer_label">Volume externo: %1$s (%2$d MB)</string>
+    <string name="create_hidden_cipher_title">Encriptação do volume oculto</string>
+    <string name="create_hidden_cipher_subtitle">Escolha a cifra para o volume oculto</string>
+    <string name="create_hidden_size_title">Tamanho do volume oculto</string>
+    <string name="create_hidden_size_constraints">O volume oculto deve estar entre %1$d MB e %2$d MB (externo: %3$d MB, 4 MB reservados para dados externos)</string>
+    <string name="create_hidden_size_min_error">O tamanho mínimo é %1$d MB</string>
+    <string name="create_hidden_size_max_error">O tamanho máximo é %1$d MB</string>
+    <string name="create_hidden_pwd_title">Palavra-passe do volume oculto</string>
+    <string name="create_hidden_pwd_subtitle">Deve ser diferente da palavra-passe do volume externo</string>
+    <string name="create_hidden_pwd_same_warning">Se as palavras-passe oculta e externa forem iguais, a negação plausível fica comprometida.</string>
+    <string name="create_hidden_pwd_label">Palavra-passe oculta</string>
+    <string name="create_hidden_pwd_confirm_label">Confirmar palavra-passe oculta</string>
+    <string name="create_hidden_pwd_mismatch">As palavras-passe não coincidem</string>
+    <string name="create_hidden_pim_label">PIM (opcional)</string>
+    <string name="create_hidden_pim_hint">O PIM controla as iterações PBKDF2. Deixar em branco para o valor predefinido.</string>
+    <string name="create_hidden_entropy_subtitle">O movimento aleatório aumenta a força criptográfica das chaves do volume oculto</string>
+    <string name="create_hidden_creating_title">A criar volume oculto</string>
+    <string name="create_hidden_creating_body">A formatar área oculta de %1$d MB…</string>
+    <string name="create_hidden_done_title">Volume oculto criado!</string>
+    <string name="create_hidden_done_summary">Externo: %1$s · %2$d MB\nOculto: %3$s · %4$d MB</string>
+    <string name="create_hidden_important_title">Importante</string>
+    <string name="create_hidden_done_warning_1">O volume oculto foi criado com sucesso. Se todas as instruções foram seguidas, deverá ser impossível provar que o volume oculto existe, mesmo quando o volume externo está montado.</string>
+    <string name="create_hidden_done_warning_2">AVISO: Se não proteger o volume oculto ao montar o volume externo, não escreva no volume externo — poderá sobrescrever e danificar o volume oculto!</string>
+    <string name="create_hidden_done_warning_3">Para proteger o volume oculto, active \"Proteger volume oculto\" e introduza a palavra-passe do volume oculto ao montar o volume externo.</string>
+
+    <!-- Mounting overlay -->
+    <string name="mount_unlocking">A desbloquear cofre…</string>
+    <string name="mount_subtitle_1">Isto pode demorar um momento.\nPor favor não feche a aplicação.</string>
+    <string name="mount_subtitle_2">Quase lá — alguns cofres demoram um pouco mais.</string>
+    <string name="mount_subtitle_3">A derivar chaves de desencriptação — isto é intencionalmente lento.</string>
+    <string name="mount_subtitle_4">A testar todos os algoritmos de cifra suportados…</string>
+    <string name="mount_subtitle_5">Quase pronto — a protecção contra força bruta leva tempo.</string>
+    <string name="mount_error_title">Operação falhou</string>
+    <string name="mount_error_body">Isto pode dever-se a um ou mais dos seguintes:</string>
+    <string name="mount_error_reason_password">Palavra-passe incorrecta.</string>
+    <string name="mount_error_reason_pim">Número PIM do volume incorrecto.</string>
+    <string name="mount_error_reason_prf">PRF (hash) incorrecto.</string>
+    <string name="mount_error_reason_not_valid">Não é um volume válido.</string>
+    <string name="mount_error_reason_old_algo">O volume usa um algoritmo antigo que foi removido.</string>
+
+    <!-- Vault info screen -->
+    <string name="vault_info_loading">A carregar…</string>
+    <string name="vault_info_section_title">Informação do cofre</string>
+    <string name="vault_info_label_name">Nome</string>
+    <string name="vault_info_label_volume_type">Tipo de volume</string>
+    <string name="vault_info_type_hidden">Oculto</string>
+    <string name="vault_info_type_outer">Externo</string>
+    <string name="vault_info_type_standard">Padrão</string>
+    <string name="vault_info_label_algorithm">Algoritmo</string>
+    <string name="vault_info_label_prf">PKCS-5 PRF</string>
+    <string name="vault_info_label_filesystem">Sistema de ficheiros</string>
+    <string name="vault_info_label_pim">PIM</string>
+    <string name="vault_info_pim_custom">Personalizado</string>
+    <string name="vault_info_pim_default">Predefinido</string>
+    <string name="vault_info_label_size">Tamanho</string>
+    <string name="vault_info_label_created">Criado</string>
+    <string name="vault_info_label_location">Localização</string>
+    <string name="vault_info_section_operations">Operações</string>
+    <string name="vault_info_op_change_password">Alterar palavra-passe</string>
+    <string name="vault_info_op_expand_volume">Expandir volume</string>
+    <string name="vault_info_op_backup_header">Cópia de segurança do cabeçalho</string>
+    <string name="vault_info_op_change_keyfile">Alterar ficheiro de chave</string>
+    <string name="vault_info_unmount_button">Desmontar cofre</string>
+    <string name="vault_info_unmount_title">Desmontar %1$s?</string>
+    <string name="vault_info_unmount_body">Certifique-se de que todos os ficheiros estão guardados antes de desmontar.</string>
+    <string name="vault_info_fallback_name">vault</string>
+    <string name="vault_card_info_desc">Ver detalhes e metadados do volume</string>
+    <string name="vault_card_change_password_desc">Alterar a senha de criptografia</string>
+    <string name="vault_card_expand_desc">Aumentar o tamanho deste volume</string>
+    <string name="vault_card_backup_desc">Salvar backup do cabeçalho do volume</string>
+    <string name="vault_card_keyfile_desc">Atualizar o arquivo de chave deste volume</string>
+    <string name="vault_card_unmount_desc">Bloquear e desmontar este vault</string>
+
+    <!-- Mount success overlay -->
+    <string name="mount_vault_unlocked">Cofre desbloqueado</string>
+    <string name="mount_indexing_vault">A indexar cofre</string>
+    <string name="mount_scanning">A analisar…</string>
+
+    <plurals name="mount_media_files">
+        <item quantity="one">%1$d ficheiro de média</item>
+        <item quantity="other">%1$d ficheiros de média</item>
+    </plurals>
+
+    <!-- Move vault screen -->
+    <string name="move_vault_title_to_app">Mover para armazenamento da aplicação</string>
+    <string name="move_vault_title_to_internal">Mover para armazenamento interno</string>
+    <string name="move_vault_label_vault_size">Tamanho do cofre</string>
+    <string name="move_vault_label_available">Disponível no destino</string>
+    <string name="move_vault_not_enough_space">Espaço livre insuficiente. Liberte pelo menos %1$s e tente novamente.</string>
+    <string name="move_vault_section_what">O que isto faz</string>
+    <string name="move_vault_info_app_1">Os ficheiros são guardados no armazenamento privado da aplicação, invisível para outras aplicações e gestores de ficheiros.</string>
+    <string name="move_vault_info_app_2">Apenas o Arcanum pode lê-los, movê-los ou eliminá-los.</string>
+    <string name="move_vault_info_app_3">Eliminados quando desinstala a aplicação (a menos que haja cópia de segurança).</string>
+    <string name="move_vault_info_int_1">Os ficheiros são movidos para o armazenamento interno partilhado, acessível através de gestores de ficheiros.</string>
+    <string name="move_vault_info_int_2">Mais fácil copiar ficheiros para um PC ou partilhar entre dispositivos.</string>
+    <string name="move_vault_info_int_3">Não é eliminado na desinstalação.</string>
+    <string name="move_vault_section_before">Antes de começar</string>
+    <string name="move_vault_before_1">A operação pode demorar vários minutos para contentores grandes.</string>
+    <string name="move_vault_before_2">Mantenha a aplicação em primeiro plano e não bloqueie o ecrã.</string>
+    <string name="move_vault_backup_label">Incluir na cópia de segurança do Android</string>
+    <string name="move_vault_backup_desc">Quando activado, o Android pode fazer cópia de segurança do cofre na sua conta Google. Desactive se preferir que o seu cofre nunca saia do dispositivo.</string>
+    <string name="move_vault_section_dest_folder">Pasta de destino</string>
+    <string name="move_vault_choose_folder">Escolher pasta</string>
+    <string name="move_vault_selected_folder">Pasta seleccionada</string>
+    <string name="move_vault_default_folder">Predefinição: pasta Arcanum no armazenamento da aplicação</string>
+    <string name="move_vault_start_move">Iniciar mover</string>
+    <string name="move_vault_moving_title">A mover cofre…</string>
+    <string name="move_vault_moving_progress">%1$d%%  ·  %2$.1f / %3$.1f MB</string>
+    <string name="move_vault_moving_body">Por favor mantenha a aplicação aberta e não bloqueie o ecrã.</string>
+    <string name="move_vault_success_title">Cofre movido com sucesso</string>
+    <string name="move_vault_success_body">O ficheiro do cofre foi movido e o registo da base de dados actualizado.</string>
+    <string name="move_vault_failure_title">Falha ao mover</string>
+    <string name="move_vault_retry">Tentar novamente</string>
+
+</resources>
