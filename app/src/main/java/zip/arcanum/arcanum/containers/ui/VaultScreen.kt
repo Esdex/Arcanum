@@ -3,9 +3,12 @@ package zip.arcanum.arcanum.containers.ui
 import android.app.KeyguardManager
 import android.content.ContentUris
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.provider.DocumentsContract
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -157,6 +160,13 @@ import zip.arcanum.core.notifications.InAppNotificationBanner
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.crypto.Cipher
 import java.text.DecimalFormat
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.Button
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.LottieConstants
+import com.airbnb.lottie.compose.animateLottieCompositionAsState
+import com.airbnb.lottie.compose.rememberLottieComposition
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -220,6 +230,8 @@ fun VaultScreen(
     var isMountingOverlay        by remember { mutableStateOf(false) }
     var contextMenuContainerId   by remember { mutableStateOf<String?>(null) }
     var configContainer          by remember { mutableStateOf<ContainerEntity?>(null) }
+    var showStoragePermOverlay   by remember { mutableStateOf(false) }
+    var pendingMountContainer    by remember { mutableStateOf<ContainerEntity?>(null) }
 
     // Unmount containers per their per-vault config on app stop
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -234,14 +246,48 @@ fun VaultScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // When returning from system Settings with permission granted, proceed to MountDialog
+    val latestShowPermOverlay = rememberUpdatedState(showStoragePermOverlay)
+    val latestPendingMount    = rememberUpdatedState(pendingMountContainer)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && latestShowPermOverlay.value) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+                    showStoragePermOverlay = false
+                    containerToMount = latestPendingMount.value
+                    pendingMountContainer = null
+                    showMountDialog = true
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // Auto-open mount dialog when directed from creation wizard
     LaunchedEffect(autoMountContainerId, containers) {
         val id = autoMountContainerId ?: return@LaunchedEffect
         if (containers.isEmpty()) return@LaunchedEffect
         val entity = containers.find { it.id == id } ?: return@LaunchedEffect
-        containerToMount = entity
-        showMountDialog = true
+        val needsPerm = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            entity.path.startsWith(Environment.getExternalStorageDirectory().absolutePath) &&
+            !Environment.isExternalStorageManager()
+        if (needsPerm) {
+            pendingMountContainer = entity
+            showStoragePermOverlay = true
+        } else {
+            containerToMount = entity
+            showMountDialog = true
+        }
         onAutoMountHandled()
+    }
+
+    // Safety net: if ViewModel fires NeedsStoragePermission (e.g. permission revoked mid-session)
+    LaunchedEffect(mountState) {
+        if (mountState is VaultViewModel.MountState.NeedsStoragePermission) {
+            viewModel.resetMountState()
+            showStoragePermOverlay = true
+        }
     }
 
     // Convert add-vault result to notification
@@ -413,7 +459,17 @@ fun VaultScreen(
                                             contextMenuContainerId = contextMenuContainerId,
                                             onContextMenuChange    = { open -> contextMenuContainerId = if (open) container.id else null },
                                             onSelect               = { selectedIds = if (container.id in selectedIds) selectedIds - container.id else selectedIds + container.id },
-                                            onOpen                 = { if (container.isMounted) onOpenContainer(container.id) else { containerToMount = container; showMountDialog = true } },
+                                            onOpen                 = {
+                                            if (container.isMounted) {
+                                                onOpenContainer(container.id)
+                                            } else {
+                                                val needsPerm = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                                                    container.path.startsWith(Environment.getExternalStorageDirectory().absolutePath) &&
+                                                    !Environment.isExternalStorageManager()
+                                                if (needsPerm) { pendingMountContainer = container; showStoragePermOverlay = true }
+                                                else           { containerToMount = container; showMountDialog = true }
+                                            }
+                                        },
                                             onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
                                             onUnmount              = { containerToUnmount = container },
                                             onRemoveFromList       = { containerToRemoveFromList = container },
@@ -433,7 +489,17 @@ fun VaultScreen(
                                         contextMenuContainerId = contextMenuContainerId,
                                         onContextMenuChange    = { open -> contextMenuContainerId = if (open) container.id else null },
                                         onSelect               = { selectedIds = if (container.id in selectedIds) selectedIds - container.id else selectedIds + container.id },
-                                        onOpen                 = { if (container.isMounted) onOpenContainer(container.id) else { containerToMount = container; showMountDialog = true } },
+                                        onOpen                 = {
+                                            if (container.isMounted) {
+                                                onOpenContainer(container.id)
+                                            } else {
+                                                val needsPerm = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                                                    container.path.startsWith(Environment.getExternalStorageDirectory().absolutePath) &&
+                                                    !Environment.isExternalStorageManager()
+                                                if (needsPerm) { pendingMountContainer = container; showStoragePermOverlay = true }
+                                                else           { containerToMount = container; showMountDialog = true }
+                                            }
+                                        },
                                         onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
                                         onUnmount              = { containerToUnmount = container },
                                         onRemoveFromList       = { containerToRemoveFromList = container },
@@ -778,6 +844,25 @@ fun VaultScreen(
                 )
             }
 
+            // ── Storage permission overlay ────────────────────────────────────
+            AnimatedVisibility(
+                visible  = showStoragePermOverlay,
+                enter    = fadeIn(tween(300)),
+                exit     = fadeOut(tween(300)),
+                modifier = Modifier.zIndex(300f)
+            ) {
+                StoragePermissionOverlay {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        context.startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                Uri.parse("package:${context.packageName}")
+                            )
+                        )
+                    }
+                }
+            }
+
             // ── Mounting overlay ──────────────────────────────────────────────
             AnimatedVisibility(
                 visible  = isMountingOverlay,
@@ -800,6 +885,61 @@ fun VaultScreen(
             }
         } // Box
     } // CompositionLocalProvider
+}
+
+// ── StoragePermissionOverlay ──────────────────────────────────────────────────
+
+@Composable
+private fun StoragePermissionOverlay(onOpenSettings: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color    = MaterialTheme.colorScheme.background
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .padding(horizontal = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.info))
+                val progress    by animateLottieCompositionAsState(
+                    composition = composition,
+                    iterations  = LottieConstants.IterateForever
+                )
+                LottieAnimation(
+                    composition = composition,
+                    progress    = { progress },
+                    modifier    = Modifier.size(200.dp)
+                )
+                Spacer(Modifier.height(24.dp))
+                Text(
+                    text      = "Permission Required",
+                    style     = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text      = "To mount containers stored on external storage, Arcanum needs the \"All Files Access\" permission.",
+                    style     = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    color     = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Button(
+                onClick  = onOpenSettings,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 32.dp, vertical = 32.dp)
+            ) {
+                Text("Settings")
+            }
+        }
+    }
 }
 
 // ── VaultCardItem (thin wrapper used by both flat and grouped list) ───────────

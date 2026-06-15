@@ -11,6 +11,7 @@
 #include "arcanum_impl.h"
 
 #include <jni.h>
+#include <cerrno>
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
@@ -1026,7 +1027,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
     uint64_t fileSize = dataSize + VC_DATA_OFFSET + VC_BACKUP_AREA_SIZE;
 
     int fd = open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0600);
-    if (fd < 0) { LOGE("[2/6] Cannot open/create: %s", path.c_str()); return ERR_FILE; }
+    if (fd < 0) { LOGE("[2/6] Cannot open/create: %s (errno=%d: %s)", path.c_str(), errno, strerror(errno)); return ERR_FILE; }
 
     if (ftruncate(fd, (off_t)fileSize) != 0) {
         LOGE("[create] ftruncate failed — disk full?");
@@ -1128,7 +1129,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
 
     int fd = open(path.c_str(), O_RDWR);
-    if (fd < 0) { LOGE("Cannot open: %s", path.c_str()); return (jlong)ERR_FILE; }
+    if (fd < 0) { LOGE("Cannot open: %s (errno=%d: %s)", path.c_str(), errno, strerror(errno)); return (jlong)ERR_FILE; }
 
     struct stat st{};
     fstat(fd, &st);
