@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import java.io.File
+import java.io.RandomAccessFile
 
 object FileUtils {
 
@@ -26,6 +27,25 @@ object FileUtils {
         cacheFile.absolutePath to displayName
     } catch (_: Exception) { null }
 
+
+    fun secureZeroAndDelete(file: File) {
+        try {
+            val len = file.length()
+            if (len > 0L) {
+                val zeros = ByteArray(minOf(len, 65536L).toInt())
+                RandomAccessFile(file, "rw").use { raf ->
+                    var remaining = len
+                    while (remaining > 0L) {
+                        val toWrite = minOf(remaining, zeros.size.toLong()).toInt()
+                        raf.write(zeros, 0, toWrite)
+                        remaining -= toWrite
+                    }
+                    raf.fd.sync()
+                }
+            }
+        } catch (_: Exception) {}
+        file.delete()
+    }
 
     fun getFileSize(file: File): Long = file.length()
 

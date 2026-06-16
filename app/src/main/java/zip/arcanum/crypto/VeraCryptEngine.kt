@@ -181,6 +181,7 @@ class VeraCryptEngine @Inject constructor() {
         const val ERR_NO_SPACE       = -5
         const val ERR_NO_SLOT        = -6
         const val ERR_FS             = -7
+        const val ERR_RAND           = -8
 
         fun filesystemIdToString(fsType: Int): String = when (fsType) {
             1 -> "FAT12"
@@ -236,6 +237,7 @@ private fun Int.toError(): CryptoError = when (this) {
     VeraCryptEngine.ERR_WRONG_PASSWORD -> CryptoError.WRONG_PASSWORD
     VeraCryptEngine.ERR_FILE,
     VeraCryptEngine.ERR_READ           -> CryptoError.IO_ERROR
+    VeraCryptEngine.ERR_RAND           -> CryptoError.RNG_FAILURE
     VeraCryptEngine.ERR_UNSUPPORTED    -> CryptoError.UNSUPPORTED_ALGORITHM
     else                               -> CryptoError.UNKNOWN
 }

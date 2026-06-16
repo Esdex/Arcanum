@@ -83,6 +83,7 @@ static uint32_t vc_get_iterations(int hashId, int pim) {
 #define ERR_NO_SPACE        -5
 #define ERR_NO_SLOT         -6
 #define ERR_FS              -7
+#define ERR_RAND            -8
 
 /* Key schedule sizes for Serpent and Camellia (others use their structs) */
 #define SERPENT_KS_SIZE    (140 * 4)   /* 560 bytes */
@@ -773,9 +774,19 @@ static uint64_t get_be64(const uint8_t *b) {
 
 /* ─── /dev/urandom helper ────────────────────────────────────────────── */
 
-static void read_urandom(uint8_t *buf, size_t len) {
-    int fd = open("/dev/urandom", O_RDONLY);
-    if (fd >= 0) { read(fd, buf, len); close(fd); }
+static bool read_urandom(uint8_t *buf, size_t len) {
+    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return false;
+    size_t done = 0;
+    bool ok = true;
+    while (done < len) {
+        ssize_t n = read(fd, buf + done, len - done);
+        if (n > 0) { done += (size_t)n; continue; }
+        if (n < 0 && errno == EINTR) continue;
+        ok = false; break;
+    }
+    close(fd);
+    return ok;
 }
 
 /* ─── VeraCrypt header write ─────────────────────────────────────────── */
@@ -796,8 +807,10 @@ static int write_vc_header(int fd, uint64_t fileOff,
     uint8_t salt[VC_HEADER_SALT_SIZE];
     if (existingSalt)
         memcpy(salt, existingSalt, VC_HEADER_SALT_SIZE);
-    else
-        read_urandom(salt, sizeof(salt));
+    else if (!read_urandom(salt, sizeof(salt))) {
+        LOGE("[header] /dev/urandom failed — aborting header write");
+        return ERR_RAND;
+    }
 
     int n    = ALGORITHMS[algId].n;
     int mkLen = n * 64;
@@ -1035,7 +1048,11 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
     }
 
     uint8_t masterKey[192] = {};
-    read_urandom(masterKey, (size_t)(n * 64));
+    if (!read_urandom(masterKey, (size_t)(n * 64))) {
+        LOGE("[create] /dev/urandom failed for master key — aborting");
+        close(fd); unlink(path.c_str());
+        return ERR_RAND;
+    }
 
     if (write_vc_header(fd, 0, dataSize, VC_DATA_OFFSET,
                         masterKey, algId, (int)hashAlg,
@@ -1057,12 +1074,22 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
         const size_t CHUNK = 65536;
         auto *rnd = static_cast<uint8_t*>(malloc(CHUNK));
         if (rnd) {
+            memset(rnd, 0, CHUNK);
             uint64_t remaining = dataSize, offset = VC_DATA_OFFSET;
-            int rfd = open("/dev/urandom", O_RDONLY);
+            int rfd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
             auto t0 = (uint64_t)time(nullptr);
             while (remaining > 0) {
                 size_t sz = (remaining > CHUNK) ? CHUNK : (size_t)remaining;
-                if (rfd >= 0) read(rfd, rnd, sz);
+                if (rfd >= 0) {
+                    size_t got = 0;
+                    while (got < sz) {
+                        ssize_t r = read(rfd, rnd + got, sz - got);
+                        if (r > 0) { got += (size_t)r; continue; }
+                        if (r < 0 && errno == EINTR) continue;
+                        memset(rnd + got, 0, sz - got);
+                        break;
+                    }
+                }
                 pwrite(fd, rnd, sz, (off_t)offset);
                 remaining -= sz; offset += sz;
                 uint64_t written = dataSize - remaining;
@@ -1072,6 +1099,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
                 report_progress(env, progressListener, frac, speed, (jlong)written);
             }
             if (rfd >= 0) close(rfd);
+            memset(rnd, 0, CHUNK);
             free(rnd);
         }
     } else {
@@ -1658,7 +1686,12 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
     int hiddenAlgId = (int)hiddenAlgorithm;
     int hiddenN     = ALGORITHMS[hiddenAlgId].n;
     uint8_t hiddenMasterKey[192] = {};
-    read_urandom(hiddenMasterKey, (size_t)(hiddenN * 64));
+    if (!read_urandom(hiddenMasterKey, (size_t)(hiddenN * 64))) {
+        LOGE("[hidden] /dev/urandom failed for hidden master key — aborting");
+        memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
+        close(fd);
+        return ERR_RAND;
+    }
 
     /* Primary hidden header at VC_HIDDEN_HEADER_OFFSET; field28 = 0 in hidden headers */
     if (write_vc_header(fd, VC_HIDDEN_HEADER_OFFSET,
