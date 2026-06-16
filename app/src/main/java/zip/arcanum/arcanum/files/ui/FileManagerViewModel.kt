@@ -30,6 +30,7 @@ import zip.arcanum.arcanum.files.domain.FileClipboard
 import zip.arcanum.arcanum.gallery.AudioPlayerQueue
 import zip.arcanum.arcanum.gallery.MediaViewerQueue
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import zip.arcanum.crypto.NativeFileInfo
 import java.io.ByteArrayOutputStream
@@ -630,12 +631,23 @@ class FileManagerViewModel @Inject constructor(
     fun clearTempFiles(context: Context) {
         val iter = _tempFiles.iterator()
         while (iter.hasNext()) {
-            runCatching { iter.next().delete() }
+            runCatching { FileUtils.secureZeroAndDelete(iter.next()) }
             iter.remove()
         }
         runCatching {
-            File(context.cacheDir, "arcanum_temp").listFiles()?.forEach { it.delete() }
+            File(context.cacheDir, "arcanum_temp").listFiles()
+                ?.forEach { FileUtils.secureZeroAndDelete(it) }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        runCatching {
+            File(context.cacheDir, "arcanum_temp").listFiles()
+                ?.forEach { FileUtils.secureZeroAndDelete(it) }
+        }
+        _tempFiles.forEach { runCatching { FileUtils.secureZeroAndDelete(it) } }
+        _tempFiles.clear()
     }
 
     fun clearPendingNotification() {
@@ -818,9 +830,4 @@ class FileManagerViewModel @Inject constructor(
         }
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        _tempFiles.forEach { runCatching { it.delete() } }
-        _tempFiles.clear()
-    }
 }
