@@ -1,7 +1,8 @@
 # Arcanum Security Audit
 
 **Date:** June 2026
-**Auditor:** Internal pre-release audit
+**Auditor:** Claude Opus 4.8
+**Goal**: Internal pre-release audit
 **Threat model:** Attacker with physical access to a locked device, technically skilled, in possession of the decompiled APK and the on-disk container/preference files.
 
 ## Summary Table
