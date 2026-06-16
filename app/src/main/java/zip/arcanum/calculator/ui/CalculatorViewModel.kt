@@ -139,6 +139,19 @@ class CalculatorViewModel @Inject constructor(
                 PinResult.WRONG  -> {
                     withContext(Dispatchers.Main) { _isVerifying.value = false }
                 }
+                PinResult.LOCKED -> {
+                    val remainingSec = (pinManager.lockoutRemainingMs() / 1000L).coerceAtLeast(1L)
+                    withContext(Dispatchers.Main) {
+                        _isVerifying.value = false
+                        _displayUiState.value = DisplayUiState(
+                            expressionText = "Locked ${remainingSec}s",
+                            resultText     = "",
+                            isResult       = false
+                        )
+                    }
+                    delay(3_000L)
+                    withContext(Dispatchers.Main) { pushDisplayState() }
+                }
             }
         }
     }
