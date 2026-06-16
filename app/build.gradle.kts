@@ -124,6 +124,7 @@ dependencies {
     implementation(libs.security.crypto)
     implementation(libs.androidx.appcompat)
     implementation(libs.biometric)
+    implementation(libs.bouncycastle.provider)
 
     // Media
     implementation(libs.coil.compose)
