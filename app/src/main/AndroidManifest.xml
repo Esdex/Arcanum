@@ -18,9 +18,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
-    <!-- Camera (for keyfile QR scanning — future) -->
-    <uses-permission android:name="android.permission.CAMERA" />
-
     <!-- USB host (for USB container support — future) -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 

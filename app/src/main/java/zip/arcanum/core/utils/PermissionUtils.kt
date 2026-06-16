@@ -16,11 +16,6 @@ object PermissionUtils {
             ) == PackageManager.PERMISSION_GRANTED
         }
 
-    fun hasCameraPermission(context: Context): Boolean =
-        ContextCompat.checkSelfPermission(
-            context, Manifest.permission.CAMERA
-        ) == PackageManager.PERMISSION_GRANTED
-
     val storagePermissions: Array<String>
         get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
