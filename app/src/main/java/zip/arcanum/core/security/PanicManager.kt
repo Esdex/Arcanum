@@ -16,8 +16,6 @@ import kotlinx.serialization.json.Json
 import zip.arcanum.core.database.dao.CalculatorHistoryDao
 import zip.arcanum.core.database.dao.ContainerDao
 import java.io.File
-import java.io.RandomAccessFile
-import java.security.SecureRandom
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -135,25 +133,10 @@ class PanicManager @Inject constructor(
     }
 
     private fun secureDeleteFile(path: String) {
-        val file = File(path)
-        if (!file.exists()) return
-        val random = SecureRandom()
-        val buffer = ByteArray(4096)
-        repeat(3) {
-            try {
-                RandomAccessFile(file, "rw").use { raf ->
-                    raf.seek(0)
-                    var remaining = file.length()
-                    while (remaining > 0) {
-                        random.nextBytes(buffer)
-                        val toWrite = minOf(remaining, buffer.size.toLong()).toInt()
-                        raf.write(buffer, 0, toWrite)
-                        remaining -= toWrite
-                    }
-                    raf.fd.sync()
-                }
-            } catch (_: Exception) {}
-        }
-        file.delete()
+        // VeraCrypt containers are AES-256 encrypted — raw bytes are worthless without
+        // the container password. Multi-pass overwrite is also ineffective on eMMC/UFS
+        // (wear leveling redirects writes to different physical cells). Simple unlink is
+        // sufficient and keeps panic timing indistinguishable from a normal unlock.
+        File(path).delete()
     }
 }
