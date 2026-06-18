@@ -15,6 +15,7 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.service.ContainerCreationParams
 import zip.arcanum.arcanum.containers.service.ContainerCreationService
 import zip.arcanum.core.premium.PremiumManager
+import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
@@ -164,7 +165,7 @@ class CreateContainerViewModel @Inject constructor(
         val paths = _state.value.keyfilePaths.toMutableList()
         val names = _state.value.keyfileDisplayNames.toMutableList()
         if (index in paths.indices) {
-            java.io.File(paths[index]).delete()
+            FileUtils.secureZeroAndDelete(java.io.File(paths[index]))
             paths.removeAt(index)
             names.removeAt(index)
         }
@@ -172,7 +173,7 @@ class CreateContainerViewModel @Inject constructor(
     }
 
     fun clearKeyfiles() {
-        _state.value.keyfilePaths.forEach { java.io.File(it).delete() }
+        _state.value.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
         _state.update { it.copy(keyfilePaths = emptyList(), keyfileDisplayNames = emptyList()) }
     }
 
@@ -193,7 +194,7 @@ class CreateContainerViewModel @Inject constructor(
         val paths = _state.value.hiddenKeyfilePaths.toMutableList()
         val names = _state.value.hiddenKeyfileDisplayNames.toMutableList()
         if (index in paths.indices) {
-            java.io.File(paths[index]).delete()
+            FileUtils.secureZeroAndDelete(java.io.File(paths[index]))
             paths.removeAt(index)
             names.removeAt(index)
         }
@@ -238,7 +239,7 @@ class CreateContainerViewModel @Inject constructor(
                     error      = "Hidden volume creation failed: ${result.error}"
                 ) }
             }
-            s.hiddenKeyfilePaths.forEach { java.io.File(it).delete() }
+            s.hiddenKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
         }
     }
 
@@ -311,8 +312,8 @@ class CreateContainerViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        _state.value.keyfilePaths.forEach { java.io.File(it).delete() }
-        _state.value.hiddenKeyfilePaths.forEach { java.io.File(it).delete() }
+        _state.value.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+        _state.value.hiddenKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
     }
 
     private fun formatTime(secs: Long): String = when {

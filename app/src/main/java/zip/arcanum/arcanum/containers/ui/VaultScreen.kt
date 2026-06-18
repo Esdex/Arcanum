@@ -345,7 +345,7 @@ fun VaultScreen(
         when {
             selectionMode   -> { selectionMode = false; selectedIds = emptySet() }
             fabExpanded     -> fabExpanded = false
-            showMountDialog -> { showMountDialog = false; viewModel.resetMountState(); mountKeyfiles.forEach { java.io.File(it.first).delete() }; mountKeyfiles = emptyList() }
+            showMountDialog -> { showMountDialog = false; viewModel.resetMountState(); mountKeyfiles.forEach { FileUtils.secureZeroAndDelete(java.io.File(it.first)) }; mountKeyfiles = emptyList() }
             else            -> showLockDialog = true
         }
     }
@@ -628,14 +628,14 @@ fun VaultScreen(
                     onAddKeyfile = { keyfilePickerLauncher.launch("*/*") },
                     onRemoveKeyfile = { index ->
                         val updated = mountKeyfiles.toMutableList()
-                        java.io.File(updated[index].first).delete()
+                        FileUtils.secureZeroAndDelete(java.io.File(updated[index].first))
                         updated.removeAt(index)
                         mountKeyfiles = updated
                     },
                     onDismiss = {
                         showMountDialog = false
                         viewModel.resetMountState()
-                        mountKeyfiles.forEach { java.io.File(it.first).delete() }
+                        mountKeyfiles.forEach { FileUtils.secureZeroAndDelete(java.io.File(it.first)) }
                         mountKeyfiles = emptyList()
                     },
                     onUnlock = { password, pim, algorithm, hashAlgorithm, protectHiddenPassword ->
@@ -650,7 +650,7 @@ fun VaultScreen(
                             hashAlgorithm         = hashAlgorithm,
                             protectHiddenPassword = protectHiddenPassword,
                             onSuccess             = { id ->
-                                mountKeyfiles.forEach { java.io.File(it.first).delete() }
+                                mountKeyfiles.forEach { FileUtils.secureZeroAndDelete(java.io.File(it.first)) }
                                 mountKeyfiles = emptyList()
                                 isMountingOverlay = false
                                 onMountSuccess(id)

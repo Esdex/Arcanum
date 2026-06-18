@@ -377,7 +377,7 @@
     <string name="settings_security_auto_lock">Auto-lock</string>
     <string name="settings_security_auto_lock_desc">Lock when app goes to background</string>
     <string name="settings_security_screen_capture">Screen Capture Protection</string>
-    <string name="settings_security_screen_capture_desc">Block other apps from recording the screen</string>
+    <string name="settings_security_screen_capture_desc">Blocks screenshots and screen recording. Disabling exposes vault contents to any app that requests screen capture — strongly recommended to keep enabled.</string>
     <string name="settings_security_screenshot_warn_title">Disable Screen Protection?</string>
     <string name="settings_security_screenshot_warn_body">Without screen protection, any app with the "appear on top" permission — or a screen recorder — can capture what\'s shown in Arcanum, including passwords and private files.\n\nOnly disable this if you fully trust your environment.</string>
     <string name="settings_security_screenshot_warn_disable">Disable in %1$d…</string>
