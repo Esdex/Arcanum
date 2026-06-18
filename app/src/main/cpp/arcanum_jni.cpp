@@ -1327,6 +1327,11 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
     if (pdrv < 0 || pdrv >= MAX_DRIVES || !g_drives[pdrv].active)
         return env->NewByteArray(0);
 
+    // Reject non-positive or unreasonably large requests.
+    // A negative length would wrap to ~4 GB when cast to UINT, causing a buffer overflow.
+    if (length <= 0 || length > 16 * 1024 * 1024)
+        return env->NewByteArray(0);
+
     std::string path = jstring_to_string(env, jFilePath);
     char fullPath[512];
     snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
@@ -1338,15 +1343,25 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
 
     jbyteArray result = env->NewByteArray(length);
     jbyte *buf = env->GetByteArrayElements(result, nullptr);
+    if (!buf) { f_close(&fil); return env->NewByteArray(0); }
+
     UINT br = 0;
     f_read(&fil, buf, (UINT)length, &br);
     env->ReleaseByteArrayElements(result, buf, 0);
     f_close(&fil);
 
     if ((jint)br < length) {
+        // Return a trimmed array sized to actual bytes read.
+        // Re-pin result to copy, then release and delete the original local ref.
         jbyteArray trimmed = env->NewByteArray((jsize)br);
-        env->SetByteArrayRegion(trimmed, 0, (jsize)br,
-                                env->GetByteArrayElements(result, nullptr));
+        if (trimmed && br > 0) {
+            jbyte *src = env->GetByteArrayElements(result, nullptr);
+            if (src) {
+                env->SetByteArrayRegion(trimmed, 0, (jsize)br, src);
+                env->ReleaseByteArrayElements(result, src, JNI_ABORT);
+            }
+        }
+        env->DeleteLocalRef(result);
         return trimmed;
     }
     return result;

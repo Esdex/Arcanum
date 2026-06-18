@@ -322,7 +322,7 @@ class FileManagerViewModel @Inject constructor(
     fun paste() {
         val destContainerId = _state.value.containerId
         val destHandle = repo.getContainerHandle(destContainerId) ?: return
-        val clipItems = clipboard.items.filter { !it.isDirectory }
+        val clipItems = clipboard.items
         if (clipItems.isEmpty()) return
         val currentPath = _state.value.currentPath
         val isCut = clipboard.isCut
@@ -335,15 +335,21 @@ class FileManagerViewModel @Inject constructor(
                 try {
                     val destPath = if (currentPath == "/") "/${item.fileName}" else "$currentPath/${item.fileName}"
                     _state.update { it.copy(operationMessage = "${if (isCut) "Moving" else "Copying"} ${item.fileName}…") }
-                    var offset = 0L
-                    while (true) {
-                        val chunk = engine.nativeReadFile(item.sourceHandle, item.sourcePath, offset, chunkSize) ?: break
-                        engine.nativeWriteFile(destHandle, destPath, chunk, offset)
-                        offset += chunk.size
-                        if (chunk.size < chunkSize) break
+                    if (item.isDirectory) {
+                        val ok = copyDirectoryRecursive(item.sourceHandle, item.sourcePath, destHandle, destPath)
+                        if (ok && isCut) runCatching { engine.nativeDeleteDirectory(item.sourceHandle, item.sourcePath) }
+                        if (ok) count++
+                    } else {
+                        var offset = 0L
+                        while (true) {
+                            val chunk = engine.nativeReadFile(item.sourceHandle, item.sourcePath, offset, chunkSize) ?: break
+                            engine.nativeWriteFile(destHandle, destPath, chunk, offset)
+                            offset += chunk.size
+                            if (chunk.size < chunkSize) break
+                        }
+                        if (isCut) runCatching { engine.nativeDeleteFile(item.sourceHandle, item.sourcePath) }
+                        count++
                     }
-                    if (isCut) runCatching { engine.nativeDeleteFile(item.sourceHandle, item.sourcePath) }
-                    count++
                 } catch (_: Exception) { }
             }
             clipboard.clear()
@@ -369,7 +375,7 @@ class FileManagerViewModel @Inject constructor(
         val s = _state.value
         val sourceHandle = repo.getContainerHandle(s.containerId) ?: return
         val destHandle = repo.getContainerHandle(destinationContainerId) ?: return
-        val toCopy = s.selectedItems.mapNotNull { path -> s.files.find { it.path == path && !it.isDirectory } }
+        val toCopy = s.selectedItems.mapNotNull { path -> s.files.find { it.path == path } }
 
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isOperationInProgress = true, operationMessage = "Copying…") }
@@ -383,14 +389,19 @@ class FileManagerViewModel @Inject constructor(
                 try {
                     val destItemPath = if (destinationPath == "/") "/${item.name}" else "$destinationPath/${item.name}"
                     _state.update { it.copy(operationMessage = "Copying ${item.name}…") }
-                    var offset = 0L
-                    while (offset < item.size) {
-                        val chunk = engine.nativeReadFile(sourceHandle, item.path, offset, chunkSize) ?: break
-                        engine.nativeWriteFile(destHandle, destItemPath, chunk, offset)
-                        offset += chunk.size
-                        if (chunk.size < chunkSize) break
+                    if (item.isDirectory) {
+                        val ok = copyDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath)
+                        if (ok) count++
+                    } else {
+                        var offset = 0L
+                        while (offset < item.size) {
+                            val chunk = engine.nativeReadFile(sourceHandle, item.path, offset, chunkSize) ?: break
+                            engine.nativeWriteFile(destHandle, destItemPath, chunk, offset)
+                            offset += chunk.size
+                            if (chunk.size < chunkSize) break
+                        }
+                        count++
                     }
-                    count++
                 } catch (_: Exception) { }
             }
 
@@ -528,7 +539,8 @@ class FileManagerViewModel @Inject constructor(
             val chunkSize = 1 * 1024 * 1024
             for (uri in uris) {
                 try {
-                    val name = getFileNameFromUri(context, uri) ?: continue
+                    val rawName = getFileNameFromUri(context, uri) ?: continue
+                    val name = File(rawName).name.ifEmpty { continue }
                     val destPath = buildDestinationPath(s.currentPath, name)
                     _state.update { it.copy(operationMessage = "Importing $name…") }
                     context.contentResolver.openInputStream(uri)?.use { input ->
@@ -555,9 +567,7 @@ class FileManagerViewModel @Inject constructor(
     fun exportSelected(context: Context, treeUri: android.net.Uri) {
         val s = _state.value
         val handle = repo.getContainerHandle(s.containerId) ?: return
-        val toExport = s.selectedItems.mapNotNull { path ->
-            s.files.find { it.path == path && !it.isDirectory }
-        }
+        val toExport = s.selectedItems.mapNotNull { path -> s.files.find { it.path == path } }
 
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isOperationInProgress = true) }
@@ -568,20 +578,25 @@ class FileManagerViewModel @Inject constructor(
             for (file in toExport) {
                 try {
                     _state.update { it.copy(operationMessage = "Exporting ${file.name}…") }
-                    val docUri = DocumentsContract.createDocument(
-                        context.contentResolver, treeDocUri,
-                        getMimeType(file.name), file.name
-                    ) ?: continue
-                    context.contentResolver.openOutputStream(docUri)?.use { out ->
-                        var offset = 0L
-                        while (offset < file.size) {
-                            val chunk = engine.nativeReadFile(handle, file.path, offset, chunkSize) ?: break
-                            out.write(chunk)
-                            offset += chunk.size
-                            if (chunk.size < chunkSize) break
+                    if (file.isDirectory) {
+                        val ok = exportDirectoryRecursive(context, handle, file.path, treeDocUri, file.name)
+                        if (ok) count++
+                    } else {
+                        val docUri = DocumentsContract.createDocument(
+                            context.contentResolver, treeDocUri,
+                            getMimeType(file.name), file.name
+                        ) ?: continue
+                        context.contentResolver.openOutputStream(docUri)?.use { out ->
+                            var offset = 0L
+                            while (offset < file.size) {
+                                val chunk = engine.nativeReadFile(handle, file.path, offset, chunkSize) ?: break
+                                out.write(chunk)
+                                offset += chunk.size
+                                if (chunk.size < chunkSize) break
+                            }
                         }
+                        count++
                     }
-                    count++
                 } catch (_: Exception) { }
             }
             exitSelectionMode()
@@ -601,7 +616,8 @@ class FileManagerViewModel @Inject constructor(
             _state.update { it.copy(isOperationInProgress = true, operationMessage = "Preparing ${file.name}…") }
             try {
                 val tempDir = File(context.cacheDir, "arcanum_temp").also { it.mkdirs() }
-                val tempFile = File(tempDir, file.name)
+                val safeName = File(file.name).name.ifEmpty { "file" }
+                val tempFile = File(tempDir, safeName)
                 val baos = ByteArrayOutputStream()
                 val chunkSize = 1 * 1024 * 1024
                 var offset = 0L
@@ -672,6 +688,78 @@ class FileManagerViewModel @Inject constructor(
             }
             runCatching { engine.nativeDeleteFile(srcHandle, srcPath) }
             true
+        } catch (_: Exception) { false }
+    }
+
+    private suspend fun exportDirectoryRecursive(
+        context: Context,
+        handle: Long,
+        srcPath: String,
+        parentDocUri: android.net.Uri,
+        dirName: String
+    ): Boolean {
+        val dirUri = DocumentsContract.createDocument(
+            context.contentResolver, parentDocUri,
+            DocumentsContract.Document.MIME_TYPE_DIR, dirName
+        ) ?: return false
+        val entries = runCatching { engine.nativeListFiles(handle, srcPath).toList() }.getOrDefault(emptyList())
+        val chunkSize = 1 * 1024 * 1024
+        var allOk = true
+        for (entry in entries) {
+            val entryPath = if (srcPath == "/") "/${entry.name}" else "$srcPath/${entry.name}"
+            try {
+                if (entry.isDirectory) {
+                    val ok = exportDirectoryRecursive(context, handle, entryPath, dirUri, entry.name)
+                    if (!ok) allOk = false
+                } else {
+                    val docUri = DocumentsContract.createDocument(
+                        context.contentResolver, dirUri,
+                        getMimeType(entry.name), entry.name
+                    ) ?: run { allOk = false; continue }
+                    context.contentResolver.openOutputStream(docUri)?.use { out ->
+                        var offset = 0L
+                        while (offset < entry.size) {
+                            val chunk = engine.nativeReadFile(handle, entryPath, offset, chunkSize) ?: break
+                            out.write(chunk)
+                            offset += chunk.size
+                            if (chunk.size < chunkSize) break
+                        }
+                    }
+                }
+            } catch (_: Exception) { allOk = false }
+        }
+        return allOk
+    }
+
+    private suspend fun copyDirectoryRecursive(
+        srcHandle: Long, srcPath: String,
+        destHandle: Long, destPath: String
+    ): Boolean {
+        return try {
+            runCatching { engine.nativeCreateDirectory(destHandle, destPath) }
+            val entries = engine.nativeListFiles(srcHandle, srcPath).toList()
+            var allCopied = true
+            val chunkSize = 1 * 1024 * 1024
+            for (entry in entries) {
+                val srcEntry  = if (srcPath  == "/") "/${entry.name}" else "$srcPath/${entry.name}"
+                val destEntry = if (destPath == "/") "/${entry.name}" else "$destPath/${entry.name}"
+                val copied = if (entry.isDirectory) {
+                    copyDirectoryRecursive(srcHandle, srcEntry, destHandle, destEntry)
+                } else {
+                    var offset = 0L
+                    var ok = true
+                    while (offset < entry.size) {
+                        val chunk = engine.nativeReadFile(srcHandle, srcEntry, offset, chunkSize)
+                            ?: run { ok = false; break }
+                        engine.nativeWriteFile(destHandle, destEntry, chunk, offset)
+                        offset += chunk.size
+                        if (chunk.size < chunkSize) break
+                    }
+                    ok
+                }
+                if (!copied) allCopied = false
+            }
+            allCopied
         } catch (_: Exception) { false }
     }
 
