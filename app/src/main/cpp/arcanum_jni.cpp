@@ -364,6 +364,7 @@ void vc_crypt_sector(GenCipherCtx *ctx, uint8_t *buf, uint64_t sn, bool enc) {
 static int alloc_drive(int fd, uint64_t dataOff, uint64_t sectors,
                        const uint8_t *masterKey, int algId, int hashId = 0,
                        bool isHidden = false, uint64_t hiddenBoundary = 0) {
+    if (algId < 0 || algId >= NUM_ALGORITHMS) return -1;
     for (int i = 0; i < MAX_DRIVES; i++) {
         if (!g_drives[i].active) {
             g_drives[i].fd              = fd;
@@ -824,6 +825,8 @@ static int write_vc_header(int fd, uint64_t fileOff,
                             int pim = 0,
                             uint64_t hiddenVolSize = 0,
                             const uint8_t *existingSalt = nullptr) {
+    if (algId < 0 || algId >= NUM_ALGORITHMS) return ERR_FS;
+
     uint8_t salt[VC_HEADER_SALT_SIZE];
     if (existingSalt)
         memcpy(salt, existingSalt, VC_HEADER_SALT_SIZE);
@@ -980,13 +983,16 @@ static bool is_valid_utf8(const char *s) {
         if (*p < 0x80) {
             p++;
         } else if ((*p & 0xE0) == 0xC0) {
-            if ((p[1] & 0xC0) != 0x80) return false;
+            if (!p[1] || (p[1] & 0xC0) != 0x80) return false;
             p += 2;
         } else if ((*p & 0xF0) == 0xE0) {
-            if ((p[1] & 0xC0) != 0x80 || (p[2] & 0xC0) != 0x80) return false;
+            if (!p[1] || (p[1] & 0xC0) != 0x80 ||
+                !p[2] || (p[2] & 0xC0) != 0x80) return false;
             p += 3;
         } else if ((*p & 0xF8) == 0xF0) {
-            if ((p[1] & 0xC0) != 0x80 || (p[2] & 0xC0) != 0x80 || (p[3] & 0xC0) != 0x80) return false;
+            if (!p[1] || (p[1] & 0xC0) != 0x80 ||
+                !p[2] || (p[2] & 0xC0) != 0x80 ||
+                !p[3] || (p[3] & 0xC0) != 0x80) return false;
             p += 4;
         } else {
             return false;
@@ -1059,6 +1065,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
     const int pbkdf2PwdLen = effPwdLen;
 
     int algId = (int)algorithm;
+    if (algId < 0 || algId >= NUM_ALGORITHMS) return ERR_FS;
     int n     = ALGORITHMS[algId].n;
 
     uint64_t dataSize = (uint64_t)sizeBytes;
@@ -1562,7 +1569,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateDirectory(
 /* ─── JNI: nativeDeleteDirectory ────────────────────────────────────── */
 /* Recursive delete — caller must NOT hold g_fatfs_mutex. */
 
-static FRESULT unlink_recursive_locked(const char *fullPath) {
+static FRESULT unlink_recursive_locked(const char *fullPath, int depth = 0) {
+    if (depth > 16) return FR_DENIED;
+
     FRESULT fr = f_unlink(fullPath);
     if (fr != FR_DENIED) return fr; /* FR_DENIED = directory not empty */
 
@@ -1573,8 +1582,9 @@ static FRESULT unlink_recursive_locked(const char *fullPath) {
 
     char entryPath[512];
     while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0]) {
-        snprintf(entryPath, sizeof(entryPath), "%s/%s", fullPath, fno.fname);
-        unlink_recursive_locked(entryPath);
+        int n = snprintf(entryPath, sizeof(entryPath), "%s/%s", fullPath, fno.fname);
+        if (n > 0 && n < (int)sizeof(entryPath))
+            unlink_recursive_locked(entryPath, depth + 1);
     }
     f_closedir(&dir);
     return f_unlink(fullPath);
@@ -1726,6 +1736,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
 
     /* ── Generate hidden master key and write hidden headers ── */
     int hiddenAlgId = (int)hiddenAlgorithm;
+    if (hiddenAlgId < 0 || hiddenAlgId >= NUM_ALGORITHMS) { close(fd); return ERR_FS; }
     int hiddenN     = ALGORITHMS[hiddenAlgId].n;
     uint8_t hiddenMasterKey[192] = {};
     if (!read_urandom(hiddenMasterKey, (size_t)(hiddenN * 64))) {
