@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import zip.arcanum.R
+import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
 import kotlin.math.roundToInt
@@ -88,7 +89,7 @@ class ContainerCreationService : Service() {
             )
 
             // Delete temp keyfile cache after use regardless of result
-            p.keyfilePaths.forEach { java.io.File(it).delete() }
+            p.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
 
             if (result is zip.arcanum.crypto.CryptoResult.Success) {
                 _progress.value = CreationProgress(

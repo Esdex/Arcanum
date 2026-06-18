@@ -418,6 +418,11 @@ static void hmac_sha512(const uint8_t *key, int klen,
     sha512_end(out, &ctx);
 }
 
+/* Volatile pointer prevents the compiler from eliding security-critical zeroing. */
+static void secure_memset(volatile uint8_t *p, uint8_t c, size_t n) {
+    while (n--) *p++ = c;
+}
+
 static void pbkdf2_sha512(const uint8_t *pwd, int plen,
                           const uint8_t *salt, int slen,
                           uint32_t iters, uint8_t *dk, int dklen) {
@@ -437,9 +442,12 @@ static void pbkdf2_sha512(const uint8_t *pwd, int plen,
             hmac_sha512(pwd, plen, U, 64, U);
             for (int j = 0; j < 64; j++) T[j] ^= U[j];
         }
+        secure_memset((volatile uint8_t *)saltb, 0, (size_t)(slen + 4));
         free(saltb);
         int cp = (b == blocks && dklen % 64 != 0) ? (dklen % 64) : 64;
         memcpy(dk + (b-1)*64, T, (size_t)cp);
+        secure_memset((volatile uint8_t *)U, 0, sizeof(U));
+        secure_memset((volatile uint8_t *)T, 0, sizeof(T));
     }
 }
 
@@ -483,9 +491,12 @@ static void pbkdf2_sha256(const uint8_t *pwd, int plen,
             hmac_sha256(pwd, plen, U, 32, U);
             for (int j = 0; j < 32; j++) T[j] ^= U[j];
         }
+        secure_memset((volatile uint8_t *)saltb, 0, (size_t)(slen + 4));
         free(saltb);
         int cp = (b == blocks && dklen % 32 != 0) ? (dklen % 32) : 32;
         memcpy(dk + (b-1)*32, T, (size_t)cp);
+        secure_memset((volatile uint8_t *)U, 0, sizeof(U));
+        secure_memset((volatile uint8_t *)T, 0, sizeof(T));
     }
 }
 
@@ -534,9 +545,12 @@ static void pbkdf2_whirlpool(const uint8_t *pwd, int plen,
             hmac_whirlpool(pwd, plen, U, 64, U);
             for (int j = 0; j < 64; j++) T[j] ^= U[j];
         }
+        secure_memset((volatile uint8_t *)saltb, 0, (size_t)(slen + 4));
         free(saltb);
         int cp = (b == blocks && dklen % 64 != 0) ? (dklen % 64) : 64;
         memcpy(dk + (b-1)*64, T, (size_t)cp);
+        secure_memset((volatile uint8_t *)U, 0, sizeof(U));
+        secure_memset((volatile uint8_t *)T, 0, sizeof(T));
     }
 }
 
@@ -585,9 +599,12 @@ static void pbkdf2_streebog(const uint8_t *pwd, int plen,
             hmac_streebog(pwd, plen, U, 64, U);
             for (int j = 0; j < 64; j++) T[j] ^= U[j];
         }
+        secure_memset((volatile uint8_t *)saltb, 0, (size_t)(slen + 4));
         free(saltb);
         int cp = (b == blocks && dklen % 64 != 0) ? (dklen % 64) : 64;
         memcpy(dk + (b-1)*64, T, (size_t)cp);
+        secure_memset((volatile uint8_t *)U, 0, sizeof(U));
+        secure_memset((volatile uint8_t *)T, 0, sizeof(T));
     }
 }
 
@@ -641,9 +658,12 @@ static void pbkdf2_blake2s(const uint8_t *pwd, int plen,
             hmac_blake2s(pwd, plen, U, 32, U);
             for (int j = 0; j < 32; j++) T[j] ^= U[j];
         }
+        secure_memset((volatile uint8_t *)saltb, 0, (size_t)(slen + 4));
         free(saltb);
         int cp = (b == blocks && dklen % 32 != 0) ? (dklen % 32) : 32;
         memcpy(dk + (b-1)*32, T, (size_t)cp);
+        secure_memset((volatile uint8_t *)U, 0, sizeof(U));
+        secure_memset((volatile uint8_t *)T, 0, sizeof(T));
     }
 }
 
@@ -978,6 +998,7 @@ static bool is_valid_utf8(const char *s) {
 static std::string jstring_to_string(JNIEnv *env, jstring js) {
     if (!js) return {};
     const char *c = env->GetStringUTFChars(js, nullptr);
+    if (!c) return {};
     std::string s(c);
     env->ReleaseStringUTFChars(js, c);
     return s;
@@ -1001,8 +1022,12 @@ static void report_progress(JNIEnv *env, jobject listener,
                              float frac, float speedMbps, jlong written) {
     if (!listener) return;
     jclass cls = env->GetObjectClass(listener);
+    if (!cls) return;
     jmethodID mid = env->GetMethodID(cls, "onProgress", "(FFJ)V");
-    if (mid) env->CallVoidMethod(listener, mid, frac, speedMbps, written);
+    if (mid) {
+        env->CallVoidMethod(listener, mid, frac, speedMbps, written);
+        if (env->ExceptionCheck()) env->ExceptionClear();
+    }
     env->DeleteLocalRef(cls);
 }
 
@@ -1260,8 +1285,10 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
         jlong handle, jstring jDirPath)
 {
     jclass infoCls = env->FindClass("zip/arcanum/crypto/NativeFileInfo");
+    if (!infoCls) return nullptr;
     jmethodID ctor = env->GetMethodID(infoCls, "<init>",
                          "(Ljava/lang/String;Ljava/lang/String;JZJ)V");
+    if (!ctor) return env->NewObjectArray(0, infoCls, nullptr);
 
     int pdrv = (int)handle;
     if (pdrv < 0 || pdrv >= MAX_DRIVES || !g_drives[pdrv].active)

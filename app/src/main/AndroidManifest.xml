@@ -7,6 +7,10 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
+    <!-- MANAGE_EXTERNAL_STORAGE is required so the user can select arbitrary paths on external
+         storage as VeraCrypt container locations. It is NOT auto-requested at startup — the
+         permission dialog is shown only inside CreateContainerScreen when the user explicitly
+         chooses an external storage path for a new container. -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
 
