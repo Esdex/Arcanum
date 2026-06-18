@@ -101,8 +101,13 @@ class PinManager @Inject constructor(
         val pinVer    = prefs.getInt(KEY_PIN_HASH_VERSION, VERSION_SHA256)
         val panicVer  = prefs.getInt(KEY_PANIC_HASH_VERSION, VERSION_SHA256)
 
-        val matchesMain  = pinHash  != null && verifyHash(pin, pinHash, pinVer)
-        val matchesPanic = panicHash != null && verifyHash(pin, panicHash, panicVer)
+        // Always run both derivations regardless of whether the hash is set.
+        // Substituting DUMMY_HASH when absent ensures the Argon2id work executes either way,
+        // preventing an attacker from inferring whether a panic PIN is configured via timing.
+        val mainOk  = verifyHash(pin, pinHash   ?: DUMMY_HASH, if (pinHash   != null) pinVer   else VERSION_ARGON2)
+        val panicOk = verifyHash(pin, panicHash ?: DUMMY_HASH, if (panicHash != null) panicVer else VERSION_ARGON2)
+        val matchesMain  = pinHash  != null && mainOk
+        val matchesPanic = panicHash != null && panicOk
 
         when {
             matchesMain -> {
@@ -249,5 +254,12 @@ class PinManager @Inject constructor(
         private const val ARGON2_PARALLEL  = 1
         private const val SALT_LEN         = 32
         private const val HASH_LEN         = 32
+
+        // Stable dummy Argon2id-format hash (base64-salt:base64-hash).
+        // Used when a hash slot is absent so the full derivation still executes.
+        // 44-char base64 = 32 zero bytes; will never match a real PIN.
+        private const val DUMMY_HASH =
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:" +
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     }
 }
