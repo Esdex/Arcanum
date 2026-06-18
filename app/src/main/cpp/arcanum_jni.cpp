@@ -887,8 +887,24 @@ static int write_vc_header(int fd, uint64_t fileOff,
 }
 
 /* ─── VeraCrypt header authenticate ─────────────────────────────────── */
+
+static void derive_header_key(int hi, const uint8_t *password, int pwd_len,
+                               const uint8_t *salt, int pim, uint8_t out[192]) {
+    uint32_t iters = vc_get_iterations(hi, pim);
+    switch (hi) {
+        case 0: pbkdf2_sha512   (password, pwd_len, salt, VC_HEADER_SALT_SIZE, iters, out, 192); break;
+        case 1: pbkdf2_sha256   (password, pwd_len, salt, VC_HEADER_SALT_SIZE, iters, out, 192); break;
+        case 2: pbkdf2_whirlpool(password, pwd_len, salt, VC_HEADER_SALT_SIZE, iters, out, 192); break;
+        case 3: pbkdf2_streebog (password, pwd_len, salt, VC_HEADER_SALT_SIZE, iters, out, 192); break;
+        case 4: pbkdf2_blake2s  (password, pwd_len, salt, VC_HEADER_SALT_SIZE, iters, out, 192); break;
+        default: break;
+    }
+}
+
 /*
- * Tries all 4 hashes × 15 cipher algorithms (60 combinations max).
+ * Tries all 5 hashes × 15 cipher algorithms (75 combinations max).
+ * hintAlgId / hintHashId (-1 = unknown): if both are valid, the matching
+ * combination is tried first so re-mounting a known container is fast.
  * On success fills masterKey (n*64 bytes), outMkLen, outAlgId, dataSz, dataOff.
  */
 static int read_vc_header(int fd, uint64_t fileOff,
@@ -897,33 +913,64 @@ static int read_vc_header(int fd, uint64_t fileOff,
                           uint64_t *dataSz, uint64_t *dataOff,
                           int *outAlgId, int *outHashId = nullptr,
                           int pim = 0,
-                          uint64_t *outHiddenVolSize = nullptr) {
+                          uint64_t *outHiddenVolSize = nullptr,
+                          int hintAlgId = -1, int hintHashId = -1) {
     uint8_t rawHeader[VC_HEADER_SIZE];
     if (pread(fd, rawHeader, VC_HEADER_SIZE, (off_t)fileOff) != VC_HEADER_SIZE) return ERR_READ;
 
     const uint8_t *salt = rawHeader;          /* first 64 bytes */
+    const uint8_t *rawBody = rawHeader + VC_HEADER_BODY_OFFSET;
 
     static const int NUM_HASHES = 5;
 
+    /* ── Fast path: try hinted (hash, algorithm) combination first ── */
+    bool hintTried = false;
+    if (hintHashId >= 0 && hintHashId < NUM_HASHES &&
+        hintAlgId  >= 0 && hintAlgId  < NUM_ALGORITHMS) {
+        hintTried = true;
+        uint8_t hintKey[192] = {};
+        derive_header_key(hintHashId, (const uint8_t*)password, pwd_len, salt, pim, hintKey);
+
+        uint8_t body[VC_HEADER_BODY_SIZE];
+        memcpy(body, rawBody, VC_HEADER_BODY_SIZE);
+        int n = ALGORITHMS[hintAlgId].n;
+        for (int ci = n - 1; ci >= 0; ci--)
+            xts_crypt_temp(ALGORITHMS[hintAlgId].c[ci], hintKey + ci*64, body, VC_HEADER_BODY_SIZE, 0, false);
+
+        if (body[0]=='V' && body[1]=='E' && body[2]=='R' && body[3]=='A' &&
+            get_be32(body + 188) == crc32_buf(body, 188) &&
+            get_be32(body + 8)   == crc32_buf(body + 192, 256)) {
+            int mkLen = n * 64;
+            memcpy(masterKey, body + VC_MASTER_KEY_OFFSET, (size_t)mkLen);
+            if (outMkLen)  *outMkLen  = mkLen;
+            if (outAlgId)  *outAlgId  = hintAlgId;
+            if (outHashId) *outHashId = hintHashId;
+            uint64_t field28 = get_be64(body + 28);
+            if (outHiddenVolSize) *outHiddenVolSize = field28;
+            if (dataSz)  *dataSz  = get_be64(body + 36);
+            if (dataOff) *dataOff = get_be64(body + 44);
+            secure_memset((volatile uint8_t *)body,    0, sizeof(body));
+            secure_memset((volatile uint8_t *)hintKey, 0, sizeof(hintKey));
+            return ERR_OK;
+        }
+        secure_memset((volatile uint8_t *)body,    0, sizeof(body));
+        secure_memset((volatile uint8_t *)hintKey, 0, sizeof(hintKey));
+    }
+
+    /* ── Full brute-force (skips the hint combo if already tried) ── */
     uint8_t allDerivedKeys[NUM_HASHES][192];
     memset(allDerivedKeys, 0, sizeof(allDerivedKeys));
 
     for (int hi = 0; hi < NUM_HASHES; hi++) {
-
-        uint32_t iters = vc_get_iterations(hi, pim);
-        switch (hi) {
-            case 0: pbkdf2_sha512   ((uint8_t*)password, pwd_len, salt, VC_HEADER_SALT_SIZE, iters, allDerivedKeys[hi], 192); break;
-            case 1: pbkdf2_sha256   ((uint8_t*)password, pwd_len, salt, VC_HEADER_SALT_SIZE, iters, allDerivedKeys[hi], 192); break;
-            case 2: pbkdf2_whirlpool((uint8_t*)password, pwd_len, salt, VC_HEADER_SALT_SIZE, iters, allDerivedKeys[hi], 192); break;
-            case 3: pbkdf2_streebog ((uint8_t*)password, pwd_len, salt, VC_HEADER_SALT_SIZE, iters, allDerivedKeys[hi], 192); break;
-            case 4: pbkdf2_blake2s  ((uint8_t*)password, pwd_len, salt, VC_HEADER_SALT_SIZE, iters, allDerivedKeys[hi], 192); break;
-        }
+        derive_header_key(hi, (const uint8_t*)password, pwd_len, salt, pim, allDerivedKeys[hi]);
 
         uint8_t *derivedKey = allDerivedKeys[hi];
 
         for (int ai = 0; ai < NUM_ALGORITHMS; ai++) {
+            if (hintTried && hi == hintHashId && ai == hintAlgId) continue;
+
             uint8_t body[VC_HEADER_BODY_SIZE];
-            memcpy(body, rawHeader + VC_HEADER_BODY_OFFSET, VC_HEADER_BODY_SIZE);
+            memcpy(body, rawBody, VC_HEADER_BODY_SIZE);
 
             int n = ALGORITHMS[ai].n;
             /* Decrypt in reverse cipher order */
@@ -1182,7 +1229,7 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
         JNIEnv *env, jobject /*thiz*/,
         jstring jPath, jstring jPassword, jobjectArray jKeyfilePaths,
-        jint pim, jint /*algorithm*/, jint /*hashAlgorithm*/)
+        jint pim, jint algorithm, jint hashAlgorithm)
 {
     std::string path     = jstring_to_string(env, jPath);
     std::string password = jstring_to_string(env, jPassword);
@@ -1231,7 +1278,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
         if (tryOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
         uint64_t hvSz = 0;
         rc = read_vc_header(fd, tryOffsets[ti], (const char*)effPwd, effPwdLen,
-                            masterKey, &mkLen, &dataSz, &dataOff, &algId, &hashId, (int)pim, &hvSz);
+                            masterKey, &mkLen, &dataSz, &dataOff, &algId, &hashId, (int)pim, &hvSz,
+                            (int)algorithm, (int)hashAlgorithm);
         if (rc == ERR_OK) {
             authIsHidden = tryIsHidden[ti];
             hiddenVolSize = hvSz;
