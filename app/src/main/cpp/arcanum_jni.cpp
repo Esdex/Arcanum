@@ -1024,17 +1024,20 @@ static std::vector<std::string> jstringArray_to_vector(JNIEnv *env, jobjectArray
     return result;
 }
 
-static void report_progress(JNIEnv *env, jobject listener,
-                             float frac, float speedMbps, jlong written) {
-    if (!listener) return;
+static jmethodID resolve_progress_mid(JNIEnv *env, jobject listener) {
+    if (!listener) return nullptr;
     jclass cls = env->GetObjectClass(listener);
-    if (!cls) return;
+    if (!cls) return nullptr;
     jmethodID mid = env->GetMethodID(cls, "onProgress", "(FFJ)V");
-    if (mid) {
-        env->CallVoidMethod(listener, mid, frac, speedMbps, written);
-        if (env->ExceptionCheck()) env->ExceptionClear();
-    }
     env->DeleteLocalRef(cls);
+    return mid;
+}
+
+static void report_progress(JNIEnv *env, jobject listener, jmethodID mid,
+                             float frac, float speedMbps, jlong written) {
+    if (!listener || !mid) return;
+    env->CallVoidMethod(listener, mid, frac, speedMbps, written);
+    if (env->ExceptionCheck()) env->ExceptionClear();
 }
 
 /* ─── JNI: nativeCreateContainer ────────────────────────────────────── */
@@ -1101,6 +1104,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
                     (const char*)effPwd, pbkdf2PwdLen, (int)pim);
     memset(effPwd, 0, sizeof(effPwd));
 
+    /* Resolve progress callback method ID once — reused across all chunks */
+    jmethodID progressMid = resolve_progress_mid(env, progressListener);
+
     /* Fill data area */
     if (!quickFormat) {
         const size_t CHUNK = 65536;
@@ -1128,14 +1134,14 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
                 float frac = (float)written / (float)dataSize;
                 uint64_t elapsed = (uint64_t)time(nullptr) - t0;
                 float speed = elapsed > 0 ? (float)(written/1048576UL)/(float)elapsed : 10.f;
-                report_progress(env, progressListener, frac, speed, (jlong)written);
+                report_progress(env, progressListener, progressMid, frac, speed, (jlong)written);
             }
             if (rfd >= 0) close(rfd);
             memset(rnd, 0, CHUNK);
             free(rnd);
         }
     } else {
-        report_progress(env, progressListener, 0.5f, 500.f, (jlong)(dataSize/2));
+        report_progress(env, progressListener, progressMid, 0.5f, 500.f, (jlong)(dataSize/2));
     }
 
     /* Format filesystem */
@@ -1165,7 +1171,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
         close(fd); unlink(path.c_str()); return ERR_FS;
     }
 
-    report_progress(env, progressListener, 1.0f, 0.f, (jlong)dataSize);
+    report_progress(env, progressListener, progressMid, 1.0f, 0.f, (jlong)dataSize);
     close(fd);
     return ERR_OK;
 }
@@ -1642,6 +1648,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
 
     if (path.empty() || outerPassword.empty() || hiddenPassword.empty()) return ERR_FILE;
 
+    jmethodID progressMid = resolve_progress_mid(env, progressListener);
+
     int fd = open(path.c_str(), O_RDWR);
     if (fd < 0) { LOGE("nativeCreateHiddenVolume: cannot open %s", path.c_str()); return ERR_FILE; }
 
@@ -1788,7 +1796,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
     }
     free_drive(pdrv);
 
-    report_progress(env, progressListener, 1.0f, 0.f, (jlong)hidSz);
+    report_progress(env, progressListener, progressMid, 1.0f, 0.f, (jlong)hidSz);
     close(fd);
     return (fr == FR_OK) ? ERR_OK : ERR_FS;
 }
