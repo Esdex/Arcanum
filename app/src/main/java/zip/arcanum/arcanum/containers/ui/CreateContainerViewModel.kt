@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.containers.service.ContainerCreationParams
 import zip.arcanum.arcanum.containers.service.ContainerCreationService
 import zip.arcanum.core.premium.PremiumManager
 import zip.arcanum.crypto.CryptoResult
@@ -120,6 +121,7 @@ class CreateContainerViewModel @Inject constructor(
     val premiumManager: PremiumManager,
     private val cryptoEngine: VeraCryptEngine,
     private val repo: ContainerRepository,
+    private val creationParams: ContainerCreationParams,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -272,22 +274,21 @@ class CreateContainerViewModel @Inject constructor(
                 }
         }
 
-        // Start the foreground service
+        // Pass all params (including password) through an in-process singleton — never via Intent.
         val fullPath = "${s.filePath.trimEnd('/')}/${s.fileName}"
-        val intent = Intent(context, ContainerCreationService::class.java).apply {
-            putExtra(ContainerCreationService.EXTRA_PATH,         fullPath)
-            putExtra(ContainerCreationService.EXTRA_SIZE_BYTES,   s.sizeMb * 1024L * 1024L)
-            putExtra(ContainerCreationService.EXTRA_PASSWORD,     s.password)
-            putExtra(ContainerCreationService.EXTRA_ALGORITHM,    s.algorithm.ordinal)
-            putExtra(ContainerCreationService.EXTRA_HASH_ALG,     s.hashAlgorithm.ordinal)
-            putExtra(ContainerCreationService.EXTRA_FILESYSTEM,   s.filesystem.ordinal)
-            putExtra(ContainerCreationService.EXTRA_QUICK_FORMAT, s.quickFormat)
-            putExtra(ContainerCreationService.EXTRA_ENTROPY,      entropyBuffer.toByteArray())
-            putExtra(ContainerCreationService.EXTRA_PIM,          s.pim)
-            if (s.keyfilePaths.isNotEmpty())
-                putStringArrayListExtra(ContainerCreationService.EXTRA_KEYFILE_PATHS, ArrayList(s.keyfilePaths))
-        }
-        context.startForegroundService(intent)
+        creationParams.set(ContainerCreationParams.Params(
+            path          = fullPath,
+            sizeBytes     = s.sizeMb * 1024L * 1024L,
+            password      = s.password,
+            algorithm     = s.algorithm.ordinal,
+            hashAlgorithm = s.hashAlgorithm.ordinal,
+            filesystem    = s.filesystem.ordinal,
+            quickFormat   = s.quickFormat,
+            entropyBytes  = entropyBuffer.toByteArray(),
+            keyfilePaths  = s.keyfilePaths,
+            pim           = s.pim
+        ))
+        context.startForegroundService(Intent(context, ContainerCreationService::class.java))
     }
 
     fun registerCreatedContainer() {

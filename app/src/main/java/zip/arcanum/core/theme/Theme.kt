@@ -17,16 +17,32 @@ val LocalAmoledMode   = compositionLocalOf { false }
 val LocalDarkMode     = compositionLocalOf { false }
 val LocalDynamicColor = compositionLocalOf { false }
 
-private val DarkColorScheme = darkColorScheme(
-    primary   = Purple80,
-    secondary = PurpleGrey80,
-    tertiary  = Pink80
+// Light: saturated colours work against white surfaces; dark containers carry white text (AAA contrast).
+private val LightColorScheme = lightColorScheme(
+    primary              = ArcanumColors.Primary,       // #259AD2 blue
+    onPrimary            = Color.White,
+    primaryContainer     = ArcanumColors.PrimaryDark,   // #22697D dark teal container
+    onPrimaryContainer   = Color.White,
+    secondary            = ArcanumColors.Accent,        // #3AA6AE teal
+    onSecondary          = Color.White,
+    secondaryContainer   = ArcanumColors.AccentLight,   // #67C0B6 mint-teal container
+    onSecondaryContainer = Color(0xFF002020),
+    tertiary             = ArcanumColors.AccentDark,    // #3A9AB1 mid-teal
+    onTertiary           = Color.White,
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary   = Purple40,
-    secondary = PurpleGrey40,
-    tertiary  = Pink40
+// Dark: lighter variants for sufficient contrast against dark surfaces.
+private val DarkColorScheme = darkColorScheme(
+    primary              = ArcanumColors.PrimaryLight,  // #6DD0E0 light cyan
+    onPrimary            = Color(0xFF003547),
+    primaryContainer     = ArcanumColors.PrimaryDark,   // #22697D dark teal container
+    onPrimaryContainer   = ArcanumColors.PrimaryLight,
+    secondary            = ArcanumColors.AccentLight,   // #67C0B6 mint-teal
+    onSecondary          = Color(0xFF00332F),
+    secondaryContainer   = ArcanumColors.Accent,        // #3AA6AE teal container
+    onSecondaryContainer = Color(0xFFB2EBEE),
+    tertiary             = ArcanumColors.Primary,       // #259AD2 blue
+    onTertiary           = Color(0xFF003547),
 )
 
 /**
