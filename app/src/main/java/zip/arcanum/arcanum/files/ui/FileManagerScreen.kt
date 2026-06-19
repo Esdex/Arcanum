@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -274,7 +273,7 @@ fun FileManagerScreen(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .then(if (isAmoled) Modifier.hazeSource(localHazeState) else Modifier)
+                    .hazeSource(localHazeState)
             ) {
                 when {
                     state.isLoading -> Box(Modifier.fillMaxSize().padding(top = topPadding)) {
@@ -680,7 +679,6 @@ private fun FileManagerTopBar(
     val hazeState = LocalHazeState.current
 
     TopAppBar(
-        windowInsets = WindowInsets(0),
         modifier     = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier,
         colors       = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                        else TopAppBarDefaults.topAppBarColors(),
@@ -772,7 +770,6 @@ private fun SelectionTopBar(
     val isAmoled  = LocalAmoledMode.current
     val hazeState = LocalHazeState.current
     TopAppBar(
-        windowInsets   = WindowInsets(0),
         modifier       = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier,
         colors         = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                          else TopAppBarDefaults.topAppBarColors(),

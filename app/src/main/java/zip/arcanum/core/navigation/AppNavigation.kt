@@ -68,6 +68,7 @@ fun AppNavigation(pinManager: PinManager) {
     var unmountIconOffset          by remember { mutableStateOf<Offset?>(null) }
     var pendingMountContainerId    by remember { mutableStateOf<String?>(null) }
 
+
     val mountCoordinator: MountCoordinator = hiltViewModel()
     val mountPhase by mountCoordinator.phase.collectAsState()
 
@@ -343,5 +344,5 @@ fun AppNavigation(pinManager: PinManager) {
         )
     }
 
-    } // Box
+    } // outer Box
 }

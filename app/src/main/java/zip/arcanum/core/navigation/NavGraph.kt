@@ -100,6 +100,7 @@ fun ContainerScreen(
 
     CompositionLocalProvider(LocalHazeState provides hazeState) {
         Scaffold(
+            contentWindowInsets = WindowInsets(0),
             topBar = {
                 when (selectedTab) {
                     BottomNavItem.ContainerGallery.route -> GalleryTopBar(
