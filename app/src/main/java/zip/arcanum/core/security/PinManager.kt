@@ -141,14 +141,28 @@ class PinManager @Inject constructor(
         val prefs     = prefsDeferred.await()
         val panicHash = prefs.getString(KEY_PANIC_PIN_HASH, null) ?: return@withContext
         val panicVer  = prefs.getInt(KEY_PANIC_HASH_VERSION, VERSION_SHA256)
+        // commit() instead of apply() — synchronous fsync guarantees the invalidation
+        // survives a power-pull between promotion and the background wipe completing.
         prefs.edit()
             .putString(KEY_PIN_HASH, panicHash)
             .putInt(KEY_PIN_HASH_VERSION, panicVer)
             .remove(KEY_PANIC_PIN_HASH)
             .remove(KEY_PANIC_HASH_VERSION)
-            .apply()
+            .commit()
         _isPinSet.value      = true
         _isPanicPinSet.value = false
+    }
+
+    // Mirrors the IO cost of promotePanicPinToMain() on the normal-unlock path so both
+    // paths have the same pre-navigation latency (timing equalization for deniability).
+    suspend fun dummyPromote() = withContext(Dispatchers.IO) {
+        val prefs   = prefsDeferred.await()
+        val pinHash = prefs.getString(KEY_PIN_HASH, null) ?: return@withContext
+        val pinVer  = prefs.getInt(KEY_PIN_HASH_VERSION, VERSION_SHA256)
+        prefs.edit()
+            .putString(KEY_PIN_HASH, pinHash)
+            .putInt(KEY_PIN_HASH_VERSION, pinVer)
+            .commit()
     }
 
     suspend fun clearAll() = withContext(Dispatchers.IO) {

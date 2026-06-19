@@ -43,6 +43,18 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Disable WorkManager auto-init so HiltWorkerFactory can be injected first -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"

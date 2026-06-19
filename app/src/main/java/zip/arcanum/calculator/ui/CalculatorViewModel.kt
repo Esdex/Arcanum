@@ -3,6 +3,12 @@ package zip.arcanum.calculator.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import android.content.Context
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.WorkManager
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -18,6 +24,7 @@ import zip.arcanum.calculator.logic.CalculatorState
 import zip.arcanum.core.database.dao.CalculatorHistoryDao
 import zip.arcanum.core.database.entities.CalculationEntity
 import zip.arcanum.core.security.PanicManager
+import zip.arcanum.core.security.PanicWipeWorker
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.security.PinResult
 import javax.inject.Inject
@@ -38,7 +45,8 @@ class CalculatorViewModel @Inject constructor(
     private val engine: CalculatorEngine,
     private val pinManager: PinManager,
     private val historyDao: CalculatorHistoryDao,
-    private val panicManager: PanicManager
+    private val panicManager: PanicManager,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CalculatorState())
@@ -126,15 +134,33 @@ class CalculatorViewModel @Inject constructor(
             val result = pinManager.verifyPin(pin)
             when (result) {
                 PinResult.NORMAL -> {
-                    delay(1_000L)
+                    // Mirror the IO cost of prepareForPanic(): DataStore read + commit().
+                    // Both paths must have identical pre-navigation latency (deniability).
+                    panicManager.getPanicSettings()
+                    pinManager.dummyPromote()
                     withContext(Dispatchers.Main) { _isVerifying.value = false }
                     _events.emit(CalculatorEvent.NavigateToArcanum)
                 }
                 PinResult.PANIC  -> {
-                    // Wipe completes before navigation — spinner stays visible during wipe
-                    panicManager.executePanic()
+                    // Promote panic PIN to main before navigation — synchronous commit()
+                    // guarantees the real PIN is invalidated on disk before we navigate.
+                    val panicEnabled = panicManager.prepareForPanic() != null
                     withContext(Dispatchers.Main) { _isVerifying.value = false }
                     _events.emit(CalculatorEvent.NavigateToArcanum)
+                    // Wipe runs as a durable WorkManager job — survives process death and
+                    // retries on failure. Settings are read from DataStore inside the worker
+                    // so nothing sensitive is stored in WorkManager's plaintext SQLite DB.
+                    if (panicEnabled) {
+                        val request = OneTimeWorkRequestBuilder<PanicWipeWorker>()
+                            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                            .build()
+                        WorkManager.getInstance(context)
+                            .enqueueUniqueWork(
+                                PanicWipeWorker.WORK_NAME,
+                                ExistingWorkPolicy.REPLACE,
+                                request
+                            )
+                    }
                 }
                 PinResult.WRONG  -> {
                     withContext(Dispatchers.Main) { _isVerifying.value = false }
