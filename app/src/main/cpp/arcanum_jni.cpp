@@ -40,7 +40,11 @@ extern "C" {
 #include "Common/Xts.h"    /* EncryptBufferXTS, DecryptBufferXTS, UINT64_STRUCT */
 
 #define LOG_TAG "ArcanumNative"
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#ifdef NDEBUG
+#  define LOGE(...) ((void)0)
+#else
+#  define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#endif
 
 /* ─── VeraCrypt volume constants ────────────────────────────────────── */
 
