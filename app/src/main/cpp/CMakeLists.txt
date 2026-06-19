@@ -49,7 +49,7 @@ target_include_directories(arcanum-native PRIVATE
 target_compile_options(arcanum-native PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-std=c11>
     $<$<COMPILE_LANGUAGE:CXX>:-std=c++17>
-    -O2 -DNDEBUG
+    -O2
     -fexceptions -frtti
     # Silence warnings from VeraCrypt's older C code
     -Wno-implicit-function-declaration
