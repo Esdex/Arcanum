@@ -13,6 +13,9 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -78,8 +81,15 @@ class VaultViewModel @Inject constructor(
         }
     }
 
+    private val appBackgroundObserver = object : DefaultLifecycleObserver {
+        override fun onStop(owner: LifecycleOwner) {
+            unmountContainersOnStop(isLocked = false)
+        }
+    }
+
     init {
         context.registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
+        ProcessLifecycleOwner.get().lifecycle.addObserver(appBackgroundObserver)
         viewModelScope.launch {
             val prefs = context.vaultDisplayDataStore.data.first()
             _sortState.value = SortState(
@@ -99,6 +109,7 @@ class VaultViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(appBackgroundObserver)
         context.unregisterReceiver(screenOffReceiver)
     }
 
@@ -150,6 +161,7 @@ class VaultViewModel @Inject constructor(
     val mountState = _mountState.asStateFlow()
 
     private var mountJob: Job? = null
+    private var lastMountTimeMillis = 0L
 
     fun cancelMount() {
         mountJob?.cancel()
@@ -209,6 +221,7 @@ class VaultViewModel @Inject constructor(
                             VeraCryptEngine.filesystemIdToString(fsType)
                         )
                     }
+                    lastMountTimeMillis = System.currentTimeMillis()
                     _mountState.value = MountState.Idle
                     onSuccess(container.id)
                 }
@@ -289,6 +302,10 @@ class VaultViewModel @Inject constructor(
     }
 
     fun unmountContainersOnStop(isLocked: Boolean) {
+        // Skip background unmounting if a container was just mounted — ProcessLifecycleOwner.onStop
+        // can fire during the mount animation or navigation transition, causing the freshly-mounted
+        // container to be unmounted immediately. Screen-off (isLocked=true) is not affected.
+        if (!isLocked && System.currentTimeMillis() - lastMountTimeMillis < 3_000L) return
         viewModelScope.launch {
             repo.getAllContainersRaw().first().filter { it.isMounted }.forEach { c ->
                 if (c.unmountOnBackground || (isLocked && c.unmountOnLock)) {
