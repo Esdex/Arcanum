@@ -5,6 +5,8 @@
     <cloud-backup>
         <!-- PIN hashes and panic PIN stored in EncryptedSharedPreferences -->
         <exclude domain="sharedpref" path="arcanum_pin_prefs.xml"/>
+        <!-- Biometric-wrapped container passwords stored in EncryptedSharedPreferences -->
+        <exclude domain="sharedpref" path="arcanum_bio_prefs.xml"/>
 
         <!-- Room database: container registry, calculator history -->
         <exclude domain="database" path="arcanum.db"/>
@@ -15,7 +17,6 @@
         <exclude domain="file" path="datastore/app_preferences.preferences_pb"/>
         <exclude domain="file" path="datastore/panic_settings.preferences_pb"/>
         <exclude domain="file" path="datastore/vault_display_prefs.preferences_pb"/>
-        <exclude domain="file" path="datastore/file_manager_prefs.preferences_pb"/>
 
         <!-- Temporary decrypted cache -->
         <exclude domain="file" path="arcanum_temp/"/>
@@ -24,6 +25,7 @@
     <device-transfer>
         <!-- Same exclusions apply for device-to-device transfers -->
         <exclude domain="sharedpref" path="arcanum_pin_prefs.xml"/>
+        <exclude domain="sharedpref" path="arcanum_bio_prefs.xml"/>
 
         <exclude domain="database" path="arcanum.db"/>
         <exclude domain="database" path="arcanum.db-shm"/>
@@ -32,7 +34,6 @@
         <exclude domain="file" path="datastore/app_preferences.preferences_pb"/>
         <exclude domain="file" path="datastore/panic_settings.preferences_pb"/>
         <exclude domain="file" path="datastore/vault_display_prefs.preferences_pb"/>
-        <exclude domain="file" path="datastore/file_manager_prefs.preferences_pb"/>
 
         <exclude domain="file" path="arcanum_temp/"/>
     </device-transfer>
