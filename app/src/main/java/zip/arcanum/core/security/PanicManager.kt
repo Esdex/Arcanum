@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import zip.arcanum.core.database.dao.CalculatorHistoryDao
@@ -21,8 +22,10 @@ import javax.inject.Singleton
 
 private val Context.panicDataStore: DataStore<Preferences> by preferencesDataStore(name = "panic_settings")
 
+@Serializable
 enum class VaultPanicAction { DELETE, FORGET, KEEP }
 
+@Serializable
 data class PanicSettings(
     val enabled: Boolean = false,
     val fullWipe: Boolean = false,
@@ -88,15 +91,23 @@ class PanicManager @Inject constructor(
         pinManager.clearPanicPin()
     }
 
-    suspend fun executePanic() {
+    // Step 1: call synchronously before navigation.
+    // Reads settings, promotes the panic PIN to main (invalidates the real PIN immediately),
+    // and returns the settings needed for the wipe — or null if panic mode is disabled.
+    suspend fun prepareForPanic(): PanicSettings? {
+        val settings = getPanicSettings()
+        if (!settings.enabled) return null
+        pinManager.promotePanicPinToMain()
+        return settings
+    }
+
+    // Step 2: call in a durable background job after navigation.
+    // Re-reads settings from DataStore so nothing sensitive is passed through
+    // WorkManager's plaintext SQLite database. DataStore is cleared on completion,
+    // making retries safe: a completed wipe returns early via the enabled check.
+    suspend fun executeWipe() {
         val settings = getPanicSettings()
         if (!settings.enabled) return
-
-        // Replace main PIN with panic PIN before any destructive actions.
-        // After execution the user can still "unlock" the app with the panic PIN,
-        // which now opens a clean, empty state — plausible deniability.
-        pinManager.promotePanicPinToMain()
-
         if (settings.fullWipe) {
             val all = containerDao.getAllContainersOnce()
             all.forEach { entity ->
@@ -113,7 +124,6 @@ class PanicManager @Inject constructor(
                 }
                 containerDao.clearAllBiometric()
             }
-
             settings.vaultActions.forEach { (containerId, action) ->
                 when (action) {
                     VaultPanicAction.DELETE -> {
@@ -127,9 +137,12 @@ class PanicManager @Inject constructor(
                 }
             }
         }
-
-        // Disable panic mode so no trace of it remains in settings
         context.panicDataStore.edit { it.clear() }
+    }
+
+    suspend fun executePanic() {
+        prepareForPanic() ?: return
+        executeWipe()
     }
 
     private fun secureDeleteFile(path: String) {
