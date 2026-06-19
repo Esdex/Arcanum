@@ -39,7 +39,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
+import android.view.ViewGroup
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedContent
@@ -454,7 +457,7 @@ private fun SubScreenScaffold(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .then(if (isAmoled) Modifier.hazeSource(hazeState) else Modifier)
+                    .hazeSource(hazeState)
             ) {
                 content(innerPadding)
             }
@@ -1193,6 +1196,7 @@ private fun AboutSubScreen(onBack: () -> Unit, onLicenses: () -> Unit) {
     val isAmoled  = LocalAmoledMode.current
     val hazeState = remember { HazeState() }
 
+    CompositionLocalProvider(LocalHazeState provides hazeState) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -1212,7 +1216,7 @@ private fun AboutSubScreen(onBack: () -> Unit, onLicenses: () -> Unit) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (isAmoled) Modifier.hazeSource(hazeState) else Modifier)
+                .hazeSource(hazeState)
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(
                 top    = innerPadding.calculateTopPadding() + 8.dp,
@@ -1359,6 +1363,7 @@ private fun AboutSubScreen(onBack: () -> Unit, onLicenses: () -> Unit) {
             }
         }
     }
+    } // CompositionLocalProvider
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1397,6 +1402,10 @@ private fun DebugSubScreen(
     val disguiseApplied by viewModel.disguiseApplied.collectAsState()
     val activity       = LocalContext.current as FragmentActivity
     var showWarningDialog by remember { mutableStateOf(false) }
+    val isAmoled       = LocalAmoledMode.current
+    val debugHazeState = remember { HazeState() }
+
+    CompositionLocalProvider(LocalHazeState provides debugHazeState) {
 
     LaunchedEffect(debugMode) {
         if (debugMode) debugViewModel.refresh()
@@ -1434,10 +1443,6 @@ private fun DebugSubScreen(
         )
     }
 
-    val isAmoled      = LocalAmoledMode.current
-    val debugHazeState = remember { HazeState() }
-
-    CompositionLocalProvider(LocalHazeState provides debugHazeState) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -1468,10 +1473,14 @@ private fun DebugSubScreen(
             )
         }
     ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .hazeSource(debugHazeState)
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (isAmoled) Modifier.hazeSource(debugHazeState) else Modifier)
                 .padding(top = innerPadding.calculateTopPadding(), bottom = innerPadding.calculateBottomPadding())
                 .verticalScroll(rememberScrollState())
                 .padding(vertical = 8.dp)
@@ -1736,6 +1745,7 @@ private fun DebugSubScreen(
                 Spacer(Modifier.height(16.dp))
             }
         }
+        } // Box hazeSource
     }
     } // CompositionLocalProvider
 }
@@ -1750,11 +1760,24 @@ private fun DebugWarningDialog(
     val hazeState    = LocalHazeState.current
     val dialogShape  = RoundedCornerShape(28.dp)
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties       = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        val dialogView = LocalView.current
+        SideEffect {
+            (dialogView.parent as? DialogWindowProvider)?.window
+                ?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        Box(
+            modifier         = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
         Column(
             modifier = if (isAmoled) {
                 Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
                     .clip(dialogShape)
                     .hazeEffect(state = hazeState, style = ArcanumHazeStyle.dialog)
                     .border(0.5.dp, Color.White.copy(alpha = 0.12f), dialogShape)
@@ -1762,6 +1785,7 @@ private fun DebugWarningDialog(
             } else {
                 Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
                     .clip(dialogShape)
                     .background(MaterialTheme.colorScheme.surface, dialogShape)
                     .padding(24.dp)
@@ -1829,6 +1853,7 @@ private fun DebugWarningDialog(
                     )
                 }
         }
+        } // Box
     }
 }
 

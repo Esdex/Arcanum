@@ -59,6 +59,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
+import zip.arcanum.core.components.LocalHazeState
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+import androidx.compose.runtime.CompositionLocalProvider
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +73,7 @@ fun CreateContainerScreen(
 ) {
     val context       = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val hazeState     = remember { HazeState() }
 
     val state              by viewModel.state.collectAsState()
     val createdContainerId by viewModel.createdContainerId.collectAsState()
@@ -144,6 +149,7 @@ fun CreateContainerScreen(
         prevStep = state.currentStep
     }
 
+    CompositionLocalProvider(LocalHazeState provides hazeState) {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color    = MaterialTheme.colorScheme.background
@@ -152,6 +158,7 @@ fun CreateContainerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .systemBarsPadding()
+                .hazeSource(hazeState)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // ── Top bar ────────────────────────────────────────────────
@@ -342,6 +349,7 @@ fun CreateContainerScreen(
             }
         }
     }
+    } // CompositionLocalProvider
 }
 
 private fun isStepValid(
