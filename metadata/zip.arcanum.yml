@@ -1,0 +1,28 @@
+Categories:
+  - Security
+License: Apache-2.0
+
+WebSite: https://arcanum.zip
+SourceCode: https://github.com/Esdex/Arcanum
+IssueTracker: https://github.com/Esdex/Arcanum/issues
+
+Name: Arcanum
+AutoName: Arcanum
+
+Summary: Encrypted container manager compatible with VeraCrypt
+
+RepoType: git
+Repo: https://github.com/Esdex/Arcanum
+
+Builds:
+  - versionName: 1.0.0
+    versionCode: 1
+    commit: v1.0.0
+    subdir: app
+    gradle:
+      - fdroid
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 1.0.0
+CurrentVersionCode: 1
