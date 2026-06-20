@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp" width="96" alt="Arcanum logo">
+  <img src="assets/arcanum-logo.svg" width="96" alt="Arcanum logo">
 </p>
 
 <h1 align="center">Arcanum</h1>
