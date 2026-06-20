@@ -5,8 +5,10 @@ import org.bouncycastle.crypto.params.Argon2Parameters
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.security.MessageDigest
+import java.util.Base64
 
 /**
  * Known-Answer Tests (KAT) for the cryptographic primitives used in PinManager.
@@ -224,6 +226,59 @@ class CryptoKatTest {
         assertEquals(7_200_000L,   lockoutDuration(99))
     }
 
+    // ── Panic PIN dummy-hash safety ───────────────────────────────────────────
+
+    /**
+     * DUMMY_HASH is substituted for a missing panic/main PIN hash so the full
+     * Argon2id derivation always executes (timing equalization). If DUMMY_HASH
+     * accidentally matched any real PIN, that PIN would silently become a
+     * panic trigger even without one being configured.
+     *
+     * Structure: base64(32 zero bytes):base64(32 zero bytes).
+     * Argon2id with any real PIN input cannot produce an all-zero 32-byte
+     * output, so the comparison will always fail.
+     *
+     * SLOW — runs a full Argon2id derivation at production parameters per PIN.
+     */
+    @Test
+    fun dummyHash_neverMatchesAnyRealPin() {
+        // Boundary values, common weak PINs, and max-length PINs
+        val testPins = listOf(
+            "0000", "1111", "1234", "9999",
+            "000000", "123456", "999999",
+            "00000000", "12345678", "99999999"
+        )
+        for (pin in testPins) {
+            assertFalse(
+                "DUMMY_HASH must never match PIN '$pin' — would allow accidental panic trigger",
+                dummyHashMatches(pin)
+            )
+        }
+    }
+
+    /**
+     * Verifies DUMMY_HASH has the expected two-part structure with 32-byte
+     * all-zero salt and all-zero expected output. If the format changes (e.g.
+     * becomes unparseable or gains a non-zero expected value), the derivation
+     * step inside verifyPin may be skipped, breaking timing equalization.
+     */
+    @Test
+    fun dummyHash_hasExpectedStructure() {
+        val parts = DUMMY_HASH.split(":")
+        assertEquals("DUMMY_HASH must have exactly two colon-separated parts", 2, parts.size)
+
+        val salt     = Base64.getDecoder().decode(parts[0])
+        val expected = Base64.getDecoder().decode(parts[1])
+
+        assertEquals("DUMMY_HASH salt must be $PM_SALT_LEN bytes", PM_SALT_LEN, salt.size)
+        assertEquals("DUMMY_HASH expected output must be $PM_HASH_LEN bytes", PM_HASH_LEN, expected.size)
+        assertTrue("DUMMY_HASH salt must be all zeros", salt.all { it == 0.toByte() })
+        assertTrue(
+            "DUMMY_HASH expected output must be all zeros — no real Argon2id output equals zero",
+            expected.all { it == 0.toByte() }
+        )
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /** Mirrors PinManager.deriveArgon2() exactly — must stay in sync. */
@@ -274,5 +329,23 @@ class CryptoKatTest {
         return ByteArray(hex.length / 2) { i ->
             hex.substring(i * 2, i * 2 + 2).toInt(16).toByte()
         }
+    }
+
+    /** Mirrors PinManager.verifyHash() for the DUMMY_HASH path. */
+    private fun dummyHashMatches(pin: String): Boolean {
+        val parts = DUMMY_HASH.split(":")
+        if (parts.size != 2) return false
+        val salt     = Base64.getDecoder().decode(parts[0])
+        val expected = Base64.getDecoder().decode(parts[1])
+        val derived  = deriveWithPinManagerParams(pin.toByteArray(Charsets.UTF_8), salt)
+        return MessageDigest.isEqual(derived, expected)
+    }
+
+    companion object {
+        // Must stay in sync with PinManager.DUMMY_HASH and PinManager.SALT_LEN
+        private const val DUMMY_HASH =
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:" +
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        private const val PM_SALT_LEN = 32
     }
 }
