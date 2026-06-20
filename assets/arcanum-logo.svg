@@ -11,17 +11,24 @@
    height="1024"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg"><defs
-   id="defs39" />
+   id="defs39">
+  <clipPath id="rounded">
+    <rect width="1024" height="1024" rx="200" ry="200"/>
+  </clipPath>
+</defs>
 
 <g
-   id="layer1"><rect
+   id="layer1" clip-path="url(#rounded)"><rect
      style="fill:#ffffff;stroke-width:0.944041"
      id="rect1"
      width="1024"
      height="1024"
      x="0"
-     y="0" /></g><g
+     y="0"
+     rx="200"
+     ry="200" /></g><g
    id="layer2"
+   clip-path="url(#rounded)"
    transform="translate(-18,-10)"><path
      fill="#2a2937"
      opacity="1"
