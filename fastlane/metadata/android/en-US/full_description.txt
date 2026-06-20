@@ -1,0 +1,25 @@
+Arcanum is an encrypted container manager for Android that creates and mounts VeraCrypt-compatible volumes. Your files are protected with military-grade encryption and remain accessible only to you.
+
+<b>Key Features</b>
+
+• VeraCrypt-compatible — containers work on desktop too (Windows, macOS, Linux)
+• AES-256, Twofish, Serpent and cascade ciphers
+• Multiple hash algorithms: SHA-512, SHA-256, Whirlpool, Streebog, BLAKE2s-256
+• Hidden volumes for plausible deniability
+• Keyfile support
+• Biometric unlock (fingerprint / face)
+
+<b>Privacy &amp; Security</b>
+
+• Disguise mode — app appears as a plain calculator on the home screen
+• Panic PIN — instantly wipes sensitive data and resets the app
+• Auto-lock when the app goes to the background
+• PIN protected with Argon2id key derivation
+• No network access, no analytics, no telemetry
+• All data stays on your device
+
+<b>Open Source</b>
+
+Arcanum is fully open source. The cryptographic implementation is based on the VeraCrypt codebase. You can review, audit, and build the app yourself.
+
+This is the F-Droid build: all features are included, no payments required.
