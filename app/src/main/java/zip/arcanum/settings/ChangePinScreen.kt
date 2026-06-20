@@ -33,6 +33,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -251,26 +252,34 @@ private fun ChangePinEntry(
                 }
 
                 ChangePinNumPad(
-                    onDigit     = viewModel::onDigit,
-                    onBackspace = viewModel::onBackspace
+                    onDigit     = { if (!state.isSaving) viewModel.onDigit(it) },
+                    onBackspace = { if (!state.isSaving) viewModel.onBackspace() }
                 )
 
                 Button(
                     onClick  = viewModel::advance,
-                    enabled  = state.pin.length >= 4,
+                    enabled  = state.pin.length >= 4 && !state.isSaving,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),
                     shape    = CircleShape
                 ) {
-                    Text(
-                        text  = when (step) {
-                            ChangePinViewModel.Step.VERIFY_CURRENT -> stringResource(R.string.common_continue)
-                            ChangePinViewModel.Step.ENTER_NEW      -> stringResource(R.string.common_continue)
-                            ChangePinViewModel.Step.CONFIRM_NEW    -> stringResource(R.string.common_confirm)
-                        },
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                    if (state.isSaving) {
+                        CircularProgressIndicator(
+                            modifier    = Modifier.size(20.dp),
+                            color       = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(
+                            text  = when (step) {
+                                ChangePinViewModel.Step.VERIFY_CURRENT -> stringResource(R.string.common_continue)
+                                ChangePinViewModel.Step.ENTER_NEW      -> stringResource(R.string.common_continue)
+                                ChangePinViewModel.Step.CONFIRM_NEW    -> stringResource(R.string.common_confirm)
+                            },
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
                 }
             }
         }

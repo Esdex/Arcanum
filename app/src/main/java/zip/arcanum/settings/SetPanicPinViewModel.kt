@@ -24,7 +24,8 @@ class SetPanicPinViewModel @Inject constructor(
         val isError: Boolean = false,
         val errorMessage: String = "",
         val errorShake: Int  = 0,
-        val isSuccess: Boolean = false
+        val isSuccess: Boolean = false,
+        val isSaving: Boolean = false
     )
 
     private val _state = MutableStateFlow(State())
@@ -51,25 +52,27 @@ class SetPanicPinViewModel @Inject constructor(
         when (s.step) {
             Step.ENTER -> {
                 viewModelScope.launch {
+                    _state.update { it.copy(isSaving = true) }
                     if (pinManager.verifyPin(s.pin) == PinResult.NORMAL) {
                         _state.update {
                             it.copy(
-                                pin = "", isError = true,
+                                isSaving = false, pin = "", isError = true,
                                 errorMessage = "Must differ from main PIN",
                                 errorShake = it.errorShake + 1
                             )
                         }
                     } else {
                         enteredPin = s.pin
-                        _state.update { it.copy(step = Step.CONFIRM, pin = "", isError = false) }
+                        _state.update { it.copy(isSaving = false, step = Step.CONFIRM, pin = "", isError = false) }
                     }
                 }
             }
             Step.CONFIRM -> {
                 if (s.pin == enteredPin) {
                     viewModelScope.launch {
+                        _state.update { it.copy(isSaving = true) }
                         pinManager.savePanicPin(s.pin)
-                        _state.update { it.copy(isSuccess = true) }
+                        _state.update { it.copy(isSaving = false, isSuccess = true) }
                     }
                 } else {
                     enteredPin = ""

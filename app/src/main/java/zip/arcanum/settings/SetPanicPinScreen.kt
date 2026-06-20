@@ -41,6 +41,7 @@ import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import zip.arcanum.R
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -281,22 +282,30 @@ private fun SetPanicPinEntry(
             }
 
             PinNumPad(
-                onDigit     = viewModel::onDigit,
-                onBackspace = viewModel::onBackspace
+                onDigit     = { if (!state.isSaving) viewModel.onDigit(it) },
+                onBackspace = { if (!state.isSaving) viewModel.onBackspace() }
             )
 
             Button(
                 onClick  = viewModel::advance,
-                enabled  = state.pin.length >= 4,
+                enabled  = state.pin.length >= 4 && !state.isSaving,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
                 shape    = CircleShape
             ) {
-                Text(
-                    text  = if (state.step == SetPanicPinViewModel.Step.ENTER) stringResource(R.string.panic_pin_btn_continue) else stringResource(R.string.panic_pin_btn_confirm),
-                    style = MaterialTheme.typography.labelLarge
-                )
+                if (state.isSaving) {
+                    CircularProgressIndicator(
+                        modifier    = Modifier.size(20.dp),
+                        color       = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        text  = if (state.step == SetPanicPinViewModel.Step.ENTER) stringResource(R.string.panic_pin_btn_continue) else stringResource(R.string.panic_pin_btn_confirm),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
             }
         }
     }
