@@ -68,6 +68,7 @@ static uint32_t vc_get_iterations(int hashId, int pim) {
     if (pim <= 0) {
         return (hashId >= 0 && hashId <= 4) ? VC_PBKDF2_ITERS_BY_HASH[hashId] : 500000U;
     }
+    if (pim > 9999) pim = 9999; /* clamp: prevents uint32_t overflow in iteration formula */
     switch (hashId) {
         case 0: return 15000U + (uint32_t)pim * 1000U; /* SHA-512      */
         case 1: return  2048U + (uint32_t)pim * 2048U; /* SHA-256      */

@@ -1522,7 +1522,7 @@ private fun MountDialog(
                                 OutlinedTextField(
                                     value         = pimValue,
                                     onValueChange = {
-                                        if (it.all { c -> c.isDigit() } && it.length <= 7) pimValue = it
+                                        if (it.all { c -> c.isDigit() } && it.length <= 4) pimValue = it
                                     },
                                     label                = { Text(stringResource(R.string.vault_mount_pim_label)) },
                                     placeholder          = { Text(stringResource(R.string.vault_mount_pim_placeholder)) },
