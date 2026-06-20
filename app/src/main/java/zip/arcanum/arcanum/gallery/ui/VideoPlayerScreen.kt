@@ -29,7 +29,12 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
-import com.google.accompanist.systemuicontroller.rememberSystemUiController
+import android.app.Activity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import zip.arcanum.arcanum.gallery.EncryptedDataSourceFactory
 import android.net.Uri
 
@@ -44,11 +49,13 @@ fun VideoPlayerScreen(
     val handle = viewModel.getHandle()
     val engine = viewModel.engine
     val context = LocalContext.current
-
-    val systemUiController = rememberSystemUiController()
-    DisposableEffect(systemUiController) {
-        systemUiController.isSystemBarsVisible = false
-        onDispose { systemUiController.isSystemBarsVisible = true }
+    val view    = LocalView.current
+    DisposableEffect(view) {
+        val window = (context as? Activity)?.window ?: return@DisposableEffect onDispose {}
+        val wic = WindowCompat.getInsetsController(window, view)
+        wic.hide(WindowInsetsCompat.Type.systemBars())
+        wic.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        onDispose { wic.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
     Box(

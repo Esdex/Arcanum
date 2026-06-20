@@ -65,7 +65,12 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import com.google.accompanist.systemuicontroller.rememberSystemUiController
+import android.app.Activity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -79,11 +84,22 @@ fun MediaViewerDirectScreen(
 ) {
     val state by viewModel.state.collectAsState()
 
-    val systemUiController = rememberSystemUiController()
-    DisposableEffect(Unit) { onDispose { systemUiController.isSystemBarsVisible = true } }
+    val view    = LocalView.current
+    val context = LocalContext.current
+    DisposableEffect(view) {
+        val window = (context as? Activity)?.window ?: return@DisposableEffect onDispose {}
+        onDispose { WindowCompat.getInsetsController(window, view).show(WindowInsetsCompat.Type.systemBars()) }
+    }
     LaunchedEffect(state.showBars) {
-        systemUiController.isSystemBarsVisible = state.showBars
-        if (state.showBars) { delay(3_000); viewModel.toggleBars() }
+        val window = (context as? Activity)?.window ?: return@LaunchedEffect
+        val wic = WindowCompat.getInsetsController(window, view)
+        if (state.showBars) {
+            wic.show(WindowInsetsCompat.Type.systemBars())
+            delay(3_000); viewModel.toggleBars()
+        } else {
+            wic.hide(WindowInsetsCompat.Type.systemBars())
+            wic.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
     }
 
     val pagerState = rememberPagerState(initialPage = state.currentIndex) { state.fileCount }
