@@ -36,6 +36,12 @@ class SettingsViewModel @Inject constructor(
         initialValue = true
     )
 
+    val autoLockDelayIndex = prefs.autoLockDelayIndex.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = 0
+    )
+
     val debugMode = prefs.debugMode.stateIn(
         scope        = viewModelScope,
         started      = SharingStarted.Eagerly,
@@ -80,6 +86,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setAutoLock(enabled: Boolean) {
         viewModelScope.launch { prefs.setAutoLock(enabled) }
+    }
+
+    fun setAutoLockDelayIndex(index: Int) {
+        viewModelScope.launch { prefs.setAutoLockDelayIndex(index) }
     }
 
     fun setDebugMode(enabled: Boolean) {

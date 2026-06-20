@@ -381,6 +381,12 @@
     <string name="settings_security_change_pin">Change PIN</string>
     <string name="settings_security_auto_lock">Auto-lock</string>
     <string name="settings_security_auto_lock_desc">Lock when app goes to background</string>
+    <string name="settings_auto_lock_delay">Lock after</string>
+    <string name="settings_auto_lock_immediately">Immediately</string>
+    <string name="settings_auto_lock_seconds">sec</string>
+    <string name="settings_auto_lock_minute">min</string>
+    <string name="settings_auto_lock_minutes">min</string>
+    <string name="settings_auto_lock_hour">hour</string>
     <string name="settings_security_screen_capture">Screen Capture Protection</string>
     <string name="settings_security_screen_capture_desc">Blocks screenshots and screen recording. Disabling exposes vault contents to any app that requests screen capture — strongly recommended to keep enabled.</string>
     <string name="settings_security_screenshot_warn_title">Disable Screen Protection?</string>

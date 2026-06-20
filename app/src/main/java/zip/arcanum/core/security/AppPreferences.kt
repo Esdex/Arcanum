@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -22,6 +23,7 @@ class AppPreferences @Inject constructor(
 ) {
     private object Keys {
         val AUTO_LOCK             = booleanPreferencesKey("auto_lock")
+        val AUTO_LOCK_DELAY_INDEX = intPreferencesKey("auto_lock_delay_index")
         val DEBUG_MODE            = booleanPreferencesKey("debug_mode")
         val THEME_MODE            = stringPreferencesKey("theme_mode")
         val AMOLED_GLASS          = booleanPreferencesKey("amoled_glass")
@@ -35,6 +37,14 @@ class AppPreferences @Inject constructor(
 
     suspend fun setAutoLock(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.AUTO_LOCK] = enabled }
+    }
+
+    // 0=Immediately 1=30s 2=1m 3=2m 4=5m 5=10m 6=30m 7=1h
+    val autoLockDelayIndex: Flow<Int> = context.appPrefsDataStore.data
+        .map { it[Keys.AUTO_LOCK_DELAY_INDEX] ?: 0 }
+
+    suspend fun setAutoLockDelayIndex(index: Int) {
+        context.appPrefsDataStore.edit { it[Keys.AUTO_LOCK_DELAY_INDEX] = index }
     }
 
     val debugMode: Flow<Boolean> = context.appPrefsDataStore.data

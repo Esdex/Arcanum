@@ -150,6 +150,7 @@ import zip.arcanum.core.theme.ThemeMode
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.core.os.LocaleListCompat
 
 private data class AppLanguage(val tag: String, val nativeName: String)
@@ -185,6 +186,7 @@ fun SettingsScreen(
 ) {
     var subScreen           by remember { mutableStateOf<SubScreen?>(null) }
     val autoLockEnabled         by viewModel.autoLockEnabled.collectAsState()
+    val autoLockDelayIndex      by viewModel.autoLockDelayIndex.collectAsState()
     val themeMode               by viewModel.themeMode.collectAsState()
     val isAmoledGlass           by viewModel.isAmoledGlass.collectAsState()
     val isDynamicColor          by viewModel.isDynamicColor.collectAsState()
@@ -219,6 +221,8 @@ fun SettingsScreen(
             SubScreen.SECURITY -> SecuritySubScreen(
                 autoLockEnabled         = autoLockEnabled,
                 onAutoLockChange        = { viewModel.setAutoLock(it) },
+                autoLockDelayIndex      = autoLockDelayIndex,
+                onAutoLockDelayChange   = { viewModel.setAutoLockDelayIndex(it) },
                 screenCaptureProtection = screenCaptureProtection,
                 disguiseApplied         = disguiseApplied,
                 onBack                  = { subScreen = null },
@@ -488,6 +492,8 @@ private fun SubScreenScaffold(
 private fun SecuritySubScreen(
     autoLockEnabled: Boolean,
     onAutoLockChange: (Boolean) -> Unit,
+    autoLockDelayIndex: Int,
+    onAutoLockDelayChange: (Int) -> Unit,
     screenCaptureProtection: Boolean,
     disguiseApplied: Boolean,
     onBack: () -> Unit,
@@ -516,6 +522,46 @@ private fun SecuritySubScreen(
                     checked         = autoLockEnabled,
                     onCheckedChange = onAutoLockChange
                 )
+                AnimatedVisibility(visible = autoLockEnabled) {
+                    val delayLabels = listOf(
+                        stringResource(R.string.settings_auto_lock_immediately),
+                        "30 ${stringResource(R.string.settings_auto_lock_seconds)}",
+                        "1 ${stringResource(R.string.settings_auto_lock_minute)}",
+                        "2 ${stringResource(R.string.settings_auto_lock_minutes)}",
+                        "5 ${stringResource(R.string.settings_auto_lock_minutes)}",
+                        "10 ${stringResource(R.string.settings_auto_lock_minutes)}",
+                        "30 ${stringResource(R.string.settings_auto_lock_minutes)}",
+                        "1 ${stringResource(R.string.settings_auto_lock_hour)}"
+                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        Row(
+                            modifier              = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment     = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text  = stringResource(R.string.settings_auto_lock_delay),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text  = delayLabels[autoLockDelayIndex],
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Slider(
+                            value         = autoLockDelayIndex.toFloat(),
+                            onValueChange = { onAutoLockDelayChange(it.toInt()) },
+                            valueRange    = 0f..7f,
+                            steps         = 6,
+                            modifier      = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
                 SettingsSwitch(
                     title           = stringResource(R.string.settings_security_screen_capture),
                     subtitle        = stringResource(R.string.settings_security_screen_capture_desc),
