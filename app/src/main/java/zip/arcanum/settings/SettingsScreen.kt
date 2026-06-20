@@ -107,7 +107,11 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
@@ -115,6 +119,8 @@ import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.LocalCafe
+import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TopAppBarDefaults
@@ -167,7 +173,7 @@ private val SUPPORTED_LANGUAGES = listOf(
 )
 
 private enum class SubScreen {
-    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, ABOUT, LICENSES, PREMIUM, DEBUG
+    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, ABOUT, LICENSES, WHATS_NEW, PREMIUM, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -184,11 +190,13 @@ fun SettingsScreen(
     val isDynamicColor          by viewModel.isDynamicColor.collectAsState()
     val screenCaptureProtection by viewModel.screenCaptureProtection.collectAsState()
     val disguiseApplied         by viewModel.disguiseApplied.collectAsState()
+    val debugMode               by viewModel.debugMode.collectAsState()
     BackHandler(enabled = subScreen != null) {
         subScreen = when (subScreen) {
             SubScreen.SET_PANIC_PIN -> SubScreen.PANIC_MODE
             SubScreen.CHANGE_PIN    -> SubScreen.SECURITY
             SubScreen.LICENSES      -> SubScreen.ABOUT
+            SubScreen.WHATS_NEW     -> SubScreen.ABOUT
             else                    -> null
         }
     }
@@ -240,10 +248,14 @@ fun SettingsScreen(
             )
             SubScreen.CHANGE_PIN -> ChangePinScreen(onBack = { subScreen = null })
             SubScreen.ABOUT     -> AboutSubScreen(
-                onBack     = { subScreen = null },
-                onLicenses = { subScreen = SubScreen.LICENSES }
+                onBack          = { subScreen = null },
+                onLicenses      = { subScreen = SubScreen.LICENSES },
+                onWhatsNew      = { subScreen = SubScreen.WHATS_NEW },
+                viewModel       = viewModel,
+                onDebugUnlocked = { subScreen = SubScreen.DEBUG }
             )
             SubScreen.LICENSES  -> LicensesScreen(onBack = { subScreen = SubScreen.ABOUT })
+            SubScreen.WHATS_NEW -> WhatsNewSubScreen(onBack = { subScreen = SubScreen.ABOUT })
             SubScreen.PREMIUM -> PremiumSubScreen(onBack = { subScreen = null })
             SubScreen.DEBUG   -> DebugSubScreen(
                 viewModel = viewModel,
@@ -251,7 +263,8 @@ fun SettingsScreen(
             )
             null              -> MainSettingsScreen(
                 onBack     = onBack,
-                onNavigate = { subScreen = it }
+                onNavigate = { subScreen = it },
+                debugMode  = debugMode
             )
         }
     }
@@ -263,7 +276,8 @@ fun SettingsScreen(
 @Composable
 private fun MainSettingsScreen(
     onBack: () -> Unit,
-    onNavigate: (SubScreen) -> Unit
+    onNavigate: (SubScreen) -> Unit,
+    debugMode: Boolean
 ) {
     val isDynamic = LocalDynamicColor.current
 
@@ -328,14 +342,16 @@ private fun MainSettingsScreen(
                     onClick   = { onNavigate(SubScreen.PREMIUM) }
                 )
             }
-            SettingsCard(
-                title     = stringResource(R.string.settings_card_debug),
-                subtitle  = stringResource(R.string.settings_card_debug_desc),
-                icon      = Icons.Outlined.BugReport,
-                rawColor  = Color(0xFF009688),
-                isDynamic = isDynamic,
-                onClick   = { onNavigate(SubScreen.DEBUG) }
-            )
+            if (debugMode) {
+                SettingsCard(
+                    title     = stringResource(R.string.settings_card_debug),
+                    subtitle  = stringResource(R.string.settings_card_debug_desc),
+                    icon      = Icons.Outlined.BugReport,
+                    rawColor  = Color(0xFF009688),
+                    isDynamic = isDynamic,
+                    onClick   = { onNavigate(SubScreen.DEBUG) }
+                )
+            }
             Spacer(Modifier.height(16.dp))
         }
     }
@@ -1191,10 +1207,32 @@ private fun AppearanceSwitch(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AboutSubScreen(onBack: () -> Unit, onLicenses: () -> Unit) {
+private fun AboutSubScreen(
+    onBack: () -> Unit,
+    onLicenses: () -> Unit,
+    onWhatsNew: () -> Unit,
+    viewModel: SettingsViewModel,
+    onDebugUnlocked: () -> Unit
+) {
     val context   = LocalContext.current
+    val activity  = context as FragmentActivity
     val isAmoled  = LocalAmoledMode.current
     val hazeState = remember { HazeState() }
+    val haptic       = LocalHapticFeedback.current
+    val debugMode    by viewModel.debugMode.collectAsState()
+    var tapCount     by remember { mutableIntStateOf(0) }
+    var tapMessage   by remember { mutableStateOf("") }
+    var showTapHint  by remember { mutableStateOf(false) }
+    var tapTrigger   by remember { mutableIntStateOf(0) }
+    val totalTaps    = 6
+
+    LaunchedEffect(tapTrigger) {
+        if (tapTrigger > 0) {
+            showTapHint = true
+            delay(550)
+            showTapHint = false
+        }
+    }
 
     CompositionLocalProvider(LocalHazeState provides hazeState) {
     Scaffold(
@@ -1233,7 +1271,31 @@ private fun AboutSubScreen(onBack: () -> Unit, onLicenses: () -> Unit) {
                     AsyncImage(
                         model              = R.mipmap.ic_launcher_round,
                         contentDescription = null,
-                        modifier           = Modifier.size(80.dp).clip(RoundedCornerShape(20.dp))
+                        modifier           = Modifier
+                            .size(80.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .clickable {
+                                if (debugMode) return@clickable
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                tapCount++
+                                if (tapCount >= totalTaps) {
+                                    tapCount = 0
+                                    showTapHint = false
+                                    viewModel.authenticateForDebug(
+                                        activity  = activity,
+                                        onSuccess = {
+                                            viewModel.setDebugMode(true)
+                                            Toast.makeText(context, context.getString(R.string.settings_about_debug_enabled), Toast.LENGTH_SHORT).show()
+                                            onDebugUnlocked()
+                                        },
+                                        onError   = { _, _ -> }
+                                    )
+                                } else {
+                                    val remaining = totalTaps - tapCount
+                                    tapMessage = context.resources.getQuantityString(R.plurals.settings_about_debug_taps, remaining, remaining)
+                                    tapTrigger++
+                                }
+                            }
                     )
                     Text(
                         text  = stringResource(R.string.app_name),
@@ -1244,6 +1306,17 @@ private fun AboutSubScreen(onBack: () -> Unit, onLicenses: () -> Unit) {
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    AnimatedVisibility(
+                        visible = showTapHint,
+                        enter   = fadeIn(tween(80)),
+                        exit    = fadeOut(tween(200))
+                    ) {
+                        Text(
+                            text  = tapMessage,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
@@ -1273,6 +1346,28 @@ private fun AboutSubScreen(onBack: () -> Unit, onLicenses: () -> Unit) {
 
             item {
                 AboutLinkCard(
+                    icon           = Icons.Outlined.LocalCafe,
+                    iconBackground = Color(0xFFFF5E5B),
+                    title          = stringResource(R.string.settings_about_kofi),
+                    subtitle       = stringResource(R.string.settings_about_kofi_desc),
+                    onClick        = {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://ko-fi.com/esdex"))
+                        )
+                    },
+                    trailing = {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.OpenInNew,
+                            null,
+                            modifier = Modifier.size(16.dp),
+                            tint     = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+            }
+
+            item {
+                AboutLinkCard(
                     icon           = Icons.Outlined.Description,
                     iconBackground = Color(0xFF6B7280),
                     title          = stringResource(R.string.settings_about_licenses),
@@ -1280,6 +1375,23 @@ private fun AboutSubScreen(onBack: () -> Unit, onLicenses: () -> Unit) {
                     trailing = {
                         Icon(Icons.Outlined.KeyboardArrowRight, null,
                              tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                )
+            }
+
+            item {
+                AboutLinkCard(
+                    icon           = Icons.Outlined.NewReleases,
+                    iconBackground = Color(0xFF2196F3),
+                    title          = stringResource(R.string.settings_about_whats_new),
+                    subtitle       = stringResource(R.string.settings_about_whats_new_desc),
+                    onClick        = onWhatsNew,
+                    trailing = {
+                        Icon(
+                            Icons.Outlined.KeyboardArrowRight,
+                            null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 )
             }
@@ -1295,7 +1407,7 @@ private fun AboutSubScreen(onBack: () -> Unit, onLicenses: () -> Unit) {
                     subtitle       = stringResource(R.string.settings_about_source_code_desc),
                     onClick        = {
                         context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/placeholder"))
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Esdex/Arcanum"))
                         )
                     },
                     trailing = {
@@ -1351,7 +1463,7 @@ private fun AboutSubScreen(onBack: () -> Unit, onLicenses: () -> Unit) {
                     subtitle       = stringResource(R.string.settings_about_bug_report_desc),
                     onClick        = {
                         context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/placeholder/issues"))
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Esdex/Arcanum/issues/new"))
                         )
                     },
                     trailing = {
@@ -1383,6 +1495,201 @@ private fun PremiumSubScreen(onBack: () -> Unit) {
                     value   = stringResource(R.string.settings_premium_upgrade),
                     onClick = { /* TODO: show paywall */ }
                 )
+            }
+        }
+    }
+}
+
+// ── What's New ────────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WhatsNewSubScreen(onBack: () -> Unit) {
+    SubScreenScaffold(
+        title  = stringResource(R.string.settings_about_whats_new),
+        onBack = onBack
+    ) { innerPadding ->
+        LazyColumn(
+            modifier       = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(
+                top    = innerPadding.calculateTopPadding() + 8.dp,
+                bottom = innerPadding.calculateBottomPadding() + 16.dp
+            )
+        ) {
+            item {
+                Row(
+                    modifier              = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text       = "Version ${BuildConfig.VERSION_NAME}",
+                        style      = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text     = stringResource(R.string.settings_whats_new_current),
+                            style    = MaterialTheme.typography.labelSmall,
+                            color    = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Security,
+                    color    = Color(0xFF4CAF50),
+                    title    = "Full VeraCrypt compatibility",
+                    subtitle = "Open containers created on Windows, macOS, or Linux — no conversion needed. AES, Twofish, Serpent and all cascades supported."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Security,
+                    color    = Color(0xFF4CAF50),
+                    title    = "All hash algorithms",
+                    subtitle = "BLAKE2s-256, SHA-512, and Whirlpool — fully compatible with VeraCrypt 1.26+."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Security,
+                    color    = Color(0xFF4CAF50),
+                    title    = "Hidden volumes",
+                    subtitle = "Two passwords, two independent datasets. Plausible deniability under coercion — mathematically impossible to prove the hidden volume exists."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Security,
+                    color    = Color(0xFF4CAF50),
+                    title    = "Keyfile support",
+                    subtitle = "Add one or more keyfiles as a second authentication factor — required alongside the password to open the vault."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Security,
+                    color    = Color(0xFF4CAF50),
+                    title    = "PIM support",
+                    subtitle = "Personal Iterations Multiplier for fine-tuned key derivation strength and unlock time."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Security,
+                    color    = Color(0xFF4CAF50),
+                    title    = "Panic mode",
+                    subtitle = "Duress PIN silently wipes vaults, settings, and biometrics — timing-indistinguishable from a normal unlock."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Calculator disguise",
+                    subtitle = "Arcanum looks like a regular calculator app. Your secret PIN is the only way in."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Biometric unlock",
+                    subtitle = "Save vault credentials to the hardware Keystore and unlock with fingerprint."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Encrypted gallery",
+                    subtitle = "Browse photos and videos directly inside mounted vaults without extracting them."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "File manager",
+                    subtitle = "Import, export, copy, move, and manage files inside encrypted vaults."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Audio player",
+                    subtitle = "Stream audio from encrypted vaults without writing decrypted copies to disk."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "AMOLED glass mode",
+                    subtitle = "Pure-black backgrounds with frosted-glass blur throughout the app."
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WhatsNewEntry(
+    icon: ImageVector,
+    color: Color,
+    title: String,
+    subtitle: String? = null
+) {
+    val isDark    = LocalDarkMode.current
+    val isAmoled  = LocalAmoledMode.current
+    val sv        = MaterialTheme.colorScheme.surfaceVariant
+    val cardColor = if (isDark && !isAmoled)
+        Color(red = sv.red * 0.65f, green = sv.green * 0.65f, blue = sv.blue * 0.65f)
+    else sv
+
+    Card(
+        modifier  = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        colors    = CardDefaults.cardColors(containerColor = cardColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier              = Modifier.padding(12.dp),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier         = Modifier
+                    .size(32.dp)
+                    .background(color.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector        = icon,
+                    contentDescription = null,
+                    modifier           = Modifier.size(18.dp),
+                    tint               = color
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text       = title,
+                    style      = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (subtitle != null) {
+                    Text(
+                        text  = subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

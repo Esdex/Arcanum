@@ -23,7 +23,8 @@ class ChangePinViewModel @Inject constructor(
         val pin: String     = "",
         val isError: Boolean = false,
         val errorShake: Int = 0,      // incremented to trigger shake
-        val isSuccess: Boolean = false
+        val isSuccess: Boolean = false,
+        val isSaving: Boolean = false
     )
 
     private val _state = MutableStateFlow(State())
@@ -48,11 +49,12 @@ class ChangePinViewModel @Inject constructor(
         when (s.step) {
             Step.VERIFY_CURRENT -> {
                 viewModelScope.launch {
+                    _state.update { it.copy(isSaving = true) }
                     val result = pinManager.verifyPin(s.pin)
                     if (result == PinResult.NORMAL) {
-                        _state.update { it.copy(step = Step.ENTER_NEW, pin = "", isError = false) }
+                        _state.update { it.copy(isSaving = false, step = Step.ENTER_NEW, pin = "", isError = false) }
                     } else {
-                        _state.update { it.copy(pin = "", isError = true, errorShake = it.errorShake + 1) }
+                        _state.update { it.copy(isSaving = false, pin = "", isError = true, errorShake = it.errorShake + 1) }
                     }
                 }
             }
@@ -63,8 +65,9 @@ class ChangePinViewModel @Inject constructor(
             Step.CONFIRM_NEW -> {
                 if (s.pin == newPin) {
                     viewModelScope.launch {
+                        _state.update { it.copy(isSaving = true) }
                         pinManager.savePin(s.pin)
-                        _state.update { it.copy(isSuccess = true) }
+                        _state.update { it.copy(isSaving = false, isSuccess = true) }
                     }
                 } else {
                     newPin = ""

@@ -295,7 +295,8 @@ fun CreateContainerScreen(
                 if (showNextButton) {
                     Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                         val buttonLabel = when {
-                            state.currentStep == 8  -> stringResource(R.string.create_btn_outer)
+                            state.currentStep == 8 && state.volumeType == VolumeType.HIDDEN   -> stringResource(R.string.create_btn_outer)
+                            state.currentStep == 8 && state.volumeType == VolumeType.STANDARD -> stringResource(R.string.create_btn_create)
                             state.currentStep == 14 -> stringResource(R.string.create_btn_hidden)
                             else                    -> stringResource(R.string.create_btn_next)
                         }

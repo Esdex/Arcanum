@@ -21,7 +21,8 @@ class SetupPinViewModel @Inject constructor(
         val step: Step = Step.ENTER,
         val pin: String = "",
         val isError: Boolean = false,
-        val isSuccess: Boolean = false
+        val isSuccess: Boolean = false,
+        val isSaving: Boolean = false
     )
 
     private val _state = MutableStateFlow(State())
@@ -50,8 +51,9 @@ class SetupPinViewModel @Inject constructor(
             Step.CONFIRM -> {
                 if (s.pin == firstPin) {
                     viewModelScope.launch {
+                        _state.update { it.copy(isSaving = true) }
                         pinManager.savePin(s.pin)
-                        _state.update { it.copy(isSuccess = true) }
+                        _state.update { it.copy(isSaving = false, isSuccess = true) }
                     }
                 } else {
                     _state.update { it.copy(pin = "", isError = true) }

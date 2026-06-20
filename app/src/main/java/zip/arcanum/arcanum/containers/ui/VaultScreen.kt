@@ -1110,16 +1110,16 @@ private fun SortSheetItem(
                 color = if (isSelected) primary else onSurface
             )
         },
-        trailingContent = {
+        trailingContent = if (isSelected) ({
             Icon(
                 imageVector        = if (direction == VaultViewModel.SortDirection.ASCENDING)
                                          Icons.Outlined.ArrowUpward
                                      else Icons.Outlined.ArrowDownward,
                 contentDescription = if (direction == VaultViewModel.SortDirection.ASCENDING) stringResource(R.string.vault_sort_cd_ascending) else stringResource(R.string.vault_sort_cd_descending),
-                tint               = if (isSelected) primary else subtle.copy(alpha = 0.35f),
+                tint               = primary,
                 modifier           = Modifier.size(20.dp)
             )
-        },
+        }) else null,
         modifier = Modifier.clickable(onClick = onClick)
     )
 }

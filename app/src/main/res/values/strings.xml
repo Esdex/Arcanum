@@ -372,6 +372,11 @@
     <string name="settings_card_premium_desc">Unlock all features</string>
     <string name="settings_card_debug">Debug</string>
     <string name="settings_card_debug_desc">Logs and developer tools</string>
+    <string name="settings_about_debug_enabled">Debug mode enabled</string>
+    <plurals name="settings_about_debug_taps">
+        <item quantity="one">1 more tap to unlock</item>
+        <item quantity="other">%d more taps to unlock</item>
+    </plurals>
     <string name="settings_security_title">Security</string>
     <string name="settings_security_change_pin">Change PIN</string>
     <string name="settings_security_auto_lock">Auto-lock</string>
@@ -429,6 +434,11 @@
     <string name="settings_appearance_dynamic_colors_unavailable">Dynamic colors require Android 12 or higher.</string>
     <string name="settings_about_title">About</string>
     <string name="settings_about_app_desc">VeraCrypt-compatible encrypted vault manager for Android</string>
+    <string name="settings_about_kofi">Support the project</string>
+    <string name="settings_about_kofi_desc">Support development on Ko-fi</string>
+    <string name="settings_about_whats_new">What\'s new</string>
+    <string name="settings_about_whats_new_desc">See what changed in this version</string>
+    <string name="settings_whats_new_current">Current</string>
     <string name="settings_about_licenses">Open-source licenses</string>
     <string name="settings_about_connect_section">Connect</string>
     <string name="settings_about_source_code">Source code</string>
@@ -474,6 +484,7 @@
     <!-- Create container screen (wizard shell) -->
     <string name="create_title">Create Vault</string>
     <string name="create_step_counter">Step %1$d/%2$d</string>
+    <string name="create_btn_create">Create Vault</string>
     <string name="create_btn_outer">Create Outer Vault</string>
     <string name="create_btn_hidden">Create Hidden Volume</string>
     <string name="create_btn_next">Next</string>
