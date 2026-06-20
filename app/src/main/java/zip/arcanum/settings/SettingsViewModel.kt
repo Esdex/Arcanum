@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import zip.arcanum.BuildConfig
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -14,6 +13,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.DisguiseManager
@@ -27,8 +27,11 @@ class SettingsViewModel @Inject constructor(
     private val prefs: AppPreferences,
     private val biometricAuth: BiometricAuth,
     private val pinManager: PinManager,
-    private val disguiseManager: DisguiseManager
+    private val disguiseManager: DisguiseManager,
+    private val billingManager: BillingManagerInterface
 ) : ViewModel() {
+
+    val isPro = billingManager.isPro
 
     val autoLockEnabled = prefs.autoLockEnabled.stateIn(
         scope        = viewModelScope,
@@ -131,9 +134,7 @@ class SettingsViewModel @Inject constructor(
             disguiseManager.apply()
             _disguiseApplied.value = true
             _manualShowDisguise.value = false
-            if (!BuildConfig.DEBUG) {
-                withContext(Dispatchers.Main) { onRestart() }
-            }
+            withContext(Dispatchers.Main) { onRestart() }
         }
     }
 

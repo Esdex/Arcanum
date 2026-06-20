@@ -711,4 +711,18 @@
     <string name="move_vault_failure_title">Move failed</string>
     <string name="move_vault_retry">Retry</string>
 
+    <!-- Upgrade / Pro -->
+    <string name="settings_card_premium_unlock">Unlock Pro version</string>
+    <string name="upgrade_dialog_title">Arcanum Pro</string>
+    <string name="upgrade_dialog_subtitle">Unlock the full Arcanum experience.</string>
+    <string name="upgrade_dialog_feature_containers">Unlimited encrypted containers</string>
+    <string name="upgrade_dialog_feature_amoled">AMOLED Glass frosted theme</string>
+    <string name="upgrade_dialog_feature_support">Support continued development</string>
+    <string name="upgrade_dialog_price">One-time purchase · $25</string>
+    <string name="upgrade_dialog_upgrade">Upgrade</string>
+    <string name="upgrade_overlay_cta">Upgrade · $25</string>
+    <string name="upgrade_dialog_later">Maybe Later</string>
+    <string name="upgrade_pro_feature_subtitle">Arcanum Pro feature</string>
+    <string name="upgrade_pro_locked_cd">Pro feature locked</string>
+
 </resources>

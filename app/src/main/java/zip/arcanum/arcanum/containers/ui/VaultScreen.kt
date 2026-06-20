@@ -154,6 +154,7 @@ import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.EmptyStateView
 import zip.arcanum.core.components.LocalHazeState
 import zip.arcanum.core.components.SettingsSwitch
+import zip.arcanum.core.components.UpgradeOverlay
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.InAppNotificationBanner
@@ -204,11 +205,12 @@ fun VaultScreen(
     onMoveVault: (containerId: String, toApp: Boolean) -> Unit = { _, _ -> },
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    val context         = LocalContext.current
-    val containers     by viewModel.containers.collectAsState()
-    val mountState     by viewModel.mountState.collectAsState()
-    val addVaultResult by viewModel.addVaultResult.collectAsState()
-    val sortState      by viewModel.sortState.collectAsState()
+    val context              = LocalContext.current
+    val containers          by viewModel.containers.collectAsState()
+    val canAddMoreContainers by viewModel.canAddMoreContainers.collectAsState()
+    val mountState          by viewModel.mountState.collectAsState()
+    val addVaultResult      by viewModel.addVaultResult.collectAsState()
+    val sortState           by viewModel.sortState.collectAsState()
     val hazeState      = remember { HazeState() }
     val isAmoled       = LocalAmoledMode.current
     val topBarColors   = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -232,6 +234,7 @@ fun VaultScreen(
     var configContainer          by remember { mutableStateOf<ContainerEntity?>(null) }
     var showStoragePermOverlay   by remember { mutableStateOf(false) }
     var pendingMountContainer    by remember { mutableStateOf<ContainerEntity?>(null) }
+    var showUpgradeDialog        by remember { mutableStateOf(false) }
 
     // Unmount containers per their per-vault config on app stop
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -290,14 +293,15 @@ fun VaultScreen(
         }
     }
 
-    // Convert add-vault result to notification
+    // Convert add-vault result to notification (or upgrade dialog for limit)
     LaunchedEffect(addVaultResult) {
         val result = addVaultResult ?: return@LaunchedEffect
-        notification = when (result) {
-            is VaultViewModel.AddVaultResult.Added        -> InAppNotification.VaultAdded(result.fileName)
-            is VaultViewModel.AddVaultResult.AlreadyExists -> InAppNotification.VaultAlreadyExists(result.fileName)
-            VaultViewModel.AddVaultResult.InvalidFile      -> InAppNotification.VaultInvalidFile
-            is VaultViewModel.AddVaultResult.Error         -> InAppNotification.VaultAddError(result.message)
+        when (result) {
+            is VaultViewModel.AddVaultResult.Added         -> notification = InAppNotification.VaultAdded(result.fileName)
+            is VaultViewModel.AddVaultResult.AlreadyExists -> notification = InAppNotification.VaultAlreadyExists(result.fileName)
+            VaultViewModel.AddVaultResult.InvalidFile      -> notification = InAppNotification.VaultInvalidFile
+            VaultViewModel.AddVaultResult.LimitReached     -> showUpgradeDialog = true
+            is VaultViewModel.AddVaultResult.Error         -> notification = InAppNotification.VaultAddError(result.message)
         }
         viewModel.clearAddVaultResult()
     }
@@ -551,7 +555,8 @@ fun VaultScreen(
                         label   = stringResource(R.string.vault_fab_open_existing),
                         onClick = {
                             fabExpanded = false
-                            openDocumentLauncher.launch(arrayOf("*/*"))
+                            if (canAddMoreContainers) openDocumentLauncher.launch(arrayOf("*/*"))
+                            else showUpgradeDialog = true
                         }
                     )
                 }
@@ -569,7 +574,8 @@ fun VaultScreen(
                         label   = stringResource(R.string.vault_fab_create_new),
                         onClick = {
                             fabExpanded = false
-                            onCreateContainer()
+                            if (canAddMoreContainers) onCreateContainer()
+                            else showUpgradeDialog = true
                         }
                     )
                 }
@@ -712,6 +718,11 @@ fun VaultScreen(
                         TextButton(onClick = { containerToDeleteFile = null }) { Text(stringResource(R.string.common_cancel)) }
                     }
                 )
+            }
+
+            // ── Upgrade overlay ───────────────────────────────────────────────
+            if (showUpgradeDialog) {
+                UpgradeOverlay(onDismiss = { showUpgradeDialog = false })
             }
 
             // ── Lock dialog ───────────────────────────────────────────────────
