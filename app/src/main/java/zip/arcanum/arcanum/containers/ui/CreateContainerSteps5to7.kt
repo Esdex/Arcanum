@@ -290,7 +290,7 @@ fun StepPassword(
                 OutlinedTextField(
                     value         = pimText,
                     onValueChange = {
-                        if (it.all { c -> c.isDigit() } && it.length <= 7) {
+                        if (it.all { c -> c.isDigit() } && it.length <= 4) {
                             pimText = it
                             onUpdate { copy(pim = it.toIntOrNull() ?: 0) }
                         }

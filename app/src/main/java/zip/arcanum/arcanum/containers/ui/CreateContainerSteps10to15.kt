@@ -338,7 +338,7 @@ fun StepHiddenPassword(state: CreateContainerState, onUpdate: (CreateContainerSt
         OutlinedTextField(
             value         = if (state.hiddenPim > 0) state.hiddenPim.toString() else "",
             onValueChange = { v ->
-                onUpdate { copy(hiddenPim = v.filter { c -> c.isDigit() }.toIntOrNull() ?: 0) }
+                onUpdate { copy(hiddenPim = v.filter { c -> c.isDigit() }.take(4).toIntOrNull() ?: 0) }
             },
             label           = { Text(stringResource(R.string.create_hidden_pim_label)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
