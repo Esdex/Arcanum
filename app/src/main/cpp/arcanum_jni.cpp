@@ -1371,7 +1371,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
 
     std::string dirPath = jstring_to_string(env, jDirPath);
     char fullPath[512];
-    snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, dirPath.c_str());
+    int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, dirPath.c_str());
+    if (n < 0 || n >= (int)sizeof(fullPath)) return env->NewObjectArray(0, infoCls, nullptr);
 
     DIR  dir;
     FILINFO fno;
@@ -1436,7 +1437,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
 
     std::string path = jstring_to_string(env, jFilePath);
     char fullPath[512];
-    snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+    int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+    if (n < 0 || n >= (int)sizeof(fullPath)) return env->NewByteArray(0);
 
     FIL fil;
     std::lock_guard<std::mutex> lock(g_fatfs_mutex);
@@ -1482,7 +1484,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteFile(
 
     std::string path = jstring_to_string(env, jFilePath);
     char fullPath[512];
-    snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+    int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+    if (n < 0 || n >= (int)sizeof(fullPath)) return ERR_FILE;
 
     FIL fil;
     // For in-place writes (offset > 0) open with read+write so f_lseek works correctly
@@ -1576,7 +1579,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeDeleteFile(
 
     std::string path = jstring_to_string(env, jFilePath);
     char fullPath[512];
-    snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+    { int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+      if (n < 0 || n >= (int)sizeof(fullPath)) return ERR_FILE; }
 
     FRESULT fr;
     {
@@ -1601,8 +1605,10 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRenameFile(
 
     char fullOldPath[512];
     char fullNewPath[512];
-    snprintf(fullOldPath, sizeof(fullOldPath), "%d:%s", pdrv, oldPath.c_str());
-    snprintf(fullNewPath, sizeof(fullNewPath), "%d:%s", pdrv, newPath.c_str());
+    { int n1 = snprintf(fullOldPath, sizeof(fullOldPath), "%d:%s", pdrv, oldPath.c_str());
+      int n2 = snprintf(fullNewPath, sizeof(fullNewPath), "%d:%s", pdrv, newPath.c_str());
+      if (n1 < 0 || n1 >= (int)sizeof(fullOldPath) ||
+          n2 < 0 || n2 >= (int)sizeof(fullNewPath)) return ERR_FILE; }
 
     FRESULT fr;
     {
@@ -1624,7 +1630,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateDirectory(
 
     std::string path = jstring_to_string(env, jDirPath);
     char fullPath[512];
-    snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+    { int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+      if (n < 0 || n >= (int)sizeof(fullPath)) return ERR_FILE; }
 
     FRESULT fr;
     {
@@ -1668,7 +1675,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeDeleteDirectory(
 
     std::string path = jstring_to_string(env, jDirPath);
     char fullPath[512];
-    snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+    { int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+      if (n < 0 || n >= (int)sizeof(fullPath)) return ERR_FILE; }
 
     FRESULT fr;
     {
