@@ -13,7 +13,6 @@
   <img src="https://img.shields.io/badge/platform-Android-green.svg" alt="Platform">
   <img src="https://img.shields.io/badge/min%20SDK-29%20(Android%2010)-brightgreen.svg" alt="Min SDK">
   <img src="https://img.shields.io/badge/language-Kotlin-7F52FF.svg" alt="Kotlin">
-  <a href="https://github.com/Esdex/Arcanum/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
 </p>
 
 <!-- TODO: add F-Droid badge once published -->
@@ -149,10 +148,10 @@ Arcanum has undergone multiple independent security audits. Reports are publishe
 
 ## Contributing
 
-Pull requests are welcome. For significant changes, please open an issue first to discuss the approach.
+Contributions are welcome for bug fixes and non-cryptographic improvements (UI, translations, documentation, gallery/file manager features). For changes touching the crypto layer, JNI bridge, PIN/panic logic, or any other security-critical path, please open an issue first to discuss the approach.
 
 - Run `./gradlew lint` before submitting
-- Native code changes should build cleanly for both `arm64-v8a` and `armeabi-v7a`
+- Native code changes must build cleanly for both `arm64-v8a` and `armeabi-v7a`
 - The `fdroid` flavor must remain free of any Google Play Services dependency
 
 ---
