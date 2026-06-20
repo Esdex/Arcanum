@@ -1,14 +1,12 @@
 Categories:
   - Security
 License: Apache-2.0
-
 WebSite: https://arcanum.zip
 SourceCode: https://github.com/Esdex/Arcanum
 IssueTracker: https://github.com/Esdex/Arcanum/issues
 
 Name: Arcanum
 AutoName: Arcanum
-
 Summary: Encrypted container manager compatible with VeraCrypt
 
 RepoType: git
