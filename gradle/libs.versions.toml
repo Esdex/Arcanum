@@ -18,9 +18,11 @@ hiltWork = "1.2.0"
 work = "2.10.0"
 room = "2.7.0"
 datastorePreferences = "1.0.0"
+# No stable 1.1.x exists yet; MasterKey.Builder and EncryptedFile (AES256_GCM_HKDF_4KB)
+# require 1.1.x API — cannot downgrade to stable 1.0.0.
 securityCrypto = "1.1.0-alpha06"
 appcompat = "1.7.0"
-biometric = "1.2.0-alpha05"
+biometric = "1.1.0"
 coil = "2.5.0"
 media3 = "1.2.0"
 haze = "1.5.3"
