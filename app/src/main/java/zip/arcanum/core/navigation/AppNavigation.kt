@@ -165,6 +165,7 @@ fun AppNavigation(pinManager: PinManager) {
         ) {
             CalculatorScreen(
                 onAuthenticated = {
+                    settingsViewModel.setFirstLoginDone()
                     navController.navigate(Screen.VaultScreen.route) {
                         popUpTo(Screen.Calculator.route) { inclusive = true }
                     }

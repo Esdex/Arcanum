@@ -30,6 +30,7 @@ class AppPreferences @Inject constructor(
         val DYNAMIC_COLOR         = booleanPreferencesKey("dynamic_color")
         val SCREEN_CAPTURE_PROT   = booleanPreferencesKey("screen_capture_protection")
         val DISGUISE_PROMPT_SHOWN = booleanPreferencesKey("disguise_prompt_shown")
+        val FIRST_LOGIN_DONE      = booleanPreferencesKey("first_login_done")
     }
 
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
@@ -91,5 +92,12 @@ class AppPreferences @Inject constructor(
 
     suspend fun setDisguisePromptShown(shown: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.DISGUISE_PROMPT_SHOWN] = shown }
+    }
+
+    val firstLoginDone: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.FIRST_LOGIN_DONE] ?: false }
+
+    suspend fun setFirstLoginDone() {
+        context.appPrefsDataStore.edit { it[Keys.FIRST_LOGIN_DONE] = true }
     }
 }

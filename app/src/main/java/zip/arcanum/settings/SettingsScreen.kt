@@ -773,6 +773,9 @@ private fun ScreenshotWarningOverlay(
 fun DisguiseOverlay(onApply: () -> Unit) {
     BackHandler(enabled = true) { /* non-dismissable */ }
 
+    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.shield))
+    val progress    by animateLottieCompositionAsState(composition = composition, iterations = 1)
+
     Dialog(
         onDismissRequest = { /* non-dismissable */ },
         properties = DialogProperties(
@@ -786,42 +789,49 @@ fun DisguiseOverlay(onApply: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             color    = MaterialTheme.colorScheme.background
         ) {
-            Column(
-                modifier            = Modifier
+            Box(
+                modifier = Modifier
                     .fillMaxSize()
                     .systemBarsPadding()
-                    .padding(horizontal = 28.dp, vertical = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(Modifier.weight(1f))
+                Column(
+                    modifier            = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    LottieAnimation(
+                        composition = composition,
+                        progress    = { progress },
+                        modifier    = Modifier.size(160.dp)
+                    )
 
-                Icon(
-                    imageVector        = Icons.Outlined.Security,
-                    contentDescription = null,
-                    modifier           = Modifier.size(72.dp),
-                    tint               = MaterialTheme.colorScheme.primary
-                )
+                    Spacer(Modifier.height(16.dp))
 
-                Text(
-                    text      = stringResource(R.string.disguise_overlay_title),
-                    style     = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Center,
-                    color     = MaterialTheme.colorScheme.onBackground
-                )
+                    Text(
+                        text      = stringResource(R.string.disguise_overlay_title),
+                        style     = MaterialTheme.typography.headlineSmall,
+                        textAlign = TextAlign.Center,
+                        color     = MaterialTheme.colorScheme.onBackground
+                    )
 
-                Text(
-                    text      = stringResource(R.string.disguise_overlay_body),
-                    style     = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                    color     = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    Spacer(Modifier.height(12.dp))
 
-                Spacer(Modifier.weight(1f))
+                    Text(
+                        text      = stringResource(R.string.disguise_overlay_body),
+                        style     = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color     = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
                 Button(
                     onClick  = onApply,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 28.dp, vertical = 24.dp)
                 ) {
                     Text(stringResource(R.string.disguise_overlay_apply))
                 }

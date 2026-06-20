@@ -23,10 +23,10 @@
     <string name="onboarding_get_started">Get Started</string>
 
     <string name="onboarding_welcome_title">Welcome to Arcanum</string>
-    <string name="onboarding_welcome_desc">A secure encrypted container manager disguised as a calculator.</string>
+    <string name="onboarding_welcome_desc">Keep your files private with VeraCrypt-compatible encrypted containers.</string>
 
     <string name="onboarding_secure_title">Military-Grade Encryption</string>
-    <string name="onboarding_secure_desc">VeraCrypt-compatible containers protect your files with AES, Twofish, and Serpent encryption.</string>
+    <string name="onboarding_secure_desc">Your data is protected with AES-256, Twofish, and Serpent — the same algorithms trusted by security professionals worldwide.</string>
 
     <string name="onboarding_calculator_title">Hidden Behind a Calculator</string>
     <string name="onboarding_calculator_desc">To anyone watching, Arcanum looks like a regular calculator app. Only your secret PIN unlocks it.</string>
@@ -122,6 +122,7 @@
     <string name="setup_pin_confirm_title">Confirm your PIN</string>
     <string name="setup_pin_success_title">PIN Created!</string>
     <string name="setup_pin_success_desc">To unlock Arcanum, open the calculator and enter your PIN using the number buttons. Then hold = for 2 seconds.</string>
+    <string name="setup_pin_success_understood">I understand</string>
 
     <!-- Change PIN -->
     <string name="change_pin_wrong">Wrong PIN</string>
