@@ -58,7 +58,8 @@ class BillingManager @Inject constructor(
     private fun processPurchases(purchases: List<Purchase>?) {
         _isPro.value = purchases?.any { purchase ->
             purchase.products.contains(PRODUCT_ID_PRO) &&
-            purchase.purchaseState == Purchase.PurchaseState.PURCHASED
+            purchase.purchaseState == Purchase.PurchaseState.PURCHASED &&
+            purchase.isAcknowledged
         } == true
     }
 
