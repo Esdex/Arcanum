@@ -104,6 +104,20 @@ android {
         }
     }
 
+    // Only rename F-Droid APKs — Play Store artifacts go to Google Play Console as AAB
+    applicationVariants.all {
+        val variant = this
+        if (variant.flavorName != "fdroid") return@all
+        variant.outputs
+            .map { it as com.android.build.gradle.internal.api.BaseVariantOutputImpl }
+            .forEach { output ->
+                val buildType = variant.buildType.name  // "debug" | "release"
+                val version   = variant.versionName
+                output.outputFileName = "Arcanum-v${version}-fdroid" +
+                    (if (buildType == "release") "" else "-${buildType}") + ".apk"
+            }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11

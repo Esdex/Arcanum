@@ -11,6 +11,7 @@ local.properties
 *.hc
 *.keystore
 *.jks
+*.aab
 
 # Claude Code memory
 .claude/
