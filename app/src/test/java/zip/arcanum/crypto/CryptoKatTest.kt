@@ -186,7 +186,7 @@ class CryptoKatTest {
     @Test
     fun sha256_abc_nistVector() {
         assertEquals(
-            "ba7816bf8f01cfea414140de5dae2ec73b00361bbef0469348790962cf4f9f98",
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
             sha256hex("abc")
         )
     }
