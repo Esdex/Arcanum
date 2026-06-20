@@ -18,13 +18,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.automirrored.filled.Backspace
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -45,6 +46,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.animateLottieCompositionAsState
+import com.airbnb.lottie.compose.rememberLottieComposition
 import zip.arcanum.R
 
 @Composable
@@ -72,59 +77,61 @@ fun SetupPinScreen(
 
 @Composable
 private fun PinSuccessContent(onGetStarted: () -> Unit) {
-    Column(
-        modifier            = Modifier
+    BackHandler(enabled = true) { /* block back — user must tap I understand */ }
+
+    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_check))
+    val progress    by animateLottieCompositionAsState(composition = composition, iterations = 1)
+
+    Box(
+        modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .systemBarsPadding()
-            .padding(horizontal = 40.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
     ) {
-        // Checkmark badge
-        Box(
-            modifier         = Modifier
-                .size(96.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary),
-            contentAlignment = Alignment.Center
+        Column(
+            modifier            = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 40.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                imageVector        = Icons.Default.Check,
-                contentDescription = null,
-                tint               = MaterialTheme.colorScheme.onPrimary,
-                modifier           = Modifier.size(52.dp)
+            LottieAnimation(
+                composition = composition,
+                progress    = { progress },
+                modifier    = Modifier.size(160.dp)
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            Text(
+                text       = stringResource(R.string.setup_pin_success_title),
+                style      = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color      = MaterialTheme.colorScheme.onBackground,
+                textAlign  = TextAlign.Center
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                text      = stringResource(R.string.setup_pin_success_desc),
+                style     = MaterialTheme.typography.bodyLarge,
+                color     = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
         }
 
-        Spacer(Modifier.height(32.dp))
-
-        Text(
-            text       = stringResource(R.string.setup_pin_success_title),
-            style      = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color      = MaterialTheme.colorScheme.onBackground,
-            textAlign  = TextAlign.Center
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        Text(
-            text      = stringResource(R.string.setup_pin_success_desc),
-            style     = MaterialTheme.typography.bodyLarge,
-            color     = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(Modifier.height(48.dp))
-
         Button(
             onClick  = onGetStarted,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 40.dp, vertical = 24.dp)
+                .height(52.dp),
             shape    = CircleShape
         ) {
             Text(
-                text       = stringResource(R.string.onboarding_get_started),
+                text       = stringResource(R.string.setup_pin_success_understood),
                 style      = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold
             )

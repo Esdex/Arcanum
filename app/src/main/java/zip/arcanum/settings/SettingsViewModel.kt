@@ -79,10 +79,15 @@ class SettingsViewModel @Inject constructor(
     val showDisguiseOverlay = combine(
         pinManager.isPinSetFlow.map { it ?: false },
         prefs.disguisePromptShown,
+        prefs.firstLoginDone,
         _manualShowDisguise
-    ) { pinSet, promptShown, manual ->
-        (pinSet && !promptShown && !disguiseManager.isDisguiseApplied()) || manual
+    ) { pinSet, promptShown, firstLoginDone, manual ->
+        (pinSet && !promptShown && !disguiseManager.isDisguiseApplied() && firstLoginDone) || manual
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun setFirstLoginDone() {
+        viewModelScope.launch { prefs.setFirstLoginDone() }
+    }
 
     fun setAutoLock(enabled: Boolean) {
         viewModelScope.launch { prefs.setAutoLock(enabled) }
