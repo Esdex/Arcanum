@@ -29,7 +29,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import zip.arcanum.arcanum.containers.ui.MountCoordinator
 import zip.arcanum.arcanum.containers.ui.MountSuccessOverlay
 import zip.arcanum.arcanum.containers.ui.UnmountAnimationOverlay
@@ -48,6 +51,19 @@ import zip.arcanum.settings.SettingsScreen
 import zip.arcanum.arcanum.containers.ui.CreateContainerScreen
 import zip.arcanum.arcanum.containers.ui.MoveVaultScreen
 import zip.arcanum.setup.SetupPinScreen
+
+// 0=Immediately(1.5s grace) 1=30s 2=1m 3=2m 4=5m 5=10m 6=30m 7=1h
+fun autoLockDelayMillis(index: Int): Long = when (index) {
+    0    -> 1_500L
+    1    -> 30_000L
+    2    -> 60_000L
+    3    -> 120_000L
+    4    -> 300_000L
+    5    -> 600_000L
+    6    -> 1_800_000L
+    7    -> 3_600_000L
+    else -> 1_500L
+}
 
 @Composable
 fun AppNavigation(pinManager: PinManager) {
@@ -73,24 +89,39 @@ fun AppNavigation(pinManager: PinManager) {
     val mountPhase by mountCoordinator.phase.collectAsState()
 
     val settingsViewModel: SettingsViewModel = hiltViewModel()
-    val autoLockEnabled by settingsViewModel.autoLockEnabled.collectAsState()
+    val autoLockEnabled    by settingsViewModel.autoLockEnabled.collectAsState()
+    val autoLockDelayIndex by settingsViewModel.autoLockDelayIndex.collectAsState()
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val lockedRoutes = remember { setOf(Screen.Onboarding.route, Screen.SetupPin.route, Screen.Calculator.route) }
-    DisposableEffect(lifecycleOwner, autoLockEnabled) {
+    val autoLockScope = rememberCoroutineScope()
+    DisposableEffect(lifecycleOwner, autoLockEnabled, autoLockDelayIndex) {
+        var lockJob: Job? = null
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP && autoLockEnabled) {
-                val current = navController.currentDestination?.route ?: return@LifecycleEventObserver
-                if (current !in lockedRoutes) {
-                    navController.navigate(Screen.Calculator.route) {
-                        popUpTo(0) { inclusive = true }
-                        launchSingleTop = true
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    if (autoLockEnabled) {
+                        val current = navController.currentDestination?.route ?: return@LifecycleEventObserver
+                        if (current !in lockedRoutes) {
+                            lockJob = autoLockScope.launch {
+                                delay(autoLockDelayMillis(autoLockDelayIndex))
+                                navController.navigate(Screen.Calculator.route) {
+                                    popUpTo(0) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
                     }
                 }
+                Lifecycle.Event.ON_START -> lockJob?.cancel()
+                else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            lockJob?.cancel()
+        }
     }
 
     // Navigate to ContainerScreen when scan completes, then let the overlay fade out
