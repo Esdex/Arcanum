@@ -104,20 +104,6 @@ android {
         }
     }
 
-    // Only rename F-Droid APKs — Play Store artifacts go to Google Play Console as AAB
-    applicationVariants.all {
-        val variant = this
-        if (variant.flavorName != "fdroid") return@all
-        variant.outputs
-            .map { it as com.android.build.gradle.internal.api.BaseVariantOutputImpl }
-            .forEach { output ->
-                val buildType = variant.buildType.name  // "debug" | "release"
-                val version   = variant.versionName
-                output.outputFileName = "Arcanum-v${version}-fdroid" +
-                    (if (buildType == "release") "" else "-${buildType}") + ".apk"
-            }
-    }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -127,6 +113,19 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+}
+
+// Only rename F-Droid APKs — Play Store artifacts go to Google Play Console as AAB
+androidComponents {
+    onVariants { variant ->
+        if (variant.flavorName != "fdroid") return@onVariants
+        val buildType = variant.buildType ?: return@onVariants
+        val versionName = android.defaultConfig.versionName ?: "1.0.0"
+        val suffix = if (buildType == "release") "" else "-$buildType"
+        variant.outputs.forEach { output ->
+            output.outputFileName.set("Arcanum-v$versionName-fdroid$suffix.apk")
+        }
     }
 }
 
