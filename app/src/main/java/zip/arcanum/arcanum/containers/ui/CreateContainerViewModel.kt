@@ -14,7 +14,6 @@ import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.service.ContainerCreationParams
 import zip.arcanum.arcanum.containers.service.ContainerCreationService
-import zip.arcanum.core.premium.PremiumManager
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
@@ -119,7 +118,6 @@ data class CreateContainerState(
 
 @HiltViewModel
 class CreateContainerViewModel @Inject constructor(
-    val premiumManager: PremiumManager,
     private val cryptoEngine: VeraCryptEngine,
     private val repo: ContainerRepository,
     private val creationParams: ContainerCreationParams,

@@ -24,7 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Refresh
@@ -120,6 +120,7 @@ import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LocalCafe
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.Switch
@@ -140,6 +141,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.rememberModalBottomSheetState
 import zip.arcanum.core.components.SettingsRow
 import zip.arcanum.core.components.SettingsSwitch
+import zip.arcanum.core.components.UpgradeOverlay
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.security.VaultPanicAction
 import zip.arcanum.core.theme.ArcanumHazeStyle
@@ -193,6 +195,7 @@ fun SettingsScreen(
     val screenCaptureProtection by viewModel.screenCaptureProtection.collectAsState()
     val disguiseApplied         by viewModel.disguiseApplied.collectAsState()
     val debugMode               by viewModel.debugMode.collectAsState()
+    val isPro                   by viewModel.isPro.collectAsState()
     BackHandler(enabled = subScreen != null) {
         subScreen = when (subScreen) {
             SubScreen.SET_PANIC_PIN -> SubScreen.PANIC_MODE
@@ -245,6 +248,7 @@ fun SettingsScreen(
                 themeMode      = themeMode,
                 isAmoledGlass  = isAmoledGlass,
                 isDynamicColor = isDynamicColor,
+                isPro          = isPro,
                 onThemeMode    = { viewModel.setThemeMode(it) },
                 onAmoledGlass  = { viewModel.setAmoledGlass(it) },
                 onDynamicColor = { viewModel.setDynamicColor(it) },
@@ -268,7 +272,8 @@ fun SettingsScreen(
             null              -> MainSettingsScreen(
                 onBack     = onBack,
                 onNavigate = { subScreen = it },
-                debugMode  = debugMode
+                debugMode  = debugMode,
+                isPro      = isPro
             )
         }
     }
@@ -281,9 +286,11 @@ fun SettingsScreen(
 private fun MainSettingsScreen(
     onBack: () -> Unit,
     onNavigate: (SubScreen) -> Unit,
-    debugMode: Boolean
+    debugMode: Boolean,
+    isPro: Boolean
 ) {
     val isDynamic = LocalDynamicColor.current
+    var showUpgradeOverlay by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -304,6 +311,9 @@ private fun MainSettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
+            if (!BuildConfig.IS_FDROID && !isPro) {
+                PremiumBannerCard(onClick = { showUpgradeOverlay = true })
+            }
             SettingsCard(
                 title     = stringResource(R.string.settings_card_security),
                 subtitle  = stringResource(R.string.settings_card_security_desc),
@@ -336,16 +346,6 @@ private fun MainSettingsScreen(
                 isDynamic = isDynamic,
                 onClick   = { onNavigate(SubScreen.ABOUT) }
             )
-            if (!BuildConfig.IS_FDROID) {
-                SettingsCard(
-                    title     = stringResource(R.string.settings_card_premium),
-                    subtitle  = stringResource(R.string.settings_card_premium_desc),
-                    icon      = Icons.Outlined.Stars,
-                    rawColor  = Color(0xFFFFC107),
-                    isDynamic = isDynamic,
-                    onClick   = { onNavigate(SubScreen.PREMIUM) }
-                )
-            }
             if (debugMode) {
                 SettingsCard(
                     title     = stringResource(R.string.settings_card_debug),
@@ -357,6 +357,55 @@ private fun MainSettingsScreen(
                 )
             }
             Spacer(Modifier.height(16.dp))
+        }
+    }
+
+    if (showUpgradeOverlay) {
+        UpgradeOverlay(onDismiss = { showUpgradeOverlay = false })
+    }
+}
+
+@Composable
+private fun PremiumBannerCard(onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed         by interactionSource.collectIsPressedAsState()
+    val scale             by animateFloatAsState(
+        targetValue   = if (isPressed) 0.97f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label         = "premium_banner_scale"
+    )
+
+    Card(
+        onClick           = onClick,
+        interactionSource = interactionSource,
+        shape             = RoundedCornerShape(16.dp),
+        colors            = CardDefaults.cardColors(containerColor = Color(0xFFF57F17)),
+        elevation         = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier          = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .scale(scale)
+    ) {
+        Row(
+            modifier          = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector        = Icons.Outlined.Stars,
+                contentDescription = null,
+                tint               = Color.White,
+                modifier           = Modifier.size(28.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text       = stringResource(R.string.settings_card_premium_unlock),
+                style      = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color      = Color.White,
+                maxLines   = 1
+            )
         }
     }
 }
@@ -425,7 +474,7 @@ private fun SettingsCard(
                 )
             }
             Icon(
-                imageVector        = Icons.Outlined.KeyboardArrowRight,
+                imageVector        = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                 contentDescription = null,
                 tint               = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1011,11 +1060,13 @@ private fun AppearanceSubScreen(
     themeMode: ThemeMode,
     isAmoledGlass: Boolean,
     isDynamicColor: Boolean,
+    isPro: Boolean,
     onThemeMode: (ThemeMode) -> Unit,
     onAmoledGlass: (Boolean) -> Unit,
     onDynamicColor: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
+    var showUpgradeDialog by remember { mutableStateOf(false) }
     val isDark = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.DARK   -> true
@@ -1065,14 +1116,37 @@ private fun AppearanceSubScreen(
                 enter   = expandVertically(),
                 exit    = shrinkVertically()
             ) {
-                AppearanceSwitch(
-                    icon            = Icons.Outlined.Contrast,
-                    iconColor       = Color(0xFF5C6BC0),
-                    title           = stringResource(R.string.settings_appearance_amoled),
-                    subtitle        = stringResource(R.string.settings_appearance_amoled_desc),
-                    checked         = isAmoledGlass,
-                    onCheckedChange = onAmoledGlass
-                )
+                if (isPro) {
+                    AppearanceSwitch(
+                        icon            = Icons.Outlined.Contrast,
+                        iconColor       = Color(0xFF5C6BC0),
+                        title           = stringResource(R.string.settings_appearance_amoled),
+                        subtitle        = stringResource(R.string.settings_appearance_amoled_desc),
+                        checked         = isAmoledGlass,
+                        onCheckedChange = onAmoledGlass
+                    )
+                } else {
+                    AppearanceSwitch(
+                        icon            = Icons.Outlined.Contrast,
+                        iconColor       = Color(0xFF5C6BC0),
+                        title           = stringResource(R.string.settings_appearance_amoled),
+                        subtitle        = stringResource(R.string.upgrade_pro_feature_subtitle),
+                        checked         = false,
+                        onCheckedChange = { showUpgradeDialog = true },
+                        trailingContent = {
+                            Icon(
+                                imageVector        = Icons.Outlined.Lock,
+                                contentDescription = stringResource(R.string.upgrade_pro_locked_cd),
+                                modifier           = Modifier.size(18.dp),
+                                tint               = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    )
+                }
+            }
+
+            if (showUpgradeDialog) {
+                UpgradeOverlay(onDismiss = { showUpgradeDialog = false })
             }
             AppearanceSwitch(
                 icon            = Icons.Outlined.Palette,
@@ -1201,7 +1275,7 @@ private fun AppearanceNavRow(
             )
         }
         Icon(
-            imageVector        = Icons.Outlined.KeyboardArrowRight,
+            imageVector        = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
             contentDescription = null,
             tint               = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1216,7 +1290,8 @@ private fun AppearanceSwitch(
     subtitle: String? = null,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    trailingContent: (@Composable () -> Unit)? = null
 ) {
     Row(
         modifier          = Modifier
@@ -1252,11 +1327,15 @@ private fun AppearanceSwitch(
                 )
             }
         }
-        Switch(
-            checked         = checked,
-            onCheckedChange = onCheckedChange,
-            enabled         = enabled
-        )
+        if (trailingContent != null) {
+            trailingContent()
+        } else {
+            Switch(
+                checked         = checked,
+                onCheckedChange = onCheckedChange,
+                enabled         = enabled
+            )
+        }
     }
 }
 
@@ -1429,7 +1508,7 @@ private fun AboutSubScreen(
                     title          = stringResource(R.string.settings_about_licenses),
                     onClick        = onLicenses,
                     trailing = {
-                        Icon(Icons.Outlined.KeyboardArrowRight, null,
+                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null,
                              tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 )
@@ -1444,7 +1523,7 @@ private fun AboutSubScreen(
                     onClick        = onWhatsNew,
                     trailing = {
                         Icon(
-                            Icons.Outlined.KeyboardArrowRight,
+                            Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                             null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2388,3 +2467,4 @@ private fun AboutLinkCard(
         }
     }
 }
+

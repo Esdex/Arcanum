@@ -31,6 +31,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.BiometricCryptoManager
@@ -49,6 +50,7 @@ class VaultViewModel @Inject constructor(
     private val cryptoEngine: VeraCryptEngine,
     private val biometricCryptoManager: BiometricCryptoManager,
     private val biometricAuth: BiometricAuth,
+    private val billingManager: BillingManagerInterface,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -123,6 +125,10 @@ class VaultViewModel @Inject constructor(
             }
         }
     }
+
+    val canAddMoreContainers = combine(repo.getAllContainersRaw(), billingManager.isPro) { list, pro ->
+        pro || list.size < 2
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     val containers = combine(repo.getAllContainersRaw(), _sortState) { list, sort ->
         var sorted = when (sort.sortBy) {
@@ -243,6 +249,7 @@ class VaultViewModel @Inject constructor(
         data class Added(val fileName: String)         : AddVaultResult
         data class AlreadyExists(val fileName: String) : AddVaultResult
         data object InvalidFile                        : AddVaultResult
+        data object LimitReached                       : AddVaultResult
         data class Error(val message: String)          : AddVaultResult
     }
 
@@ -251,6 +258,10 @@ class VaultViewModel @Inject constructor(
 
     fun addContainerFromPath(path: String) {
         viewModelScope.launch {
+            if (!billingManager.isPro.value && repo.getAllContainersRaw().first().size >= 2) {
+                _addVaultResult.value = AddVaultResult.LimitReached
+                return@launch
+            }
             val file = java.io.File(path)
             val size = file.length()
             if (!file.exists() || size < 131072L || size % 512 != 0L) {
