@@ -12,6 +12,17 @@
 # Ensure VeraCryptEngine and its Companion are fully preserved.
 -keep class zip.arcanum.crypto.VeraCryptEngine { *; }
 -keep class zip.arcanum.crypto.VeraCryptEngine$Companion { *; }
+# NativeFileInfo is instantiated by C++ via JNI NewObject — constructor
+# signature (String,String,long,boolean,long) must not be renamed or removed.
+-keep class zip.arcanum.crypto.NativeFileInfo { *; }
+# NativeContainer and CryptoResult are accessed by name from JNI callbacks.
+-keep class zip.arcanum.crypto.NativeContainer { *; }
+-keep class zip.arcanum.crypto.CryptoResult { *; }
+-keep class zip.arcanum.crypto.CryptoError { *; }
+# CreationProgressListener is called back from C++ via JNI — onProgress(float,float,long)
+# must not be renamed.
+-keep interface zip.arcanum.crypto.VeraCryptEngine$CreationProgressListener { *; }
+-keep class zip.arcanum.crypto.VeraCryptEngine$CreationProgressListener { *; }
 
 # ── kotlinx.serialization ────────────────────────────────────────────────────
 -keepattributes *Annotation*, InnerClasses

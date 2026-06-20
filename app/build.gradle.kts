@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -5,6 +7,11 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.aboutlibraries)
+}
+
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) load(f.inputStream())
 }
 
 kotlin {
@@ -46,7 +53,10 @@ android {
             }
         }
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            // x86_64 has pre-existing SSE2/asm build issues in the VeraCrypt native layer.
+            // No production Android device uses x86_64 — modern x86 emulators run
+            // arm64-v8a via translation. Add "x86_64" here if emulator builds are needed.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
 
@@ -54,6 +64,15 @@ android {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile     = localProps["KEYSTORE_PATH"]?.let { rootProject.file(it as String) }
+            storePassword = localProps["KEYSTORE_PASSWORD"] as String?
+            keyAlias      = localProps["KEY_ALIAS"] as String?
+            keyPassword   = localProps["KEY_PASSWORD"] as String?
         }
     }
 
@@ -65,6 +84,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

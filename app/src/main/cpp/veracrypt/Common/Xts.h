@@ -45,12 +45,17 @@ extern "C" {
 
 // Custom data types
 
+/* Only define TC_LARGEST_COMPILER_UINT if Tcdefs.h has not already
+   done so — on Android, Tcdefs.h is always the authoritative source
+   and its typedef uses the correct ABI-specific uint64 alias. */
+#ifndef TCDEFS_H
 #ifndef TC_LARGEST_COMPILER_UINT
 #	ifdef TC_NO_COMPILER_INT64
 		typedef unsigned __int32	TC_LARGEST_COMPILER_UINT;
 #	else
 		typedef unsigned __int64	TC_LARGEST_COMPILER_UINT;
 #	endif
+#endif
 #endif
 
 #ifndef TCDEFS_H
