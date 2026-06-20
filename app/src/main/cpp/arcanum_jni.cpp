@@ -1166,6 +1166,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
             memset(rnd, 0, CHUNK);
             uint64_t remaining = dataSize, offset = VC_DATA_OFFSET;
             int rfd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+            bool rng_ok = true;
             auto t0 = (uint64_t)time(nullptr);
             while (remaining > 0) {
                 size_t sz = (remaining > CHUNK) ? CHUNK : (size_t)remaining;
@@ -1175,10 +1176,11 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
                         ssize_t r = read(rfd, rnd + got, sz - got);
                         if (r > 0) { got += (size_t)r; continue; }
                         if (r < 0 && errno == EINTR) continue;
-                        memset(rnd + got, 0, sz - got);
+                        rng_ok = false;
                         break;
                     }
                 }
+                if (!rng_ok) break;
                 pwrite(fd, rnd, sz, (off_t)offset);
                 remaining -= sz; offset += sz;
                 uint64_t written = dataSize - remaining;
@@ -1190,6 +1192,13 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
             if (rfd >= 0) close(rfd);
             memset(rnd, 0, CHUNK);
             free(rnd);
+            if (!rng_ok) {
+                LOGE("[create] /dev/urandom failed during data fill — aborting");
+                secure_memset((volatile uint8_t *)masterKey, 0, sizeof(masterKey));
+                close(fd);
+                unlink(path.c_str());
+                return ERR_RAND;
+            }
         }
     } else {
         report_progress(env, progressListener, progressMid, 0.5f, 500.f, (jlong)(dataSize/2));
