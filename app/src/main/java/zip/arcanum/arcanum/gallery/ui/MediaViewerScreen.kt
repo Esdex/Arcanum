@@ -131,7 +131,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.google.accompanist.systemuicontroller.rememberSystemUiController
+import android.app.Activity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.delay
@@ -244,13 +249,23 @@ fun MediaViewerScreen(
             .collect { viewModel.navigateTo(it) }
     }
 
-    val systemUiController = rememberSystemUiController()
-    DisposableEffect(Unit) { onDispose { systemUiController.isSystemBarsVisible = true } }
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (context as? Activity)?.window ?: return@DisposableEffect onDispose {}
+        onDispose { WindowCompat.getInsetsController(window, view).show(WindowInsetsCompat.Type.systemBars()) }
+    }
 
     var showBars by remember { mutableStateOf(true) }
     LaunchedEffect(showBars) {
-        systemUiController.isSystemBarsVisible = showBars
-        if (showBars) { delay(3_000); showBars = false }
+        val window = (context as? Activity)?.window ?: return@LaunchedEffect
+        val wic = WindowCompat.getInsetsController(window, view)
+        if (showBars) {
+            wic.show(WindowInsetsCompat.Type.systemBars())
+            delay(3_000); showBars = false
+        } else {
+            wic.hide(WindowInsetsCompat.Type.systemBars())
+            wic.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
     }
 
     var seekLeftToken  by remember { mutableStateOf(0) }

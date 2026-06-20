@@ -164,7 +164,6 @@ dependencies {
     // UI libraries
     implementation(libs.haze)
     implementation(libs.lottie.compose)
-    implementation(libs.accompanist.systemuicontroller)
     implementation(libs.aboutlibraries.compose.m3)
 
     // EXIF reading

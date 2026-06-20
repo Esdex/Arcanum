@@ -85,7 +85,11 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
-import com.google.accompanist.systemuicontroller.rememberSystemUiController
+import android.app.Activity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import zip.arcanum.R
 import zip.arcanum.arcanum.gallery.EncryptedDataSourceFactory
 import zip.arcanum.arcanum.gallery.domain.AudioMetadata
@@ -100,9 +104,12 @@ fun AudioPlayerDirectScreen(
 ) {
     val state by viewModel.state.collectAsState()
 
-    val systemUiController = rememberSystemUiController()
-    DisposableEffect(systemUiController) {
-        systemUiController.isSystemBarsVisible = true
+    val view    = LocalView.current
+    val context = LocalContext.current
+    DisposableEffect(view) {
+        (context as? Activity)?.window?.let {
+            WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars())
+        }
         onDispose { }
     }
 
@@ -524,10 +531,11 @@ fun AudioPlayerScreen(
     val handle = viewModel.getHandle()
     val engine = viewModel.engine
     val context = LocalContext.current
-
-    val systemUiController = rememberSystemUiController()
-    DisposableEffect(systemUiController) {
-        systemUiController.isSystemBarsVisible = true
+    val view    = LocalView.current
+    DisposableEffect(view) {
+        (context as? Activity)?.window?.let {
+            WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars())
+        }
         onDispose { }
     }
 
