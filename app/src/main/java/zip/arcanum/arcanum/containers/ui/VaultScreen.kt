@@ -1386,7 +1386,7 @@ private fun MountDialog(
                         val algorithms = listOf(-1 to "Auto") + (0..14).map { id ->
                             id to VeraCryptEngine.algorithmIdToString(id).replace("-256-XTS", "")
                         }
-                        val hashes = listOf(-1 to "Auto") + (0..3).map { it to VeraCryptEngine.hashIdToString(it) }
+                        val hashes = listOf(-1 to "Auto") + (0..4).map { it to VeraCryptEngine.hashIdToString(it) }
 
                         Row(
                             modifier              = Modifier.fillMaxWidth(),

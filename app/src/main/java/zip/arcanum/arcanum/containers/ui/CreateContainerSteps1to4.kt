@@ -9,12 +9,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -385,7 +385,7 @@ fun StepContent(
     subtitle: String? = null,
     content: @Composable () -> Unit
 ) {
-    Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(top = 28.dp, bottom = 24.dp)) {
+    Column(modifier = Modifier.verticalScroll(rememberScrollState()).imePadding().padding(top = 28.dp, bottom = 24.dp)) {
         Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         if (subtitle != null) {
             Spacer(Modifier.height(4.dp))

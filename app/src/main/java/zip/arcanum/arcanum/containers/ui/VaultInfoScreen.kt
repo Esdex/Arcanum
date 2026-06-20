@@ -28,6 +28,9 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.PowerSettingsNew
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.VpnKey
@@ -131,14 +134,23 @@ fun VaultInfoScreen(
             isDynamic = isDynamic,
             onClick   = { Toast.makeText(context, comingSoon, Toast.LENGTH_SHORT).show() }
         )
-        VaultCard(
-            title     = stringResource(R.string.vault_info_unmount_button),
-            subtitle  = stringResource(R.string.vault_card_unmount_desc),
-            icon      = Icons.Outlined.LockOpen,
-            rawColor  = MaterialTheme.colorScheme.error,
-            isDynamic = isDynamic,
-            onClick   = { showUnmountDialog = true }
-        )
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick  = { showUnmountDialog = true },
+            colors   = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor   = MaterialTheme.colorScheme.onError
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector        = Icons.Outlined.PowerSettingsNew,
+                contentDescription = null,
+                modifier           = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.vault_info_unmount_button))
+        }
     }
 
     if (showInfoSheet && container != null) {
