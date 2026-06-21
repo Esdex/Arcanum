@@ -1,6 +1,5 @@
 package zip.arcanum.arcanum.containers.ui
 
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -60,7 +59,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import android.view.HapticFeedbackConstants
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -378,7 +376,6 @@ fun StepFilesystem(
     state: CreateContainerState,
     onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit
 ) {
-    val context = LocalContext.current
     val recommended = if (state.sizeMb > 2L * 1024L * 1024L) FilesystemType.EXFAT else FilesystemType.FAT32
     var infoFs by remember { mutableStateOf<FilesystemType?>(null) }
 
@@ -392,20 +389,12 @@ fun StepFilesystem(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             FilesystemType.entries.forEach { fs ->
-                val isComingSoon = fs == FilesystemType.NTFS || fs == FilesystemType.EXT2
-                val isSelected   = state.filesystem == fs && !isComingSoon
                 FilesystemCard(
                     fs          = fs,
-                    selected    = isSelected,
+                    selected    = state.filesystem == fs,
                     recommended = fs == recommended,
-                    comingSoon  = isComingSoon,
-                    onClick     = {
-                        if (isComingSoon) {
-                            Toast.makeText(context, context.getString(R.string.create_fs_coming_soon_toast), Toast.LENGTH_SHORT).show()
-                        } else {
-                            onUpdate { copy(filesystem = fs) }
-                        }
-                    },
+                    comingSoon  = false,
+                    onClick     = { onUpdate { copy(filesystem = fs) } },
                     onInfo      = { infoFs = fs }
                 )
             }
@@ -429,15 +418,15 @@ private fun FilesystemCard(
     fs: FilesystemType,
     selected: Boolean,
     recommended: Boolean,
-    comingSoon: Boolean,
+    comingSoon: Boolean = false,
     onClick: () -> Unit,
     onInfo: () -> Unit
 ) {
-    val borderColor = if (selected) MaterialTheme.colorScheme.primary
-                      else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+    val borderColor    = if (selected) MaterialTheme.colorScheme.primary
+                         else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
     val containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (comingSoon) 0.3f else 0.5f)
-    val contentAlpha = if (comingSoon) 0.5f else 1f
+                         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    val contentAlpha   = 1f
 
     Card(
         colors   = CardDefaults.cardColors(containerColor = containerColor),
@@ -472,19 +461,6 @@ private fun FilesystemCard(
                             )
                         }
                     }
-                    if (comingSoon) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(99.dp)
-                        ) {
-                            Text(
-                                text     = stringResource(R.string.create_fs_coming_soon),
-                                style    = MaterialTheme.typography.labelSmall,
-                                color    = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
                 }
                 Spacer(Modifier.height(2.dp))
                 Text(
@@ -509,16 +485,6 @@ private fun FilesystemCard(
                         FilesystemType.EXFAT -> {
                             OsChip("Windows", true)
                             OsChip("macOS", true)
-                            OsChip("Linux", true)
-                        }
-                        FilesystemType.NTFS -> {
-                            OsChip("Windows", true)
-                            OsChip("macOS", null)
-                            OsChip("Linux", true)
-                        }
-                        FilesystemType.EXT2 -> {
-                            OsChip("Windows", false)
-                            OsChip("macOS", false)
                             OsChip("Linux", true)
                         }
                     }
