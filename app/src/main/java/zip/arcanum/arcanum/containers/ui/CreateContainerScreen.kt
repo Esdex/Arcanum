@@ -2,10 +2,6 @@ package zip.arcanum.arcanum.containers.ui
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.provider.DocumentsContract
-import android.provider.Settings
 import zip.arcanum.core.utils.FileUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -55,8 +51,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.LocalHazeState
@@ -72,7 +66,6 @@ fun CreateContainerScreen(
     viewModel: CreateContainerViewModel = hiltViewModel()
 ) {
     val context       = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val hazeState     = remember { HazeState() }
 
     val state              by viewModel.state.collectAsState()
@@ -80,24 +73,15 @@ fun CreateContainerScreen(
     var prevStep           by remember { mutableIntStateOf(1) }
     var showCancelDialog   by remember { mutableStateOf(false) }
 
-    // Tracks MANAGE_EXTERNAL_STORAGE; re-checked every time the app returns from Settings.
-    var hasStoragePermission by remember { mutableStateOf(checkStoragePermission()) }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                hasStoragePermission = checkStoragePermission()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    val folderPickerLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
+    val fileCreatorLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val path = treeUriToPath(uri) ?: return@rememberLauncherForActivityResult
-        viewModel.update { copy(filePath = path) }
+        context.contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        viewModel.setSafUri(uri)
     }
 
     val keyfilePickerLauncher = rememberLauncherForActivityResult(
@@ -232,21 +216,11 @@ fun CreateContainerScreen(
                     when (step) {
                         1    -> StepVolumeType(state, viewModel::update)
                         2    -> StepVolumeLocation(
-                                    state                = state,
-                                    appStoragePath       = viewModel.appStoragePath,
-                                    onUpdate             = viewModel::update,
-                                    onBrowse             = { folderPickerLauncher.launch(null) },
-                                    hasStoragePermission = hasStoragePermission,
-                                    onGrantPermission    = {
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                            context.startActivity(
-                                                Intent(
-                                                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                                    Uri.parse("package:${context.packageName}")
-                                                )
-                                            )
-                                        }
-                                    }
+                                    state          = state,
+                                    appStoragePath = viewModel.appStoragePath,
+                                    onUpdate       = viewModel::update,
+                                    onBrowse       = { viewModel.deletePendingSafFile(); fileCreatorLauncher.launch(state.fileName) },
+                                    onClearSaf     = viewModel::clearSafUri
                                 )
                         3    -> StepEncryptionAlgorithm(state, viewModel::update)
                         4    -> StepVolumeSize(state, viewModel::update)
@@ -302,7 +276,7 @@ fun CreateContainerScreen(
                         }
                         Button(
                             onClick  = viewModel::nextStep,
-                            enabled  = isStepValid(state, hasStoragePermission),
+                            enabled  = isStepValid(state),
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape    = CircleShape
                         ) {
@@ -353,14 +327,11 @@ fun CreateContainerScreen(
     } // CompositionLocalProvider
 }
 
-private fun isStepValid(
-    state: CreateContainerState,
-    hasStoragePermission: Boolean = true
-): Boolean = when (state.currentStep) {
+private fun isStepValid(state: CreateContainerState): Boolean = when (state.currentStep) {
     1    -> true
     2    -> state.fileName.isNotBlank() && when (state.location) {
                 StorageLocation.APP_STORAGE      -> true
-                StorageLocation.INTERNAL_STORAGE -> state.filePath.isNotBlank() && hasStoragePermission
+                StorageLocation.INTERNAL_STORAGE -> state.safUri.isNotBlank()
             }
     3    -> true
     4    -> state.sizeMb > 0L
@@ -378,17 +349,3 @@ private fun isStepValid(
     else -> true
 }
 
-private fun checkStoragePermission(): Boolean =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager()
-    else true
-
-// Converts a SAF OpenDocumentTree URI to a real file-system path (primary storage only).
-// Example: content://com.android.externalstorage.documents/tree/primary:Documents
-//       →  /storage/emulated/0/Documents
-private fun treeUriToPath(uri: Uri): String? = try {
-    val docId = DocumentsContract.getTreeDocumentId(uri)
-    val parts  = docId.split(":")
-    if (parts.size == 2 && parts[0].equals("primary", ignoreCase = true)) {
-        "${Environment.getExternalStorageDirectory().absolutePath}/${parts[1]}"
-    } else null
-} catch (_: Exception) { null }

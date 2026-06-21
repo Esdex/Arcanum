@@ -1237,6 +1237,219 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
     return ERR_OK;
 }
 
+/* ─── JNI: nativeCreateContainerFd ──────────────────────────────────── */
+/* SAF variant: receives an open file descriptor instead of a path.       */
+/* The caller keeps its ParcelFileDescriptor open; we dup() to own ours.  */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
+        JNIEnv *env, jobject /*thiz*/,
+        jint safFd, jlong sizeBytes,
+        jstring jPassword, jobjectArray jKeyfilePaths,
+        jint algorithm, jint hashAlg, jint filesystem,
+        jboolean quickFormat,
+        jbyteArray entropyBytes,
+        jobject progressListener,
+        jint pim)
+{
+    if (algorithm < 0 || algorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
+
+    std::string password = jstring_to_string(env, jPassword);
+    auto keyfilePaths    = jstringArray_to_vector(env, jKeyfilePaths);
+    if (password.empty()) return ERR_FILE;
+
+    int fd = dup((int)safFd);
+    if (fd < 0) { LOGE("[fd/create] dup failed: errno=%d", errno); return ERR_FILE; }
+
+    uint8_t effPwd[VC_MAX_PWD_LEN] = {};
+    int effPwdLen = (int)password.size();
+    if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
+    memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
+    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
+    const int pbkdf2PwdLen = effPwdLen;
+
+    int algId = (int)algorithm;
+    int n     = ALGORITHMS[algId].n;
+
+    uint64_t dataSize = (uint64_t)sizeBytes;
+    uint64_t fileSize = dataSize + VC_DATA_OFFSET + VC_BACKUP_AREA_SIZE;
+
+    if (ftruncate(fd, (off_t)fileSize) != 0) {
+        LOGE("[fd/create] ftruncate failed");
+        close(fd); return ERR_NO_SPACE;
+    }
+    lseek(fd, 0, SEEK_SET);
+
+    uint8_t masterKey[192] = {};
+    if (!read_urandom(masterKey, (size_t)(n * 64))) {
+        LOGE("[fd/create] /dev/urandom failed for master key");
+        close(fd); return ERR_RAND;
+    }
+
+    if (write_vc_header(fd, 0, dataSize, VC_DATA_OFFSET,
+                        masterKey, algId, (int)hashAlg,
+                        (const char*)effPwd, pbkdf2PwdLen, (int)pim) != 0) {
+        LOGE("[fd/create] Primary header write failed");
+        memset(effPwd, 0, sizeof(effPwd));
+        close(fd); return ERR_FILE;
+    }
+
+    uint64_t backupOff = fileSize - VC_BACKUP_AREA_SIZE;
+    write_vc_header(fd, backupOff, dataSize, VC_DATA_OFFSET,
+                    masterKey, algId, (int)hashAlg,
+                    (const char*)effPwd, pbkdf2PwdLen, (int)pim);
+    memset(effPwd, 0, sizeof(effPwd));
+
+    jmethodID progressMid = resolve_progress_mid(env, progressListener);
+
+    if (!quickFormat) {
+        const size_t CHUNK = 65536;
+        auto *rnd = static_cast<uint8_t*>(malloc(CHUNK));
+        if (rnd) {
+            memset(rnd, 0, CHUNK);
+            uint64_t remaining = dataSize, offset = VC_DATA_OFFSET;
+            int rfd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+            bool rng_ok = true;
+            auto t0 = (uint64_t)time(nullptr);
+            while (remaining > 0) {
+                size_t sz = (remaining > CHUNK) ? CHUNK : (size_t)remaining;
+                if (rfd >= 0) {
+                    size_t got = 0;
+                    while (got < sz) {
+                        ssize_t r = read(rfd, rnd + got, sz - got);
+                        if (r > 0) { got += (size_t)r; continue; }
+                        if (r < 0 && errno == EINTR) continue;
+                        rng_ok = false; break;
+                    }
+                }
+                if (!rng_ok) break;
+                pwrite(fd, rnd, sz, (off_t)offset);
+                remaining -= sz; offset += sz;
+                uint64_t written = dataSize - remaining;
+                float frac  = (float)written / (float)dataSize;
+                uint64_t el = (uint64_t)time(nullptr) - t0;
+                float speed = el > 0 ? (float)(written/1048576UL)/(float)el : 10.f;
+                report_progress(env, progressListener, progressMid, frac, speed, (jlong)written);
+            }
+            if (rfd >= 0) close(rfd);
+            memset(rnd, 0, CHUNK);
+            free(rnd);
+            if (!rng_ok) {
+                secure_memset((volatile uint8_t*)masterKey, 0, sizeof(masterKey));
+                close(fd); return ERR_RAND;
+            }
+        }
+    } else {
+        report_progress(env, progressListener, progressMid, 0.5f, 500.f, (jlong)(dataSize/2));
+    }
+
+    int pdrv = alloc_drive(fd, VC_DATA_OFFSET, dataSize / VC_SECTOR_SIZE, masterKey, algId);
+    memset(masterKey, 0, sizeof(masterKey));
+
+    if (pdrv < 0) { LOGE("[fd/create] No drive slot"); close(fd); return ERR_NO_SLOT; }
+
+    char drvPath[8];
+    snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
+    BYTE work[4096];
+    BYTE fmtFlag = (filesystem == 1) ? (FM_EXFAT|FM_SFD) : ((FM_FAT|FM_FAT32)|FM_SFD);
+    BYTE nFat    = (filesystem == 1) ? 1 : 2;
+    MKFS_PARM opts = { fmtFlag, nFat, 0, 0, 0 };
+    FRESULT fr;
+    {
+        std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+        fr = f_mkfs(drvPath, &opts, work, sizeof(work));
+    }
+    free_drive(pdrv);
+
+    if (fr != FR_OK) { LOGE("[fd/create] f_mkfs failed: %d", (int)fr); close(fd); return ERR_FS; }
+
+    report_progress(env, progressListener, progressMid, 1.0f, 0.f, (jlong)dataSize);
+    close(fd);
+    return ERR_OK;
+}
+
+/* ─── JNI: nativeOpenContainerFd ────────────────────────────────────── */
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
+        JNIEnv *env, jobject /*thiz*/,
+        jint safFd, jstring jPassword, jobjectArray jKeyfilePaths,
+        jint pim, jint algorithm, jint hashAlgorithm)
+{
+    std::string password = jstring_to_string(env, jPassword);
+    auto keyfilePaths    = jstringArray_to_vector(env, jKeyfilePaths);
+
+    int fd = dup((int)safFd);
+    if (fd < 0) { LOGE("[fd/open] dup failed: errno=%d", errno); return (jlong)ERR_FILE; }
+
+    uint8_t effPwd[VC_MAX_PWD_LEN] = {};
+    int effPwdLen = (int)password.size();
+    if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
+    memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
+    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
+
+    struct stat st{};
+    fstat(fd, &st);
+    uint64_t fileSize = (uint64_t)st.st_size;
+
+    if (fileSize < VC_DATA_OFFSET) { close(fd); return (jlong)ERR_WRONG_PASSWORD; }
+    if (fileSize % VC_SECTOR_SIZE != 0) { close(fd); return (jlong)ERR_WRONG_PASSWORD; }
+
+    uint8_t masterKey[192] = {};
+    int mkLen = 0, algId = 0, hashId = 0;
+    uint64_t dataSz = 0, dataOff = 0;
+
+    uint64_t tryOffsets[4] = {
+        0,
+        VC_HIDDEN_HEADER_OFFSET,
+        fileSize - VC_BACKUP_AREA_SIZE,
+        fileSize - VC_HIDDEN_HEADER_OFFSET
+    };
+    bool tryIsHidden[4] = { false, true, false, true };
+
+    int rc = ERR_WRONG_PASSWORD;
+    bool authIsHidden = false;
+    uint64_t hiddenVolSize = 0;
+
+    for (int ti = 0; ti < 4 && rc != ERR_OK; ti++) {
+        if (tryOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
+        uint64_t hvSz = 0;
+        rc = read_vc_header(fd, tryOffsets[ti], (const char*)effPwd, effPwdLen,
+                            masterKey, &mkLen, &dataSz, &dataOff, &algId, &hashId,
+                            (int)pim, &hvSz, (int)algorithm, (int)hashAlgorithm);
+        if (rc == ERR_OK) { authIsHidden = tryIsHidden[ti]; hiddenVolSize = hvSz; }
+    }
+
+    memset(effPwd, 0, sizeof(effPwd));
+    if (rc != ERR_OK) { memset(masterKey, 0, sizeof(masterKey)); close(fd); return (jlong)rc; }
+
+    uint64_t hiddenBoundary = 0;
+    if (!authIsHidden && hiddenVolSize > 0)
+        hiddenBoundary = dataOff + dataSz - hiddenVolSize;
+
+    int pdrv = alloc_drive(fd, dataOff, dataSz / VC_SECTOR_SIZE, masterKey, algId, hashId,
+                           authIsHidden, hiddenBoundary);
+    memset(masterKey, 0, sizeof(masterKey));
+    if (pdrv < 0) { close(fd); return (jlong)ERR_NO_SLOT; }
+
+    auto *ctx = new ContainerCtx{ pdrv, {}, fd };
+    char drvPath[8];
+    snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
+    FRESULT fr;
+    {
+        std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+        fr = f_mount(&ctx->fatFs, drvPath, 1);
+    }
+    if (fr != FR_OK) {
+        LOGE("[fd/open] f_mount failed: %d", (int)fr);
+        free_drive(pdrv); close(fd); delete ctx;
+        return (jlong)ERR_FS;
+    }
+
+    g_ctxMap[pdrv] = ctx;
+    return (jlong)pdrv;
+}
+
 /* ─── JNI: nativeOpenContainer ──────────────────────────────────────── */
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -1854,6 +2067,157 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
         close(fd);
         return ERR_NO_SLOT;
     }
+
+    char drvPath[8];
+    snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
+    BYTE work[4096];
+    MKFS_PARM opts = { (FM_FAT | FM_FAT32) | FM_SFD, 2, 0, 0, 0 };
+    FRESULT fr;
+    {
+        std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+        fr = f_mkfs(drvPath, &opts, work, sizeof(work));
+    }
+    free_drive(pdrv);
+
+    report_progress(env, progressListener, progressMid, 1.0f, 0.f, (jlong)hidSz);
+    close(fd);
+    return (fr == FR_OK) ? ERR_OK : ERR_FS;
+}
+
+/* ─── JNI: nativeCreateHiddenVolumeFd ───────────────────────────────── */
+/* SAF variant: receives an open fd instead of a path. Uses dup() so the  */
+/* caller's ParcelFileDescriptor stays valid for the container lifetime.   */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeFd(
+        JNIEnv *env, jobject /*thiz*/,
+        jint safFd,
+        jlong hiddenSizeBytes,
+        jstring jOuterPassword, jobjectArray jOuterKeyfilePaths, jint outerPim,
+        jstring jHiddenPassword, jobjectArray jHiddenKeyfilePaths, jint hiddenPim,
+        jint hiddenAlgorithm, jint hiddenHashAlg,
+        jboolean /*quickFormat*/,
+        jbyteArray /*entropyBytes*/,
+        jobject progressListener)
+{
+    if (hiddenAlgorithm < 0 || hiddenAlgorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
+    if (hiddenSizeBytes < (jlong)(4 * 1024 * 1024)) return ERR_NO_SPACE;
+
+    std::string outerPassword  = jstring_to_string(env, jOuterPassword);
+    std::string hiddenPassword = jstring_to_string(env, jHiddenPassword);
+    auto outerKeyfilePaths     = jstringArray_to_vector(env, jOuterKeyfilePaths);
+    auto hiddenKeyfilePaths    = jstringArray_to_vector(env, jHiddenKeyfilePaths);
+
+    if (outerPassword.empty() || hiddenPassword.empty()) return ERR_FILE;
+
+    jmethodID progressMid = resolve_progress_mid(env, progressListener);
+
+    int fd = dup((int)safFd);
+    if (fd < 0) { LOGE("[fd/hidden] dup failed: errno=%d", errno); return ERR_FILE; }
+
+    off_t fileSzOff = lseek(fd, 0, SEEK_END);
+    if (fileSzOff < 0) { close(fd); return ERR_FILE; }
+    uint64_t fileSize = (uint64_t)fileSzOff;
+
+    uint64_t hidSz = (uint64_t)hiddenSizeBytes;
+    if (fileSize < VC_DATA_OFFSET + VC_BACKUP_AREA_SIZE + hidSz) {
+        close(fd); return ERR_NO_SPACE;
+    }
+
+    uint8_t outerEffPwd[VC_MAX_PWD_LEN] = {};
+    int outerEffPwdLen = (int)outerPassword.size();
+    if (outerEffPwdLen > VC_MAX_PWD_LEN) outerEffPwdLen = VC_MAX_PWD_LEN;
+    memcpy(outerEffPwd, outerPassword.c_str(), (size_t)outerEffPwdLen);
+    apply_keyfiles_to_password(outerKeyfilePaths, outerEffPwd, &outerEffPwdLen);
+
+    uint8_t hiddenEffPwd[VC_MAX_PWD_LEN] = {};
+    int hiddenEffPwdLen = (int)hiddenPassword.size();
+    if (hiddenEffPwdLen > VC_MAX_PWD_LEN) hiddenEffPwdLen = VC_MAX_PWD_LEN;
+    memcpy(hiddenEffPwd, hiddenPassword.c_str(), (size_t)hiddenEffPwdLen);
+    apply_keyfiles_to_password(hiddenKeyfilePaths, hiddenEffPwd, &hiddenEffPwdLen);
+
+    uint8_t outerPrimSalt[VC_HEADER_SALT_SIZE];
+    if (pread(fd, outerPrimSalt, VC_HEADER_SALT_SIZE, 0) != VC_HEADER_SALT_SIZE) {
+        memset(outerEffPwd, 0, sizeof(outerEffPwd));
+        memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
+        close(fd); return ERR_READ;
+    }
+
+    uint8_t outerMasterKey[192] = {};
+    int outerMkLen = 0, outerAlgId = 0, outerHashId = 0;
+    uint64_t outerDataSz = 0, outerDataOff = 0;
+    int rc = read_vc_header(fd, 0,
+                            (const char*)outerEffPwd, outerEffPwdLen,
+                            outerMasterKey, &outerMkLen,
+                            &outerDataSz, &outerDataOff,
+                            &outerAlgId, &outerHashId,
+                            (int)outerPim, nullptr);
+    if (rc != ERR_OK) {
+        memset(outerEffPwd, 0, sizeof(outerEffPwd));
+        memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
+        close(fd); return ERR_WRONG_PASSWORD;
+    }
+
+    uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
+    uint8_t outerBackSalt[VC_HEADER_SALT_SIZE];
+    if (pread(fd, outerBackSalt, VC_HEADER_SALT_SIZE, (off_t)backupAreaOff) != VC_HEADER_SALT_SIZE) {
+        memset(outerMasterKey, 0, sizeof(outerMasterKey));
+        memset(outerEffPwd,    0, sizeof(outerEffPwd));
+        memset(hiddenEffPwd,   0, sizeof(hiddenEffPwd));
+        close(fd); return ERR_READ;
+    }
+
+    if (write_vc_header(fd, 0,
+                        outerDataSz, outerDataOff,
+                        outerMasterKey, outerAlgId, outerHashId,
+                        (const char*)outerEffPwd, outerEffPwdLen,
+                        (int)outerPim, hidSz, outerPrimSalt) != 0) {
+        memset(outerMasterKey, 0, sizeof(outerMasterKey));
+        memset(outerEffPwd,    0, sizeof(outerEffPwd));
+        memset(hiddenEffPwd,   0, sizeof(hiddenEffPwd));
+        close(fd); return ERR_FILE;
+    }
+    write_vc_header(fd, backupAreaOff,
+                    outerDataSz, outerDataOff,
+                    outerMasterKey, outerAlgId, outerHashId,
+                    (const char*)outerEffPwd, outerEffPwdLen,
+                    (int)outerPim, hidSz, outerBackSalt);
+    memset(outerMasterKey, 0, sizeof(outerMasterKey));
+    memset(outerEffPwd,    0, sizeof(outerEffPwd));
+
+    uint64_t hiddenDataOff = fileSize - VC_BACKUP_AREA_SIZE - hidSz;
+
+    int hiddenAlgId = (int)hiddenAlgorithm;
+    if (hiddenAlgId < 0 || hiddenAlgId >= NUM_ALGORITHMS) { close(fd); return ERR_FS; }
+    int hiddenN     = ALGORITHMS[hiddenAlgId].n;
+    uint8_t hiddenMasterKey[192] = {};
+    if (!read_urandom(hiddenMasterKey, (size_t)(hiddenN * 64))) {
+        memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
+        close(fd); return ERR_RAND;
+    }
+
+    if (write_vc_header(fd, VC_HIDDEN_HEADER_OFFSET,
+                        hidSz, hiddenDataOff,
+                        hiddenMasterKey, hiddenAlgId, (int)hiddenHashAlg,
+                        (const char*)hiddenEffPwd, hiddenEffPwdLen,
+                        (int)hiddenPim, 0, nullptr) != 0) {
+        memset(hiddenMasterKey, 0, sizeof(hiddenMasterKey));
+        memset(hiddenEffPwd,    0, sizeof(hiddenEffPwd));
+        close(fd); return ERR_FILE;
+    }
+    write_vc_header(fd, fileSize - VC_HIDDEN_HEADER_OFFSET,
+                    hidSz, hiddenDataOff,
+                    hiddenMasterKey, hiddenAlgId, (int)hiddenHashAlg,
+                    (const char*)hiddenEffPwd, hiddenEffPwdLen,
+                    (int)hiddenPim, 0, nullptr);
+    memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
+
+    int pdrv = alloc_drive(fd, hiddenDataOff, hidSz / VC_SECTOR_SIZE,
+                           hiddenMasterKey, hiddenAlgId, (int)hiddenHashAlg,
+                           true, 0);
+    memset(hiddenMasterKey, 0, sizeof(hiddenMasterKey));
+
+    if (pdrv < 0) { close(fd); return ERR_NO_SLOT; }
 
     char drvPath[8];
     snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);

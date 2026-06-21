@@ -2,6 +2,7 @@ package zip.arcanum.core.utils
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import java.io.File
 import java.io.RandomAccessFile
@@ -72,4 +73,20 @@ object FileUtils {
 
     fun isAudioFile(fileName: String): Boolean =
         getExtension(fileName) in setOf("mp3", "flac", "ogg", "wav", "aac", "m4a")
+
+    fun normalizeSafUri(uri: Uri): Uri {
+        return try {
+            val paths = uri.pathSegments
+            val treeIdx = paths.indexOf("tree")
+            val docIdx  = paths.lastIndexOf("document")
+            if (treeIdx >= 0 && docIdx > treeIdx) return uri
+            val authority = uri.authority ?: return uri
+            val docId = DocumentsContract.getDocumentId(uri)
+            DocumentsContract.buildDocumentUri(authority, docId)
+        } catch (_: Exception) { uri }
+    }
+
+    fun safUriDocumentId(uri: Uri): String? = try {
+        DocumentsContract.getDocumentId(uri)
+    } catch (_: Exception) { null }
 }

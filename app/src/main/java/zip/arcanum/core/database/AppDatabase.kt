@@ -20,7 +20,7 @@ import zip.arcanum.core.database.entities.MountPointEntity
         CalculationEntity::class,
         MountPointEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -63,6 +63,12 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_media_files_containerId ON media_files (containerId)")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE containers ADD COLUMN safUri TEXT NOT NULL DEFAULT ''")
             }
         }
     }

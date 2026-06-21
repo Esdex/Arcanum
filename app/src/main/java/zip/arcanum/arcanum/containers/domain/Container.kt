@@ -14,5 +14,6 @@ data class Container(
     val isFavorite: Boolean = false,
     val isMounted: Boolean = false,
     val isHiddenVolume: Boolean = false,
-    val hasHiddenVolume: Boolean = false
+    val hasHiddenVolume: Boolean = false,
+    val safUri: String = ""
 )

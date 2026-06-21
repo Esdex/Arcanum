@@ -1,9 +1,6 @@
 package zip.arcanum.arcanum.containers.ui
 
-import android.content.Context
 import android.net.Uri
-import android.os.Environment
-import android.provider.DocumentsContract
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -47,11 +44,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -103,8 +100,8 @@ fun MoveVaultScreen(
                 is MoveVaultViewModel.State.Idle    -> InfoScreen(
                     toApp       = toApp,
                     storageInfo = storageInfo,
-                    onStart     = { backup, dest -> viewModel.startMove(backup, dest) },
-                    onRefreshFreeSpace = { backup, dir -> viewModel.refreshFreeSpace(backup, dir) }
+                    onStart     = { backup, uri -> viewModel.startMove(backup, uri) },
+                    onRefreshFreeSpace = { backup, uri -> viewModel.refreshFreeSpace(backup, uri) }
                 )
                 is MoveVaultViewModel.State.Moving  -> MovingScreen(s)
                 is MoveVaultViewModel.State.Success -> SuccessScreen(onDone = onBack)
@@ -124,24 +121,23 @@ fun MoveVaultScreen(
 private fun InfoScreen(
     toApp: Boolean,
     storageInfo: MoveVaultViewModel.StorageInfo?,
-    onStart: (includeInBackup: Boolean, destDir: String?) -> Unit,
-    onRefreshFreeSpace: (includeInBackup: Boolean, customDir: String?) -> Unit
+    onStart: (includeInBackup: Boolean, destUri: Uri?) -> Unit,
+    onRefreshFreeSpace: (includeInBackup: Boolean, destUri: Uri?) -> Unit
 ) {
-    val context         = LocalContext.current
     var includeInBackup by rememberSaveable { mutableStateOf(false) }
-    var pickedDir       by rememberSaveable { mutableStateOf("") }
+    var pickedUri       by remember { mutableStateOf<Uri?>(null) }
+    var pickedDirLabel  by rememberSaveable { mutableStateOf("") }
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
-        if (uri != null) {
-            pickedDir = treeUriToPath(context, uri) ?: ""
-        }
+        pickedUri      = uri
+        pickedDirLabel = uri?.lastPathSegment ?: ""
     }
 
     // Re-query free space whenever backup toggle or destination changes
-    LaunchedEffect(includeInBackup, pickedDir) {
-        onRefreshFreeSpace(includeInBackup, pickedDir.ifBlank { null })
+    LaunchedEffect(includeInBackup, pickedUri) {
+        onRefreshFreeSpace(includeInBackup, pickedUri)
     }
 
     val hasEnoughSpace = storageInfo?.let { it.destinationFreeBytes >= it.containerSize } ?: true
@@ -271,13 +267,13 @@ private fun InfoScreen(
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text  = if (pickedDir.isBlank()) stringResource(R.string.move_vault_choose_folder) else stringResource(R.string.move_vault_selected_folder),
+                            text  = if (pickedUri == null) stringResource(R.string.move_vault_choose_folder) else stringResource(R.string.move_vault_selected_folder),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text  = if (pickedDir.isBlank()) stringResource(R.string.move_vault_default_folder)
-                                    else pickedDir,
+                            text  = if (pickedDirLabel.isBlank()) stringResource(R.string.move_vault_default_folder)
+                                    else pickedDirLabel,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -290,7 +286,7 @@ private fun InfoScreen(
         Spacer(Modifier.height(8.dp))
 
         Button(
-            onClick  = { onStart(includeInBackup, pickedDir.ifBlank { null }) },
+            onClick  = { onStart(includeInBackup, pickedUri) },
             enabled  = hasEnoughSpace,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -526,19 +522,6 @@ private fun FailureScreen(message: String, onRetry: () -> Unit, onBack: () -> Un
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-private fun treeUriToPath(context: Context, uri: Uri): String? = try {
-    val docId = DocumentsContract.getTreeDocumentId(uri)
-    when (uri.authority) {
-        "com.android.externalstorage.documents" -> {
-            val split = docId.split(":", limit = 2)
-            if (split.size == 2 && split[0].equals("primary", ignoreCase = true)) {
-                "${Environment.getExternalStorageDirectory().absolutePath}/${split[1]}"
-            } else null
-        }
-        else -> null
-    }
-} catch (_: Exception) { null }
 
 private fun formatBytes(bytes: Long): String = when {
     bytes >= 1_073_741_824L -> "%.2f GB".format(bytes / 1_073_741_824.0)

@@ -1,5 +1,6 @@
 package zip.arcanum.arcanum.containers.data
 
+import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import zip.arcanum.arcanum.containers.domain.Container
@@ -21,6 +22,8 @@ class ContainerRepository @Inject constructor(
     private val mountedIsHidden     = mutableMapOf<String, Boolean>()
     // In-memory hidden-present flag: containerId → hasHiddenVolume
     private val mountedHasHidden    = mutableMapOf<String, Boolean>()
+    // SAF file descriptor kept open for the duration the container is mounted
+    private val mountedParcelFds    = mutableMapOf<String, ParcelFileDescriptor>()
 
     fun getAllContainers(): Flow<List<Container>> =
         dao.getAllContainers().map { list -> list.map { it.toDomain() } }
@@ -41,12 +44,14 @@ class ContainerRepository @Inject constructor(
 
     suspend fun mountContainer(
         id: String, handle: Long, pim: Int = 0,
-        isHidden: Boolean = false, hasHidden: Boolean = false
+        isHidden: Boolean = false, hasHidden: Boolean = false,
+        parcelFd: ParcelFileDescriptor? = null
     ) {
         mountedHandles[id] = handle
         if (pim > 0) mountedPims[id] = pim else mountedPims.remove(id)
         mountedIsHidden[id]  = isHidden
         mountedHasHidden[id] = hasHidden
+        parcelFd?.let { mountedParcelFds[id] = it }
         dao.setMounted(id, true)
         dao.updateLastAccessed(id, System.currentTimeMillis())
     }
@@ -58,6 +63,7 @@ class ContainerRepository @Inject constructor(
         mountedPims.remove(id)
         mountedIsHidden.remove(id)
         mountedHasHidden.remove(id)
+        mountedParcelFds.remove(id)?.close()
         dao.setMounted(id, false)
     }
 
@@ -69,6 +75,8 @@ class ContainerRepository @Inject constructor(
         mountedPims.clear()
         mountedIsHidden.clear()
         mountedHasHidden.clear()
+        mountedParcelFds.values.forEach { runCatching { it.close() } }
+        mountedParcelFds.clear()
         return handles
     }
 
@@ -78,6 +86,17 @@ class ContainerRepository @Inject constructor(
     fun getContainerHandle(id: String): Long? = mountedHandles[id]
 
     suspend fun containsPath(path: String): Boolean = dao.countByPath(path) > 0
+
+    suspend fun containsSafUri(safUri: String): Boolean = dao.countBySafUri(safUri) > 0
+
+    suspend fun containsDocumentId(authority: String, docId: String): Boolean {
+        return dao.getAllContainersOnce().any { entity ->
+            if (entity.safUri.isEmpty()) return@any false
+            val stored = android.net.Uri.parse(entity.safUri)
+            if (stored.authority != authority) return@any false
+            zip.arcanum.core.utils.FileUtils.safUriDocumentId(stored) == docId
+        }
+    }
 
     suspend fun updateAlgorithm(id: String, algorithm: String) =
         dao.updateAlgorithm(id, algorithm)
@@ -100,6 +119,9 @@ class ContainerRepository @Inject constructor(
     suspend fun updateContainerPath(id: String, newPath: String) =
         dao.updatePath(id, newPath)
 
+    suspend fun updateSafUri(id: String, safUri: String) =
+        dao.updateSafUri(id, safUri)
+
     suspend fun deleteContainersById(ids: Set<String>) {
         ids.forEach { id ->
             mountedHandles.remove(id)
@@ -107,15 +129,31 @@ class ContainerRepository @Inject constructor(
         }
     }
 
-    suspend fun addContainerFromPath(path: String, algorithm: String = "AES-256-XTS"): String {
+    suspend fun addContainerFromPath(path: String, algorithm: String = "AES-256-XTS", safUri: String = "", name: String? = null, size: Long? = null): String {
         val id   = UUID.randomUUID().toString()
         val file = java.io.File(path)
         dao.insertContainer(ContainerEntity(
             id             = id,
-            name           = file.name,
+            name           = name ?: file.name,
             path           = path,
-            size           = file.length(),
+            size           = size ?: file.length(),
             algorithm      = algorithm,
+            safUri         = safUri,
+            createdAt      = System.currentTimeMillis(),
+            lastAccessedAt = 0L
+        ))
+        return id
+    }
+
+    suspend fun addContainerFromUri(safUri: String, displayName: String, size: Long): String {
+        val id = UUID.randomUUID().toString()
+        dao.insertContainer(ContainerEntity(
+            id             = id,
+            name           = displayName,
+            path           = "",
+            size           = size,
+            algorithm      = "AES-256-XTS",
+            safUri         = safUri,
             createdAt      = System.currentTimeMillis(),
             lastAccessedAt = 0L
         ))
@@ -136,7 +174,8 @@ class ContainerRepository @Inject constructor(
         isFavorite      = isFavorite,
         isMounted       = isMounted,
         isHiddenVolume  = mountedIsHidden[id] ?: false,
-        hasHiddenVolume = mountedHasHidden[id] ?: false
+        hasHiddenVolume = mountedHasHidden[id] ?: false,
+        safUri          = safUri
     )
 
     private fun Container.toEntity() = ContainerEntity(
@@ -147,6 +186,7 @@ class ContainerRepository @Inject constructor(
         algorithm      = algorithm,
         prf            = prf,
         filesystem     = filesystem,
+        safUri         = safUri,
         createdAt      = createdAt,
         lastAccessedAt = lastAccessedAt,
         isFavorite     = isFavorite,

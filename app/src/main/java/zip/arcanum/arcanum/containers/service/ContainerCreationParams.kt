@@ -1,5 +1,6 @@
 package zip.arcanum.arcanum.containers.service
 
+import android.os.ParcelFileDescriptor
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -17,7 +18,9 @@ class ContainerCreationParams @Inject constructor() {
         val quickFormat: Boolean,
         val entropyBytes: ByteArray,
         val keyfilePaths: List<String>,
-        val pim: Int
+        val pim: Int,
+        val safFd: Int = -1,
+        val safPfd: ParcelFileDescriptor? = null
     )
 
     private val pending = AtomicReference<Params?>()

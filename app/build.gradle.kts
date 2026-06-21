@@ -172,6 +172,7 @@ dependencies {
     // Security
     implementation(libs.security.crypto)
     implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.documentfile)
     implementation(libs.biometric)
     implementation(libs.bouncycastle.provider)
 

@@ -55,6 +55,70 @@ class VeraCryptEngine @Inject constructor() {
         else CryptoResult.Failure(handle.toInt().toError())
     }
 
+    suspend fun createContainerFd(
+        fd: Int,
+        sizeBytes: Long,
+        password: String,
+        algorithm: Int  = 0,
+        hashAlgorithm: Int = 0,
+        filesystem: Int = 0,
+        quickFormat: Boolean = true,
+        entropyBytes: ByteArray = ByteArray(0),
+        keyfilePaths: List<String> = emptyList(),
+        progressListener: CreationProgressListener? = null,
+        pim: Int = 0
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        val rc = nativeCreateContainerFd(
+            fd, sizeBytes, password,
+            keyfilePaths.toTypedArray().ifEmpty { null },
+            algorithm, hashAlgorithm, filesystem, quickFormat, entropyBytes,
+            progressListener, pim
+        )
+        rc.toResult()
+    }
+
+    suspend fun mountContainerFd(
+        fd: Int,
+        password: String,
+        keyfilePaths: List<String> = emptyList(),
+        pim: Int = 0,
+        algorithm: Int = ALGO_AUTO,
+        hashAlgorithm: Int = HASH_AUTO
+    ): CryptoResult<Long> = withContext(Dispatchers.IO) {
+        val handle = nativeOpenContainerFd(
+            fd, password,
+            keyfilePaths.toTypedArray().ifEmpty { null },
+            pim, algorithm, hashAlgorithm
+        )
+        if (handle >= 0) CryptoResult.Success(handle)
+        else CryptoResult.Failure(handle.toInt().toError())
+    }
+
+    suspend fun createHiddenVolumeFd(
+        fd: Int,
+        hiddenSizeBytes: Long,
+        outerPassword: String,
+        outerKeyfilePaths: List<String> = emptyList(),
+        outerPim: Int = 0,
+        hiddenPassword: String,
+        hiddenKeyfilePaths: List<String> = emptyList(),
+        hiddenPim: Int = 0,
+        hiddenAlgorithm: Int = 0,
+        hiddenHashAlgorithm: Int = 0,
+        quickFormat: Boolean = true,
+        entropyBytes: ByteArray = ByteArray(0),
+        progressListener: CreationProgressListener? = null
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        val rc = nativeCreateHiddenVolumeFd(
+            fd, hiddenSizeBytes,
+            outerPassword, outerKeyfilePaths.toTypedArray().ifEmpty { null }, outerPim,
+            hiddenPassword, hiddenKeyfilePaths.toTypedArray().ifEmpty { null }, hiddenPim,
+            hiddenAlgorithm, hiddenHashAlgorithm,
+            quickFormat, entropyBytes, progressListener
+        )
+        rc.toResult()
+    }
+
     suspend fun unmountContainer(handle: Long): CryptoResult<Unit> =
         withContext(Dispatchers.IO) {
             nativeCloseContainer(handle).toResult()
@@ -104,8 +168,31 @@ class VeraCryptEngine @Inject constructor() {
         pim: Int
     ): Int
 
+    external fun nativeCreateContainerFd(
+        fd: Int,
+        sizeBytes: Long,
+        password: String,
+        keyfilePaths: Array<String>?,
+        algorithm: Int,
+        hashAlgorithm: Int,
+        filesystem: Int,
+        quickFormat: Boolean,
+        entropyBytes: ByteArray,
+        progressListener: CreationProgressListener?,
+        pim: Int
+    ): Int
+
     external fun nativeOpenContainer(
         path: String,
+        password: String,
+        keyfilePaths: Array<String>?,
+        pim: Int,
+        algorithm: Int,
+        hashAlgorithm: Int
+    ): Long
+
+    external fun nativeOpenContainerFd(
+        fd: Int,
         password: String,
         keyfilePaths: Array<String>?,
         pim: Int,
@@ -144,6 +231,22 @@ class VeraCryptEngine @Inject constructor() {
 
     external fun nativeCreateHiddenVolume(
         path: String,
+        hiddenSizeBytes: Long,
+        outerPassword: String,
+        outerKeyfilePaths: Array<String>?,
+        outerPim: Int,
+        hiddenPassword: String,
+        hiddenKeyfilePaths: Array<String>?,
+        hiddenPim: Int,
+        hiddenAlgorithm: Int,
+        hiddenHashAlgorithm: Int,
+        quickFormat: Boolean,
+        entropyBytes: ByteArray,
+        progressListener: CreationProgressListener?
+    ): Int
+
+    external fun nativeCreateHiddenVolumeFd(
+        fd: Int,
         hiddenSizeBytes: Long,
         outerPassword: String,
         outerKeyfilePaths: Array<String>?,

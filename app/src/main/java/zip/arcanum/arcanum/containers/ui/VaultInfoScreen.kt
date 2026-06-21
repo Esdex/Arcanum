@@ -1,5 +1,6 @@
 package zip.arcanum.arcanum.containers.ui
 
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -188,7 +189,7 @@ fun VaultInfoScreen(
                         InfoRow(stringResource(R.string.vault_info_label_pim),         if (container.pim > 0) stringResource(R.string.vault_info_pim_custom) else stringResource(R.string.vault_info_pim_default))
                         InfoRow(stringResource(R.string.vault_info_label_size),        container.size.formatSize())
                         InfoRow(stringResource(R.string.vault_info_label_created),     container.createdAt.formatDate())
-                        InfoRow(stringResource(R.string.vault_info_label_location),    container.path)
+                        InfoRow(stringResource(R.string.vault_info_label_location),    container.locationDisplay())
                     }
                 }
                 Spacer(Modifier.navigationBarsPadding())
@@ -321,4 +322,13 @@ private fun Long.formatDate(): String {
     return Instant.ofEpochMilli(this)
         .atZone(ZoneId.systemDefault())
         .format(DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG))
+}
+
+private fun Container.locationDisplay(): String {
+    if (path.isNotEmpty()) return path
+    if (safUri.isNotEmpty()) {
+        val segment = Uri.parse(safUri).lastPathSegment ?: return "External Storage"
+        return segment.removePrefix("primary:").removePrefix("document/primary:")
+    }
+    return "—"
 }
