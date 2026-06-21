@@ -1,6 +1,8 @@
 package zip.arcanum.arcanum.containers.ui
 
 import android.content.Context
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -48,7 +50,7 @@ class MoveVaultViewModel @Inject constructor(
     init {
         viewModelScope.launch(Dispatchers.IO) {
             val container = repo.getContainerById(containerId) ?: return@launch
-            val destDir   = defaultDestDir(includeInBackup = false)
+            val destDir   = defaultDestDir()
             _storageInfo.value = StorageInfo(
                 containerName        = container.name,
                 containerSize        = container.size,
@@ -57,55 +59,111 @@ class MoveVaultViewModel @Inject constructor(
         }
     }
 
-    fun refreshFreeSpace(includeInBackup: Boolean, customDir: String?) {
+    fun refreshFreeSpace(includeInBackup: Boolean, destTreeUri: Uri?) {
         viewModelScope.launch(Dispatchers.IO) {
             val current = _storageInfo.value ?: return@launch
             val destDir = when {
                 toApp -> if (includeInBackup) context.filesDir else context.noBackupFilesDir
-                else  -> existingAncestor(
-                    customDir?.takeIf { it.isNotBlank() }?.let { File(it) }
-                        ?: (context.getExternalFilesDir(null) ?: context.filesDir)
-                )
+                else  -> existingAncestor(context.getExternalFilesDir(null) ?: context.filesDir)
             }
             _storageInfo.value = current.copy(destinationFreeBytes = destDir.usableSpace)
         }
     }
 
-    fun startMove(includeInBackup: Boolean, customDestDir: String? = null) {
+    fun startMove(includeInBackup: Boolean, destTreeUri: Uri? = null) {
         viewModelScope.launch {
             _state.value = State.Moving(0f, 0, 0)
             try {
                 val container = repo.getContainerById(containerId)
                     ?: throw Exception("Container not found")
 
-                val sourceFile = File(container.path)
-                if (!sourceFile.exists()) throw Exception("Source file not found:\n${container.path}")
+                val total: Long
+                val sourceIsSaf = container.safUri.isNotEmpty()
 
-                val destDir = when {
-                    toApp -> {
-                        val base = if (includeInBackup) context.filesDir else context.noBackupFilesDir
-                        File(base, "vaults").also { it.mkdirs() }
-                    }
-                    else  -> {
-                        val dir = File(customDestDir ?: context.getExternalFilesDir(null)!!.absolutePath)
-                        dir.mkdirs()
-                        dir
-                    }
+                if (sourceIsSaf) {
+                    val pfd = context.contentResolver.openFileDescriptor(
+                        Uri.parse(container.safUri), "r"
+                    ) ?: throw Exception("Cannot open source file")
+                    total = pfd.statSize
+                    pfd.close()
+                } else {
+                    val sourceFile = File(container.path)
+                    if (!sourceFile.exists()) throw Exception("Source file not found:\n${container.path}")
+                    total = sourceFile.length()
                 }
 
-                val destFile = resolveUniqueFile(destDir, sourceFile.name)
-                val total    = sourceFile.length()
-
                 withContext(Dispatchers.IO) {
-                    copyWithProgress(sourceFile, destFile, total) { done ->
-                        _state.value = State.Moving(
-                            progress   = if (total > 0) done.toFloat() / total else 0f,
-                            bytesDone  = done,
-                            totalBytes = total
-                        )
+                    if (toApp) {
+                        // Moving TO app-private storage
+                        val base = if (includeInBackup) context.filesDir else context.noBackupFilesDir
+                        val destDir = File(base, "vaults").also { it.mkdirs() }
+                        val destFile = resolveUniqueFile(destDir, container.name)
+
+                        val input = if (sourceIsSaf) {
+                            context.contentResolver.openInputStream(Uri.parse(container.safUri))
+                                ?: throw Exception("Cannot open source file")
+                        } else {
+                            File(container.path).inputStream()
+                        }
+                        input.use { ins ->
+                            destFile.outputStream().use { out ->
+                                copyStreamWithProgress(ins, out, total)
+                            }
+                        }
+
+                        repo.updateContainerPath(containerId, destFile.absolutePath)
+                        repo.updateSafUri(containerId, "")
+                        if (sourceIsSaf) {
+                            runCatching {
+                                android.provider.DocumentsContract.deleteDocument(
+                                    context.contentResolver, Uri.parse(container.safUri)
+                                )
+                            }
+                        } else {
+                            File(container.path).delete()
+                        }
+                    } else {
+                        // Moving TO external storage via SAF tree
+                        val destDir = destTreeUri?.let { DocumentFile.fromTreeUri(context, it) }
+                            ?: DocumentFile.fromFile(
+                                (context.getExternalFilesDir(null) ?: context.filesDir).also { it.mkdirs() }
+                            )
+                        val destFile = destDir.createFile("application/octet-stream", container.name)
+                            ?: throw Exception("Cannot create destination file")
+
+                        val output = context.contentResolver.openOutputStream(destFile.uri)
+                            ?: throw Exception("Cannot open destination stream")
+
+                        output.use { out ->
+                            val input = if (sourceIsSaf) {
+                                context.contentResolver.openInputStream(Uri.parse(container.safUri))
+                                ?: throw Exception("Cannot open source file")
+                            } else {
+                                File(container.path).inputStream()
+                            }
+                            input.use { ins ->
+                                copyStreamWithProgress(ins, out, total)
+                            }
+                        }
+
+                        if (destTreeUri != null) {
+                            runCatching {
+                                context.contentResolver.takePersistableUriPermission(
+                                    destTreeUri,
+                                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                )
+                            }
+                        }
+                        repo.updateContainerPath(containerId, "")
+                        repo.updateSafUri(containerId, destFile.uri.toString())
+                        if (!sourceIsSaf) File(container.path).delete()
+                        else runCatching {
+                            android.provider.DocumentsContract.deleteDocument(
+                                context.contentResolver, Uri.parse(container.safUri)
+                            )
+                        }
                     }
-                    repo.updateContainerPath(containerId, destFile.absolutePath)
-                    sourceFile.delete()
                 }
                 _state.value = State.Success
             } catch (e: Exception) {
@@ -116,12 +174,9 @@ class MoveVaultViewModel @Inject constructor(
 
     fun reset() { _state.value = State.Idle }
 
-    private fun defaultDestDir(includeInBackup: Boolean): File =
-        if (toApp) {
-            if (includeInBackup) context.filesDir else context.noBackupFilesDir
-        } else {
-            existingAncestor(context.getExternalFilesDir(null) ?: context.filesDir)
-        }
+    private fun defaultDestDir(): File =
+        if (toApp) context.noBackupFilesDir
+        else existingAncestor(context.getExternalFilesDir(null) ?: context.filesDir)
 
     // Walk up to the nearest existing ancestor so usableSpace returns a real value
     private fun existingAncestor(f: File): File {
@@ -141,18 +196,22 @@ class MoveVaultViewModel @Inject constructor(
         return candidate
     }
 
-    private fun copyWithProgress(src: File, dst: File, total: Long, onProgress: (Long) -> Unit) {
+    private fun copyStreamWithProgress(
+        input: java.io.InputStream,
+        output: java.io.OutputStream,
+        total: Long
+    ) {
         val buf  = ByteArray(256 * 1024)
         var done = 0L
-        src.inputStream().use { input ->
-            dst.outputStream().use { output ->
-                var read: Int
-                while (input.read(buf).also { read = it } != -1) {
-                    output.write(buf, 0, read)
-                    done += read
-                    onProgress(done)
-                }
-            }
+        var read: Int
+        while (input.read(buf).also { read = it } != -1) {
+            output.write(buf, 0, read)
+            done += read
+            _state.value = State.Moving(
+                progress   = if (total > 0) done.toFloat() / total else 0f,
+                bytesDone  = done,
+                totalBytes = total
+            )
         }
     }
 }

@@ -74,22 +74,41 @@ class ContainerCreationService : Service() {
                 }
             }
 
-            val result = cryptoEngine.createContainer(
-                path             = p.path,
-                sizeBytes        = p.sizeBytes,
-                password         = p.password,
-                algorithm        = p.algorithm,
-                hashAlgorithm    = p.hashAlgorithm,
-                filesystem       = p.filesystem,
-                quickFormat      = p.quickFormat,
-                entropyBytes     = p.entropyBytes,
-                keyfilePaths     = p.keyfilePaths,
-                progressListener = listener,
-                pim              = p.pim
-            )
-
-            // Delete temp keyfile cache after use regardless of result
-            p.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+            val result = try {
+                if (p.safFd >= 0) {
+                    cryptoEngine.createContainerFd(
+                        fd               = p.safFd,
+                        sizeBytes        = p.sizeBytes,
+                        password         = p.password,
+                        algorithm        = p.algorithm,
+                        hashAlgorithm    = p.hashAlgorithm,
+                        filesystem       = p.filesystem,
+                        quickFormat      = p.quickFormat,
+                        entropyBytes     = p.entropyBytes,
+                        keyfilePaths     = p.keyfilePaths,
+                        progressListener = listener,
+                        pim              = p.pim
+                    )
+                } else {
+                    cryptoEngine.createContainer(
+                        path             = p.path,
+                        sizeBytes        = p.sizeBytes,
+                        password         = p.password,
+                        algorithm        = p.algorithm,
+                        hashAlgorithm    = p.hashAlgorithm,
+                        filesystem       = p.filesystem,
+                        quickFormat      = p.quickFormat,
+                        entropyBytes     = p.entropyBytes,
+                        keyfilePaths     = p.keyfilePaths,
+                        progressListener = listener,
+                        pim              = p.pim
+                    )
+                }
+            } finally {
+                // Always release resources regardless of success, failure, or cancellation
+                p.safPfd?.close()
+                p.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+            }
 
             if (result is zip.arcanum.crypto.CryptoResult.Success) {
                 _progress.value = CreationProgress(

@@ -514,7 +514,8 @@
     <string name="create_location_internal">Internal Storage</string>
     <string name="create_location_internal_desc">Save to a user-accessible folder on your device storage.</string>
     <string name="create_location_no_folder">No folder selected</string>
-    <string name="create_location_browse">Browse</string>
+    <string name="create_location_browse">Choose file</string>
+    <string name="create_location_change">Change</string>
     <string name="create_location_permission_title">Storage permission required</string>
     <string name="create_location_permission_desc">Grant \"All files access\" so the app can create vaults outside its private folder.</string>
     <string name="create_location_permission_open_settings">Open Settings</string>

@@ -24,7 +24,6 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -81,8 +80,7 @@ fun StepVolumeLocation(
     appStoragePath: String,
     onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit,
     onBrowse: () -> Unit,
-    hasStoragePermission: Boolean = true,
-    onGrantPermission: () -> Unit = {}
+    onClearSaf: () -> Unit = {}
 ) {
     StepContent(title = stringResource(R.string.create_step2_title)) {
 
@@ -93,6 +91,7 @@ fun StepVolumeLocation(
             title       = stringResource(R.string.create_location_app),
             description = stringResource(R.string.create_location_app_desc),
             onClick     = {
+                onClearSaf()
                 onUpdate { copy(location = StorageLocation.APP_STORAGE, filePath = appStoragePath) }
             }
         )
@@ -118,7 +117,7 @@ fun StepVolumeLocation(
 
         Spacer(Modifier.height(12.dp))
 
-        // ── Option 2: Internal Storage ────────────────────────────────
+        // ── Option 2: External Storage (via SAF) ──────────────────────
         SelectionCard(
             selected    = state.location == StorageLocation.INTERNAL_STORAGE,
             icon        = Icons.Outlined.Storage,
@@ -130,7 +129,6 @@ fun StepVolumeLocation(
         )
         AnimatedVisibility(visible = state.location == StorageLocation.INTERNAL_STORAGE) {
             Column {
-                // ── Path row ──────────────────────────────────────────
                 Row(
                     modifier          = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -143,63 +141,19 @@ fun StepVolumeLocation(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text     = state.filePath.ifBlank { stringResource(R.string.create_location_no_folder) },
+                        text     = state.fileName.ifBlank { stringResource(R.string.create_location_no_folder) },
                         style    = MaterialTheme.typography.bodySmall,
-                        color    = if (state.filePath.isBlank())
+                        color    = if (state.safUri.isBlank())
                                        MaterialTheme.colorScheme.error
                                    else
                                        MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f)
                     )
-                    TextButton(onClick = onBrowse) { Text(stringResource(R.string.create_location_browse)) }
-                }
-
-                // ── Permission warning ────────────────────────────────
-                if (!hasStoragePermission) {
-                    Spacer(Modifier.height(4.dp))
-                    Card(
-                        colors   = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        ),
-                        shape    = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier          = Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 4.dp),
-                            verticalAlignment = Alignment.Top,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Icon(
-                                imageVector        = Icons.Outlined.WarningAmber,
-                                contentDescription = null,
-                                tint               = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier           = Modifier.size(18.dp).padding(top = 2.dp)
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text       = stringResource(R.string.create_location_permission_title),
-                                    style      = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color      = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                                Text(
-                                    text  = stringResource(R.string.create_location_permission_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            }
-                        }
-                        TextButton(
-                            onClick  = onGrantPermission,
-                            modifier = Modifier
-                                .align(Alignment.End)
-                                .padding(end = 8.dp, bottom = 4.dp)
-                        ) {
-                            Text(
-                                text  = stringResource(R.string.create_location_permission_open_settings),
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
+                    TextButton(onClick = onBrowse) {
+                        Text(
+                            if (state.safUri.isBlank()) stringResource(R.string.create_location_browse)
+                            else stringResource(R.string.create_location_change)
+                        )
                     }
                 }
             }

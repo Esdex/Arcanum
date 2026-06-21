@@ -19,5 +19,6 @@ data class ContainerEntity(
     val isMounted: Boolean = false,
     @ColumnInfo(defaultValue = "0") val hasBiometric: Boolean = false,
     @ColumnInfo(defaultValue = "0") val unmountOnLock: Boolean = false,
-    @ColumnInfo(defaultValue = "0") val unmountOnBackground: Boolean = false
+    @ColumnInfo(defaultValue = "0") val unmountOnBackground: Boolean = false,
+    @ColumnInfo(defaultValue = "") val safUri: String = ""
 )

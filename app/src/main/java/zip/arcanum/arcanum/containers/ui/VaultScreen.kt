@@ -1,14 +1,9 @@
 package zip.arcanum.arcanum.containers.ui
 
 import android.app.KeyguardManager
-import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.provider.DocumentsContract
-import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -232,8 +227,6 @@ fun VaultScreen(
     var isMountingOverlay        by remember { mutableStateOf(false) }
     var contextMenuContainerId   by remember { mutableStateOf<String?>(null) }
     var configContainer          by remember { mutableStateOf<ContainerEntity?>(null) }
-    var showStoragePermOverlay   by remember { mutableStateOf(false) }
-    var pendingMountContainer    by remember { mutableStateOf<ContainerEntity?>(null) }
     var showUpgradeDialog        by remember { mutableStateOf(false) }
 
     // Unmount containers per their per-vault config on app stop
@@ -249,48 +242,14 @@ fun VaultScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // When returning from system Settings with permission granted, proceed to MountDialog
-    val latestShowPermOverlay = rememberUpdatedState(showStoragePermOverlay)
-    val latestPendingMount    = rememberUpdatedState(pendingMountContainer)
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME && latestShowPermOverlay.value) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-                    showStoragePermOverlay = false
-                    containerToMount = latestPendingMount.value
-                    pendingMountContainer = null
-                    showMountDialog = true
-                }
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
     // Auto-open mount dialog when directed from creation wizard
     LaunchedEffect(autoMountContainerId, containers) {
         val id = autoMountContainerId ?: return@LaunchedEffect
         if (containers.isEmpty()) return@LaunchedEffect
         val entity = containers.find { it.id == id } ?: return@LaunchedEffect
-        val needsPerm = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            entity.path.startsWith(Environment.getExternalStorageDirectory().absolutePath) &&
-            !Environment.isExternalStorageManager()
-        if (needsPerm) {
-            pendingMountContainer = entity
-            showStoragePermOverlay = true
-        } else {
-            containerToMount = entity
-            showMountDialog = true
-        }
+        containerToMount = entity
+        showMountDialog = true
         onAutoMountHandled()
-    }
-
-    // Safety net: if ViewModel fires NeedsStoragePermission (e.g. permission revoked mid-session)
-    LaunchedEffect(mountState) {
-        if (mountState is VaultViewModel.MountState.NeedsStoragePermission) {
-            viewModel.resetMountState()
-            showStoragePermOverlay = true
-        }
     }
 
     // Convert add-vault result to notification (or upgrade dialog for limit)
@@ -321,14 +280,7 @@ fun VaultScreen(
     val openDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
-        if (uri != null) {
-            val path = documentUriToPath(context, uri)
-            if (path != null) {
-                viewModel.addContainerFromPath(path)
-            } else {
-                notification = InAppNotification.VaultAddError("Cannot resolve file path")
-            }
-        }
+        if (uri != null) viewModel.addContainerFromUri(uri)
     }
 
     var mountKeyfiles by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
@@ -436,9 +388,9 @@ fun VaultScreen(
                         ) {
                             if (sortState.groupBy == VaultViewModel.GroupBy.LOCATION) {
                                 val grouped = containers.groupBy { c ->
-                                    val p = c.path
-                                    if (p.startsWith(context.filesDir.absolutePath) ||
-                                        p.startsWith(context.noBackupFilesDir.absolutePath))
+                                    if (c.safUri.isEmpty() &&
+                                        (c.path.startsWith(context.filesDir.absolutePath) ||
+                                         c.path.startsWith(context.noBackupFilesDir.absolutePath)))
                                         appStorageLabel else localStorageLabel
                                 }.entries.sortedBy { it.key }
                                 grouped.forEach { (groupName, groupList) ->
@@ -467,11 +419,7 @@ fun VaultScreen(
                                             if (container.isMounted) {
                                                 onOpenContainer(container.id)
                                             } else {
-                                                val needsPerm = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                                                    container.path.startsWith(Environment.getExternalStorageDirectory().absolutePath) &&
-                                                    !Environment.isExternalStorageManager()
-                                                if (needsPerm) { pendingMountContainer = container; showStoragePermOverlay = true }
-                                                else           { containerToMount = container; showMountDialog = true }
+                                                containerToMount = container; showMountDialog = true
                                             }
                                         },
                                             onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
@@ -497,11 +445,7 @@ fun VaultScreen(
                                             if (container.isMounted) {
                                                 onOpenContainer(container.id)
                                             } else {
-                                                val needsPerm = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                                                    container.path.startsWith(Environment.getExternalStorageDirectory().absolutePath) &&
-                                                    !Environment.isExternalStorageManager()
-                                                if (needsPerm) { pendingMountContainer = container; showStoragePermOverlay = true }
-                                                else           { containerToMount = container; showMountDialog = true }
+                                                containerToMount = container; showMountDialog = true
                                             }
                                         },
                                         onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
@@ -775,8 +719,9 @@ fun VaultScreen(
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                         val moveEnabled = !c.isMounted
-                        val isInAppStorage = c.path.startsWith(context.filesDir.absolutePath) ||
-                                             c.path.startsWith(context.noBackupFilesDir.absolutePath)
+                        val isInAppStorage = c.safUri.isEmpty() &&
+                                            (c.path.startsWith(context.filesDir.absolutePath) ||
+                                             c.path.startsWith(context.noBackupFilesDir.absolutePath))
 
                         if (!isInAppStorage) {
                             androidx.compose.material3.ListItem(
@@ -855,25 +800,6 @@ fun VaultScreen(
                 )
             }
 
-            // ── Storage permission overlay ────────────────────────────────────
-            AnimatedVisibility(
-                visible  = showStoragePermOverlay,
-                enter    = fadeIn(tween(300)),
-                exit     = fadeOut(tween(300)),
-                modifier = Modifier.zIndex(300f)
-            ) {
-                StoragePermissionOverlay {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        context.startActivity(
-                            Intent(
-                                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                Uri.parse("package:${context.packageName}")
-                            )
-                        )
-                    }
-                }
-            }
-
             // ── Mounting overlay ──────────────────────────────────────────────
             AnimatedVisibility(
                 visible  = isMountingOverlay,
@@ -896,61 +822,6 @@ fun VaultScreen(
             }
         } // Box
     } // CompositionLocalProvider
-}
-
-// ── StoragePermissionOverlay ──────────────────────────────────────────────────
-
-@Composable
-private fun StoragePermissionOverlay(onOpenSettings: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color    = MaterialTheme.colorScheme.background
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .padding(horizontal = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.info))
-                val progress    by animateLottieCompositionAsState(
-                    composition = composition,
-                    iterations  = LottieConstants.IterateForever
-                )
-                LottieAnimation(
-                    composition = composition,
-                    progress    = { progress },
-                    modifier    = Modifier.size(200.dp)
-                )
-                Spacer(Modifier.height(24.dp))
-                Text(
-                    text      = "Permission Required",
-                    style     = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text      = "To mount containers stored on external storage, Arcanum needs the \"All Files Access\" permission.",
-                    style     = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                    color     = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Button(
-                onClick  = onOpenSettings,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 32.dp, vertical = 32.dp)
-            ) {
-                Text("Settings")
-            }
-        }
-    }
 }
 
 // ── VaultCardItem (thin wrapper used by both flat and grouped list) ───────────
@@ -1695,11 +1566,12 @@ private fun VaultCard(
     val context = LocalContext.current
     val appStr   = stringResource(R.string.vault_storage_app)
     val localStr = stringResource(R.string.vault_storage_local)
-    val storageLabel = remember(container.path, appStr, localStr) {
+    val storageLabel = remember(container.path, container.safUri, appStr, localStr) {
         val p = container.path
         when {
             p.startsWith(context.filesDir.absolutePath)         -> appStr
             p.startsWith(context.noBackupFilesDir.absolutePath) -> appStr
+            container.safUri.isNotEmpty()                       -> localStr
             else                                                 -> localStr
         }
     }
@@ -1936,49 +1808,3 @@ private fun Long.fmtDate(): String = when (this) {
     }
 }
 
-private fun documentUriToPath(context: Context, uri: Uri): String? {
-    return try {
-        if (uri.scheme == "file") {
-            uri.path
-        } else if (!DocumentsContract.isDocumentUri(context, uri)) {
-            queryDataColumn(context, uri)
-        } else {
-            val docId = DocumentsContract.getDocumentId(uri)
-            when (uri.authority) {
-                "com.android.externalstorage.documents" -> {
-                    val split = docId.split(":", limit = 2)
-                    if (split.size == 2 && split[0].equals("primary", ignoreCase = true)) {
-                        "${Environment.getExternalStorageDirectory().absolutePath}/${split[1]}"
-                    } else {
-                        queryDataColumn(context, uri)
-                    }
-                }
-                "com.android.providers.downloads.documents" -> when {
-                    docId.startsWith("raw:") -> docId.removePrefix("raw:")
-                    docId.startsWith("msd:") -> {
-                        val id = docId.removePrefix("msd:").toLongOrNull()
-                        if (id != null) queryDataColumn(context,
-                            ContentUris.withAppendedId(Uri.parse("content://downloads/public_downloads"), id))
-                        else queryDataColumn(context, uri)
-                    }
-                    else -> {
-                        val id = docId.toLongOrNull()
-                        if (id != null) queryDataColumn(context,
-                            ContentUris.withAppendedId(Uri.parse("content://downloads/public_downloads"), id))
-                        else queryDataColumn(context, uri)
-                    }
-                }
-                else -> queryDataColumn(context, uri)
-            }
-        }
-    } catch (_: Exception) { null }
-}
-
-private fun queryDataColumn(context: Context, uri: Uri): String? = try {
-    context.contentResolver.query(uri, arrayOf("_data"), null, null, null)?.use { cursor ->
-        if (cursor.moveToFirst()) {
-            val col = cursor.getColumnIndex("_data")
-            if (col >= 0) cursor.getString(col) else null
-        } else null
-    }
-} catch (_: Exception) { null }

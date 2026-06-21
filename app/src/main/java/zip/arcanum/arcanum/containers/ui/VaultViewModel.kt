@@ -4,8 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.Build
-import android.os.Environment
+import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import androidx.biometric.BiometricPrompt
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -159,7 +160,6 @@ class VaultViewModel @Inject constructor(
     sealed interface MountState {
         object Idle                  : MountState
         object Loading               : MountState
-        object NeedsStoragePermission : MountState
         data class Error(val message: String) : MountState
     }
 
@@ -185,58 +185,52 @@ class VaultViewModel @Inject constructor(
         protectHiddenPassword: String? = null,
         onSuccess: (containerId: String) -> Unit
     ) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val externalRoot = Environment.getExternalStorageDirectory().absolutePath
-            if (container.path.startsWith(externalRoot) && !Environment.isExternalStorageManager()) {
-                _mountState.value = MountState.NeedsStoragePermission
-                return
-            }
-        }
-
         mountJob = viewModelScope.launch {
             _mountState.value = MountState.Loading
-            val result = cryptoEngine.mountContainer(
-                path = container.path, password = password,
-                keyfilePaths = keyfilePaths, pim = pim,
-                algorithm = algorithm, hashAlgorithm = hashAlgorithm
-            )
-            when (result) {
-                is CryptoResult.Success -> {
-                    val isHidden  = cryptoEngine.getVolumeType(result.value) == 1
-                    val hasHidden = !protectHiddenPassword.isNullOrBlank()
-                    repo.mountContainer(container.id, result.value, pim,
-                        isHidden = isHidden, hasHidden = hasHidden)
-                    val algId = cryptoEngine.nativeGetAlgorithmId(result.value)
-                    if (algId >= 0) {
-                        repo.updateAlgorithm(
-                            container.id,
-                            VeraCryptEngine.algorithmIdToString(algId)
-                        )
-                    }
-                    val hashId = cryptoEngine.nativeGetHashId(result.value)
-                    if (hashId >= 0) {
-                        repo.updatePrf(
-                            container.id,
-                            VeraCryptEngine.hashIdToString(hashId)
-                        )
-                    }
-                    val fsType = cryptoEngine.nativeGetFilesystem(result.value)
-                    if (fsType >= 0) {
-                        repo.updateFilesystem(
-                            container.id,
-                            VeraCryptEngine.filesystemIdToString(fsType)
-                        )
-                    }
-                    lastMountTimeMillis = System.currentTimeMillis()
-                    _mountState.value = MountState.Idle
-                    onSuccess(container.id)
+            val pfd: ParcelFileDescriptor? = if (container.safUri.isNotEmpty()) {
+                context.contentResolver.openFileDescriptor(Uri.parse(container.safUri), "rw")
+            } else null
+            var pfdConsumed = false
+            try {
+                val result = if (pfd != null) {
+                    cryptoEngine.mountContainerFd(
+                        fd = pfd.fd, password = password,
+                        keyfilePaths = keyfilePaths, pim = pim,
+                        algorithm = algorithm, hashAlgorithm = hashAlgorithm
+                    )
+                } else {
+                    cryptoEngine.mountContainer(
+                        path = container.path, password = password,
+                        keyfilePaths = keyfilePaths, pim = pim,
+                        algorithm = algorithm, hashAlgorithm = hashAlgorithm
+                    )
                 }
-                is CryptoResult.Failure -> {
-                    _mountState.value = when (result.error) {
-                        CryptoError.IO_ERROR -> MountState.Error("Cannot open container file")
-                        else -> MountState.Error("Wrong password")
+                when (result) {
+                    is CryptoResult.Success -> {
+                        val isHidden  = cryptoEngine.getVolumeType(result.value) == 1
+                        val hasHidden = !protectHiddenPassword.isNullOrBlank()
+                        repo.mountContainer(container.id, result.value, pim,
+                            isHidden = isHidden, hasHidden = hasHidden, parcelFd = pfd)
+                        pfdConsumed = true
+                        val algId = cryptoEngine.nativeGetAlgorithmId(result.value)
+                        if (algId >= 0) repo.updateAlgorithm(container.id, VeraCryptEngine.algorithmIdToString(algId))
+                        val hashId = cryptoEngine.nativeGetHashId(result.value)
+                        if (hashId >= 0) repo.updatePrf(container.id, VeraCryptEngine.hashIdToString(hashId))
+                        val fsType = cryptoEngine.nativeGetFilesystem(result.value)
+                        if (fsType >= 0) repo.updateFilesystem(container.id, VeraCryptEngine.filesystemIdToString(fsType))
+                        lastMountTimeMillis = System.currentTimeMillis()
+                        _mountState.value = MountState.Idle
+                        onSuccess(container.id)
+                    }
+                    is CryptoResult.Failure -> {
+                        _mountState.value = when (result.error) {
+                            CryptoError.IO_ERROR -> MountState.Error("Cannot open container file")
+                            else -> MountState.Error("Wrong password")
+                        }
                     }
                 }
+            } finally {
+                if (!pfdConsumed) pfd?.close()
             }
         }
     }
@@ -280,6 +274,61 @@ class VaultViewModel @Inject constructor(
             }
         }
     }
+
+    fun addContainerFromUri(uri: Uri) {
+        viewModelScope.launch {
+            if (!billingManager.isPro.value && repo.getAllContainersRaw().first().size >= 2) {
+                _addVaultResult.value = AddVaultResult.LimitReached
+                return@launch
+            }
+            val safUri = zip.arcanum.core.utils.FileUtils.normalizeSafUri(uri).toString()
+            val docId  = zip.arcanum.core.utils.FileUtils.safUriDocumentId(uri)
+            val alreadyExists = if (docId != null) {
+                repo.containsDocumentId(uri.authority ?: "", docId)
+            } else {
+                repo.containsSafUri(safUri)
+            }
+            if (alreadyExists) {
+                val name = resolveDisplayName(uri) ?: "vault.hc"
+                _addVaultResult.value = AddVaultResult.AlreadyExists(name)
+                return@launch
+            }
+            val (name, size) = resolveUriMeta(uri) ?: run {
+                _addVaultResult.value = AddVaultResult.InvalidFile
+                return@launch
+            }
+            if (size < 131072L || size % 512 != 0L) {
+                _addVaultResult.value = AddVaultResult.InvalidFile
+                return@launch
+            }
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            try {
+                repo.addContainerFromUri(safUri, name, size)
+                _addVaultResult.value = AddVaultResult.Added(name)
+            } catch (e: Exception) {
+                _addVaultResult.value = AddVaultResult.Error(e.message ?: "Unknown error")
+            }
+        }
+    }
+
+    private fun resolveDisplayName(uri: Uri): String? =
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { if (it.moveToFirst()) it.getString(0) else null }
+
+    private fun resolveUriMeta(uri: Uri): Pair<String, Long>? =
+        context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+            null, null, null
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            val name = cursor.getString(0) ?: return null
+            val size = cursor.getLong(1)
+            name to size
+        }
 
     fun clearAddVaultResult() { _addVaultResult.value = null }
 
@@ -370,7 +419,16 @@ class VaultViewModel @Inject constructor(
             if (handle != null) cryptoEngine.unmountContainer(handle)
             val container = repo.getContainerById(id)
             repo.deleteContainersById(setOf(id))
-            container?.path?.let { java.io.File(it).delete() }
+            when {
+                container?.safUri?.isNotEmpty() == true ->
+                    runCatching {
+                        android.provider.DocumentsContract.deleteDocument(
+                            context.contentResolver, Uri.parse(container.safUri)
+                        )
+                    }
+                container?.path?.isNotEmpty() == true ->
+                    java.io.File(container.path).delete()
+            }
         }
     }
 }

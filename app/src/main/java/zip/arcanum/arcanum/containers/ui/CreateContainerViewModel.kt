@@ -2,7 +2,11 @@ package zip.arcanum.arcanum.containers.ui
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
+import java.util.concurrent.atomic.AtomicBoolean
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -86,6 +90,7 @@ data class CreateContainerState(
     val location: StorageLocation = StorageLocation.APP_STORAGE,
     val filePath: String = "",
     val fileName: String = "vault.hc",
+    val safUri: String = "",
     val algorithm: CipherAlgorithm = CipherAlgorithm.AES,
     val hashAlgorithm: HashAlgorithm = HashAlgorithm.SHA512,
     val sizeMb: Long = 1024L,
@@ -130,8 +135,10 @@ class CreateContainerViewModel @Inject constructor(
     private val _createdContainerId = MutableStateFlow<String?>(null)
     val createdContainerId = _createdContainerId.asStateFlow()
 
-    private val entropyBuffer       = mutableListOf<Byte>()
-    private val hiddenEntropyBuffer = mutableListOf<Byte>()
+    private val entropyBuffer         = mutableListOf<Byte>()
+    private val hiddenEntropyBuffer   = mutableListOf<Byte>()
+    private var safParcelFd: ParcelFileDescriptor? = null
+    private val registrationStarted  = AtomicBoolean(false)
 
     val appStoragePath: String = context.filesDir.absolutePath
 
@@ -144,6 +151,41 @@ class CreateContainerViewModel @Inject constructor(
 
     fun nextStep() = _state.update { it.copy(currentStep = (it.currentStep + 1).coerceAtMost(it.totalSteps)) }
     fun prevStep() = _state.update { it.copy(currentStep = (it.currentStep - 1).coerceAtLeast(1)) }
+
+    fun setSafUri(uri: Uri) {
+        safParcelFd?.close()
+        safParcelFd = null
+        val normalizedUri = zip.arcanum.core.utils.FileUtils.normalizeSafUri(uri)
+        val uriString = normalizedUri.toString()
+        val displayName = context.contentResolver.query(
+            normalizedUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        } ?: _state.value.fileName
+        safParcelFd = context.contentResolver.openFileDescriptor(normalizedUri, "rw")
+        _state.update { it.copy(safUri = uriString, fileName = displayName) }
+    }
+
+    fun clearSafUri() {
+        deletePendingSafFile()
+        _state.update { it.copy(safUri = "", filePath = context.filesDir.absolutePath) }
+    }
+
+    // Call this BEFORE launching the file creator picker so the old 0-byte file is gone
+    // by the time the picker opens — prevents the OS from appending " (1)" to the name.
+    fun deletePendingSafFile() {
+        val oldSafUri = _state.value.safUri
+        safParcelFd?.close()
+        safParcelFd = null
+        if (oldSafUri.isNotEmpty()) {
+            runCatching {
+                android.provider.DocumentsContract.deleteDocument(
+                    context.contentResolver, android.net.Uri.parse(oldSafUri)
+                )
+            }
+            _state.update { it.copy(safUri = "") }
+        }
+    }
 
     fun setVolumeType(type: VolumeType) {
         _state.update { it.copy(
@@ -208,9 +250,27 @@ class CreateContainerViewModel @Inject constructor(
     fun startHiddenCreation() {
         val s = _state.value
         _state.update { it.copy(isCreating = true, creationProgress = 0f, error = null) }
-        val fullPath = "${s.filePath.trimEnd('/')}/${s.fileName}"
+        val fullPath = if (s.safUri.isEmpty()) "${s.filePath.trimEnd('/')}/${s.fileName}" else ""
         viewModelScope.launch {
-            val result = cryptoEngine.createHiddenVolume(
+            val pfd = safParcelFd
+            val result = if (pfd != null) {
+                cryptoEngine.createHiddenVolumeFd(
+                    fd                  = pfd.fd,
+                    hiddenSizeBytes     = s.hiddenSizeMb * 1024L * 1024L,
+                    outerPassword       = s.password,
+                    outerKeyfilePaths   = s.keyfilePaths,
+                    outerPim            = s.pim,
+                    hiddenPassword      = s.hiddenPassword,
+                    hiddenKeyfilePaths  = s.hiddenKeyfilePaths,
+                    hiddenPim           = s.hiddenPim,
+                    hiddenAlgorithm     = s.hiddenAlgorithm.ordinal,
+                    hiddenHashAlgorithm = s.hiddenHashAlgorithm.ordinal,
+                    quickFormat         = true,
+                    entropyBytes        = hiddenEntropyBuffer.toByteArray(),
+                    progressListener    = null
+                )
+            } else {
+                cryptoEngine.createHiddenVolume(
                 path                = fullPath,
                 hiddenSizeBytes     = s.hiddenSizeMb * 1024L * 1024L,
                 outerPassword       = s.password,
@@ -224,7 +284,8 @@ class CreateContainerViewModel @Inject constructor(
                 quickFormat         = true,
                 entropyBytes        = hiddenEntropyBuffer.toByteArray(),
                 progressListener    = null
-            )
+                )
+            }
             when (result) {
                 is CryptoResult.Success -> _state.update { it.copy(
                     isCreating       = false,
@@ -274,7 +335,10 @@ class CreateContainerViewModel @Inject constructor(
         }
 
         // Pass all params (including password) through an in-process singleton — never via Intent.
-        val fullPath = "${s.filePath.trimEnd('/')}/${s.fileName}"
+        val fullPath = if (s.safUri.isEmpty()) "${s.filePath.trimEnd('/')}/${s.fileName}" else ""
+        // Dup the SAF pfd so the service owns an independent fd — decouples service lifetime
+        // from the ViewModel's pfd, eliminating the raw-fd race on ViewModel.onCleared().
+        val servicePfd = safParcelFd?.dup()
         creationParams.set(ContainerCreationParams.Params(
             path          = fullPath,
             sizeBytes     = s.sizeMb * 1024L * 1024L,
@@ -285,17 +349,35 @@ class CreateContainerViewModel @Inject constructor(
             quickFormat   = s.quickFormat,
             entropyBytes  = entropyBuffer.toByteArray(),
             keyfilePaths  = s.keyfilePaths,
-            pim           = s.pim
+            pim           = s.pim,
+            safFd         = servicePfd?.fd ?: -1,
+            safPfd        = servicePfd
         ))
         context.startForegroundService(Intent(context, ContainerCreationService::class.java))
     }
 
     fun registerCreatedContainer() {
-        if (_createdContainerId.value != null) return
+        if (!registrationStarted.compareAndSet(false, true)) return
         val s = _state.value
-        val fullPath = "${s.filePath.trimEnd('/')}/${s.fileName}"
         viewModelScope.launch {
-            val id = repo.addContainerFromPath(fullPath)
+            val id = if (s.safUri.isNotEmpty()) {
+                val actualSize = context.contentResolver
+                    .openFileDescriptor(android.net.Uri.parse(s.safUri), "r")
+                    ?.use { it.statSize }
+                repo.addContainerFromPath(
+                    path   = "",
+                    safUri = s.safUri,
+                    name   = s.fileName.ifBlank { null },
+                    size   = actualSize
+                ).also {
+                    // close the pfd only after the container is registered
+                    safParcelFd?.close()
+                    safParcelFd = null
+                }
+            } else {
+                val fullPath = "${s.filePath.trimEnd('/')}/${s.fileName}"
+                repo.addContainerFromPath(fullPath)
+            }
             _createdContainerId.value = id
         }
     }
@@ -303,15 +385,27 @@ class CreateContainerViewModel @Inject constructor(
     fun cancelCreation() {
         context.stopService(Intent(context, ContainerCreationService::class.java))
         val s = _state.value
-        val fullPath = "${s.filePath.trimEnd('/')}/${s.fileName}"
-        java.io.File(fullPath).delete()
-        _state.update { it.copy(isCreating = false, currentStep = 1) }
+        safParcelFd?.close()
+        safParcelFd = null
+        if (s.safUri.isEmpty()) {
+            val fullPath = "${s.filePath.trimEnd('/')}/${s.fileName}"
+            java.io.File(fullPath).delete()
+        } else {
+            runCatching {
+                android.provider.DocumentsContract.deleteDocument(
+                    context.contentResolver, android.net.Uri.parse(s.safUri)
+                )
+            }
+        }
+        _state.update { it.copy(isCreating = false, currentStep = 1, safUri = "") }
     }
 
     override fun onCleared() {
         super.onCleared()
         _state.value.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
         _state.value.hiddenKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+        safParcelFd?.close()
+        safParcelFd = null
     }
 
     private fun formatTime(secs: Long): String = when {
