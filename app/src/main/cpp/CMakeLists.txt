@@ -65,6 +65,9 @@ target_compile_definitions(arcanum-native PRIVATE
     SAFE_IO=1
 )
 
+# ── Reproducible build: disable non-deterministic Build ID ───────────
+target_link_options(arcanum-native PRIVATE "-Wl,--build-id=none")
+
 # ── Link Android log library ──────────────────────────────────────────
 find_library(log-lib log)
 target_link_libraries(arcanum-native ${log-lib})
