@@ -22,6 +22,11 @@ kotlin {
 
 android {
     namespace = "zip.arcanum"
+
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
