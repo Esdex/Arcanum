@@ -48,7 +48,9 @@ android {
                 )
                 arguments += listOf(
                     "-DANDROID_STL=c++_shared",
-                    "-DANDROID_PLATFORM=android-29"
+                    "-DANDROID_PLATFORM=android-29",
+                    "-DCMAKE_C_FLAGS=-ffile-prefix-map=${projectDir}=.",
+                    "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=${projectDir}=."
                 )
             }
         }
