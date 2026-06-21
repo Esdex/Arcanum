@@ -1,0 +1,47 @@
+name: Feature Request
+description: Suggest an improvement or new feature
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening a request, check if a similar one already exists.
+        For changes touching the crypto layer or security-critical paths, describe your use case clearly — these require extra scrutiny.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case or limitation you're running into.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like to see? How should it work?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Vault management
+        - Encrypted gallery
+        - File manager
+        - Audio player
+        - Security / authentication
+        - UI / theming
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: compat
+    attributes:
+      label: VeraCrypt compatibility
+      options:
+        - label: This feature should remain compatible with desktop VeraCrypt
