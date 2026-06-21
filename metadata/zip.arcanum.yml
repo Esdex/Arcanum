@@ -10,7 +10,6 @@ AutoName: Arcanum
 
 RepoType: git
 Repo: https://github.com/Esdex/Arcanum
-
 Binaries: https://github.com/Esdex/Arcanum/releases/download/v%v/Arcanum-v%v-fdroid.apk
 
 Builds:
