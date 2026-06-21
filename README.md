@@ -136,12 +136,6 @@ For a deeper dive, see the [architecture section in the docs](https://arcanum.zi
 
 The codebase has been reviewed using AI-assisted security analysis across multiple passes. Reports are published in [`/audits`](audits/).
 
-| Date | Type |
-|---|---|
-| 2026-06-16 | Full codebase review |
-| 2026-06-19 | Follow-up — prior findings verification |
-| 2026-06-20 | Pre-release review — final checkpoint |
-
 **Reporting a vulnerability:** Please use [GitHub Security Advisories](https://github.com/Esdex/Arcanum/security/advisories/new) to report security issues privately. Do not open a public issue for vulnerabilities.
 
 ---
