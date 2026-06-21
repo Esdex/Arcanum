@@ -69,18 +69,6 @@ enum class FilesystemType(
         description = "Best for files larger than 4 GB (videos, disk images)",
         info        = "exFAT is a modern filesystem designed for flash storage. It supports files larger than 4 GB and works on all major operating systems."
     ),
-    NTFS(
-        displayName = "NTFS",
-        maxFileSize = "16 TB",
-        description = "Best for Windows-only use",
-        info        = "NTFS is Windows' native filesystem. On macOS it is read-only by default. On Linux it requires the ntfs-3g driver, which is usually pre-installed."
-    ),
-    EXT2(
-        displayName = "Ext2",
-        maxFileSize = "2 TB",
-        description = "Best for Linux-only use",
-        info        = "Ext2 is a Linux filesystem. It is not supported on Windows or macOS without third-party software. Choose this only if you use Linux exclusively."
-    )
 }
 
 data class CreateContainerState(
