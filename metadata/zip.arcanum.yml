@@ -15,7 +15,7 @@ Binaries: https://github.com/Esdex/Arcanum/releases/download/v%v/Arcanum-v%v-fdr
 Builds:
   - versionName: 1.0.0
     versionCode: 1
-    commit: 2e8c19a7a78d603303ddc28136c744299599a6a4
+    commit: afa34c860300ad5a51ff69799fa0fd84b8798a46
     subdir: app
     gradle:
       - fdroid
