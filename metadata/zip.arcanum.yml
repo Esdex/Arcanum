@@ -7,7 +7,6 @@ IssueTracker: https://github.com/Esdex/Arcanum/issues
 
 Name: Arcanum
 AutoName: Arcanum
-Summary: Encrypted container manager compatible with VeraCrypt
 
 RepoType: git
 Repo: https://github.com/Esdex/Arcanum
