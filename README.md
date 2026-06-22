@@ -9,10 +9,12 @@
 </p>
 
 <p align="center">
-  <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
-  <img src="https://img.shields.io/badge/platform-Android-green.svg" alt="Platform">
-  <img src="https://img.shields.io/badge/min%20SDK-29%20(Android%2010)-brightgreen.svg" alt="Min SDK">
-  <img src="https://img.shields.io/badge/language-Kotlin-7F52FF.svg" alt="Kotlin">
+  <a href="https://www.apache.org/licenses/LICENSE-2.0">
+    <img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge" alt="License">
+  </a>
+  <img src="https://img.shields.io/badge/platform-Android-green?style=for-the-badge" alt="Platform">
+  <img src="https://img.shields.io/badge/min%20SDK-29%20(Android%2010)-brightgreen?style=for-the-badge" alt="Min SDK">
+  <img src="https://img.shields.io/badge/language-Kotlin-7F52FF?style=for-the-badge" alt="Kotlin">
 </p>
 
 <!-- TODO: add F-Droid badge once published -->
