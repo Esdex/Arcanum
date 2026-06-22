@@ -95,7 +95,7 @@ Coming soon.
 
 ### Direct APK
 
-Download `Arcanum-v1.0.0-fdroid.apk` from the [Releases page](https://github.com/Esdex/Arcanum/releases/latest) and install manually.
+Download `.apk` from the [Releases page](https://github.com/Esdex/Arcanum/releases/latest) and install manually.
 
 ### Build from source
 
@@ -149,6 +149,57 @@ Contributions are welcome for bug fixes and non-cryptographic improvements (UI, 
 - Run `./gradlew lint` before submitting
 - Native code changes must build cleanly for both `arm64-v8a` and `armeabi-v7a`
 - The `fdroid` flavor must remain free of any Google Play Services dependency
+
+---
+
+## Support
+
+If Arcanum is useful to you, you can support its development:
+
+<p>
+  <a href="https://github.com/sponsors/Esdex">
+    <img src="https://img.shields.io/badge/GitHub%20Sponsors-♥-ea4aaa?style=for-the-badge&logo=github-sponsors&logoColor=white" alt="GitHub Sponsors">
+  </a>
+  &nbsp;
+  <a href="https://ko-fi.com/Esdex">
+    <img src="https://img.shields.io/badge/Ko--fi-support-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi">
+  </a>
+</p>
+
+### Crypto
+
+<table>
+  <tr>
+    <td align="center" width="180">
+      <b>Bitcoin</b><br>
+      <img src="assets/crypto/bitcoin.svg" width="140" alt="Bitcoin QR"><br>
+      <sub><code>bc1qk3pjpxfzafpc56924m8hnyewcgmutchwrg4v2p</code></sub>
+    </td>
+    <td align="center" width="180">
+      <b>Bitcoin Lightning</b><br>
+      <img src="assets/crypto/bitcoin-lightning.svg" width="140" alt="Lightning QR"><br>
+      <sub><code>esdex@cake.cash</code></sub>
+    </td>
+    <td align="center" width="180">
+      <b>Ethereum</b><br>
+      <img src="assets/crypto/ethereum.svg" width="140" alt="Ethereum QR"><br>
+      <sub><code>0xDc4B00d937e4a9633d37d70dDF56E8370f44E0f8</code></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="180">
+      <b>Monero</b><br>
+      <img src="assets/crypto/monero.svg" width="140" alt="Monero QR"><br>
+      <sub><code>83xHcG9NNzLhsYQ9QoMcX2EFCwEPT1rSSa4EPgDMG3PqQEXVZ1vgaTtAq9x4zETjkRRK7CiH6giHshTLUJHTD4mCRBbt42s</code></sub>
+    </td>
+    <td align="center" width="180">
+      <b>Solana / USDT / USDC</b><br>
+      <img src="assets/crypto/solana.svg" width="140" alt="Solana QR"><br>
+      <sub><code>GJgu5VqmEfxfQQbRpp9CDcYUxjsjUPJpHsCfyjRQGGSX</code></sub>
+    </td>
+    <td></td>
+  </tr>
+</table>
 
 ---
 
