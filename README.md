@@ -176,8 +176,6 @@ If Arcanum is useful to you, you can support its development:
 bc1qk3pjpxfzafpc56924m8hnyewcgmutchwrg4v2p
 ```
 
----
-
 **Bitcoin Lightning**
 
 <img src="assets/crypto/bitcoin-lightning.svg" width="140" alt="Lightning QR">
@@ -185,8 +183,6 @@ bc1qk3pjpxfzafpc56924m8hnyewcgmutchwrg4v2p
 ```
 esdex@cake.cash
 ```
-
----
 
 **Ethereum**
 
@@ -196,8 +192,6 @@ esdex@cake.cash
 0xDc4B00d937e4a9633d37d70dDF56E8370f44E0f8
 ```
 
----
-
 **Monero**
 
 <img src="assets/crypto/monero.svg" width="140" alt="Monero QR">
@@ -206,8 +200,6 @@ esdex@cake.cash
 83xHcG9NNzLhsYQ9QoMcX2EFCwEPT1rSSa4EPgDMG3PqQEXVZ1vgaTtAq9x4zETjkRRK7CiH6giHshTLUJHTD4mCRBbt42s
 ```
 
----
-
 **Solana / USDT / USDC**
 
 <img src="assets/crypto/solana.svg" width="140" alt="Solana QR">
@@ -215,8 +207,6 @@ esdex@cake.cash
 ```
 GJgu5VqmEfxfQQbRpp9CDcYUxjsjUPJpHsCfyjRQGGSX
 ```
-
----
 
 ## License
 
