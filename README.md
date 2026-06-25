@@ -82,12 +82,8 @@ The PIN is protected with Argon2id (t=2, m=64 MB, p=1) rather than a simple hash
 ## Installation
 
 <p>
-  <a href="https://f-droid.org/en/packages/zip.arcanum/">
-    <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" height="75" alt="Get it on F-Droid">
-  </a>
-  <a href="https://github.com/Esdex/Arcanum/releases/latest">
-    <img src="https://github.com/Esdex/Arcanum/raw/main/assets/get-it-on-github.png" height="75" alt="Get it on GitHub">
-  </a>
+  <a href="https://f-droid.org/en/packages/zip.arcanum/"><img src="https://github.com/Esdex/Arcanum/raw/main/assets/get-it-on-fdroid.png" height="96" alt="Get it on F-Droid"></a>
+  <a href="https://github.com/Esdex/Arcanum/releases/latest"><img src="https://github.com/Esdex/Arcanum/raw/main/assets/get-it-on-github.png" height="96" alt="Get it on GitHub"></a>
 </p>
 
 <!-- TODO: add Google Play badge once published -->
