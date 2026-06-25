@@ -81,21 +81,16 @@ The PIN is protected with Argon2id (t=2, m=64 MB, p=1) rather than a simple hash
 
 ## Installation
 
-### F-Droid
+<p>
+  <a href="https://f-droid.org/en/packages/zip.arcanum/">
+    <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" height="75" alt="Get it on F-Droid">
+  </a>
+  <a href="https://github.com/Esdex/Arcanum/releases/latest">
+    <img src="assets/get-it-on-github.svg" height="75" alt="Get it on GitHub">
+  </a>
+</p>
 
-<!-- TODO: add F-Droid badge and link once MR is merged -->
-
-Submission is pending review. Once published, you will be able to install directly from the F-Droid client or download the APK from the [F-Droid website](https://f-droid.org).
-
-### Google Play
-
-<!-- TODO: add Play Store badge and link -->
-
-Coming soon.
-
-### Direct APK
-
-Download `.apk` from the [Releases page](https://github.com/Esdex/Arcanum/releases/latest) and install manually.
+<!-- TODO: add Google Play badge once published -->
 
 ### Build from source
 
