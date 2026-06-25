@@ -86,7 +86,7 @@ The PIN is protected with Argon2id (t=2, m=64 MB, p=1) rather than a simple hash
     <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" height="75" alt="Get it on F-Droid">
   </a>
   <a href="https://github.com/Esdex/Arcanum/releases/latest">
-    <img src="assets/get-it-on-github.svg" height="75" alt="Get it on GitHub">
+    <img src="https://github.com/Esdex/Arcanum/raw/main/assets/get-it-on-github.png" height="75" alt="Get it on GitHub">
   </a>
 </p>
 
