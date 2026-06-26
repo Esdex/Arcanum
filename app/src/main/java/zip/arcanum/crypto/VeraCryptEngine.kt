@@ -8,10 +8,20 @@ import javax.inject.Singleton
 @Singleton
 class VeraCryptEngine @Inject constructor() {
 
-    // ── Progress callback interface ────────────────────────────────────
+    // ── Progress callback interfaces ───────────────────────────────────
+
     interface CreationProgressListener {
         /** Called from a background thread during container creation. */
         fun onProgress(progressFraction: Float, speedMbps: Float, bytesWritten: Long)
+    }
+
+    interface MountProgressListener {
+        /**
+         * Called from a background thread for each cipher/PRF combination tried during
+         * auto-detect mount. [attempt] is 1-based; [total] is the total number of
+         * combinations the engine will try for the given parameters.
+         */
+        fun onTrying(cipher: String, prf: String, attempt: Int, total: Int)
     }
 
     // ── High-level suspend API ─────────────────────────────────────────
@@ -47,7 +57,8 @@ class VeraCryptEngine @Inject constructor() {
         hashAlgorithm: Int = HASH_AUTO,
         protectHiddenPassword: String? = null,
         protectHiddenKeyfilePaths: List<String> = emptyList(),
-        protectHiddenPim: Int = 0
+        protectHiddenPim: Int = 0,
+        mountProgressListener: MountProgressListener? = null
     ): CryptoResult<Long> = withContext(Dispatchers.IO) {
         val handle = nativeOpenContainer(
             path, password,
@@ -55,7 +66,8 @@ class VeraCryptEngine @Inject constructor() {
             pim, algorithm, hashAlgorithm,
             protectHiddenPassword,
             protectHiddenKeyfilePaths.toTypedArray().ifEmpty { null },
-            protectHiddenPim
+            protectHiddenPim,
+            mountProgressListener
         )
         if (handle >= 0) CryptoResult.Success(handle)
         else CryptoResult.Failure(handle.toInt().toError())
@@ -92,7 +104,8 @@ class VeraCryptEngine @Inject constructor() {
         hashAlgorithm: Int = HASH_AUTO,
         protectHiddenPassword: String? = null,
         protectHiddenKeyfilePaths: List<String> = emptyList(),
-        protectHiddenPim: Int = 0
+        protectHiddenPim: Int = 0,
+        mountProgressListener: MountProgressListener? = null
     ): CryptoResult<Long> = withContext(Dispatchers.IO) {
         val handle = nativeOpenContainerFd(
             fd, password,
@@ -100,7 +113,8 @@ class VeraCryptEngine @Inject constructor() {
             pim, algorithm, hashAlgorithm,
             protectHiddenPassword,
             protectHiddenKeyfilePaths.toTypedArray().ifEmpty { null },
-            protectHiddenPim
+            protectHiddenPim,
+            mountProgressListener
         )
         if (handle >= 0) CryptoResult.Success(handle)
         else CryptoResult.Failure(handle.toInt().toError())
@@ -203,7 +217,8 @@ class VeraCryptEngine @Inject constructor() {
         hashAlgorithm: Int,
         protectHiddenPassword: String?,
         protectHiddenKeyfilePaths: Array<String>?,
-        protectHiddenPim: Int
+        protectHiddenPim: Int,
+        mountProgressListener: MountProgressListener?
     ): Long
 
     external fun nativeOpenContainerFd(
@@ -215,7 +230,8 @@ class VeraCryptEngine @Inject constructor() {
         hashAlgorithm: Int,
         protectHiddenPassword: String?,
         protectHiddenKeyfilePaths: Array<String>?,
-        protectHiddenPim: Int
+        protectHiddenPim: Int,
+        mountProgressListener: MountProgressListener?
     ): Long
 
     external fun nativeListFiles(

@@ -33,6 +33,7 @@ class AppPreferences @Inject constructor(
         val FIRST_LOGIN_DONE      = booleanPreferencesKey("first_login_done")
         val CALCULATOR_ENABLED        = booleanPreferencesKey("calculator_enabled")
         val BIOMETRIC_UNLOCK_ENABLED  = booleanPreferencesKey("biometric_unlock_enabled")
+        val SHOW_MOUNT_LOG            = booleanPreferencesKey("show_mount_log")
     }
 
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
@@ -116,5 +117,12 @@ class AppPreferences @Inject constructor(
 
     suspend fun setBiometricUnlockEnabled(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.BIOMETRIC_UNLOCK_ENABLED] = enabled }
+    }
+
+    val showMountLog: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.SHOW_MOUNT_LOG] ?: false }
+
+    suspend fun setShowMountLog(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.SHOW_MOUNT_LOG] = enabled }
     }
 }

@@ -24,6 +24,11 @@
 -keep interface zip.arcanum.crypto.VeraCryptEngine$CreationProgressListener { *; }
 -keep class zip.arcanum.crypto.VeraCryptEngine$CreationProgressListener { *; }
 
+# MountProgressListener is called back from C++ via JNI — onTrying(String,String,int,int)
+# must not be renamed.
+-keep interface zip.arcanum.crypto.VeraCryptEngine$MountProgressListener { *; }
+-keep class zip.arcanum.crypto.VeraCryptEngine$MountProgressListener { *; }
+
 # ── kotlinx.serialization ────────────────────────────────────────────────────
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.**

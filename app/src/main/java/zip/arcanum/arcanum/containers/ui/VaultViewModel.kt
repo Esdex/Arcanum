@@ -23,9 +23,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
@@ -34,6 +36,7 @@ import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.core.database.entities.ContainerEntity
+import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.BiometricCryptoManager
 import zip.arcanum.crypto.CryptoError
@@ -52,6 +55,8 @@ class VaultViewModel @Inject constructor(
     private val biometricCryptoManager: BiometricCryptoManager,
     private val biometricAuth: BiometricAuth,
     private val billingManager: BillingManagerInterface,
+    private val mountLogger: MountLogger,
+    private val prefs: AppPreferences,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -166,6 +171,12 @@ class VaultViewModel @Inject constructor(
     private val _mountState = MutableStateFlow<MountState>(MountState.Idle)
     val mountState = _mountState.asStateFlow()
 
+    // null when showMountLog is off; live list of timestamped lines when on.
+    val mountLogs: StateFlow<List<String>?> =
+        prefs.showMountLog.combine(mountLogger.lines) { show, lines ->
+            if (show) lines else null
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     private var mountJob: Job? = null
     private var lastMountTimeMillis = 0L
 
@@ -189,11 +200,38 @@ class VaultViewModel @Inject constructor(
     ) {
         mountJob = viewModelScope.launch {
             _mountState.value = MountState.Loading
+            mountLogger.start()
+            mountLogger.log("Container: ${container.name}")
             val pfd: ParcelFileDescriptor? = if (container.safUri.isNotEmpty()) {
+                mountLogger.log("Source: SAF URI (${container.safUri.takeLast(40)})")
                 context.contentResolver.openFileDescriptor(Uri.parse(container.safUri), "rw")
-            } else null
+            } else {
+                mountLogger.log("Source: ${container.path}")
+                null
+            }
             var pfdConsumed = false
             try {
+                if (keyfilePaths.isNotEmpty()) mountLogger.log("Keyfiles: ${keyfilePaths.size} file(s)")
+                if (pim > 0) mountLogger.log("PIM: $pim")
+                val algoLabel = if (algorithm  == VeraCryptEngine.ALGO_AUTO) "auto-detect (all ciphers)"
+                                else VeraCryptEngine.algorithmIdToString(algorithm)
+                val hashLabel = if (hashAlgorithm == VeraCryptEngine.HASH_AUTO) "auto-detect (all PRFs)"
+                                else VeraCryptEngine.hashIdToString(hashAlgorithm)
+                mountLogger.log("Cipher: $algoLabel")
+                mountLogger.log("PRF: $hashLabel")
+                if (!protectHiddenPassword.isNullOrBlank()) mountLogger.log("Hidden volume protection: enabled")
+                mountLogger.log("Submitting credentials to crypto engine...")
+                mountLogger.log("Running PBKDF2 key derivation (may take several seconds)...")
+                // Only create the listener when the log terminal is visible — avoids
+                // allocating a JNI callback object when the user doesn't need the output.
+                val progressListener: VeraCryptEngine.MountProgressListener? =
+                    if (mountLogs.value != null) {
+                        object : VeraCryptEngine.MountProgressListener {
+                            override fun onTrying(cipher: String, prf: String, attempt: Int, total: Int) {
+                                mountLogger.log("[$attempt/$total] $cipher + $prf")
+                            }
+                        }
+                    } else null
                 val result = if (pfd != null) {
                     cryptoEngine.mountContainerFd(
                         fd = pfd.fd, password = password,
@@ -201,7 +239,8 @@ class VaultViewModel @Inject constructor(
                         algorithm = algorithm, hashAlgorithm = hashAlgorithm,
                         protectHiddenPassword = protectHiddenPassword,
                         protectHiddenKeyfilePaths = protectHiddenKeyfilePaths,
-                        protectHiddenPim = protectHiddenPim
+                        protectHiddenPim = protectHiddenPim,
+                        mountProgressListener = progressListener
                     )
                 } else {
                     cryptoEngine.mountContainer(
@@ -210,29 +249,36 @@ class VaultViewModel @Inject constructor(
                         algorithm = algorithm, hashAlgorithm = hashAlgorithm,
                         protectHiddenPassword = protectHiddenPassword,
                         protectHiddenKeyfilePaths = protectHiddenKeyfilePaths,
-                        protectHiddenPim = protectHiddenPim
+                        protectHiddenPim = protectHiddenPim,
+                        mountProgressListener = progressListener
                     )
                 }
                 when (result) {
                     is CryptoResult.Success -> {
+                        mountLogger.log("Header decrypted successfully.")
                         val isHidden  = cryptoEngine.getVolumeType(result.value) == 1
                         val hasHidden = !protectHiddenPassword.isNullOrBlank()
                         val dataSize  = cryptoEngine.nativeGetDataSize(result.value).coerceAtLeast(0L)
+                        val algId  = cryptoEngine.nativeGetAlgorithmId(result.value)
+                        val hashId = cryptoEngine.nativeGetHashId(result.value)
+                        val fsType = cryptoEngine.nativeGetFilesystem(result.value)
+                        if (algId  >= 0) mountLogger.log("Cipher: ${VeraCryptEngine.algorithmIdToString(algId)}")
+                        if (hashId >= 0) mountLogger.log("PRF: ${VeraCryptEngine.hashIdToString(hashId)}")
+                        mountLogger.log("Mounting FatFs virtual filesystem...")
                         repo.mountContainer(container.id, result.value, pim,
                             isHidden = isHidden, hasHidden = hasHidden,
                             dataSize = dataSize, parcelFd = pfd)
                         pfdConsumed = true
-                        val algId = cryptoEngine.nativeGetAlgorithmId(result.value)
-                        if (algId >= 0) repo.updateAlgorithm(container.id, VeraCryptEngine.algorithmIdToString(algId))
-                        val hashId = cryptoEngine.nativeGetHashId(result.value)
+                        if (algId  >= 0) repo.updateAlgorithm(container.id, VeraCryptEngine.algorithmIdToString(algId))
                         if (hashId >= 0) repo.updatePrf(container.id, VeraCryptEngine.hashIdToString(hashId))
-                        val fsType = cryptoEngine.nativeGetFilesystem(result.value)
                         if (fsType >= 0) repo.updateFilesystem(container.id, VeraCryptEngine.filesystemIdToString(fsType))
+                        mountLogger.log("Mount successful.")
                         lastMountTimeMillis = System.currentTimeMillis()
                         _mountState.value = MountState.Idle
                         onSuccess(container.id)
                     }
                     is CryptoResult.Failure -> {
+                        mountLogger.log("ERROR: ${result.error.name}")
                         _mountState.value = when (result.error) {
                             CryptoError.IO_ERROR -> MountState.Error("Cannot open container file")
                             else -> MountState.Error("Wrong password")

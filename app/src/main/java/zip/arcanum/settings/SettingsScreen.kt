@@ -1972,6 +1972,16 @@ private fun DebugSubScreen(
             }
 
             if (debugMode) {
+                val showMountLog by viewModel.showMountLog.collectAsState()
+                SettingsGroup {
+                    SettingsSwitch(
+                        title           = stringResource(R.string.settings_debug_mount_log_title),
+                        subtitle        = stringResource(R.string.settings_debug_mount_log_desc),
+                        checked         = showMountLog,
+                        onCheckedChange = { viewModel.setShowMountLog(it) }
+                    )
+                }
+
                 // ── Runtime ──────────────────────────────────────────────────
                 PanicSectionLabel(stringResource(R.string.settings_debug_section_runtime))
                 SettingsGroup {

@@ -107,8 +107,21 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.setAutoLockDelayIndex(index) }
     }
 
+    val showMountLog = prefs.showMountLog.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = false
+    )
+
+    fun setShowMountLog(enabled: Boolean) {
+        viewModelScope.launch { prefs.setShowMountLog(enabled) }
+    }
+
     fun setDebugMode(enabled: Boolean) {
-        viewModelScope.launch { prefs.setDebugMode(enabled) }
+        viewModelScope.launch {
+            prefs.setDebugMode(enabled)
+            if (!enabled) prefs.setShowMountLog(false)
+        }
     }
 
     fun setThemeMode(mode: ThemeMode) {

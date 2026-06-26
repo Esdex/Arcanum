@@ -18,9 +18,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -57,6 +64,7 @@ import zip.arcanum.R
 @Composable
 fun MountingOverlay(
     isError: Boolean = false,
+    logs: List<String>? = null,
     onCancel: () -> Unit,
     onDismissError: () -> Unit = {}
 ) {
@@ -187,21 +195,27 @@ fun MountingOverlay(
 
                     Spacer(Modifier.height(10.dp))
 
-                    AnimatedContent(
-                        targetState    = subtitleIndex,
-                        transitionSpec = { fadeIn(tween(600)) togetherWith fadeOut(tween(400)) },
-                        label          = "subtitle"
-                    ) { index ->
-                        Text(
-                            text      = subtitles[index],
-                            style     = MaterialTheme.typography.bodyMedium,
-                            color     = Color.White.copy(alpha = 0.6f),
-                            textAlign = TextAlign.Center
-                        )
+                    if (logs != null) {
+                        MountLogTerminal(logs = logs, modifier = Modifier.fillMaxWidth())
+                    } else {
+                        AnimatedContent(
+                            targetState    = subtitleIndex,
+                            transitionSpec = { fadeIn(tween(600)) togetherWith fadeOut(tween(400)) },
+                            label          = "subtitle"
+                        ) { index ->
+                            Text(
+                                text      = subtitles[index],
+                                style     = MaterialTheme.typography.bodyMedium,
+                                color     = Color.White.copy(alpha = 0.6f),
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
         }
+
+        // Log terminal (shown in place of rotating subtitle when showMountLog is on)
 
         // Bottom action — anchored to the bottom
         if (isError) {
@@ -230,4 +244,51 @@ fun MountingOverlay(
             }
         }
     }
+}
+
+@Composable
+private fun MountLogTerminal(logs: List<String>, modifier: Modifier = Modifier) {
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(logs.size) {
+        if (logs.isNotEmpty()) listState.animateScrollToItem(logs.size - 1)
+    }
+
+    Box(
+        modifier = modifier
+            .heightIn(min = 120.dp, max = 220.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF0D1117))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        LazyColumn(state = listState) {
+            items(logs) { line ->
+                Text(
+                    text  = line,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = Color(0xFF57FF81)
+                )
+            }
+            // blinking cursor on the last line
+            item {
+                BlinkingCursor()
+            }
+        }
+    }
+}
+
+@Composable
+private fun BlinkingCursor() {
+    var visible by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(530)
+            visible = !visible
+        }
+    }
+    Text(
+        text  = if (visible) "█" else " ",
+        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        color = Color(0xFF57FF81)
+    )
 }

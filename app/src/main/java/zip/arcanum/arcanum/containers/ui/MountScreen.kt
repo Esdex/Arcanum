@@ -127,6 +127,7 @@ private fun MountScreenContent(
 ) {
     val context    = LocalContext.current
     val mountState by viewModel.mountState.collectAsState()
+    val mountLogs  by viewModel.mountLogs.collectAsState()
     val mountId    = container.id
 
     var keyfiles by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
@@ -817,6 +818,7 @@ private fun MountScreenContent(
             Box(Modifier.fillMaxSize().zIndex(100f)) {
                 MountingOverlay(
                     isError        = mountState is VaultViewModel.MountState.Error,
+                    logs           = mountLogs,
                     onCancel       = { viewModel.cancelMount(); onBack() },
                     onDismissError = { viewModel.resetMountState(); isMounting = false }
                 )
