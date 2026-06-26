@@ -5,17 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import zip.arcanum.core.utils.FileUtils
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
@@ -68,6 +63,7 @@ import androidx.compose.material.icons.outlined.SortByAlpha
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.FolderOff
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
@@ -110,7 +106,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
@@ -129,11 +124,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -153,8 +144,6 @@ import zip.arcanum.core.components.UpgradeOverlay
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.InAppNotificationBanner
-import zip.arcanum.crypto.VeraCryptEngine
-import javax.crypto.Cipher
 import java.text.DecimalFormat
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Button
@@ -167,21 +156,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import kotlin.math.roundToInt
 
-private sealed interface BioUiMode {
-    data object Indicator : BioUiMode
-    data object Cancelled : BioUiMode
-    data object Form      : BioUiMode
-}
-
-private data class EncryptPending(
-    val password: String,
-    val pim: Int,
-    val algorithm: Int,
-    val hash: Int,
-    val protectHidden: String?
-)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -190,6 +165,7 @@ fun VaultScreen(
     onCreateContainer: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenContainer: (id: String) -> Unit,
+    onMountContainer: (containerId: String) -> Unit,
     onMountSuccess: (id: String) -> Unit = {},
     onUnmountStart: (containerId: String) -> Unit = {},
     unmountedContainerId: String? = null,
@@ -203,7 +179,6 @@ fun VaultScreen(
     val context              = LocalContext.current
     val containers          by viewModel.containers.collectAsState()
     val canAddMoreContainers by viewModel.canAddMoreContainers.collectAsState()
-    val mountState          by viewModel.mountState.collectAsState()
     val addVaultResult      by viewModel.addVaultResult.collectAsState()
     val sortState           by viewModel.sortState.collectAsState()
     val hazeState      = remember { HazeState() }
@@ -216,18 +191,17 @@ fun VaultScreen(
     var showSortSheet      by remember { mutableStateOf(false) }
     var fabExpanded        by remember { mutableStateOf(false) }
     var showLockDialog     by remember { mutableStateOf(false) }
-    var showMountDialog    by remember { mutableStateOf(false) }
-    var containerToMount   by remember { mutableStateOf<ContainerEntity?>(null) }
     var containerToUnmount        by remember { mutableStateOf<ContainerEntity?>(null) }
     var containerToRemoveFromList by remember { mutableStateOf<ContainerEntity?>(null) }
     var containerToDeleteFile     by remember { mutableStateOf<ContainerEntity?>(null) }
     var notification              by remember { mutableStateOf<InAppNotification?>(null) }
     var selectionMode      by remember { mutableStateOf(false) }
     var selectedIds        by remember { mutableStateOf(emptySet<String>()) }
-    var isMountingOverlay        by remember { mutableStateOf(false) }
     var contextMenuContainerId   by remember { mutableStateOf<String?>(null) }
-    var configContainer          by remember { mutableStateOf<ContainerEntity?>(null) }
-    var showUpgradeDialog        by remember { mutableStateOf(false) }
+    var configContainer              by remember { mutableStateOf<ContainerEntity?>(null) }
+    var showUpgradeDialog            by remember { mutableStateOf(false) }
+    var containerNotFound            by remember { mutableStateOf<ContainerEntity?>(null) }
+    var showRemoveNotFoundConfirm    by remember { mutableStateOf(false) }
 
     // Unmount containers per their per-vault config on app stop
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -242,13 +216,10 @@ fun VaultScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Auto-open mount dialog when directed from creation wizard
     LaunchedEffect(autoMountContainerId, containers) {
         val id = autoMountContainerId ?: return@LaunchedEffect
-        if (containers.isEmpty()) return@LaunchedEffect
-        val entity = containers.find { it.id == id } ?: return@LaunchedEffect
-        containerToMount = entity
-        showMountDialog = true
+        if (containers.none { it.id == id }) return@LaunchedEffect
+        onMountContainer(id)
         onAutoMountHandled()
     }
 
@@ -283,26 +254,15 @@ fun VaultScreen(
         if (uri != null) viewModel.addContainerFromUri(uri)
     }
 
-    var mountKeyfiles by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-
-    val keyfilePickerLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        val (path, name) = FileUtils.copyUriToCache(context, uri) ?: return@rememberLauncherForActivityResult
-        mountKeyfiles = mountKeyfiles + Pair(path, name)
-    }
-
     LaunchedEffect(selectionMode) {
         if (selectionMode) { fabExpanded = false; contextMenuContainerId = null }
     }
 
     BackHandler(enabled = !suppressBackHandler) {
         when {
-            selectionMode   -> { selectionMode = false; selectedIds = emptySet() }
-            fabExpanded     -> fabExpanded = false
-            showMountDialog -> { showMountDialog = false; viewModel.resetMountState(); mountKeyfiles.forEach { FileUtils.secureZeroAndDelete(java.io.File(it.first)) }; mountKeyfiles = emptyList() }
-            else            -> showLockDialog = true
+            selectionMode -> { selectionMode = false; selectedIds = emptySet() }
+            fabExpanded   -> fabExpanded = false
+            else          -> showLockDialog = true
         }
     }
 
@@ -418,8 +378,10 @@ fun VaultScreen(
                                             onOpen                 = {
                                             if (container.isMounted) {
                                                 onOpenContainer(container.id)
+                                            } else if (isContainerAccessible(context, container)) {
+                                                onMountContainer(container.id)
                                             } else {
-                                                containerToMount = container; showMountDialog = true
+                                                containerNotFound = container
                                             }
                                         },
                                             onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
@@ -444,8 +406,10 @@ fun VaultScreen(
                                         onOpen                 = {
                                             if (container.isMounted) {
                                                 onOpenContainer(container.id)
+                                            } else if (isContainerAccessible(context, container)) {
+                                                onMountContainer(container.id)
                                             } else {
-                                                containerToMount = container; showMountDialog = true
+                                                containerNotFound = container
                                             }
                                         },
                                         onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
@@ -561,55 +525,6 @@ fun VaultScreen(
                     .zIndex(10f)
             )
 
-            // ── Mount dialog ──────────────────────────────────────────────────
-            if (showMountDialog && containerToMount != null) {
-                val mountId = containerToMount!!.id
-                MountDialog(
-                    container    = containerToMount!!,
-                    mountState   = mountState,
-                    keyfiles     = mountKeyfiles,
-                    biometricAvailable  = remember(mountId) { viewModel.isBiometricAvailable() },
-                    hasBiometricSaved   = remember(mountId) { viewModel.hasBiometricCredentials(mountId) },
-                    onGetEncryptCryptoObject = { viewModel.getBiometricCryptoObjectForEncrypt() },
-                    onGetDecryptCryptoObject = { viewModel.getBiometricCryptoObjectForDecrypt(mountId) },
-                    onSaveBiometricCredentials  = { cipher, pw, pim -> viewModel.saveBiometricCredentials(mountId, cipher, pw, pim) },
-                    onDecryptBiometricCredentials = { cipher -> viewModel.decryptBiometricCredentials(mountId, cipher) },
-                    onDeleteBiometricCredentials  = { viewModel.deleteBiometricCredentials(mountId) },
-                    onAddKeyfile = { keyfilePickerLauncher.launch("*/*") },
-                    onRemoveKeyfile = { index ->
-                        val updated = mountKeyfiles.toMutableList()
-                        FileUtils.secureZeroAndDelete(java.io.File(updated[index].first))
-                        updated.removeAt(index)
-                        mountKeyfiles = updated
-                    },
-                    onDismiss = {
-                        showMountDialog = false
-                        viewModel.resetMountState()
-                        mountKeyfiles.forEach { FileUtils.secureZeroAndDelete(java.io.File(it.first)) }
-                        mountKeyfiles = emptyList()
-                    },
-                    onUnlock = { password, pim, algorithm, hashAlgorithm, protectHiddenPassword ->
-                        showMountDialog = false
-                        isMountingOverlay = true
-                        viewModel.mountContainer(
-                            container             = containerToMount!!,
-                            password              = password,
-                            keyfilePaths          = mountKeyfiles.map { it.first },
-                            pim                   = pim,
-                            algorithm             = algorithm,
-                            hashAlgorithm         = hashAlgorithm,
-                            protectHiddenPassword = protectHiddenPassword,
-                            onSuccess             = { id ->
-                                mountKeyfiles.forEach { FileUtils.secureZeroAndDelete(java.io.File(it.first)) }
-                                mountKeyfiles = emptyList()
-                                isMountingOverlay = false
-                                onMountSuccess(id)
-                            }
-                        )
-                    }
-                )
-            }
-
             // ── Unmount confirm dialog ────────────────────────────────────────
             containerToUnmount?.let { c ->
                 AppDialog(
@@ -667,6 +582,43 @@ fun VaultScreen(
             // ── Upgrade overlay ───────────────────────────────────────────────
             if (showUpgradeDialog) {
                 UpgradeOverlay(onDismiss = { showUpgradeDialog = false })
+            }
+
+            // ── Container not found overlay ───────────────────────────────────
+            // Keep last non-null container so content stays alive during exit animation
+            val overlayContainer = remember { mutableStateOf<ContainerEntity?>(null) }
+            if (containerNotFound != null) overlayContainer.value = containerNotFound
+            AnimatedVisibility(
+                visible  = containerNotFound != null,
+                enter    = fadeIn(tween(250)),
+                exit     = fadeOut(tween(200)),
+                modifier = Modifier.zIndex(30f)
+            ) {
+                val c = overlayContainer.value ?: return@AnimatedVisibility
+                ContainerNotFoundOverlay(
+                    container        = c,
+                    onBack           = { containerNotFound = null },
+                    onRemoveFromList = { showRemoveNotFoundConfirm = true }
+                )
+                if (showRemoveNotFoundConfirm) {
+                    AppDialog(
+                        onDismissRequest = { showRemoveNotFoundConfirm = false },
+                        title            = { Text(stringResource(R.string.vault_not_found_confirm_title)) },
+                        text             = { Text(stringResource(R.string.vault_not_found_confirm_body)) },
+                        confirmButton    = {
+                            TextButton(onClick = {
+                                showRemoveNotFoundConfirm = false
+                                containerNotFound         = null
+                                viewModel.removeFromList(c.id)
+                            }) { Text(stringResource(R.string.vault_not_found_remove)) }
+                        },
+                        dismissButton    = {
+                            TextButton(onClick = { showRemoveNotFoundConfirm = false }) {
+                                Text(stringResource(R.string.common_cancel))
+                            }
+                        }
+                    )
+                }
             }
 
             // ── Lock dialog ───────────────────────────────────────────────────
@@ -800,26 +752,6 @@ fun VaultScreen(
                 )
             }
 
-            // ── Mounting overlay ──────────────────────────────────────────────
-            AnimatedVisibility(
-                visible  = isMountingOverlay,
-                enter    = fadeIn(tween(300)),
-                exit     = fadeOut(tween(300)),
-                modifier = Modifier.zIndex(200f)
-            ) {
-                MountingOverlay(
-                    isError   = mountState is VaultViewModel.MountState.Error,
-                    onCancel  = {
-                        viewModel.cancelMount()
-                        isMountingOverlay = false
-                        showMountDialog = true
-                    },
-                    onDismissError = {
-                        viewModel.resetMountState()
-                        isMountingOverlay = false
-                    }
-                )
-            }
         } // Box
     } // CompositionLocalProvider
 }
@@ -1028,521 +960,6 @@ private fun GroupByOption(
     }
 }
 
-// ── MountDialog ───────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun MountDialog(
-    container: ContainerEntity,
-    mountState: VaultViewModel.MountState,
-    keyfiles: List<Pair<String, String>>,
-    savedPim: Int = 0,
-    biometricAvailable: Boolean = false,
-    hasBiometricSaved: Boolean = false,
-    onGetEncryptCryptoObject: () -> BiometricPrompt.CryptoObject? = { null },
-    onGetDecryptCryptoObject: () -> BiometricPrompt.CryptoObject? = { null },
-    onSaveBiometricCredentials: (Cipher, password: String, pim: Int) -> Unit = { _, _, _ -> },
-    onDecryptBiometricCredentials: (Cipher) -> Pair<String, Int>? = { null },
-    onDeleteBiometricCredentials: () -> Unit = {},
-    onAddKeyfile: () -> Unit,
-    onRemoveKeyfile: (index: Int) -> Unit,
-    onDismiss: () -> Unit,
-    onUnlock: (password: String, pim: Int, algorithm: Int, hashAlgorithm: Int, protectHiddenPassword: String?) -> Unit
-) {
-    // ── Existing form state ───────────────────────────────────────────
-    var password           by rememberSaveable { mutableStateOf("") }
-    var showPassword       by remember { mutableStateOf(false) }
-    var algorithmExpanded  by remember { mutableStateOf(false) }
-    var hashExpanded       by remember { mutableStateOf(false) }
-    var selectedAlgorithm  by rememberSaveable { mutableIntStateOf(VeraCryptEngine.ALGO_AUTO) }
-    var selectedHash       by rememberSaveable { mutableIntStateOf(VeraCryptEngine.HASH_AUTO) }
-    var showAdvanced       by remember { mutableStateOf(savedPim > 0) }
-    var pimValue           by rememberSaveable { mutableStateOf(if (savedPim > 0) savedPim.toString() else "") }
-    var protectHidden      by remember { mutableStateOf(false) }
-    var hiddenPassword     by remember { mutableStateOf("") }
-    var showHiddenPassword by remember { mutableStateOf(false) }
-    var shakeKey           by remember { mutableIntStateOf(0) }
-    val shakeAnim          = remember { Animatable(0f) }
-
-    // ── Biometric state ───────────────────────────────────────────────
-    val bioModeState          = remember { mutableStateOf(if (hasBiometricSaved) BioUiMode.Indicator else BioUiMode.Form) }
-    var bioMode               by bioModeState
-    val biometricEnabledState = remember { mutableStateOf(hasBiometricSaved) }
-    var biometricEnabled      by biometricEnabledState
-    var localHasBiometricSaved by remember { mutableStateOf(hasBiometricSaved) }
-    val isDecryptModeState    = remember { mutableStateOf(false) }
-    val pendingEncryptState   = remember { mutableStateOf<EncryptPending?>(null) }
-    var showRemoveBioDialog   by remember { mutableStateOf(false) }
-
-    // ── Biometric prompt setup ────────────────────────────────────────
-    val activity            = LocalContext.current as FragmentActivity
-    val latestOnUnlock      = rememberUpdatedState(onUnlock)
-    val latestOnSaveBio     = rememberUpdatedState(onSaveBiometricCredentials)
-    val latestOnDecryptBio  = rememberUpdatedState(onDecryptBiometricCredentials)
-
-    val biometricCallback = remember {
-        object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                val cipher = result.cryptoObject?.cipher ?: return
-                if (isDecryptModeState.value) {
-                    val creds = latestOnDecryptBio.value(cipher)
-                    if (creds == null) {
-                        bioModeState.value          = BioUiMode.Cancelled
-                        biometricEnabledState.value = false
-                        return
-                    }
-                    latestOnUnlock.value(creds.first, creds.second, VeraCryptEngine.ALGO_AUTO, VeraCryptEngine.HASH_AUTO, null)
-                } else {
-                    val data = pendingEncryptState.value ?: return
-                    latestOnSaveBio.value(cipher, data.password, data.pim)
-                    latestOnUnlock.value(data.password, data.pim, data.algorithm, data.hash, data.protectHidden)
-                    pendingEncryptState.value = null
-                }
-            }
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                if (isDecryptModeState.value) {
-                    bioModeState.value          = BioUiMode.Cancelled
-                    biometricEnabledState.value = false
-                } else {
-                    // User cancelled saving → mount without saving
-                    pendingEncryptState.value?.let { data ->
-                        latestOnUnlock.value(data.password, data.pim, data.algorithm, data.hash, data.protectHidden)
-                    }
-                    pendingEncryptState.value = null
-                }
-            }
-            override fun onAuthenticationFailed() {}
-        }
-    }
-    val biometricPrompt = remember {
-        BiometricPrompt(activity, ContextCompat.getMainExecutor(activity), biometricCallback)
-    }
-
-    val bioUnlockTitle    = stringResource(R.string.vault_biometric_unlock_title, container.name)
-    val bioUnlockSubtitle = stringResource(R.string.vault_biometric_unlock_subtitle)
-    val bioUsePassword    = stringResource(R.string.vault_biometric_use_password)
-    val bioSaveTitle      = stringResource(R.string.vault_biometric_save_title)
-    val bioSaveSubtitle   = stringResource(R.string.vault_biometric_save_subtitle)
-    val bioSkip           = stringResource(R.string.vault_biometric_skip)
-
-    // Auto-show biometric on open when credentials are saved
-    LaunchedEffect(Unit) {
-        if (!hasBiometricSaved) return@LaunchedEffect
-        val cryptoObj = onGetDecryptCryptoObject()
-        if (cryptoObj == null) {
-            bioModeState.value          = BioUiMode.Cancelled
-            biometricEnabledState.value = false
-            return@LaunchedEffect
-        }
-        isDecryptModeState.value = true
-        biometricPrompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle(bioUnlockTitle)
-                .setSubtitle(bioUnlockSubtitle)
-                .setNegativeButtonText(bioUsePassword)
-                .build(),
-            cryptoObj
-        )
-    }
-
-    LaunchedEffect(mountState) {
-        if (mountState is VaultViewModel.MountState.Error) shakeKey++
-    }
-    LaunchedEffect(shakeKey) {
-        if (shakeKey > 0) {
-            repeat(3) { shakeAnim.animateTo(8f, tween(40)); shakeAnim.animateTo(-8f, tween(40)) }
-            shakeAnim.animateTo(0f, tween(40))
-        }
-    }
-
-    val isError   = mountState is VaultViewModel.MountState.Error
-    val isLoading = mountState is VaultViewModel.MountState.Loading
-    val pim       = pimValue.toIntOrNull() ?: 0
-
-    // ── Remove biometric confirmation dialog ──────────────────────────
-    if (showRemoveBioDialog) {
-        AppDialog(
-            onDismissRequest = { showRemoveBioDialog = false; biometricEnabled = true },
-            title            = { Text(stringResource(R.string.vault_remove_biometric_title)) },
-            text             = { Text(stringResource(R.string.vault_remove_biometric_body, container.name)) },
-            confirmButton    = {
-                TextButton(onClick = {
-                    showRemoveBioDialog = false
-                    onDeleteBiometricCredentials()
-                    localHasBiometricSaved = false
-                    biometricEnabled       = false
-                    bioMode                = BioUiMode.Form
-                }) { Text(stringResource(R.string.vault_remove_confirm)) }
-            },
-            dismissButton    = {
-                TextButton(onClick = { showRemoveBioDialog = false; biometricEnabled = true }) { Text(stringResource(R.string.common_cancel)) }
-            }
-        )
-        return
-    }
-
-    AppDialog(
-        onDismissRequest = onDismiss,
-        title            = { Text(container.name) },
-        text             = {
-            when (bioMode) {
-
-                // ── Biometric indicator (auto-prompt active) ──────────
-                BioUiMode.Indicator -> {
-                    Column(
-                        modifier            = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Box(
-                            modifier         = Modifier
-                                .size(72.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Outlined.Fingerprint,
-                                contentDescription = null,
-                                tint     = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(40.dp)
-                            )
-                        }
-                        Text(
-                            stringResource(R.string.vault_biometric_indicator),
-                            style     = MaterialTheme.typography.bodyMedium,
-                            color     = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-
-                // ── Biometric cancelled / failed ──────────────────────
-                BioUiMode.Cancelled -> {
-                    Column(
-                        modifier            = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            stringResource(R.string.vault_biometric_failed),
-                            style     = MaterialTheme.typography.bodyMedium,
-                            color     = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-
-                // ── Normal password form ──────────────────────────────
-                BioUiMode.Form -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value                = password,
-                            onValueChange        = { password = it },
-                            label                = { Text(stringResource(R.string.common_password)) },
-                            singleLine           = true,
-                            isError              = isError,
-                            supportingText       = if (isError) { { Text(stringResource(R.string.vault_mount_wrong_password)) } } else null,
-                            visualTransformation = if (showPassword) VisualTransformation.None
-                                                   else PasswordVisualTransformation(),
-                            trailingIcon         = {
-                                IconButton(onClick = { showPassword = !showPassword }) {
-                                    Icon(
-                                        if (showPassword) Icons.Outlined.VisibilityOff
-                                        else Icons.Outlined.Visibility,
-                                        contentDescription = null
-                                    )
-                                }
-                            },
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(
-                                onDone = { if ((password.isNotEmpty() || keyfiles.isNotEmpty()) && !isLoading) onUnlock(password, pim, selectedAlgorithm, selectedHash, if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null) }
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .offset { IntOffset(shakeAnim.value.roundToInt(), 0) }
-                        )
-
-                        val algorithms = listOf(-1 to "Auto") + (0..14).map { id ->
-                            id to VeraCryptEngine.algorithmIdToString(id).replace("-256-XTS", "")
-                        }
-                        val hashes = listOf(-1 to "Auto") + (0..4).map { it to VeraCryptEngine.hashIdToString(it) }
-
-                        Row(
-                            modifier              = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(modifier = Modifier.weight(1f)) {
-                                OutlinedTextField(
-                                    value         = algorithms.first { it.first == selectedAlgorithm }.second,
-                                    onValueChange = {},
-                                    readOnly      = true,
-                                    label         = { Text(stringResource(R.string.vault_mount_algorithm)) },
-                                    trailingIcon  = {
-                                        Icon(
-                                            if (algorithmExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                                            contentDescription = null
-                                        )
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Box(Modifier.matchParentSize().clickable { algorithmExpanded = !algorithmExpanded })
-                                DropdownMenu(
-                                    expanded         = algorithmExpanded,
-                                    onDismissRequest = { algorithmExpanded = false }
-                                ) {
-                                    algorithms.forEach { (id, label) ->
-                                        DropdownMenuItem(
-                                            text    = { Text(label, style = MaterialTheme.typography.bodySmall) },
-                                            onClick = { selectedAlgorithm = id; algorithmExpanded = false }
-                                        )
-                                    }
-                                }
-                            }
-
-                            Box(modifier = Modifier.weight(1f)) {
-                                OutlinedTextField(
-                                    value         = hashes.first { it.first == selectedHash }.second,
-                                    onValueChange = {},
-                                    readOnly      = true,
-                                    label         = { Text(stringResource(R.string.vault_mount_hash)) },
-                                    trailingIcon  = {
-                                        Icon(
-                                            if (hashExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                                            contentDescription = null
-                                        )
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Box(Modifier.matchParentSize().clickable { hashExpanded = !hashExpanded })
-                                DropdownMenu(
-                                    expanded         = hashExpanded,
-                                    onDismissRequest = { hashExpanded = false }
-                                ) {
-                                    hashes.forEach { (id, label) ->
-                                        DropdownMenuItem(
-                                            text    = { Text(label, style = MaterialTheme.typography.bodySmall) },
-                                            onClick = { selectedHash = id; hashExpanded = false }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Biometric toggle
-                        if (biometricAvailable) {
-                            HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                            Row(
-                                modifier          = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Outlined.Fingerprint,
-                                    contentDescription = null,
-                                    tint     = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    stringResource(R.string.vault_mount_biometric_toggle),
-                                    style    = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Switch(
-                                    checked         = biometricEnabled,
-                                    onCheckedChange = { newValue ->
-                                        if (!newValue && localHasBiometricSaved) {
-                                            showRemoveBioDialog = true
-                                        } else {
-                                            biometricEnabled = newValue
-                                        }
-                                    }
-                                )
-                            }
-                        }
-
-                        // Advanced section (PIM + keyfiles + hidden)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showAdvanced = !showAdvanced }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                stringResource(R.string.vault_mount_advanced),
-                                style    = MaterialTheme.typography.labelMedium,
-                                color    = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Icon(
-                                if (showAdvanced) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                                contentDescription = null,
-                                tint     = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        AnimatedVisibility(
-                            visible = showAdvanced,
-                            enter   = expandVertically(),
-                            exit    = shrinkVertically()
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                    value         = pimValue,
-                                    onValueChange = {
-                                        if (it.all { c -> c.isDigit() } && it.length <= 4) pimValue = it
-                                    },
-                                    label                = { Text(stringResource(R.string.vault_mount_pim_label)) },
-                                    placeholder          = { Text(stringResource(R.string.vault_mount_pim_placeholder)) },
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.NumberPassword,
-                                        imeAction    = ImeAction.Done
-                                    ),
-                                    keyboardActions = KeyboardActions(
-                                        onDone = { if ((password.isNotEmpty() || keyfiles.isNotEmpty()) && !isLoading) onUnlock(password, pim, selectedAlgorithm, selectedHash, if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null) }
-                                    ),
-                                    singleLine = true,
-                                    modifier   = Modifier.fillMaxWidth()
-                                )
-                                keyfiles.forEachIndexed { index, (_, displayName) ->
-                                    Row(
-                                        modifier          = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Outlined.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(displayName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                                        IconButton(onClick = { onRemoveKeyfile(index) }, modifier = Modifier.size(32.dp)) {
-                                            Icon(Icons.Outlined.Close, null, modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                }
-                                TextButton(onClick = onAddKeyfile, modifier = Modifier.fillMaxWidth()) {
-                                    Icon(Icons.Outlined.Lock, null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(stringResource(R.string.vault_mount_add_keyfile), style = MaterialTheme.typography.labelMedium)
-                                }
-                                Row(
-                                    modifier          = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { protectHidden = !protectHidden }
-                                        .padding(vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Checkbox(
-                                        checked         = protectHidden,
-                                        onCheckedChange = { protectHidden = it },
-                                        modifier        = Modifier.size(20.dp)
-                                    )
-                                    Column {
-                                        Text(stringResource(R.string.vault_mount_protect_hidden), style = MaterialTheme.typography.bodyMedium)
-                                        Text(
-                                            stringResource(R.string.vault_mount_protect_hidden_desc),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                                AnimatedVisibility(visible = protectHidden) {
-                                    OutlinedTextField(
-                                        value                = hiddenPassword,
-                                        onValueChange        = { hiddenPassword = it },
-                                        label                = { Text(stringResource(R.string.vault_mount_hidden_password)) },
-                                        singleLine           = true,
-                                        visualTransformation = if (showHiddenPassword) VisualTransformation.None
-                                                               else PasswordVisualTransformation(),
-                                        trailingIcon         = {
-                                            IconButton(onClick = { showHiddenPassword = !showHiddenPassword }) {
-                                                Icon(
-                                                    if (showHiddenPassword) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                                    contentDescription = null
-                                                )
-                                            }
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            when (bioMode) {
-                BioUiMode.Indicator -> { /* biometric prompt handles auth */ }
-                BioUiMode.Cancelled -> {
-                    TextButton(onClick = {
-                        val cryptoObj = onGetDecryptCryptoObject()
-                        if (cryptoObj != null) {
-                            isDecryptModeState.value = true
-                            biometricPrompt.authenticate(
-                                BiometricPrompt.PromptInfo.Builder()
-                                    .setTitle(bioUnlockTitle)
-                                    .setSubtitle(bioUnlockSubtitle)
-                                    .setNegativeButtonText(bioUsePassword)
-                                    .build(),
-                                cryptoObj
-                            )
-                        }
-                    }) {
-                        Text(stringResource(R.string.vault_biometric_try_again))
-                    }
-                }
-                BioUiMode.Form -> {
-                    val canUnlock = (password.isNotEmpty() || keyfiles.isNotEmpty()) && !isLoading
-                    val protectedPassword = if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null
-                    TextButton(
-                        onClick = {
-                            if (canUnlock) {
-                                if (biometricEnabled && !localHasBiometricSaved) {
-                                    val cryptoObj = onGetEncryptCryptoObject()
-                                    if (cryptoObj != null) {
-                                        isDecryptModeState.value  = false
-                                        pendingEncryptState.value = EncryptPending(
-                                            password      = password,
-                                            pim           = pim,
-                                            algorithm     = selectedAlgorithm,
-                                            hash          = selectedHash,
-                                            protectHidden = protectedPassword
-                                        )
-                                        biometricPrompt.authenticate(
-                                            BiometricPrompt.PromptInfo.Builder()
-                                                .setTitle(bioSaveTitle)
-                                                .setSubtitle(bioSaveSubtitle)
-                                                .setNegativeButtonText(bioSkip)
-                                                .build(),
-                                            cryptoObj
-                                        )
-                                    } else {
-                                        onUnlock(password, pim, selectedAlgorithm, selectedHash, protectedPassword)
-                                    }
-                                } else {
-                                    onUnlock(password, pim, selectedAlgorithm, selectedHash, protectedPassword)
-                                }
-                            }
-                        },
-                        enabled = canUnlock
-                    ) {
-                        if (isLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        else Text(stringResource(R.string.vault_biometric_unlock_confirm))
-                    }
-                }
-            }
-        },
-        dismissButton = {
-            when (bioMode) {
-                BioUiMode.Cancelled -> TextButton(onClick = { bioMode = BioUiMode.Form }) { Text(stringResource(R.string.vault_biometric_use_password)) }
-                else -> TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
-            }
-        }
-    )
-}
 
 // ── VaultCard ─────────────────────────────────────────────────────────────────
 
@@ -1804,6 +1221,100 @@ private fun Long.fmtDate(): String = when (this) {
             today              -> "Today"
             today.minusDays(1) -> "Yesterday"
             else -> date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+        }
+    }
+}
+
+private fun isContainerAccessible(context: android.content.Context, container: ContainerEntity): Boolean {
+    return if (container.safUri.isNotEmpty()) {
+        try {
+            context.contentResolver.openFileDescriptor(android.net.Uri.parse(container.safUri), "r")?.use { true } ?: false
+        } catch (_: Exception) { false }
+    } else {
+        java.io.File(container.path).exists()
+    }
+}
+
+@Composable
+private fun ContainerNotFoundOverlay(
+    container: ContainerEntity,
+    onBack: () -> Unit,
+    onRemoveFromList: () -> Unit
+) {
+    androidx.activity.compose.BackHandler { onBack() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(20f)
+            .background(Color.Black)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication        = null
+            ) {}
+    ) {
+        Column(
+            modifier            = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 40.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier         = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Outlined.FolderOff,
+                    contentDescription = null,
+                    tint     = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+            Spacer(Modifier.height(32.dp))
+            Text(
+                text       = stringResource(R.string.vault_not_found_title),
+                style      = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color      = Color.White,
+                textAlign  = TextAlign.Center
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text      = stringResource(R.string.vault_not_found_body),
+                style     = MaterialTheme.typography.bodyMedium,
+                color     = Color.White.copy(alpha = 0.6f),
+                textAlign = TextAlign.Center
+            )
+        }
+
+        Column(
+            modifier            = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
+                .padding(horizontal = 40.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Button(
+                onClick  = onBack,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.common_back))
+            }
+            TextButton(
+                onClick  = onRemoveFromList,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text  = stringResource(R.string.vault_not_found_remove),
+                    color = Color.White.copy(alpha = 0.5f)
+                )
+            }
         }
     }
 }

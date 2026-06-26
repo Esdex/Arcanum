@@ -30,8 +30,9 @@ typedef struct {
     bool                 active;
     int                  algId;           /* ALGORITHMS[] index — set by alloc_drive */
     int                  hashId;          /* PBKDF2 hash index (0=SHA-512, 1=SHA-256, 2=Whirlpool, 3=Streebog) */
-    bool                 isHidden;        /* true if this slot holds a hidden volume */
-    uint64_t             hiddenBoundary;  /* absolute file offset; outer writes must not reach or exceed this (0 = no protection) */
+    bool                 isHidden;              /* true if this slot holds a hidden volume */
+    uint64_t             hiddenBoundary;        /* absolute file offset; outer writes must not reach or exceed this (0 = no protection) */
+    bool                 hiddenBoundaryTripped; /* set to true when disk_write blocks a write due to hiddenBoundary */
     struct GenCipherCtx *cipherCtx;       /* heap-allocated, null when !active */
 } DriveContext;
 

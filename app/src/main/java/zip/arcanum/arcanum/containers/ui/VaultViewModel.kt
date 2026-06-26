@@ -183,6 +183,8 @@ class VaultViewModel @Inject constructor(
         algorithm: Int = VeraCryptEngine.ALGO_AUTO,
         hashAlgorithm: Int = VeraCryptEngine.HASH_AUTO,
         protectHiddenPassword: String? = null,
+        protectHiddenPim: Int = 0,
+        protectHiddenKeyfilePaths: List<String> = emptyList(),
         onSuccess: (containerId: String) -> Unit
     ) {
         mountJob = viewModelScope.launch {
@@ -196,21 +198,29 @@ class VaultViewModel @Inject constructor(
                     cryptoEngine.mountContainerFd(
                         fd = pfd.fd, password = password,
                         keyfilePaths = keyfilePaths, pim = pim,
-                        algorithm = algorithm, hashAlgorithm = hashAlgorithm
+                        algorithm = algorithm, hashAlgorithm = hashAlgorithm,
+                        protectHiddenPassword = protectHiddenPassword,
+                        protectHiddenKeyfilePaths = protectHiddenKeyfilePaths,
+                        protectHiddenPim = protectHiddenPim
                     )
                 } else {
                     cryptoEngine.mountContainer(
                         path = container.path, password = password,
                         keyfilePaths = keyfilePaths, pim = pim,
-                        algorithm = algorithm, hashAlgorithm = hashAlgorithm
+                        algorithm = algorithm, hashAlgorithm = hashAlgorithm,
+                        protectHiddenPassword = protectHiddenPassword,
+                        protectHiddenKeyfilePaths = protectHiddenKeyfilePaths,
+                        protectHiddenPim = protectHiddenPim
                     )
                 }
                 when (result) {
                     is CryptoResult.Success -> {
                         val isHidden  = cryptoEngine.getVolumeType(result.value) == 1
                         val hasHidden = !protectHiddenPassword.isNullOrBlank()
+                        val dataSize  = cryptoEngine.nativeGetDataSize(result.value).coerceAtLeast(0L)
                         repo.mountContainer(container.id, result.value, pim,
-                            isHidden = isHidden, hasHidden = hasHidden, parcelFd = pfd)
+                            isHidden = isHidden, hasHidden = hasHidden,
+                            dataSize = dataSize, parcelFd = pfd)
                         pfdConsumed = true
                         val algId = cryptoEngine.nativeGetAlgorithmId(result.value)
                         if (algId >= 0) repo.updateAlgorithm(container.id, VeraCryptEngine.algorithmIdToString(algId))

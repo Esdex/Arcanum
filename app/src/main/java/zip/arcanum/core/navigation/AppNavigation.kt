@@ -34,9 +34,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import zip.arcanum.arcanum.containers.ui.MountCoordinator
+import zip.arcanum.arcanum.containers.ui.MountScreen
 import zip.arcanum.arcanum.containers.ui.MountSuccessOverlay
 import zip.arcanum.arcanum.containers.ui.UnmountAnimationOverlay
 import zip.arcanum.arcanum.containers.ui.VaultScreen
+import zip.arcanum.arcanum.containers.ui.VaultViewModel
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerDirectScreen
 import zip.arcanum.arcanum.gallery.ui.MediaViewerDirectScreen
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerScreen
@@ -200,6 +202,9 @@ fun AppNavigation(pinManager: PinManager) {
                 onOpenContainer = { containerId ->
                     navController.navigate(Screen.ContainerScreen.buildRoute(containerId))
                 },
+                onMountContainer = { containerId ->
+                    navController.navigate(Screen.MountScreen.buildRoute(containerId))
+                },
                 onMountSuccess = { containerId ->
                     mountCoordinator.beginUnlocking(containerId)
                 },
@@ -347,6 +352,27 @@ fun AppNavigation(pinManager: PinManager) {
         ) {
             MoveVaultScreen(
                 onBack = { navController.popBackStack() }
+            )
+        }
+
+        // ── Mount screen ──────────────────────────────────────────────────
+        composable(
+            route             = Screen.MountScreen.route,
+            arguments         = listOf(navArgument(Screen.MountScreen.ARG) { type = NavType.StringType }),
+            enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
+        ) { backStackEntry ->
+            val containerId = backStackEntry.arguments?.getString(Screen.MountScreen.ARG) ?: return@composable
+            val parentEntry = remember(backStackEntry) { navController.getBackStackEntry(Screen.VaultScreen.route) }
+            val mountViewModel: VaultViewModel = hiltViewModel(parentEntry)
+            MountScreen(
+                containerId    = containerId,
+                viewModel      = mountViewModel,
+                onBack         = { navController.popBackStack() },
+                onMountSuccess = { id ->
+                    navController.popBackStack()
+                    mountCoordinator.beginUnlocking(id)
+                }
             )
         }
     }

@@ -70,4 +70,9 @@ sealed class Screen(val route: String) {
         const val ARG_TO_APP = "toApp"
         fun buildRoute(containerId: String, toApp: Boolean) = "move_vault/$containerId/$toApp"
     }
+
+    object MountScreen : Screen("mount_screen/{containerId}") {
+        const val ARG = "containerId"
+        fun buildRoute(containerId: String) = "mount_screen/$containerId"
+    }
 }

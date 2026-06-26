@@ -1,7 +1,9 @@
 package zip.arcanum.arcanum.containers.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -14,11 +16,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -47,6 +54,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -282,9 +290,18 @@ fun StepHiddenSize(state: CreateContainerState, onUpdate: (CreateContainerState.
 
 // ─── Step 13: Hidden Password ─────────────────────────────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StepHiddenPassword(state: CreateContainerState, onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit) {
-    var showPwd by remember { mutableStateOf(false) }
+fun StepHiddenPassword(
+    state: CreateContainerState,
+    onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit,
+    onAddKeyfile: () -> Unit = {},
+    onRemoveKeyfile: (index: Int) -> Unit = {}
+) {
+    var showPwd         by remember { mutableStateOf(false) }
+    var showConfirmPwd  by remember { mutableStateOf(false) }
+    var keyfileExpanded by remember { mutableStateOf(false) }
+    var showPimSection  by remember { mutableStateOf(state.hiddenPim > 0) }
     val mismatch = state.hiddenConfirmPassword.isNotEmpty() && state.hiddenPassword != state.hiddenConfirmPassword
 
     StepContent(title = stringResource(R.string.create_hidden_pwd_title), subtitle = stringResource(R.string.create_hidden_pwd_subtitle)) {
@@ -314,10 +331,7 @@ fun StepHiddenPassword(state: CreateContainerState, onUpdate: (CreateContainerSt
             visualTransformation = if (showPwd) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon        = {
                 IconButton(onClick = { showPwd = !showPwd }) {
-                    Icon(
-                        imageVector = if (showPwd) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                        contentDescription = null
-                    )
+                    Icon(if (showPwd) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
                 }
             },
             modifier = Modifier.fillMaxWidth()
@@ -330,27 +344,92 @@ fun StepHiddenPassword(state: CreateContainerState, onUpdate: (CreateContainerSt
             singleLine           = true,
             isError              = mismatch,
             supportingText       = if (mismatch) { { Text(stringResource(R.string.create_hidden_pwd_mismatch)) } } else null,
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (showConfirmPwd) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon         = {
+                IconButton(onClick = { showConfirmPwd = !showConfirmPwd }) {
+                    Icon(if (showConfirmPwd) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
+                }
+            },
             modifier             = Modifier.fillMaxWidth()
         )
+        Spacer(Modifier.height(16.dp))
 
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value         = if (state.hiddenPim > 0) state.hiddenPim.toString() else "",
-            onValueChange = { v ->
-                onUpdate { copy(hiddenPim = v.filter { c -> c.isDigit() }.take(4).toIntOrNull() ?: 0) }
-            },
-            label           = { Text(stringResource(R.string.create_hidden_pim_label)) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine      = true,
-            modifier        = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text  = stringResource(R.string.create_hidden_pim_hint),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        // Keyfile section
+        TextButton(
+            onClick  = { keyfileExpanded = !keyfileExpanded },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Outlined.AttachFile, contentDescription = null)
+            Spacer(Modifier.size(6.dp))
+            Text(
+                if (state.hiddenKeyfileDisplayNames.isNotEmpty())
+                    pluralStringResource(R.plurals.create_keyfile_count, state.hiddenKeyfileDisplayNames.size, state.hiddenKeyfileDisplayNames.size)
+                else if (keyfileExpanded) stringResource(R.string.create_keyfile_hide)
+                else stringResource(R.string.create_keyfile_add)
+            )
+        }
+        if (keyfileExpanded) {
+            Card(
+                colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                shape    = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    state.hiddenKeyfileDisplayNames.forEachIndexed { index, displayName ->
+                        Row(
+                            modifier          = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Outlined.AttachFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(displayName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { onRemoveKeyfile(index) }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.create_keyfile_cd_remove), modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                    if (state.hiddenKeyfileDisplayNames.isNotEmpty()) {
+                        Text(stringResource(R.string.create_keyfile_safe_warning), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(onClick = onAddKeyfile) { Text(stringResource(R.string.create_keyfile_add_item)) }
+                    Text(stringResource(R.string.create_keyfile_desc), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
+        // PIM section
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showPimSection = !showPimSection }
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(Icons.Outlined.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+            Text(stringResource(R.string.create_pim_label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+            Icon(if (showPimSection) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+        }
+        AnimatedVisibility(visible = showPimSection) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Spacer(Modifier.height(4.dp))
+                OutlinedTextField(
+                    value         = if (state.hiddenPim > 0) state.hiddenPim.toString() else "",
+                    onValueChange = { v ->
+                        onUpdate { copy(hiddenPim = v.filter { c -> c.isDigit() }.take(4).toIntOrNull() ?: 0) }
+                    },
+                    label           = { Text(stringResource(R.string.create_pim_short_label)) },
+                    placeholder     = { Text(stringResource(R.string.create_pim_placeholder)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine      = true,
+                    modifier        = Modifier.fillMaxWidth()
+                )
+                if (state.hiddenPim in 1..484 && state.hiddenPassword.length < 20 && state.hiddenKeyfilePaths.isEmpty()) {
+                    Text(stringResource(R.string.create_pim_short_pwd_error), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
     }
 }
 

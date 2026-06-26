@@ -253,6 +253,18 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         title           = ctx.resources.getQuantityString(R.plurals.notif_files_exported, this.count, this.count),
         subtitle        = ctx.getString(R.string.notif_files_exported_subtitle)
     )
+    InAppNotification.HiddenVolumeWriteProtection -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFD97706),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_hidden_write_protection),
+        subtitle        = ctx.getString(R.string.notif_hidden_write_protection_subtitle)
+    )
+    InAppNotification.ImportFailed -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFDC2626),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_import_failed),
+        subtitle        = ctx.getString(R.string.notif_import_failed_subtitle)
+    )
     InAppNotification.PanicExecuted -> null
     InAppNotification.SupportDeveloper -> NotificationDisplayConfig(
         backgroundColor = Color(0xFF7C3AED),

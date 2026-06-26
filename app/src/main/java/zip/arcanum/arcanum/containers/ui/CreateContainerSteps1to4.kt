@@ -339,7 +339,7 @@ fun StepContent(
     subtitle: String? = null,
     content: @Composable () -> Unit
 ) {
-    Column(modifier = Modifier.verticalScroll(rememberScrollState()).imePadding().padding(top = 28.dp, bottom = 24.dp)) {
+    Column(modifier = Modifier.imePadding().verticalScroll(rememberScrollState()).padding(top = 28.dp, bottom = 24.dp)) {
         Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         if (subtitle != null) {
             Spacer(Modifier.height(4.dp))

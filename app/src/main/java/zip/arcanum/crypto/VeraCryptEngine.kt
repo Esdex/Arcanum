@@ -44,12 +44,18 @@ class VeraCryptEngine @Inject constructor() {
         keyfilePaths: List<String> = emptyList(),
         pim: Int = 0,
         algorithm: Int = ALGO_AUTO,
-        hashAlgorithm: Int = HASH_AUTO
+        hashAlgorithm: Int = HASH_AUTO,
+        protectHiddenPassword: String? = null,
+        protectHiddenKeyfilePaths: List<String> = emptyList(),
+        protectHiddenPim: Int = 0
     ): CryptoResult<Long> = withContext(Dispatchers.IO) {
         val handle = nativeOpenContainer(
             path, password,
             keyfilePaths.toTypedArray().ifEmpty { null },
-            pim, algorithm, hashAlgorithm
+            pim, algorithm, hashAlgorithm,
+            protectHiddenPassword,
+            protectHiddenKeyfilePaths.toTypedArray().ifEmpty { null },
+            protectHiddenPim
         )
         if (handle >= 0) CryptoResult.Success(handle)
         else CryptoResult.Failure(handle.toInt().toError())
@@ -83,12 +89,18 @@ class VeraCryptEngine @Inject constructor() {
         keyfilePaths: List<String> = emptyList(),
         pim: Int = 0,
         algorithm: Int = ALGO_AUTO,
-        hashAlgorithm: Int = HASH_AUTO
+        hashAlgorithm: Int = HASH_AUTO,
+        protectHiddenPassword: String? = null,
+        protectHiddenKeyfilePaths: List<String> = emptyList(),
+        protectHiddenPim: Int = 0
     ): CryptoResult<Long> = withContext(Dispatchers.IO) {
         val handle = nativeOpenContainerFd(
             fd, password,
             keyfilePaths.toTypedArray().ifEmpty { null },
-            pim, algorithm, hashAlgorithm
+            pim, algorithm, hashAlgorithm,
+            protectHiddenPassword,
+            protectHiddenKeyfilePaths.toTypedArray().ifEmpty { null },
+            protectHiddenPim
         )
         if (handle >= 0) CryptoResult.Success(handle)
         else CryptoResult.Failure(handle.toInt().toError())
@@ -188,7 +200,10 @@ class VeraCryptEngine @Inject constructor() {
         keyfilePaths: Array<String>?,
         pim: Int,
         algorithm: Int,
-        hashAlgorithm: Int
+        hashAlgorithm: Int,
+        protectHiddenPassword: String?,
+        protectHiddenKeyfilePaths: Array<String>?,
+        protectHiddenPim: Int
     ): Long
 
     external fun nativeOpenContainerFd(
@@ -197,7 +212,10 @@ class VeraCryptEngine @Inject constructor() {
         keyfilePaths: Array<String>?,
         pim: Int,
         algorithm: Int,
-        hashAlgorithm: Int
+        hashAlgorithm: Int,
+        protectHiddenPassword: String?,
+        protectHiddenKeyfilePaths: Array<String>?,
+        protectHiddenPim: Int
     ): Long
 
     external fun nativeListFiles(
@@ -271,20 +289,23 @@ class VeraCryptEngine @Inject constructor() {
 
     external fun nativeGetFilesystem(handle: Long): Int
 
+    external fun nativeGetDataSize(handle: Long): Long
+
     // ── Companion ──────────────────────────────────────────────────────
     companion object {
         const val ALGO_AUTO = -1
         const val HASH_AUTO = -1
 
-        const val ERR_OK             = 0
-        const val ERR_FILE           = -1
-        const val ERR_READ           = -2
-        const val ERR_WRONG_PASSWORD = -3
-        const val ERR_UNSUPPORTED    = -4
-        const val ERR_NO_SPACE       = -5
-        const val ERR_NO_SLOT        = -6
-        const val ERR_FS             = -7
-        const val ERR_RAND           = -8
+        const val ERR_OK               = 0
+        const val ERR_FILE             = -1
+        const val ERR_READ             = -2
+        const val ERR_WRONG_PASSWORD   = -3
+        const val ERR_UNSUPPORTED      = -4
+        const val ERR_NO_SPACE         = -5
+        const val ERR_NO_SLOT          = -6
+        const val ERR_FS               = -7
+        const val ERR_RAND             = -8
+        const val ERR_HIDDEN_BOUNDARY  = -9
 
         fun filesystemIdToString(fsType: Int): String = when (fsType) {
             1 -> "FAT12"

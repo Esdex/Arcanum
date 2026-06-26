@@ -311,6 +311,13 @@ fun StepPassword(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                if (pimInt in 1..484 && state.password.length < 20) {
+                    Text(
+                        stringResource(R.string.create_pim_short_pwd_error),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
 
