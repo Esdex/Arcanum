@@ -137,6 +137,7 @@ fun StepPassword(
             label         = { Text(stringResource(R.string.create_pwd_label)) },
             singleLine    = true,
             visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             trailingIcon  = {
                 IconButton(onClick = { showPassword = !showPassword }) {
                     Icon(if (showPassword) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
@@ -165,6 +166,7 @@ fun StepPassword(
             label         = { Text(stringResource(R.string.create_pwd_confirm_label)) },
             singleLine    = true,
             visualTransformation = if (showConfirm) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             isError       = state.confirmPassword.isNotEmpty() && state.password != state.confirmPassword,
             supportingText = if (state.confirmPassword.isNotEmpty() && state.password != state.confirmPassword) {
                 { Text(stringResource(R.string.create_pwd_mismatch)) }
@@ -201,7 +203,7 @@ fun StepPassword(
             },
             label           = { Text(stringResource(R.string.create_pim_short_label)) },
             placeholder     = { Text(stringResource(R.string.create_pim_placeholder)) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             singleLine      = true,
             modifier        = Modifier.fillMaxWidth()
         )
