@@ -63,6 +63,10 @@
     <string name="notif_folder_created">Folder created</string>
     <string name="notif_files_imported_subtitle">Encrypted and stored in vault</string>
     <string name="notif_files_exported_subtitle">Saved to selected folder</string>
+    <string name="notif_hidden_write_protection">Hidden Volume Protected</string>
+    <string name="notif_hidden_write_protection_subtitle">Import stopped — files would overwrite the hidden volume</string>
+    <string name="notif_import_failed">Import Failed</string>
+    <string name="notif_import_failed_subtitle">Not enough space in the vault</string>
     <string name="notif_support_developer">Enjoying Arcanum?</string>
     <string name="notif_support_developer_subtitle">Consider supporting development</string>
 
@@ -301,6 +305,11 @@
     <string name="vault_unmount_title">Unmount \"%1$s\"?</string>
     <string name="vault_unmount_body">The vault will be locked until you enter the password again.</string>
     <string name="vault_unmount_confirm">Unmount</string>
+    <string name="vault_not_found_title">Container Not Found</string>
+    <string name="vault_not_found_body">The container could not be found at its saved path. It may have been moved or renamed by another app.</string>
+    <string name="vault_not_found_remove">Remove from List</string>
+    <string name="vault_not_found_confirm_title">Remove from list?</string>
+    <string name="vault_not_found_confirm_body">The container will be removed from the list. The file will not be deleted.</string>
     <string name="vault_remove_title">Remove \"%1$s\"?</string>
     <string name="vault_remove_body">The vault will be removed from the list. The container file on disk will not be deleted.</string>
     <string name="vault_remove_confirm">Remove</string>
@@ -337,10 +346,14 @@
     <string name="vault_mount_advanced">Advanced</string>
     <string name="vault_mount_pim_label">PIM (optional)</string>
     <string name="vault_mount_pim_placeholder">Leave empty if not set</string>
+    <string name="mount_screen_title">Mount</string>
     <string name="vault_mount_add_keyfile">Add Keyfile (optional)</string>
+    <string name="vault_mount_add_keyfile_hidden">Add Hidden Volume Keyfile (optional)</string>
     <string name="vault_mount_protect_hidden">Protect hidden volume</string>
     <string name="vault_mount_protect_hidden_desc">Prevents outer volume writes from reaching the hidden area</string>
     <string name="vault_mount_hidden_password">Hidden Volume Password</string>
+    <string name="vault_mount_hidden_pim_label">Hidden Volume PIM (optional)</string>
+    <string name="vault_mount_add_hidden_keyfile">Add Hidden Volume Keyfile (optional)</string>
     <string name="vault_biometric_unlock_title">Unlock %1$s</string>
     <string name="vault_biometric_unlock_subtitle">Authenticate to open vault</string>
     <string name="vault_biometric_use_password">Use password instead</string>
@@ -563,6 +576,8 @@
     <string name="create_pim_status_similar">Similar to default</string>
     <string name="create_pim_status_enhanced">Enhanced security, slower to open</string>
     <string name="create_pim_unlock_est">Estimated unlock time: ~%1$d seconds</string>
+    <string name="create_pim_short_pwd_error">PIM below 485 requires a password of at least 20 characters</string>
+    <string name="vault_mount_pim_short_pwd_error">PIM below 485 requires a password of at least 20 characters</string>
     <string name="create_pwd_warning">There is no way to recover your password. Write it down and keep it safe.</string>
     <string name="create_step6_title">Format Mode</string>
     <string name="create_format_quick_title">Quick Format</string>

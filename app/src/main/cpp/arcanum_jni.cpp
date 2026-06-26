@@ -2,6 +2,7 @@
  * Arcanum - VeraCrypt-compatible encrypted vault manager for Android
  *
  * Copyright (C) 2026 Esdex
+ * Licensed under Apache License 2.0
  *
  * This file incorporates code from VeraCrypt
  * Copyright (C) 2013-2025 AM Crypto
@@ -71,7 +72,7 @@ static uint32_t vc_get_iterations(int hashId, int pim) {
     if (pim > 9999) pim = 9999; /* clamp: prevents uint32_t overflow in iteration formula */
     switch (hashId) {
         case 0: return 15000U + (uint32_t)pim * 1000U; /* SHA-512      */
-        case 1: return  2048U + (uint32_t)pim * 2048U; /* SHA-256      */
+        case 1: return 15000U + (uint32_t)pim * 1000U; /* SHA-256      */
         case 2: return 15000U + (uint32_t)pim * 1000U; /* Whirlpool    */
         case 3: return 15000U + (uint32_t)pim * 1000U; /* Streebog     */
         case 4: return 15000U + (uint32_t)pim * 1000U; /* BLAKE2s-256  */
@@ -80,15 +81,16 @@ static uint32_t vc_get_iterations(int hashId, int pim) {
 }
 
 /* Error codes (match Kotlin companion object) */
-#define ERR_OK              0
-#define ERR_FILE            -1
-#define ERR_READ            -2
-#define ERR_WRONG_PASSWORD  -3
-#define ERR_UNSUPPORTED     -4
-#define ERR_NO_SPACE        -5
-#define ERR_NO_SLOT         -6
-#define ERR_FS              -7
-#define ERR_RAND            -8
+#define ERR_OK               0
+#define ERR_FILE             -1
+#define ERR_READ             -2
+#define ERR_WRONG_PASSWORD   -3
+#define ERR_UNSUPPORTED      -4
+#define ERR_NO_SPACE         -5
+#define ERR_NO_SLOT          -6
+#define ERR_FS               -7
+#define ERR_RAND             -8
+#define ERR_HIDDEN_BOUNDARY  -9  /* write blocked by hidden-volume protection */
 
 /* Key schedule sizes for Serpent and Camellia (others use their structs) */
 #define SERPENT_KS_SIZE    (140 * 4)   /* 560 bytes */
@@ -96,7 +98,17 @@ static uint32_t vc_get_iterations(int hashId, int pim) {
 
 /* ─── Algorithm table ───────────────────────────────────────────────── */
 /* Algorithm IDs = Kotlin CipherAlgorithm.ordinal.
-   Cipher list is in ENCRYPTION order (first cipher applied first).    */
+ *
+ * Cipher arrays are stored in APPLICATION ORDER: c[0] is applied FIRST on
+ * encrypt (innermost), c[n-1] is applied LAST (outermost). Encrypt loops
+ * forward 0..n-1; decrypt loops reverse n-1..0. This matches VeraCrypt's
+ * EncryptionModeXTS::Encrypt (forward) / Decrypt (reverse) with Ciphers[]
+ * ordered innermost-first.
+ *
+ * "AES-Twofish": Twofish encrypts first → c[0]=TWOFISH, c[1]=AES.
+ *
+ * Key layout (build_cascade_key64): [ primary_0..primary_{n-1} | tweak_0..tweak_{n-1} ]
+ * 32 bytes per slot, matching VeraCrypt EAInit + XTS EAInitMode.            */
 
 struct AlgDef { int n; int c[3]; };
 
@@ -106,16 +118,16 @@ static const AlgDef ALGORITHMS[15] = {
     /* 2  Twofish           */ {1, {CIPHER_TWOFISH,    0,                 0              }},
     /* 3  Camellia          */ {1, {CIPHER_CAMELLIA,   0,                 0              }},
     /* 4  Kuznyechik        */ {1, {CIPHER_KUZNYECHIK, 0,                 0              }},
-    /* 5  AES→Twofish       */ {2, {CIPHER_AES,        CIPHER_TWOFISH,    0              }},
-    /* 6  AES→Twofish→Serp  */ {3, {CIPHER_AES,        CIPHER_TWOFISH,    CIPHER_SERPENT }},
-    /* 7  Serpent→AES       */ {2, {CIPHER_SERPENT,    CIPHER_AES,        0              }},
-    /* 8  Serp→Twofish→AES  */ {3, {CIPHER_SERPENT,    CIPHER_TWOFISH,    CIPHER_AES     }},
-    /* 9  Twofish→Serpent   */ {2, {CIPHER_TWOFISH,    CIPHER_SERPENT,    0              }},
-    /* 10 Camellia→Kuz      */ {2, {CIPHER_CAMELLIA,   CIPHER_KUZNYECHIK, 0              }},
-    /* 11 Camellia→Serpent  */ {2, {CIPHER_CAMELLIA,   CIPHER_SERPENT,    0              }},
-    /* 12 Kuz→AES           */ {2, {CIPHER_KUZNYECHIK, CIPHER_AES,        0              }},
-    /* 13 Kuz→Serp→Camellia */ {3, {CIPHER_KUZNYECHIK, CIPHER_SERPENT,    CIPHER_CAMELLIA}},
-    /* 14 Kuz→Twofish       */ {2, {CIPHER_KUZNYECHIK, CIPHER_TWOFISH,    0              }},
+    /* 5  AES→Twofish       */ {2, {CIPHER_TWOFISH,    CIPHER_AES,        0              }},
+    /* 6  AES→Twofish→Serp  */ {3, {CIPHER_SERPENT,    CIPHER_TWOFISH,    CIPHER_AES     }},
+    /* 7  Serpent→AES       */ {2, {CIPHER_AES,        CIPHER_SERPENT,    0              }},
+    /* 8  Serp→Twofish→AES  */ {3, {CIPHER_AES,        CIPHER_TWOFISH,    CIPHER_SERPENT }},
+    /* 9  Twofish→Serpent   */ {2, {CIPHER_SERPENT,    CIPHER_TWOFISH,    0              }},
+    /* 10 Camellia→Kuz      */ {2, {CIPHER_KUZNYECHIK, CIPHER_CAMELLIA,   0              }},
+    /* 11 Camellia→Serpent  */ {2, {CIPHER_SERPENT,    CIPHER_CAMELLIA,   0              }},
+    /* 12 Kuz→AES           */ {2, {CIPHER_AES,        CIPHER_KUZNYECHIK, 0              }},
+    /* 13 Kuz→Serp→Camellia */ {3, {CIPHER_CAMELLIA,   CIPHER_SERPENT,    CIPHER_KUZNYECHIK}},
+    /* 14 Kuz→Twofish       */ {2, {CIPHER_TWOFISH,    CIPHER_KUZNYECHIK, 0              }},
 };
 #define NUM_ALGORITHMS 15
 
@@ -259,6 +271,9 @@ static void xts_crypt_temp(int type, const uint8_t key64[64],
 
 /* ─── GenCipherCtx ops (for persistent drive I/O) ───────────────────── */
 
+static void secure_memset(volatile uint8_t *p, uint8_t c, size_t n);
+static void build_cascade_key64(const uint8_t *dk, int n, int i, uint8_t out[64]);
+
 static void init_layer_ks(XtsLayerKS *ks, int type, const uint8_t key64[64]) {
     ks->type = type;
     switch (type) {
@@ -384,8 +399,12 @@ static int alloc_drive(int fd, uint64_t dataOff, uint64_t sectors,
             auto *ctx = static_cast<GenCipherCtx*>(malloc(sizeof(GenCipherCtx)));
             if (!ctx) { g_drives[i].active = false; return -1; }
             ctx->num = ALGORITHMS[algId].n;
-            for (int j = 0; j < ctx->num; j++)
-                init_layer_ks(&ctx->layers[j], ALGORITHMS[algId].c[j], masterKey + j*64);
+            for (int j = 0; j < ctx->num; j++) {
+                uint8_t ck[64];
+                build_cascade_key64(masterKey, ctx->num, j, ck);
+                init_layer_ks(&ctx->layers[j], ALGORITHMS[algId].c[j], ck);
+                secure_memset(ck, 0, sizeof(ck));
+            }
             g_drives[i].cipherCtx = ctx;
             return i;
         }
@@ -427,6 +446,13 @@ static void hmac_sha512(const uint8_t *key, int klen,
 /* Volatile pointer prevents the compiler from eliding security-critical zeroing. */
 static void secure_memset(volatile uint8_t *p, uint8_t c, size_t n) {
     while (n--) *p++ = c;
+}
+
+/* VeraCrypt cascade key layout: primary keys first, then tweak keys (32 bytes each).
+ * For n=1 the result is identical to a flat 64-byte block — single-cipher unaffected. */
+static void build_cascade_key64(const uint8_t *dk, int n, int i, uint8_t out[64]) {
+    memcpy(out,    dk + i * 32,           32);
+    memcpy(out+32, dk + n * 32 + i * 32, 32);
 }
 
 static void pbkdf2_sha512(const uint8_t *pwd, int plen,
@@ -877,9 +903,12 @@ static int write_vc_header(int fd, uint64_t fileOff,
     uint32_t crc2 = crc32_buf(body, 188);
     put_be32(body + 188, crc2);
 
-    /* Encrypt body using the cascade (in order: first cipher first) */
-    for (int i = 0; i < n; i++)
-        xts_crypt_temp(ALGORITHMS[algId].c[i], derivedKey + i*64, body, VC_HEADER_BODY_SIZE, 0, true);
+    /* Encrypt body: forward 0..n-1 (c[0]=innermost first), VeraCrypt cascade key layout. */
+    for (int i = 0; i < n; i++) {
+        uint8_t ck[64]; build_cascade_key64(derivedKey, n, i, ck);
+        xts_crypt_temp(ALGORITHMS[algId].c[i], ck, body, VC_HEADER_BODY_SIZE, 0, true);
+        secure_memset(ck, 0, sizeof(ck));
+    }
 
     uint8_t rawHeader[VC_HEADER_SIZE] = {};
     memcpy(rawHeader, salt, VC_HEADER_SALT_SIZE);
@@ -939,8 +968,12 @@ static int read_vc_header(int fd, uint64_t fileOff,
         uint8_t body[VC_HEADER_BODY_SIZE];
         memcpy(body, rawBody, VC_HEADER_BODY_SIZE);
         int n = ALGORITHMS[hintAlgId].n;
-        for (int ci = n - 1; ci >= 0; ci--)
-            xts_crypt_temp(ALGORITHMS[hintAlgId].c[ci], hintKey + ci*64, body, VC_HEADER_BODY_SIZE, 0, false);
+        /* Decrypt: reverse n-1..0 (outermost c[n-1] first). */
+        for (int ci = n - 1; ci >= 0; ci--) {
+            uint8_t ck[64]; build_cascade_key64(hintKey, n, ci, ck);
+            xts_crypt_temp(ALGORITHMS[hintAlgId].c[ci], ck, body, VC_HEADER_BODY_SIZE, 0, false);
+            secure_memset(ck, 0, sizeof(ck));
+        }
 
         if (body[0]=='V' && body[1]=='E' && body[2]=='R' && body[3]=='A' &&
             get_be32(body + 188) == crc32_buf(body, 188) &&
@@ -978,9 +1011,12 @@ static int read_vc_header(int fd, uint64_t fileOff,
             memcpy(body, rawBody, VC_HEADER_BODY_SIZE);
 
             int n = ALGORITHMS[ai].n;
-            /* Decrypt in reverse cipher order */
-            for (int ci = n - 1; ci >= 0; ci--)
-                xts_crypt_temp(ALGORITHMS[ai].c[ci], derivedKey + ci*64, body, VC_HEADER_BODY_SIZE, 0, false);
+            /* Decrypt: reverse n-1..0 (outermost c[n-1] first). */
+            for (int ci = n - 1; ci >= 0; ci--) {
+                uint8_t ck[64]; build_cascade_key64(allDerivedKeys[hi], n, ci, ck);
+                xts_crypt_temp(ALGORITHMS[ai].c[ci], ck, body, VC_HEADER_BODY_SIZE, 0, false);
+                secure_memset(ck, 0, sizeof(ck));
+            }
 
             /* Check "VERA" magic */
             if (body[0]!='V'||body[1]!='E'||body[2]!='R'||body[3]!='A') {
@@ -1374,7 +1410,8 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
         JNIEnv *env, jobject /*thiz*/,
         jint safFd, jstring jPassword, jobjectArray jKeyfilePaths,
-        jint pim, jint algorithm, jint hashAlgorithm)
+        jint pim, jint algorithm, jint hashAlgorithm,
+        jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfilePaths, jint protectHiddenPim)
 {
     std::string password = jstring_to_string(env, jPassword);
     auto keyfilePaths    = jstringArray_to_vector(env, jKeyfilePaths);
@@ -1388,12 +1425,23 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
     apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
 
+    /* Prepare hidden-volume credentials for boundary derivation */
+    std::string hiddenPassword = jProtectHiddenPassword ? jstring_to_string(env, jProtectHiddenPassword) : "";
+    auto hiddenKeyfilePaths    = jstringArray_to_vector(env, jProtectHiddenKeyfilePaths);
+    uint8_t hidEffPwd[VC_MAX_PWD_LEN] = {};
+    int hidEffPwdLen = (int)hiddenPassword.size();
+    if (hidEffPwdLen > VC_MAX_PWD_LEN) hidEffPwdLen = VC_MAX_PWD_LEN;
+    if (hidEffPwdLen > 0) {
+        memcpy(hidEffPwd, hiddenPassword.c_str(), (size_t)hidEffPwdLen);
+        apply_keyfiles_to_password(hiddenKeyfilePaths, hidEffPwd, &hidEffPwdLen);
+    }
+
     struct stat st{};
     fstat(fd, &st);
     uint64_t fileSize = (uint64_t)st.st_size;
 
-    if (fileSize < VC_DATA_OFFSET) { close(fd); return (jlong)ERR_WRONG_PASSWORD; }
-    if (fileSize % VC_SECTOR_SIZE != 0) { close(fd); return (jlong)ERR_WRONG_PASSWORD; }
+    if (fileSize < VC_DATA_OFFSET) { memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)ERR_WRONG_PASSWORD; }
+    if (fileSize % VC_SECTOR_SIZE != 0) { memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)ERR_WRONG_PASSWORD; }
 
     uint8_t masterKey[192] = {};
     int mkLen = 0, algId = 0, hashId = 0;
@@ -1421,11 +1469,33 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     }
 
     memset(effPwd, 0, sizeof(effPwd));
-    if (rc != ERR_OK) { memset(masterKey, 0, sizeof(masterKey)); close(fd); return (jlong)rc; }
+    if (rc != ERR_OK) { memset(masterKey, 0, sizeof(masterKey)); memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)rc; }
 
     uint64_t hiddenBoundary = 0;
     if (!authIsHidden && hiddenVolSize > 0)
         hiddenBoundary = dataOff + dataSz - hiddenVolSize;
+
+    /* If outer volume mounted but boundary unknown, derive it from hidden header */
+    if (!authIsHidden && hiddenBoundary == 0 && hidEffPwdLen > 0) {
+        uint64_t hidOffsets[2] = { VC_HIDDEN_HEADER_OFFSET, fileSize - VC_HIDDEN_HEADER_OFFSET };
+        uint8_t hidMasterKey[192] = {};
+        int hidMkLen = 0, hidAlgId = 0, hidHashId = 0;
+        uint64_t hidDataSz = 0, hidDataOff = 0, hidHvSz = 0;
+        for (int ti = 0; ti < 2; ti++) {
+            if (hidOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
+            int hrc = read_vc_header(fd, hidOffsets[ti], (const char*)hidEffPwd, hidEffPwdLen,
+                                     hidMasterKey, &hidMkLen, &hidDataSz, &hidDataOff,
+                                     &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
+            if (hrc == ERR_OK && hidDataSz > 0) {
+                hiddenBoundary = dataOff + dataSz - hidDataSz;
+                LOGE("[fd/open] protect-hidden: boundary set to 0x%llx from hidden header",
+                     (unsigned long long)hiddenBoundary);
+                break;
+            }
+        }
+        memset(hidMasterKey, 0, sizeof(hidMasterKey));
+    }
+    memset(hidEffPwd, 0, sizeof(hidEffPwd));
 
     int pdrv = alloc_drive(fd, dataOff, dataSz / VC_SECTOR_SIZE, masterKey, algId, hashId,
                            authIsHidden, hiddenBoundary);
@@ -1456,7 +1526,8 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
         JNIEnv *env, jobject /*thiz*/,
         jstring jPath, jstring jPassword, jobjectArray jKeyfilePaths,
-        jint pim, jint algorithm, jint hashAlgorithm)
+        jint pim, jint algorithm, jint hashAlgorithm,
+        jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfilePaths, jint protectHiddenPim)
 {
     std::string path     = jstring_to_string(env, jPath);
     std::string password = jstring_to_string(env, jPassword);
@@ -1468,8 +1539,19 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
     apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
 
+    /* Prepare hidden-volume credentials for boundary derivation */
+    std::string hiddenPassword = jProtectHiddenPassword ? jstring_to_string(env, jProtectHiddenPassword) : "";
+    auto hiddenKeyfilePaths    = jstringArray_to_vector(env, jProtectHiddenKeyfilePaths);
+    uint8_t hidEffPwd[VC_MAX_PWD_LEN] = {};
+    int hidEffPwdLen = (int)hiddenPassword.size();
+    if (hidEffPwdLen > VC_MAX_PWD_LEN) hidEffPwdLen = VC_MAX_PWD_LEN;
+    if (hidEffPwdLen > 0) {
+        memcpy(hidEffPwd, hiddenPassword.c_str(), (size_t)hidEffPwdLen);
+        apply_keyfiles_to_password(hiddenKeyfilePaths, hidEffPwd, &hidEffPwdLen);
+    }
+
     int fd = open(path.c_str(), O_RDWR);
-    if (fd < 0) { LOGE("Cannot open: %s (errno=%d: %s)", path.c_str(), errno, strerror(errno)); return (jlong)ERR_FILE; }
+    if (fd < 0) { LOGE("Cannot open: %s (errno=%d: %s)", path.c_str(), errno, strerror(errno)); memset(hidEffPwd, 0, sizeof(hidEffPwd)); return (jlong)ERR_FILE; }
 
     struct stat st{};
     fstat(fd, &st);
@@ -1517,12 +1599,35 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
 
     if (rc != ERR_OK) {
         memset(masterKey, 0, sizeof(masterKey));
+        memset(hidEffPwd, 0, sizeof(hidEffPwd));
         close(fd); return (jlong)rc;
     }
 
     uint64_t hiddenBoundary = 0;
     if (!authIsHidden && hiddenVolSize > 0)
         hiddenBoundary = dataOff + dataSz - hiddenVolSize;
+
+    /* If outer volume mounted but boundary unknown, derive it from hidden header */
+    if (!authIsHidden && hiddenBoundary == 0 && hidEffPwdLen > 0) {
+        uint64_t hidOffsets[2] = { VC_HIDDEN_HEADER_OFFSET, fileSize - VC_HIDDEN_HEADER_OFFSET };
+        uint8_t hidMasterKey[192] = {};
+        int hidMkLen = 0, hidAlgId = 0, hidHashId = 0;
+        uint64_t hidDataSz = 0, hidDataOff = 0, hidHvSz = 0;
+        for (int ti = 0; ti < 2; ti++) {
+            if (hidOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
+            int hrc = read_vc_header(fd, hidOffsets[ti], (const char*)hidEffPwd, hidEffPwdLen,
+                                     hidMasterKey, &hidMkLen, &hidDataSz, &hidDataOff,
+                                     &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
+            if (hrc == ERR_OK && hidDataSz > 0) {
+                hiddenBoundary = dataOff + dataSz - hidDataSz;
+                LOGE("[open] protect-hidden: boundary set to 0x%llx from hidden header",
+                     (unsigned long long)hiddenBoundary);
+                break;
+            }
+        }
+        memset(hidMasterKey, 0, sizeof(hidMasterKey));
+    }
+    memset(hidEffPwd, 0, sizeof(hidEffPwd));
 
     int pdrv = alloc_drive(fd, dataOff, dataSz / VC_SECTOR_SIZE, masterKey, algId, hashId,
                            authIsHidden, hiddenBoundary);
@@ -1714,11 +1819,16 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteFile(
 
     jsize  len  = env->GetArrayLength(jData);
     jbyte *data = env->GetByteArrayElements(jData, nullptr);
+    if (!data) { f_close(&fil); return ERR_FS; }
     UINT   bw   = 0;
     FRESULT fr  = f_write(&fil, data, (UINT)len, &bw);
     env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
     f_close(&fil);
-    return (fr == FR_OK && (jint)bw == len) ? ERR_OK : ERR_FS;
+    if (fr == FR_OK && (jint)bw == len) return ERR_OK;
+    /* Distinguish hidden-boundary protection from generic I/O error */
+    bool tripped = g_drives[pdrv].hiddenBoundaryTripped;
+    g_drives[pdrv].hiddenBoundaryTripped = false;
+    return tripped ? ERR_HIDDEN_BOUNDARY : ERR_FS;
 }
 
 /* ─── JNI: nativeCloseContainer ─────────────────────────────────────── */
@@ -1778,6 +1888,17 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeGetFilesystem(
     auto it  = g_ctxMap.find(pdrv);
     if (it == g_ctxMap.end()) return -1;
     return (jint)it->second->fatFs.fs_type;
+}
+
+/* ─── JNI: nativeGetDataSize ─────────────────────────────────────────── */
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeGetDataSize(
+        JNIEnv */*env*/, jobject /*thiz*/, jlong handle)
+{
+    int pdrv = (int)handle;
+    if (pdrv < 0 || pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return -1;
+    return (jlong)(g_drives[pdrv].sectorCount * (uint64_t)VC_SECTOR_SIZE);
 }
 
 /* ─── JNI: nativeDeleteFile ──────────────────────────────────────────── */

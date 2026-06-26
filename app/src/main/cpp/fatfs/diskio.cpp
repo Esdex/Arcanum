@@ -38,8 +38,9 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buf, LBA_t sector, UINT count) {
 
     /* Protect hidden volume area when outer volume is mounted */
     if (ctx->hiddenBoundary > 0) {
-        uint64_t writeEnd = ctx->dataOffset + ((uint64_t)(sector + count)) * VC_SECTOR_SIZE;
+        uint64_t writeEnd = ctx->dataOffset + ((uint64_t)sector + (uint64_t)count) * VC_SECTOR_SIZE;
         if (writeEnd > ctx->hiddenBoundary) {
+            ctx->hiddenBoundaryTripped = true;
             return RES_WRPRT;
         }
     }

@@ -248,7 +248,12 @@ fun CreateContainerScreen(
                                 }
                         11   -> StepHiddenAlgorithm(state, viewModel::update)
                         12   -> StepHiddenSize(state, viewModel::update)
-                        13   -> StepHiddenPassword(state, viewModel::update)
+                        13   -> StepHiddenPassword(
+                                    state           = state,
+                                    onUpdate        = viewModel::update,
+                                    onAddKeyfile    = { hiddenKeyfilePickerLauncher.launch("*/*") },
+                                    onRemoveKeyfile = viewModel::removeHiddenKeyfile
+                                )
                         14   -> StepHiddenEntropy(state, viewModel::addHiddenEntropyPoint)
                         15   -> StepCreatingHidden(state)
                         16   -> StepSuccessHidden(
@@ -335,7 +340,8 @@ private fun isStepValid(state: CreateContainerState): Boolean = when (state.curr
             }
     3    -> true
     4    -> state.sizeMb > 0L
-    5    -> state.password.length >= 4 && state.password == state.confirmPassword
+    5    -> state.password.length >= 4 && state.password == state.confirmPassword &&
+            !(state.pim in 1..484 && state.password.length < 20)
     6    -> true
     7    -> true
     8    -> state.entropyPoints >= 500
@@ -344,7 +350,8 @@ private fun isStepValid(state: CreateContainerState): Boolean = when (state.curr
     12   -> state.hiddenSizeMb in 4L..(state.sizeMb - 4L)
     13   -> state.hiddenPassword.length >= 4 &&
             state.hiddenPassword == state.hiddenConfirmPassword &&
-            state.hiddenPassword != state.password
+            state.hiddenPassword != state.password &&
+            !(state.hiddenPim in 1..484 && state.hiddenPassword.length < 20 && state.hiddenKeyfilePaths.isEmpty())
     14   -> state.hiddenEntropyPoints >= 500
     else -> true
 }

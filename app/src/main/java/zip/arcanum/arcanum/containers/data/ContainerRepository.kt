@@ -22,6 +22,8 @@ class ContainerRepository @Inject constructor(
     private val mountedIsHidden     = mutableMapOf<String, Boolean>()
     // In-memory hidden-present flag: containerId → hasHiddenVolume
     private val mountedHasHidden    = mutableMapOf<String, Boolean>()
+    // In-memory data-area size: containerId → bytes (overrides DB size when mounted)
+    private val mountedDataSize     = mutableMapOf<String, Long>()
     // SAF file descriptor kept open for the duration the container is mounted
     private val mountedParcelFds    = mutableMapOf<String, ParcelFileDescriptor>()
 
@@ -45,12 +47,14 @@ class ContainerRepository @Inject constructor(
     suspend fun mountContainer(
         id: String, handle: Long, pim: Int = 0,
         isHidden: Boolean = false, hasHidden: Boolean = false,
+        dataSize: Long = 0L,
         parcelFd: ParcelFileDescriptor? = null
     ) {
         mountedHandles[id] = handle
         if (pim > 0) mountedPims[id] = pim else mountedPims.remove(id)
         mountedIsHidden[id]  = isHidden
         mountedHasHidden[id] = hasHidden
+        if (dataSize > 0L) mountedDataSize[id] = dataSize else mountedDataSize.remove(id)
         parcelFd?.let { mountedParcelFds[id] = it }
         dao.setMounted(id, true)
         dao.updateLastAccessed(id, System.currentTimeMillis())
@@ -63,6 +67,7 @@ class ContainerRepository @Inject constructor(
         mountedPims.remove(id)
         mountedIsHidden.remove(id)
         mountedHasHidden.remove(id)
+        mountedDataSize.remove(id)
         mountedParcelFds.remove(id)?.close()
         dao.setMounted(id, false)
     }
@@ -75,6 +80,7 @@ class ContainerRepository @Inject constructor(
         mountedPims.clear()
         mountedIsHidden.clear()
         mountedHasHidden.clear()
+        mountedDataSize.clear()
         mountedParcelFds.values.forEach { runCatching { it.close() } }
         mountedParcelFds.clear()
         return handles
@@ -164,7 +170,7 @@ class ContainerRepository @Inject constructor(
         id              = id,
         name            = name,
         path            = path,
-        size            = size,
+        size            = mountedDataSize[id] ?: size,
         algorithm       = algorithm,
         prf             = prf,
         filesystem      = filesystem,

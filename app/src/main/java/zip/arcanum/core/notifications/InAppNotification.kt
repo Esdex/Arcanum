@@ -92,4 +92,12 @@ sealed class InAppNotification {
     data class FilesExported(val count: Int) : InAppNotification() {
         override val priority = 1
     }
+
+    data object HiddenVolumeWriteProtection : InAppNotification() {
+        override val priority = 3
+    }
+
+    data object ImportFailed : InAppNotification() {
+        override val priority = 2
+    }
 }
