@@ -216,11 +216,12 @@ fun CreateContainerScreen(
                     when (step) {
                         1    -> StepVolumeType(state, viewModel::update)
                         2    -> StepVolumeLocation(
-                                    state          = state,
-                                    appStoragePath = viewModel.appStoragePath,
-                                    onUpdate       = viewModel::update,
-                                    onBrowse       = { viewModel.deletePendingSafFile(); fileCreatorLauncher.launch(state.fileName) },
-                                    onClearSaf     = viewModel::clearSafUri
+                                    state                    = state,
+                                    appStoragePath           = viewModel.appStoragePath,
+                                    appStoragePathWithBackup = viewModel.appStoragePathWithBackup,
+                                    onUpdate                 = viewModel::update,
+                                    onBrowse                 = { viewModel.deletePendingSafFile(); fileCreatorLauncher.launch(state.fileName) },
+                                    onClearSaf               = viewModel::clearSafUri
                                 )
                         3    -> StepEncryptionAlgorithm(state, viewModel::update)
                         4    -> StepVolumeSize(state, viewModel::update)

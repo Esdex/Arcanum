@@ -1,6 +1,5 @@
 package zip.arcanum.arcanum.containers.ui
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -25,8 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Visibility
@@ -85,7 +82,6 @@ fun StepPassword(
     var showPassword    by remember { mutableStateOf(false) }
     var showConfirm     by remember { mutableStateOf(false) }
     var keyfileExpanded by remember { mutableStateOf(false) }
-    var showPimSection  by remember { mutableStateOf(false) }
     var pimText         by remember { mutableStateOf(if (state.pim > 0) state.pim.toString() else "") }
 
     val strength = passwordStrength(state.password)
@@ -180,7 +176,56 @@ fun StepPassword(
             },
             modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
+
+        // PIM field
+        val pimInt = pimText.toIntOrNull() ?: 0
+        val pimStatusDefault  = stringResource(R.string.create_pim_status_default)
+        val pimStatusBelow    = stringResource(R.string.create_pim_status_below)
+        val pimStatusSimilar  = stringResource(R.string.create_pim_status_similar)
+        val pimStatusEnhanced = stringResource(R.string.create_pim_status_enhanced)
+        val (pimIcon, pimMsg) = when {
+            pimText.isEmpty() -> "ℹ️" to pimStatusDefault
+            pimInt < 486      -> "⚠️" to pimStatusBelow
+            pimInt <= 500     -> "✅" to pimStatusSimilar
+            else              -> "🔒" to pimStatusEnhanced
+        }
+        val estSecs = if (pimInt > 0) ((15000 + pimInt * 1000).toFloat() / 500000f * 2f).toInt().coerceAtLeast(1) else 2
+        OutlinedTextField(
+            value         = pimText,
+            onValueChange = {
+                if (it.all { c -> c.isDigit() } && it.length <= 4) {
+                    pimText = it
+                    onUpdate { copy(pim = it.toIntOrNull() ?: 0) }
+                }
+            },
+            label           = { Text(stringResource(R.string.create_pim_short_label)) },
+            placeholder     = { Text(stringResource(R.string.create_pim_placeholder)) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine      = true,
+            modifier        = Modifier.fillMaxWidth()
+        )
+        Text(
+            "$pimIcon $pimMsg",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (pimInt > 0) {
+            Text(
+                stringResource(R.string.create_pim_unlock_est, estSecs),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (pimInt in 1..484 && state.password.length < 20) {
+            Text(
+                stringResource(R.string.create_pim_short_pwd_error),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
 
         // Keyfile section
         TextButton(
@@ -240,87 +285,6 @@ fun StepPassword(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
-
-        // PIM section
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { showPimSection = !showPimSection }
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Icon(
-                Icons.Outlined.Info,
-                contentDescription = null,
-                tint     = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp)
-            )
-            Text(
-                stringResource(R.string.create_pim_label),
-                style    = MaterialTheme.typography.labelMedium,
-                color    = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f)
-            )
-            Icon(
-                if (showPimSection) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                contentDescription = null,
-                tint     = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-        val pimStatusDefault  = stringResource(R.string.create_pim_status_default)
-        val pimStatusBelow    = stringResource(R.string.create_pim_status_below)
-        val pimStatusSimilar  = stringResource(R.string.create_pim_status_similar)
-        val pimStatusEnhanced = stringResource(R.string.create_pim_status_enhanced)
-        AnimatedVisibility(visible = showPimSection) {
-            val pimInt = pimText.toIntOrNull() ?: 0
-            val (pimIcon, pimMsg) = when {
-                pimText.isEmpty()  -> "ℹ️" to pimStatusDefault
-                pimInt < 486       -> "⚠️" to pimStatusBelow
-                pimInt <= 500      -> "✅" to pimStatusSimilar
-                else               -> "🔒" to pimStatusEnhanced
-            }
-            val estSecs = if (pimInt > 0) ((15000 + pimInt * 1000).toFloat() / 500000f * 2f).toInt().coerceAtLeast(1) else 2
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Spacer(Modifier.height(4.dp))
-                OutlinedTextField(
-                    value         = pimText,
-                    onValueChange = {
-                        if (it.all { c -> c.isDigit() } && it.length <= 4) {
-                            pimText = it
-                            onUpdate { copy(pim = it.toIntOrNull() ?: 0) }
-                        }
-                    },
-                    label         = { Text(stringResource(R.string.create_pim_short_label)) },
-                    placeholder   = { Text(stringResource(R.string.create_pim_placeholder)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine    = true,
-                    modifier      = Modifier.fillMaxWidth()
-                )
-                Text(
-                    "$pimIcon $pimMsg",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (pimInt > 0) {
-                    Text(
-                        stringResource(R.string.create_pim_unlock_est, estSecs),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (pimInt in 1..484 && state.password.length < 20) {
-                    Text(
-                        stringResource(R.string.create_pim_short_pwd_error),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        }
-
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Outlined.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))

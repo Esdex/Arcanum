@@ -75,10 +75,11 @@ data class CreateContainerState(
     val currentStep: Int = 1,
     val totalSteps: Int = 10,
     val volumeType: VolumeType = VolumeType.STANDARD,
-    val location: StorageLocation = StorageLocation.APP_STORAGE,
+    val location: StorageLocation = StorageLocation.INTERNAL_STORAGE,
     val filePath: String = "",
     val fileName: String = "vault.hc",
     val safUri: String = "",
+    val includeInBackup: Boolean = false,
     val algorithm: CipherAlgorithm = CipherAlgorithm.AES,
     val hashAlgorithm: HashAlgorithm = HashAlgorithm.SHA512,
     val sizeMb: Long = 1024L,
@@ -128,10 +129,11 @@ class CreateContainerViewModel @Inject constructor(
     private var safParcelFd: ParcelFileDescriptor? = null
     private val registrationStarted  = AtomicBoolean(false)
 
-    val appStoragePath: String = context.filesDir.absolutePath
+    val appStoragePath: String = context.noBackupFilesDir.absolutePath
+    val appStoragePathWithBackup: String = context.filesDir.absolutePath
 
     init {
-        _state.update { it.copy(filePath = context.filesDir.absolutePath) }
+        _state.update { it.copy(filePath = context.noBackupFilesDir.absolutePath) }
     }
 
     fun update(transform: CreateContainerState.() -> CreateContainerState) =
@@ -156,7 +158,10 @@ class CreateContainerViewModel @Inject constructor(
 
     fun clearSafUri() {
         deletePendingSafFile()
-        _state.update { it.copy(safUri = "", filePath = context.filesDir.absolutePath) }
+        _state.update { it.copy(
+            safUri   = "",
+            filePath = if (it.includeInBackup) context.filesDir.absolutePath else context.noBackupFilesDir.absolutePath
+        ) }
     }
 
     // Call this BEFORE launching the file creator picker so the old 0-byte file is gone
