@@ -69,6 +69,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -125,7 +127,9 @@ private fun MountScreenContent(
     onBack: () -> Unit,
     onMountSuccess: (id: String) -> Unit
 ) {
-    val context    = LocalContext.current
+    val context            = LocalContext.current
+    val focusManager       = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val mountState by viewModel.mountState.collectAsState()
     val mountLogs  by viewModel.mountLogs.collectAsState()
     val mountId    = container.id
@@ -342,6 +346,8 @@ private fun MountScreenContent(
                             IconButton(
                                 enabled = canUnlock,
                                 onClick = {
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
                                     val protectedPassword = if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null
                                     val protectedPim = if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0
                                     val protectedKeyfilePaths = if (protectHidden) hiddenKeyfiles.map { it.first } else emptyList()
