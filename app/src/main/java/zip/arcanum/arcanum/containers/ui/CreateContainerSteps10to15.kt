@@ -329,6 +329,7 @@ fun StepHiddenPassword(
             label               = { Text(stringResource(R.string.create_hidden_pwd_label)) },
             singleLine          = true,
             visualTransformation = if (showPwd) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions     = KeyboardOptions(keyboardType = KeyboardType.Password),
             trailingIcon        = {
                 IconButton(onClick = { showPwd = !showPwd }) {
                     Icon(if (showPwd) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
@@ -345,6 +346,7 @@ fun StepHiddenPassword(
             isError              = mismatch,
             supportingText       = if (mismatch) { { Text(stringResource(R.string.create_hidden_pwd_mismatch)) } } else null,
             visualTransformation = if (showConfirmPwd) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions      = KeyboardOptions(keyboardType = KeyboardType.Password),
             trailingIcon         = {
                 IconButton(onClick = { showConfirmPwd = !showConfirmPwd }) {
                     Icon(if (showConfirmPwd) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
@@ -421,7 +423,7 @@ fun StepHiddenPassword(
                     },
                     label           = { Text(stringResource(R.string.create_pim_short_label)) },
                     placeholder     = { Text(stringResource(R.string.create_pim_placeholder)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     singleLine      = true,
                     modifier        = Modifier.fillMaxWidth()
                 )

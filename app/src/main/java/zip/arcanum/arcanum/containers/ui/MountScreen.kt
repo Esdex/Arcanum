@@ -527,7 +527,10 @@ private fun MountScreenContent(
                                         )
                                     }
                                 },
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Password,
+                                    imeAction    = ImeAction.Next
+                                ),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .offset { IntOffset(shakeAnim.value.roundToInt(), 0) }
@@ -752,6 +755,7 @@ private fun MountScreenContent(
                                                         )
                                                     }
                                                 },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                                 modifier = Modifier.fillMaxWidth()
                                             )
                                             OutlinedTextField(
