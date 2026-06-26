@@ -16,14 +16,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Fingerprint
-import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.NewReleases
-import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Terminal
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -67,46 +65,40 @@ fun WhatsNewScreen(onBack: () -> Unit) {
     val entries = remember {
         listOf(
             WhatsNewEntry(
-                icon        = Icons.Outlined.Security,
-                iconTint    = Color(0xFF7C3AED),
-                title       = "VeraCrypt-compatible encryption",
-                description = "Create and mount encrypted containers using the same format as VeraCrypt — AES-256-XTS, Serpent, Twofish, Camellia, Kuznyechik, and all cascade combinations."
+                icon        = Icons.Outlined.Terminal,
+                iconTint    = Color(0xFF57FF81),
+                title       = "Live mount log",
+                description = "Enable in debug settings to watch every cipher and PRF combination tried in real time as your container is being unlocked."
             ),
             WhatsNewEntry(
-                icon        = Icons.Outlined.VisibilityOff,
+                icon        = Icons.Outlined.NewReleases,
                 iconTint    = Color(0xFF7C3AED),
-                title       = "Hidden volumes",
-                description = "Create a hidden volume inside an outer container for plausible deniability. Two passwords — two realities."
+                title       = "Update notifications",
+                description = "A banner appears the first time you open the app after an update. Tap it to open this screen and see what changed."
             ),
             WhatsNewEntry(
-                icon        = Icons.Outlined.Lock,
-                iconTint    = Color(0xFF2563EB),
-                title       = "Calculator disguise",
-                description = "The app appears as a plain calculator. Your access PIN unlocks it; a panic PIN erases all data."
+                icon        = Icons.Outlined.Edit,
+                iconTint    = Color(0xFF0891B2),
+                title       = "Container rename",
+                description = "Rename your containers directly from the container config sheet without having to delete and recreate them."
             ),
             WhatsNewEntry(
                 icon        = Icons.Outlined.Fingerprint,
                 iconTint    = Color(0xFF16A34A),
-                title       = "Biometric unlock",
-                description = "Use your fingerprint or face to unlock the app instead of typing your PIN every time."
+                title       = "Biometric after auto-lock",
+                description = "Fixed biometric prompt not appearing when the app auto-locked itself in the background — no more forced PIN fallback."
             ),
             WhatsNewEntry(
-                icon        = Icons.Outlined.FolderOpen,
+                icon        = Icons.Outlined.AutoAwesome,
                 iconTint    = Color(0xFFD97706),
-                title       = "Files, gallery & media player",
-                description = "Browse files, view photos, play videos and audio — all without decrypting to disk."
+                title       = "Smoother UI",
+                description = "Tab switches are now animated, and password fields no longer show IME suggestions for better privacy."
             ),
             WhatsNewEntry(
-                icon        = Icons.Outlined.Extension,
-                iconTint    = Color(0xFF0891B2),
-                title       = "Keyfile support",
-                description = "Strengthen your containers with keyfiles in addition to passwords, compatible with VeraCrypt keyfile format."
-            ),
-            WhatsNewEntry(
-                icon        = Icons.Outlined.Terminal,
-                iconTint    = Color(0xFF57FF81),
-                title       = "Mount log (debug)",
-                description = "Enable a live terminal log in the debug settings to see each cipher/PRF combination tried during mounting in real time."
+                icon        = Icons.Outlined.BugReport,
+                iconTint    = Color(0xFFEF4444),
+                title       = "Bug fixes",
+                description = "• Keyboard and text cursor now close when tapping the mount button\n• Swipe-dismissing the update banner no longer permanently marks it as seen — it returns on next launch"
             )
         )
     }

@@ -21,9 +21,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Security
@@ -1685,6 +1689,64 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
                     }
+                }
+            }
+            // ── 1.1.0 entries ─────────────────────────────────────────────
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Terminal,
+                    color    = Color(0xFF57FF81),
+                    title    = "Live mount log",
+                    subtitle = "Enable in debug settings to watch every cipher and PRF combination tried in real time as your container is being unlocked."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.NewReleases,
+                    color    = Color(0xFF7C3AED),
+                    title    = "Update notifications",
+                    subtitle = "A banner appears the first time you open the app after an update. Tap it to open the What's New screen."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Edit,
+                    color    = Color(0xFF0891B2),
+                    title    = "Container rename",
+                    subtitle = "Rename your containers directly from the container config sheet."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.AutoAwesome,
+                    color    = Color(0xFFD97706),
+                    title    = "Smoother UI",
+                    subtitle = "Tab switches are now animated, and password fields no longer show IME suggestions for better privacy."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.BugReport,
+                    color    = Color(0xFFEF4444),
+                    title    = "Bug fixes",
+                    subtitle = "• Keyboard and text cursor now close when tapping the mount button\n• Swipe-dismissing the update banner no longer permanently marks it as seen\n• Biometric prompt now reappears correctly after the app auto-locks in the background"
+                )
+            }
+
+            // ── 1.0.0 section ─────────────────────────────────────────────
+            item {
+                Row(
+                    modifier          = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                    Text(
+                        text  = "Version 1.0.0",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f))
                 }
             }
             item {
