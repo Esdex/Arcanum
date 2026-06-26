@@ -524,6 +524,8 @@
     <string name="create_step2_title">Choose Location</string>
     <string name="create_location_app">App Storage</string>
     <string name="create_location_app_desc">Private storage inside the app. No extra permissions needed.</string>
+    <string name="create_location_backup_title">Include in Android backup</string>
+    <string name="create_location_backup_desc">Allow Android to back up this container to the cloud</string>
     <string name="create_location_internal">Internal Storage</string>
     <string name="create_location_internal_desc">Save to a user-accessible folder on your device storage.</string>
     <string name="create_location_no_folder">No folder selected</string>

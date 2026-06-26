@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhoneAndroid
@@ -33,6 +34,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -78,46 +80,14 @@ fun StepVolumeType(state: CreateContainerState, onUpdate: (CreateContainerState.
 fun StepVolumeLocation(
     state: CreateContainerState,
     appStoragePath: String,
+    appStoragePathWithBackup: String,
     onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit,
     onBrowse: () -> Unit,
     onClearSaf: () -> Unit = {}
 ) {
     StepContent(title = stringResource(R.string.create_step2_title)) {
 
-        // ── Option 1: App Storage ──────────────────────────────────────
-        SelectionCard(
-            selected    = state.location == StorageLocation.APP_STORAGE,
-            icon        = Icons.Outlined.PhoneAndroid,
-            title       = stringResource(R.string.create_location_app),
-            description = stringResource(R.string.create_location_app_desc),
-            onClick     = {
-                onClearSaf()
-                onUpdate { copy(location = StorageLocation.APP_STORAGE, filePath = appStoragePath) }
-            }
-        )
-        AnimatedVisibility(visible = state.location == StorageLocation.APP_STORAGE) {
-            Row(
-                modifier          = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector        = Icons.Outlined.Folder,
-                    contentDescription = null,
-                    tint               = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier           = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text  = appStoragePath,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        // ── Option 2: External Storage (via SAF) ──────────────────────
+        // ── Option 1: Internal Storage (via SAF) ──────────────────────
         SelectionCard(
             selected    = state.location == StorageLocation.INTERNAL_STORAGE,
             icon        = Icons.Outlined.Storage,
@@ -159,17 +129,83 @@ fun StepVolumeLocation(
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(12.dp))
 
-        // ── File name (always visible) ────────────────────────────────
-        OutlinedTextField(
-            value         = state.fileName,
-            onValueChange = { onUpdate { copy(fileName = it) } },
-            label         = { Text(stringResource(R.string.create_filename_label)) },
-            placeholder   = { Text(stringResource(R.string.create_filename_placeholder)) },
-            singleLine    = true,
-            modifier      = Modifier.fillMaxWidth()
+        // ── Option 2: App Storage ──────────────────────────────────────
+        SelectionCard(
+            selected    = state.location == StorageLocation.APP_STORAGE,
+            icon        = Icons.Outlined.PhoneAndroid,
+            title       = stringResource(R.string.create_location_app),
+            description = stringResource(R.string.create_location_app_desc),
+            onClick     = {
+                onClearSaf()
+                val path = if (state.includeInBackup) appStoragePathWithBackup else appStoragePath
+                onUpdate { copy(location = StorageLocation.APP_STORAGE, filePath = path) }
+            }
         )
+        AnimatedVisibility(visible = state.location == StorageLocation.APP_STORAGE) {
+            Column {
+                Row(
+                    modifier          = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector        = Icons.Outlined.Folder,
+                        contentDescription = null,
+                        tint               = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier           = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text  = if (state.includeInBackup) appStoragePathWithBackup else appStoragePath,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value         = state.fileName,
+                    onValueChange = { onUpdate { copy(fileName = it) } },
+                    label         = { Text(stringResource(R.string.create_filename_label)) },
+                    placeholder   = { Text(stringResource(R.string.create_filename_placeholder)) },
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier          = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector        = Icons.Outlined.Backup,
+                        contentDescription = null,
+                        tint               = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier           = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text  = stringResource(R.string.create_location_backup_title),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text  = stringResource(R.string.create_location_backup_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Switch(
+                        checked         = state.includeInBackup,
+                        onCheckedChange = { enabled ->
+                            val path = if (enabled) appStoragePathWithBackup else appStoragePath
+                            onUpdate { copy(includeInBackup = enabled, filePath = path) }
+                        }
+                    )
+                }
+            }
+        }
+
     }
 }
 
