@@ -2,6 +2,9 @@ package zip.arcanum.core.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.EaseInOutCubic
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -35,14 +38,17 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import kotlin.math.abs
+import kotlinx.coroutines.launch
 import zip.arcanum.R
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material3.TopAppBarDefaults
@@ -93,6 +99,15 @@ fun ContainerScreen(
     var selectedTab       by rememberSaveable { mutableStateOf(BottomNavItem.ContainerGallery.route) }
     var notification      by remember { mutableStateOf<InAppNotification?>(null) }
 
+    // Per-tab offset: 0f = center, 1f = off-screen right, -1f = off-screen left.
+    // Initialized so the default tab (Gallery) is at 0 and others wait off to the right.
+    val tabOffsets = remember {
+        containerTabs.mapIndexed { i, tab ->
+            Animatable(if (tab.route == selectedTab) 0f else 1f)
+        }
+    }
+    val tabAnimScope = rememberCoroutineScope()
+
     val showBottomBar = !(selectedTab == BottomNavItem.ContainerFiles.route && fileManagerState.isSelectionMode)
     val navBarPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
@@ -134,13 +149,19 @@ fun ContainerScreen(
                         .fillMaxSize()
                         .hazeSource(hazeState)
                 ) {
-                    containerTabs.forEach { tab ->
+                    containerTabs.forEachIndexed { index, tab ->
                         val active = selectedTab == tab.route
+                        val offset = tabOffsets[index].value
                         Box(
                             Modifier
                                 .fillMaxSize()
-                                .zIndex(if (active) 1f else 0f)
-                                .alpha(if (active) 1f else 0f)
+                                // During animation the outgoing tab needs a non-zero zIndex so
+                                // it renders above its off-screen "parked" siblings.
+                                .zIndex(if (active) 1f else if (abs(offset) < 1f) 0.5f else 0f)
+                                .graphicsLayer {
+                                    translationX = offset * size.width
+                                    alpha = (1f - abs(offset)).coerceAtLeast(0f)
+                                }
                         ) {
                             when (tab) {
                                 BottomNavItem.ContainerGallery -> GalleryScreen(
@@ -199,7 +220,19 @@ fun ContainerScreen(
                         currentRoute = selectedTab,
                         hazeState    = hazeState,
                         isAmoled     = isAmoled,
-                        onItemClick  = { item -> selectedTab = item.route }
+                        onItemClick = { item ->
+                            val newIndex = containerTabs.indexOfFirst { it.route == item.route }
+                            val oldIndex = containerTabs.indexOfFirst { it.route == selectedTab }
+                            if (newIndex != oldIndex) {
+                                val direction = if (newIndex > oldIndex) 1f else -1f
+                                tabAnimScope.launch {
+                                    tabOffsets[newIndex].snapTo(direction)
+                                    launch { tabOffsets[newIndex].animateTo(0f, tween(300, easing = EaseInOutCubic)) }
+                                    launch { tabOffsets[oldIndex].animateTo(-direction, tween(300, easing = EaseInOutCubic)) }
+                                }
+                                selectedTab = item.route
+                            }
+                        }
                     )
                 }
 
