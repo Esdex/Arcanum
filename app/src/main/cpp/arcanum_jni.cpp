@@ -935,6 +935,55 @@ static void derive_header_key(int hi, const uint8_t *password, int pwd_len,
     }
 }
 
+/* ─── Mount-progress callback helpers ───────────────────────────────── */
+
+static const char* algo_name(int algId) {
+    static const char* const N[] = {
+        "AES-256-XTS", "Serpent-256-XTS", "Twofish-256-XTS",
+        "Camellia-256-XTS", "Kuznyechik-256-XTS",
+        "AES-Twofish", "AES-Twofish-Serpent", "Serpent-AES",
+        "Serpent-Twofish-AES", "Twofish-Serpent",
+        "Camellia-Kuznyechik", "Camellia-Serpent", "Kuznyechik-AES",
+        "Kuznyechik-Serpent-Camellia", "Kuznyechik-Twofish"
+    };
+    return (algId >= 0 && algId < NUM_ALGORITHMS) ? N[algId] : "?";
+}
+
+static const char* hash_name(int hashId) {
+    static const char* const N[] = { "SHA-512", "SHA-256", "Whirlpool", "Streebog", "BLAKE2s-256" };
+    return (hashId >= 0 && hashId <= 4) ? N[hashId] : "?";
+}
+
+struct MountCb {
+    JNIEnv    *env;
+    jobject    listener;
+    jmethodID  mid;
+    int        attempt;
+    int        total;
+};
+
+static jmethodID resolve_mount_mid(JNIEnv *env, jobject listener) {
+    if (!listener) return nullptr;
+    jclass cls = env->GetObjectClass(listener);
+    if (!cls) return nullptr;
+    jmethodID mid = env->GetMethodID(cls, "onTrying", "(Ljava/lang/String;Ljava/lang/String;II)V");
+    env->DeleteLocalRef(cls);
+    if (!mid && env->ExceptionCheck()) env->ExceptionClear();
+    return mid;
+}
+
+static void report_trying(MountCb *cb, int algId, int hashId) {
+    if (!cb || !cb->listener || !cb->mid) return;
+    jstring jCipher = cb->env->NewStringUTF(algo_name(algId));
+    jstring jPrf    = cb->env->NewStringUTF(hash_name(hashId));
+    if (jCipher && jPrf)
+        cb->env->CallVoidMethod(cb->listener, cb->mid, jCipher, jPrf, (jint)cb->attempt, (jint)cb->total);
+    if (jCipher) cb->env->DeleteLocalRef(jCipher);
+    if (jPrf)    cb->env->DeleteLocalRef(jPrf);
+    if (cb->env->ExceptionCheck()) cb->env->ExceptionClear();
+    cb->attempt++;
+}
+
 /*
  * Tries all 5 hashes × 15 cipher algorithms (75 combinations max).
  * hintAlgId / hintHashId (-1 = unknown): if both are valid, the matching
@@ -948,7 +997,8 @@ static int read_vc_header(int fd, uint64_t fileOff,
                           int *outAlgId, int *outHashId = nullptr,
                           int pim = 0,
                           uint64_t *outHiddenVolSize = nullptr,
-                          int hintAlgId = -1, int hintHashId = -1) {
+                          int hintAlgId = -1, int hintHashId = -1,
+                          MountCb *mountCb = nullptr) {
     uint8_t rawHeader[VC_HEADER_SIZE];
     if (pread(fd, rawHeader, VC_HEADER_SIZE, (off_t)fileOff) != VC_HEADER_SIZE) return ERR_READ;
 
@@ -957,11 +1007,14 @@ static int read_vc_header(int fd, uint64_t fileOff,
 
     static const int NUM_HASHES = 5;
 
+    if (mountCb) { mountCb->attempt = 1; mountCb->total = NUM_HASHES * NUM_ALGORITHMS; }
+
     /* ── Fast path: try hinted (hash, algorithm) combination first ── */
     bool hintTried = false;
     if (hintHashId >= 0 && hintHashId < NUM_HASHES &&
         hintAlgId  >= 0 && hintAlgId  < NUM_ALGORITHMS) {
         hintTried = true;
+        report_trying(mountCb, hintAlgId, hintHashId);
         uint8_t hintKey[192] = {};
         derive_header_key(hintHashId, (const uint8_t*)password, pwd_len, salt, pim, hintKey);
 
@@ -1006,6 +1059,8 @@ static int read_vc_header(int fd, uint64_t fileOff,
 
         for (int ai = 0; ai < NUM_ALGORITHMS; ai++) {
             if (hintTried && hi == hintHashId && ai == hintAlgId) continue;
+
+            report_trying(mountCb, ai, hi);
 
             uint8_t body[VC_HEADER_BODY_SIZE];
             memcpy(body, rawBody, VC_HEADER_BODY_SIZE);
@@ -1411,7 +1466,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
         JNIEnv *env, jobject /*thiz*/,
         jint safFd, jstring jPassword, jobjectArray jKeyfilePaths,
         jint pim, jint algorithm, jint hashAlgorithm,
-        jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfilePaths, jint protectHiddenPim)
+        jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfilePaths, jint protectHiddenPim,
+        jobject mountProgressListener)
 {
     std::string password = jstring_to_string(env, jPassword);
     auto keyfilePaths    = jstringArray_to_vector(env, jKeyfilePaths);
@@ -1459,12 +1515,15 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     bool authIsHidden = false;
     uint64_t hiddenVolSize = 0;
 
+    MountCb mountCb{ env, mountProgressListener, resolve_mount_mid(env, mountProgressListener), 1, 75 };
+    MountCb *pMountCb = mountProgressListener ? &mountCb : nullptr;
+
     for (int ti = 0; ti < 4 && rc != ERR_OK; ti++) {
         if (tryOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
         uint64_t hvSz = 0;
         rc = read_vc_header(fd, tryOffsets[ti], (const char*)effPwd, effPwdLen,
                             masterKey, &mkLen, &dataSz, &dataOff, &algId, &hashId,
-                            (int)pim, &hvSz, (int)algorithm, (int)hashAlgorithm);
+                            (int)pim, &hvSz, (int)algorithm, (int)hashAlgorithm, pMountCb);
         if (rc == ERR_OK) { authIsHidden = tryIsHidden[ti]; hiddenVolSize = hvSz; }
     }
 
@@ -1527,7 +1586,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
         JNIEnv *env, jobject /*thiz*/,
         jstring jPath, jstring jPassword, jobjectArray jKeyfilePaths,
         jint pim, jint algorithm, jint hashAlgorithm,
-        jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfilePaths, jint protectHiddenPim)
+        jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfilePaths, jint protectHiddenPim,
+        jobject mountProgressListener)
 {
     std::string path     = jstring_to_string(env, jPath);
     std::string password = jstring_to_string(env, jPassword);
@@ -1583,12 +1643,15 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     bool authIsHidden = false;
     uint64_t hiddenVolSize = 0;
 
+    MountCb mountCb{ env, mountProgressListener, resolve_mount_mid(env, mountProgressListener), 1, 75 };
+    MountCb *pMountCb = mountProgressListener ? &mountCb : nullptr;
+
     for (int ti = 0; ti < 4 && rc != ERR_OK; ti++) {
         if (tryOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
         uint64_t hvSz = 0;
         rc = read_vc_header(fd, tryOffsets[ti], (const char*)effPwd, effPwdLen,
                             masterKey, &mkLen, &dataSz, &dataOff, &algId, &hashId, (int)pim, &hvSz,
-                            (int)algorithm, (int)hashAlgorithm);
+                            (int)algorithm, (int)hashAlgorithm, pMountCb);
         if (rc == ERR_OK) {
             authIsHidden = tryIsHidden[ti];
             hiddenVolSize = hvSz;

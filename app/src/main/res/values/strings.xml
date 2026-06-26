@@ -484,6 +484,8 @@
     <string name="settings_debug_cd_refresh">Refresh</string>
     <string name="settings_debug_mode">Debug mode</string>
     <string name="settings_debug_mode_desc">Enable developer tools</string>
+    <string name="settings_debug_mount_log_title">Mount log</string>
+    <string name="settings_debug_mount_log_desc">Show a live terminal log during container mounting. Resets when debug mode is disabled.</string>
     <string name="settings_debug_section_runtime">RUNTIME</string>
     <string name="settings_debug_section_mounted">MOUNTED CONTAINERS</string>
     <string name="settings_debug_section_device">DEVICE SECURITY</string>
