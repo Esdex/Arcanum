@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.billing.BillingManagerInterface
+import zip.arcanum.BuildConfig
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
@@ -80,6 +81,25 @@ class VaultViewModel @Inject constructor(
 
     private val _sortState = MutableStateFlow(SortState())
     val sortState = _sortState.asStateFlow()
+
+    // True when the installed version is newer than the last version the user acknowledged.
+    // null lastSeenVersionCode means first install — not an update.
+    val showUpdateBanner: StateFlow<Boolean> = prefs.lastSeenVersionCode
+        .map { lastSeen -> lastSeen != null && lastSeen < BuildConfig.VERSION_CODE }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun initVersionCheck() {
+        viewModelScope.launch {
+            if (prefs.lastSeenVersionCode.first() == null) {
+                // First install — record current version without showing the banner
+                prefs.setLastSeenVersionCode(BuildConfig.VERSION_CODE)
+            }
+        }
+    }
+
+    fun markUpdateSeen() {
+        viewModelScope.launch { prefs.setLastSeenVersionCode(BuildConfig.VERSION_CODE) }
+    }
 
     private val screenOffReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {

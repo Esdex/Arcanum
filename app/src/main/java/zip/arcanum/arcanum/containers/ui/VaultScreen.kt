@@ -175,13 +175,15 @@ fun VaultScreen(
     autoMountContainerId: String? = null,
     onAutoMountHandled: () -> Unit = {},
     onMoveVault: (containerId: String, toApp: Boolean) -> Unit = { _, _ -> },
+    onOpenWhatsNew: () -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context              = LocalContext.current
-    val containers          by viewModel.containers.collectAsState()
+    val containers           by viewModel.containers.collectAsState()
     val canAddMoreContainers by viewModel.canAddMoreContainers.collectAsState()
-    val addVaultResult      by viewModel.addVaultResult.collectAsState()
-    val sortState           by viewModel.sortState.collectAsState()
+    val addVaultResult       by viewModel.addVaultResult.collectAsState()
+    val sortState            by viewModel.sortState.collectAsState()
+    val showUpdateBanner     by viewModel.showUpdateBanner.collectAsState()
     val hazeState      = remember { HazeState() }
     val isAmoled       = LocalAmoledMode.current
     val topBarColors   = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -208,6 +210,12 @@ fun VaultScreen(
     var renameSuccess                by remember { mutableStateOf(false) }
     var renameText                   by remember { mutableStateOf("") }
     val renameResult                 by viewModel.renameResult.collectAsState()
+
+    LaunchedEffect(Unit) { viewModel.initVersionCheck() }
+
+    LaunchedEffect(showUpdateBanner) {
+        if (showUpdateBanner) notification = InAppNotification.AppUpdated
+    }
 
     // Unmount containers per their per-vault config on app stop
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -538,8 +546,17 @@ fun VaultScreen(
             // ── Notification banner ───────────────────────────────────────────
             InAppNotificationBanner(
                 notification = notification,
-                onDismiss    = { notification = null },
-                onAction     = { notification = null },
+                onDismiss    = {
+                    if (notification is InAppNotification.AppUpdated) viewModel.markUpdateSeen()
+                    notification = null
+                },
+                onAction     = { notif ->
+                    if (notif is InAppNotification.AppUpdated) {
+                        viewModel.markUpdateSeen()
+                        onOpenWhatsNew()
+                    }
+                    notification = null
+                },
                 modifier     = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()

@@ -773,4 +773,13 @@
     <!-- Onboarding: skip calculator -->
     <string name="onboarding_skip_calculator">Skip calculator disguise</string>
 
+    <!-- App update notification -->
+    <string name="notif_app_updated">App updated</string>
+    <string name="notif_app_updated_subtitle">Tap to see what\'s new</string>
+
+    <!-- What's new screen -->
+    <string name="whats_new_title">What\'s new</string>
+    <string name="whats_new_version">Version %s</string>
+    <string name="whats_new_subtitle">Here\'s what arrived in this release</string>
+
 </resources>

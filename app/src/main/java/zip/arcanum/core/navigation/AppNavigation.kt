@@ -52,6 +52,7 @@ import zip.arcanum.onboarding.OnboardingScreen
 import zip.arcanum.settings.SettingsScreen
 import zip.arcanum.arcanum.containers.ui.CreateContainerScreen
 import zip.arcanum.arcanum.containers.ui.MoveVaultScreen
+import zip.arcanum.settings.WhatsNewScreen
 import zip.arcanum.setup.PinEntryScreen
 import zip.arcanum.setup.SetupPinScreen
 
@@ -245,6 +246,9 @@ fun AppNavigation(pinManager: PinManager) {
                 onAutoMountHandled        = { pendingMountContainerId = null },
                 onMoveVault               = { containerId, toApp ->
                     navController.navigate(Screen.MoveVault.buildRoute(containerId, toApp))
+                },
+                onOpenWhatsNew            = {
+                    navController.navigate(Screen.WhatsNew.route)
                 }
             )
         }
@@ -380,6 +384,15 @@ fun AppNavigation(pinManager: PinManager) {
             MoveVaultScreen(
                 onBack = { navController.popBackStack() }
             )
+        }
+
+        // ── What's new ───────────────────────────────────────────────────
+        composable(
+            route             = Screen.WhatsNew.route,
+            enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
+        ) {
+            WhatsNewScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Mount screen ──────────────────────────────────────────────────
