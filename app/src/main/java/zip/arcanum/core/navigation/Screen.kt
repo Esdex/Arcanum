@@ -2,6 +2,7 @@ package zip.arcanum.core.navigation
 
 sealed class Screen(val route: String) {
     object Calculator      : Screen("calculator")
+    object PinEntry        : Screen("pin_entry")
     object SetupPin        : Screen("setup_pin")
     object Onboarding      : Screen("onboarding")
     object VaultScreen     : Screen("vault_screen")

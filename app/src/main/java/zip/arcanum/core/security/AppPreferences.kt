@@ -31,6 +31,8 @@ class AppPreferences @Inject constructor(
         val SCREEN_CAPTURE_PROT   = booleanPreferencesKey("screen_capture_protection")
         val DISGUISE_PROMPT_SHOWN = booleanPreferencesKey("disguise_prompt_shown")
         val FIRST_LOGIN_DONE      = booleanPreferencesKey("first_login_done")
+        val CALCULATOR_ENABLED        = booleanPreferencesKey("calculator_enabled")
+        val BIOMETRIC_UNLOCK_ENABLED  = booleanPreferencesKey("biometric_unlock_enabled")
     }
 
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
@@ -99,5 +101,20 @@ class AppPreferences @Inject constructor(
 
     suspend fun setFirstLoginDone() {
         context.appPrefsDataStore.edit { it[Keys.FIRST_LOGIN_DONE] = true }
+    }
+
+    // null = key absent (first install); default = true (calculator on)
+    val calculatorEnabled: Flow<Boolean?> = context.appPrefsDataStore.data
+        .map { it[Keys.CALCULATOR_ENABLED] }
+
+    suspend fun setCalculatorEnabled(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.CALCULATOR_ENABLED] = enabled }
+    }
+
+    val biometricUnlockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.BIOMETRIC_UNLOCK_ENABLED] ?: false }
+
+    suspend fun setBiometricUnlockEnabled(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.BIOMETRIC_UNLOCK_ENABLED] = enabled }
     }
 }

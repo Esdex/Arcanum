@@ -84,7 +84,8 @@ class MainActivity : AppCompatActivity() {
                                 finishAffinity()
                                 android.os.Process.killProcess(android.os.Process.myPid())
                             }
-                        }
+                        },
+                        onMaybeLater = { settingsViewModel.dismissDisguiseOverlay() }
                     )
                 }
             }

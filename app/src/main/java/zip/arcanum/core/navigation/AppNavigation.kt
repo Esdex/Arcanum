@@ -52,6 +52,7 @@ import zip.arcanum.onboarding.OnboardingScreen
 import zip.arcanum.settings.SettingsScreen
 import zip.arcanum.arcanum.containers.ui.CreateContainerScreen
 import zip.arcanum.arcanum.containers.ui.MoveVaultScreen
+import zip.arcanum.setup.PinEntryScreen
 import zip.arcanum.setup.SetupPinScreen
 
 // 0=Immediately(1.5s grace) 1=30s 2=1m 3=2m 4=5m 5=10m 6=30m 7=1h
@@ -69,16 +70,23 @@ fun autoLockDelayMillis(index: Int): Long = when (index) {
 
 @Composable
 fun AppNavigation(pinManager: PinManager) {
-    val isPinSet by pinManager.isPinSetFlow.collectAsState()
-    val navController = rememberNavController()
+    val isPinSet          by pinManager.isPinSetFlow.collectAsState()
+    val navController      = rememberNavController()
+    val settingsViewModel: SettingsViewModel = hiltViewModel()
+    val calculatorEnabled by settingsViewModel.calculatorEnabled.collectAsState()
 
+    // Gate only on isPinSet — calculatorEnabled null means key absent, handled below.
     if (isPinSet == null) {
         Box(Modifier.fillMaxSize())
         return
     }
 
+    // null = key absent → default false (PinEntry). Calculator opt-in only via DisguiseOverlay or Settings.
+    val useCalculator = calculatorEnabled ?: false
+    val lockScreenRoute = if (useCalculator) Screen.Calculator.route else Screen.PinEntry.route
+
     val startDestination = remember {
-        if (isPinSet == true) Screen.Calculator.route else Screen.Onboarding.route
+        if (isPinSet == true) lockScreenRoute else Screen.Onboarding.route
     }
 
     var showUnmountOverlay         by remember { mutableStateOf(false) }
@@ -90,14 +98,15 @@ fun AppNavigation(pinManager: PinManager) {
     val mountCoordinator: MountCoordinator = hiltViewModel()
     val mountPhase by mountCoordinator.phase.collectAsState()
 
-    val settingsViewModel: SettingsViewModel = hiltViewModel()
     val autoLockEnabled    by settingsViewModel.autoLockEnabled.collectAsState()
     val autoLockDelayIndex by settingsViewModel.autoLockDelayIndex.collectAsState()
 
     val lifecycleOwner = LocalLifecycleOwner.current
-    val lockedRoutes = remember { setOf(Screen.Onboarding.route, Screen.SetupPin.route, Screen.Calculator.route) }
+    val lockedRoutes = remember(lockScreenRoute) {
+        setOf(Screen.Onboarding.route, Screen.SetupPin.route, Screen.Calculator.route, Screen.PinEntry.route)
+    }
     val autoLockScope = rememberCoroutineScope()
-    DisposableEffect(lifecycleOwner, autoLockEnabled, autoLockDelayIndex) {
+    DisposableEffect(lifecycleOwner, autoLockEnabled, autoLockDelayIndex, lockScreenRoute) {
         var lockJob: Job? = null
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -107,7 +116,7 @@ fun AppNavigation(pinManager: PinManager) {
                         if (current !in lockedRoutes) {
                             lockJob = autoLockScope.launch {
                                 delay(autoLockDelayMillis(autoLockDelayIndex))
-                                navController.navigate(Screen.Calculator.route) {
+                                navController.navigate(lockScreenRoute) {
                                     popUpTo(0) { inclusive = true }
                                     launchSingleTop = true
                                 }
@@ -153,7 +162,7 @@ fun AppNavigation(pinManager: PinManager) {
         composable(Screen.SetupPin.route) {
             SetupPinScreen(
                 onPinSet = {
-                    navController.navigate(Screen.Calculator.route) {
+                    navController.navigate(Screen.PinEntry.route) {
                         popUpTo(Screen.SetupPin.route) { inclusive = true }
                     }
                 }
@@ -175,21 +184,37 @@ fun AppNavigation(pinManager: PinManager) {
             )
         }
 
+        composable(
+            route           = Screen.PinEntry.route,
+            enterTransition = { slideInHorizontally(tween(300)) { -it } },
+            exitTransition  = { slideOutHorizontally(tween(300)) { -it } }
+        ) {
+            PinEntryScreen(
+                onAuthenticated = {
+                    settingsViewModel.setFirstLoginDone()
+                    navController.navigate(Screen.VaultScreen.route) {
+                        popUpTo(Screen.PinEntry.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         // ── Vault screen (root of authenticated flow) ────────────────────
         composable(
             route              = Screen.VaultScreen.route,
             enterTransition    = { slideInHorizontally(tween(300)) { it } },
             exitTransition     = {
                 when (targetState.destination.route) {
-                    Screen.Calculator.route -> slideOutHorizontally(tween(300)) { it }
-                    else                    -> slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { -it }
+                    Screen.Calculator.route,
+                    Screen.PinEntry.route -> slideOutHorizontally(tween(300)) { it }
+                    else                  -> slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { -it }
                 }
             },
             popEnterTransition = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { -it } }
         ) {
             VaultScreen(
                 onLock = {
-                    navController.navigate(Screen.Calculator.route) {
+                    navController.navigate(lockScreenRoute) {
                         popUpTo(Screen.VaultScreen.route) { inclusive = true }
                     }
                 },
@@ -245,8 +270,10 @@ fun AppNavigation(pinManager: PinManager) {
             enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
             popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
         ) {
+            // Pass the Activity-scoped VM so requestDisguise() reaches MainActivity's observer.
             SettingsScreen(
-                onBack = { navController.popBackStack() }
+                onBack    = { navController.popBackStack() },
+                viewModel = settingsViewModel
             )
         }
 

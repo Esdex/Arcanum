@@ -75,6 +75,13 @@ class SettingsViewModel @Inject constructor(
         initialValue = true
     )
 
+    // null = loading (key absent from DataStore); treat as true (calculator on by default)
+    val calculatorEnabled = prefs.calculatorEnabled.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = null
+    )
+
     private val _manualShowDisguise = MutableStateFlow(false)
     private val _disguiseApplied    = MutableStateFlow(disguiseManager.isDisguiseApplied())
     val disguiseApplied = _disguiseApplied.asStateFlow()
@@ -120,7 +127,16 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.setScreenCaptureProtection(enabled) }
     }
 
+    fun setCalculatorEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setCalculatorEnabled(enabled) }
+    }
+
     fun requestDisguise() { _manualShowDisguise.value = true }
+
+    fun dismissDisguiseOverlay() {
+        _manualShowDisguise.value = false
+        viewModelScope.launch { prefs.setDisguisePromptShown(true) }
+    }
 
     fun resetDisguise() {
         viewModelScope.launch {
@@ -131,6 +147,10 @@ class SettingsViewModel @Inject constructor(
 
     fun applyDisguise(onRestart: () -> Unit) {
         viewModelScope.launch {
+            // Write calculatorEnabled and apply the alias atomically in one coroutine so a
+            // crash between them cannot leave the alias active with calculatorEnabled=false
+            // (which would show PinEntry under the calculator launcher icon).
+            prefs.setCalculatorEnabled(true)
             disguiseManager.apply()
             _disguiseApplied.value = true
             _manualShowDisguise.value = false
