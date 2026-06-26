@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.NoEncryption
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Card
@@ -73,7 +74,7 @@ fun InAppNotificationBanner(
     val visible = notification != null && notification !is InAppNotification.PanicExecuted
 
     LaunchedEffect(notification) {
-        if (notification != null) {
+        if (notification != null && !notification.persistent) {
             delay(5_000)
             onDismiss()
         }
@@ -264,6 +265,12 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         icon            = Icons.Outlined.Warning,
         title           = ctx.getString(R.string.notif_import_failed),
         subtitle        = ctx.getString(R.string.notif_import_failed_subtitle)
+    )
+    InAppNotification.AppUpdated -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFF7C3AED),
+        icon            = Icons.Outlined.NewReleases,
+        title           = ctx.getString(R.string.notif_app_updated),
+        subtitle        = ctx.getString(R.string.notif_app_updated_subtitle)
     )
     InAppNotification.PanicExecuted -> null
     InAppNotification.SupportDeveloper -> NotificationDisplayConfig(

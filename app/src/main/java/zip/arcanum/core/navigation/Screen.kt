@@ -76,4 +76,6 @@ sealed class Screen(val route: String) {
         const val ARG = "containerId"
         fun buildRoute(containerId: String) = "mount_screen/$containerId"
     }
+
+    object WhatsNew : Screen("whats_new")
 }

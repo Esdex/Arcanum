@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import kotlinx.coroutines.flow.first
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -34,6 +35,7 @@ class AppPreferences @Inject constructor(
         val CALCULATOR_ENABLED        = booleanPreferencesKey("calculator_enabled")
         val BIOMETRIC_UNLOCK_ENABLED  = booleanPreferencesKey("biometric_unlock_enabled")
         val SHOW_MOUNT_LOG            = booleanPreferencesKey("show_mount_log")
+        val LAST_SEEN_VERSION_CODE    = intPreferencesKey("last_seen_version_code")
     }
 
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
@@ -124,5 +126,13 @@ class AppPreferences @Inject constructor(
 
     suspend fun setShowMountLog(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.SHOW_MOUNT_LOG] = enabled }
+    }
+
+    // null = key absent (fresh install — no prior version recorded)
+    val lastSeenVersionCode: Flow<Int?> = context.appPrefsDataStore.data
+        .map { it[Keys.LAST_SEEN_VERSION_CODE] }
+
+    suspend fun setLastSeenVersionCode(code: Int) {
+        context.appPrefsDataStore.edit { it[Keys.LAST_SEEN_VERSION_CODE] = code }
     }
 }

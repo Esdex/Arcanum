@@ -3,6 +3,7 @@ package zip.arcanum.core.notifications
 sealed class InAppNotification {
     abstract val priority: Int
     open val bannerKey: String get() = this::class.simpleName ?: ""
+    open val persistent: Boolean get() = false
 
     data class VaultMounted(
         val vaultId: String,
@@ -99,5 +100,10 @@ sealed class InAppNotification {
 
     data object ImportFailed : InAppNotification() {
         override val priority = 2
+    }
+
+    data object AppUpdated : InAppNotification() {
+        override val priority    = 3
+        override val persistent  = true
     }
 }
