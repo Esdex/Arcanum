@@ -72,6 +72,7 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.Add
@@ -202,6 +203,11 @@ fun VaultScreen(
     var showUpgradeDialog            by remember { mutableStateOf(false) }
     var containerNotFound            by remember { mutableStateOf<ContainerEntity?>(null) }
     var showRemoveNotFoundConfirm    by remember { mutableStateOf(false) }
+    var renameContainer              by remember { mutableStateOf<ContainerEntity?>(null) }
+    var renameMountedWarning         by remember { mutableStateOf(false) }
+    var renameSuccess                by remember { mutableStateOf(false) }
+    var renameText                   by remember { mutableStateOf("") }
+    val renameResult                 by viewModel.renameResult.collectAsState()
 
     // Unmount containers per their per-vault config on app stop
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -234,6 +240,21 @@ fun VaultScreen(
             is VaultViewModel.AddVaultResult.Error         -> notification = InAppNotification.VaultAddError(result.message)
         }
         viewModel.clearAddVaultResult()
+    }
+
+    LaunchedEffect(renameResult) {
+        when (val r = renameResult) {
+            is VaultViewModel.RenameResult.Success -> {
+                renameContainer = null
+                renameSuccess   = true
+                viewModel.clearRenameResult()
+            }
+            is VaultViewModel.RenameResult.Error -> {
+                notification = InAppNotification.VaultAddError(r.message)
+                viewModel.clearRenameResult()
+            }
+            null -> {}
+        }
     }
 
     // FAB rotation animation
@@ -670,6 +691,38 @@ fun VaultScreen(
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+                        // ── Rename ────────────────────────────────────────
+                        val renameEnabled = !c.isMounted
+                        androidx.compose.material3.ListItem(
+                            headlineContent = { Text(stringResource(R.string.vault_config_rename)) },
+                            supportingContent = {
+                                Text(
+                                    if (renameEnabled) stringResource(R.string.vault_config_rename_desc)
+                                    else stringResource(R.string.vault_config_unmount_to_move),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            },
+                            trailingContent = {
+                                Icon(
+                                    imageVector = Icons.Outlined.DriveFileRenameOutline,
+                                    contentDescription = null,
+                                    tint = if (renameEnabled) MaterialTheme.colorScheme.primary
+                                           else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                )
+                            },
+                            modifier = Modifier.clickable {
+                                if (c.isMounted) {
+                                    renameMountedWarning = true
+                                } else {
+                                    renameText      = c.name
+                                    renameContainer = c
+                                    configContainer = null
+                                }
+                            }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
                         val moveEnabled = !c.isMounted
                         val isInAppStorage = c.safUri.isEmpty() &&
                                             (c.path.startsWith(context.filesDir.absolutePath) ||
@@ -750,6 +803,99 @@ fun VaultScreen(
                     onBiometricFirstToggle = { viewModel.toggleBiometricFirst() },
                     onDismiss           = { showSortSheet = false }
                 )
+            }
+
+            // ── Rename: mounted warning dialog ────────────────────────────────
+            if (renameMountedWarning) {
+                AppDialog(
+                    onDismissRequest = { renameMountedWarning = false },
+                    title            = { Text(stringResource(R.string.vault_rename_mounted_title)) },
+                    text             = { Text(stringResource(R.string.vault_rename_mounted_body)) },
+                    confirmButton    = {
+                        TextButton(onClick = { renameMountedWarning = false }) {
+                            Text(stringResource(R.string.common_ok))
+                        }
+                    }
+                )
+            }
+
+            // ── Rename: input dialog ──────────────────────────────────────────
+            renameContainer?.let { c ->
+                AppDialog(
+                    onDismissRequest = { renameContainer = null },
+                    title            = { Text(stringResource(R.string.vault_rename_title)) },
+                    text             = {
+                        OutlinedTextField(
+                            value         = renameText,
+                            onValueChange = { renameText = it },
+                            label         = { Text(stringResource(R.string.vault_rename_label)) },
+                            singleLine    = true,
+                            modifier      = Modifier.fillMaxWidth()
+                        )
+                    },
+                    confirmButton    = {
+                        TextButton(
+                            onClick  = { if (renameText.isNotBlank()) viewModel.renameContainer(c.id, renameText.trim()) },
+                            enabled  = renameText.isNotBlank()
+                        ) {
+                            Text(stringResource(R.string.vault_rename_confirm))
+                        }
+                    },
+                    dismissButton    = {
+                        TextButton(onClick = { renameContainer = null }) {
+                            Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
+
+            // ── Rename: success overlay ───────────────────────────────────────
+            AnimatedVisibility(
+                visible  = renameSuccess,
+                enter    = fadeIn(tween(250)),
+                exit     = fadeOut(tween(200)),
+                modifier = Modifier.zIndex(30f)
+            ) {
+                val successComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_check))
+                val successProgress    by animateLottieCompositionAsState(composition = successComposition, iterations = 1)
+                androidx.compose.material3.Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color    = MaterialTheme.colorScheme.background
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Column(
+                            modifier            = Modifier
+                                .align(Alignment.Center)
+                                .padding(horizontal = 40.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            LottieAnimation(
+                                composition = successComposition,
+                                progress    = { successProgress },
+                                modifier    = Modifier.size(160.dp)
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                text       = stringResource(R.string.vault_rename_success_title),
+                                style      = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign  = TextAlign.Center,
+                                color      = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                        Button(
+                            onClick  = { renameSuccess = false },
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .padding(horizontal = 40.dp)
+                                .navigationBarsPadding()
+                                .padding(bottom = 24.dp)
+                        ) {
+                            Text(stringResource(R.string.common_done))
+                        }
+                    }
+                }
             }
 
         } // Box

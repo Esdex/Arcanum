@@ -421,6 +421,62 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch { repo.updateBiometric(containerId, false) }
     }
 
+    // ── Rename vault ───────────────────────────────────────────────────
+
+    sealed interface RenameResult {
+        data object Success : RenameResult
+        data class Error(val message: String) : RenameResult
+    }
+
+    private val _renameResult = MutableStateFlow<RenameResult?>(null)
+    val renameResult = _renameResult.asStateFlow()
+
+    fun renameContainer(id: String, newName: String) {
+        viewModelScope.launch {
+            val container = repo.getContainerById(id)
+            if (container == null) {
+                _renameResult.value = RenameResult.Error("Container not found")
+                return@launch
+            }
+            val success = when {
+                container.safUri.isNotEmpty() -> {
+                    try {
+                        val uri = Uri.parse(container.safUri)
+                        val newUri = android.provider.DocumentsContract.renameDocument(
+                            context.contentResolver, uri, newName
+                        )
+                        if (newUri != null) repo.updateSafUri(id, newUri.toString())
+                        repo.updateName(id, newName)
+                        true
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+                container.path.isNotEmpty() -> {
+                    val file = java.io.File(container.path)
+                    val parent = file.parentFile
+                    if (parent == null) {
+                        false
+                    } else {
+                        val newFile = java.io.File(parent, newName)
+                        if (!file.renameTo(newFile)) {
+                            false
+                        } else {
+                            repo.updateContainerPath(id, newFile.absolutePath)
+                            repo.updateName(id, newName)
+                            true
+                        }
+                    }
+                }
+                else -> false
+            }
+            _renameResult.value = if (success) RenameResult.Success
+                                  else RenameResult.Error("Failed to rename")
+        }
+    }
+
+    fun clearRenameResult() { _renameResult.value = null }
+
     // ── Delete vault file ──────────────────────────────────────────────
 
     fun deleteVaultFile(id: String) {

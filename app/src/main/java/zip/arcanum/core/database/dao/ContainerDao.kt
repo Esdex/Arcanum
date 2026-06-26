@@ -77,6 +77,9 @@ interface ContainerDao {
     @Query("UPDATE containers SET safUri = :safUri WHERE id = :id")
     suspend fun updateSafUri(id: String, safUri: String)
 
+    @Query("UPDATE containers SET name = :name WHERE id = :id")
+    suspend fun updateName(id: String, name: String)
+
     @Query("SELECT COUNT(*) FROM containers WHERE safUri = :safUri AND safUri != ''")
     suspend fun countBySafUri(safUri: String): Int
 }

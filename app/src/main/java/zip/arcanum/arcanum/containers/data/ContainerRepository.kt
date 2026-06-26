@@ -128,6 +128,9 @@ class ContainerRepository @Inject constructor(
     suspend fun updateSafUri(id: String, safUri: String) =
         dao.updateSafUri(id, safUri)
 
+    suspend fun updateName(id: String, name: String) =
+        dao.updateName(id, name)
+
     suspend fun deleteContainersById(ids: Set<String>) {
         ids.forEach { id ->
             mountedHandles.remove(id)
