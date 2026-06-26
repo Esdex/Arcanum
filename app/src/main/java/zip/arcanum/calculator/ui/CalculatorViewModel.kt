@@ -145,11 +145,9 @@ class CalculatorViewModel @Inject constructor(
                     // Promote panic PIN to main before navigation — synchronous commit()
                     // guarantees the real PIN is invalidated on disk before we navigate.
                     val panicEnabled = panicManager.prepareForPanic() != null
-                    withContext(Dispatchers.Main) { _isVerifying.value = false }
-                    _events.emit(CalculatorEvent.NavigateToArcanum)
-                    // Wipe runs as a durable WorkManager job — survives process death and
-                    // retries on failure. Settings are read from DataStore inside the worker
-                    // so nothing sensitive is stored in WorkManager's plaintext SQLite DB.
+                    // Enqueue before emitting NavigateToArcanum: the event triggers navigation
+                    // which pops the collector's coroutine scope — any work enqueued after
+                    // that point may never run.
                     if (panicEnabled) {
                         val request = OneTimeWorkRequestBuilder<PanicWipeWorker>()
                             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
@@ -161,6 +159,8 @@ class CalculatorViewModel @Inject constructor(
                                 request
                             )
                     }
+                    withContext(Dispatchers.Main) { _isVerifying.value = false }
+                    _events.emit(CalculatorEvent.NavigateToArcanum)
                 }
                 PinResult.WRONG  -> {
                     withContext(Dispatchers.Main) { _isVerifying.value = false }

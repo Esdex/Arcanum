@@ -222,15 +222,15 @@ fun SettingsScreen(
     ) { screen ->
         when (screen) {
             SubScreen.SECURITY -> SecuritySubScreen(
-                autoLockEnabled         = autoLockEnabled,
-                onAutoLockChange        = { viewModel.setAutoLock(it) },
-                autoLockDelayIndex      = autoLockDelayIndex,
-                onAutoLockDelayChange   = { viewModel.setAutoLockDelayIndex(it) },
+                autoLockEnabled       = autoLockEnabled,
+                onAutoLockChange      = { viewModel.setAutoLock(it) },
+                autoLockDelayIndex    = autoLockDelayIndex,
+                onAutoLockDelayChange = { viewModel.setAutoLockDelayIndex(it) },
                 screenCaptureProtection = screenCaptureProtection,
-                disguiseApplied         = disguiseApplied,
-                onBack                  = { subScreen = null },
-                onChangePin             = { subScreen = SubScreen.CHANGE_PIN },
-                viewModel               = viewModel
+                disguiseApplied       = disguiseApplied,
+                onBack                = { subScreen = null },
+                onChangePin           = { subScreen = SubScreen.CHANGE_PIN },
+                viewModel             = viewModel
             )
             SubScreen.PANIC_MODE -> PanicModeSubScreen(
                 onBack        = { subScreen = null },
@@ -819,7 +819,7 @@ private fun ScreenshotWarningOverlay(
 }
 
 @Composable
-fun DisguiseOverlay(onApply: () -> Unit) {
+fun DisguiseOverlay(onApply: () -> Unit, onMaybeLater: () -> Unit) {
     BackHandler(enabled = true) { /* non-dismissable */ }
 
     val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.shield))
@@ -874,15 +874,27 @@ fun DisguiseOverlay(onApply: () -> Unit) {
                     )
                 }
 
-                Button(
-                    onClick  = onApply,
-                    modifier = Modifier
+                Column(
+                    modifier            = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(horizontal = 28.dp, vertical = 24.dp)
+                        .padding(horizontal = 28.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(stringResource(R.string.disguise_overlay_apply))
+                    Button(
+                        onClick  = onApply,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.disguise_overlay_apply))
+                    }
+                    TextButton(onClick = onMaybeLater) {
+                        Text(
+                            text  = stringResource(R.string.disguise_overlay_maybe_later),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -1674,6 +1686,14 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                         )
                     }
                 }
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Info,
+                    color    = Color(0xFFFF9800),
+                    title    = "Updating from a previous version?",
+                    subtitle = "A clean reinstall is recommended to ensure the new PIN lock screen is set up correctly."
+                )
             }
             item {
                 WhatsNewEntry(

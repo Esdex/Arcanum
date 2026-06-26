@@ -125,7 +125,7 @@
     <string name="setup_pin_title">Set your PIN</string>
     <string name="setup_pin_confirm_title">Confirm your PIN</string>
     <string name="setup_pin_success_title">PIN Created!</string>
-    <string name="setup_pin_success_desc">To unlock Arcanum, open the calculator and enter your PIN using the number buttons. Then hold = for 2 seconds.</string>
+    <string name="setup_pin_success_desc">Your PIN is set. Enter it on the lock screen to access Arcanum.</string>
     <string name="setup_pin_success_understood">I understand</string>
 
     <!-- Change PIN -->
@@ -419,12 +419,13 @@
     <string name="settings_security_screenshot_auth_subtitle">Authenticate to disable screen protection</string>
     <string name="settings_security_screenshot_pin_label">Arcanum PIN</string>
     <string name="settings_security_screenshot_pin_error">Incorrect PIN. Try again.</string>
-    <string name="settings_security_disguise_title">App Disguise</string>
-    <string name="settings_security_disguise_desc">Show as "Calculator" in the launcher</string>
+    <string name="settings_security_disguise_title">Calculator disguise</string>
+    <string name="settings_security_disguise_desc">Disguise the app as a plain calculator in the launcher and use your PIN to unlock</string>
     <string name="settings_security_disguise_toast">Camouflage already applied</string>
     <string name="disguise_overlay_title">Improve Your Privacy</string>
-    <string name="disguise_overlay_body">For better concealment, Arcanum can disguise itself as a plain Calculator app on your home screen.\n\nNo one will know what\'s really installed. This action cannot be undone without reinstalling the app.</string>
+    <string name="disguise_overlay_body">Arcanum will disguise itself as a plain Calculator app on your home screen. No one will know what\'s really installed.\n\nTo unlock, open the calculator, enter your PIN using the number buttons, then hold "=" for 2 seconds.\n\nThe app will restart to apply the disguise. This cannot be undone without reinstalling.</string>
     <string name="disguise_overlay_apply">Apply Disguise</string>
+    <string name="disguise_overlay_maybe_later">Maybe Later</string>
     <string name="settings_panic_title">Panic Mode</string>
     <string name="settings_panic_switch_title">Panic Mode</string>
     <string name="settings_panic_switch_desc">Entering Panic PIN silently wipes selected data</string>
@@ -750,5 +751,24 @@
     <string name="upgrade_dialog_later">Maybe Later</string>
     <string name="upgrade_pro_feature_subtitle">Arcanum Pro feature</string>
     <string name="upgrade_pro_locked_cd">Pro feature locked</string>
+
+    <!-- PIN entry screen (when calculator disguise is disabled) -->
+    <string name="pin_entry_title">Enter PIN</string>
+    <string name="pin_entry_subtitle">Enter your PIN to unlock</string>
+    <string name="pin_entry_label">PIN</string>
+    <string name="pin_entry_unlock">Unlock</string>
+    <string name="pin_entry_wrong">Incorrect PIN</string>
+    <string name="pin_entry_locked">Too many attempts. Try again in %d seconds</string>
+    <string name="pin_entry_biometric">Use biometric</string>
+
+    <!-- Settings: calculator disguise toggle -->
+    <string name="settings_security_calculator_title">Calculator disguise</string>
+    <string name="settings_security_calculator_desc">Show a fake calculator on launch. Your PIN is the only way in.</string>
+    <string name="calculator_enabled_overlay_title">Calculator Disguise Enabled</string>
+    <string name="calculator_enabled_overlay_body">To unlock Arcanum, open the calculator and enter your PIN using the number buttons. Then hold "=" for 2 seconds.</string>
+    <string name="calculator_enabled_overlay_got_it">Got it</string>
+
+    <!-- Onboarding: skip calculator -->
+    <string name="onboarding_skip_calculator">Skip calculator disguise</string>
 
 </resources>

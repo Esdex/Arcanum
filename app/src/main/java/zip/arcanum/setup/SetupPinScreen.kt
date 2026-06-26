@@ -203,7 +203,7 @@ private fun PinEntryContent(
 }
 
 @Composable
-private fun PinDots(pinLength: Int, isError: Boolean) {
+internal fun PinDots(pinLength: Int, isError: Boolean) {
     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         repeat(6) { i ->
             val filled = i < pinLength
@@ -232,7 +232,11 @@ private fun PinDots(pinLength: Int, isError: Boolean) {
 }
 
 @Composable
-private fun NumPad(onDigit: (Char) -> Unit, onBackspace: () -> Unit) {
+internal fun NumPad(
+    onDigit: (Char) -> Unit,
+    onBackspace: () -> Unit,
+    leftSlot: @Composable () -> Unit = { Spacer(Modifier.size(72.dp)) }
+) {
     val haptic = LocalHapticFeedback.current
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         listOf(listOf('1','2','3'), listOf('4','5','6'), listOf('7','8','9')).forEach { row ->
@@ -246,7 +250,7 @@ private fun NumPad(onDigit: (Char) -> Unit, onBackspace: () -> Unit) {
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Spacer(Modifier.size(72.dp))
+            leftSlot()
             DigitKey('0', onClick = {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 onDigit('0')
@@ -269,7 +273,7 @@ private fun NumPad(onDigit: (Char) -> Unit, onBackspace: () -> Unit) {
 }
 
 @Composable
-private fun DigitKey(digit: Char, onClick: () -> Unit) {
+internal fun DigitKey(digit: Char, onClick: () -> Unit) {
     TextButton(
         onClick  = onClick,
         modifier = Modifier.size(72.dp),
