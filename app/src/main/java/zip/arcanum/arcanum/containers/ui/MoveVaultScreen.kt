@@ -17,17 +17,19 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Switch
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -224,27 +226,33 @@ private fun InfoScreen(
 
         if (toApp) {
             Row(
-                verticalAlignment     = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier              = Modifier.fillMaxWidth()
+                modifier          = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Checkbox(
-                    checked         = includeInBackup,
-                    onCheckedChange = { includeInBackup = it }
+                Icon(
+                    imageVector        = Icons.Outlined.Backup,
+                    contentDescription = null,
+                    tint               = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier           = Modifier.size(24.dp)
                 )
-                Column {
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text       = stringResource(R.string.move_vault_backup_label),
                         style      = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium
                     )
-                    Spacer(Modifier.height(2.dp))
                     Text(
                         text  = stringResource(R.string.move_vault_backup_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                Spacer(Modifier.width(8.dp))
+                Switch(
+                    checked         = includeInBackup,
+                    onCheckedChange = { includeInBackup = it }
+                )
             }
             Spacer(Modifier.height(16.dp))
         } else {
