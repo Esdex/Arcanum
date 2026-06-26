@@ -328,6 +328,14 @@
     <string name="vault_config_unmount_to_move">Unmount the vault before moving</string>
     <string name="vault_config_move_to_internal">Move to Internal Storage</string>
     <string name="vault_config_move_to_internal_desc">Move vault to a shared storage folder</string>
+    <string name="vault_config_rename">Rename</string>
+    <string name="vault_config_rename_desc">Change container name and filename</string>
+    <string name="vault_rename_title">Rename Container</string>
+    <string name="vault_rename_label">Container name</string>
+    <string name="vault_rename_confirm">Rename</string>
+    <string name="vault_rename_mounted_title">Cannot Rename</string>
+    <string name="vault_rename_mounted_body">Please unmount the container before renaming it</string>
+    <string name="vault_rename_success_title">Container renamed successfully</string>
     <string name="vault_sort_title">Sort &amp; Group</string>
     <string name="vault_sort_name">Name</string>
     <string name="vault_sort_size">Size</string>
