@@ -42,7 +42,7 @@ class AppPreferences @Inject constructor(
 
     // 0=Immediately 1=30s 2=1m 3=2m 4=5m 5=10m 6=30m 7=1h
     val autoLockDelayIndex: Flow<Int> = context.appPrefsDataStore.data
-        .map { it[Keys.AUTO_LOCK_DELAY_INDEX] ?: 0 }
+        .map { it[Keys.AUTO_LOCK_DELAY_INDEX] ?: 2 }
 
     suspend fun setAutoLockDelayIndex(index: Int) {
         context.appPrefsDataStore.edit { it[Keys.AUTO_LOCK_DELAY_INDEX] = index }
