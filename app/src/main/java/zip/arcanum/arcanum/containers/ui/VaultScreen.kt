@@ -546,10 +546,7 @@ fun VaultScreen(
             // ── Notification banner ───────────────────────────────────────────
             InAppNotificationBanner(
                 notification = notification,
-                onDismiss    = {
-                    if (notification is InAppNotification.AppUpdated) viewModel.markUpdateSeen()
-                    notification = null
-                },
+                onDismiss    = { notification = null },
                 onAction     = { notif ->
                     if (notif is InAppNotification.AppUpdated) {
                         viewModel.markUpdateSeen()
