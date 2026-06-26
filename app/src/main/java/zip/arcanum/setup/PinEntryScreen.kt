@@ -28,6 +28,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -66,11 +69,16 @@ fun PinEntryScreen(
         label         = "title_color"
     )
 
-    // Auto-prompt biometric once at screen entry if previously registered.
-    // Keyed on Unit (not biometricUnlockEnabled) so it never re-fires when registration
-    // happens during this session — avoiding a second prompt after onAuthenticated() navigates away.
-    LaunchedEffect(Unit) {
-        if (viewModel.loadInitialBiometricEnabled() && viewModel.isBiometricAvailable) {
+    // Auto-prompt biometric whenever the screen enters the foreground.
+    // repeatOnLifecycle(RESUMED) re-runs the block on every ON_RESUME transition, which
+    // covers two cases: (1) user manually locks while app is in the foreground — RESUMED
+    // is already active so the block fires immediately; (2) auto-lock fires while the app
+    // is in the background — the block is suspended until the user brings the app back,
+    // ensuring BiometricPrompt is only shown while the app is visible.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        if (!viewModel.loadInitialBiometricEnabled() || !viewModel.isBiometricAvailable) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             (context as? FragmentActivity)?.let { activity ->
                 viewModel.authenticate(activity) { onAuthenticated() }
             }
