@@ -1670,14 +1670,6 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             )
         ) {
             item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Info,
-                    color    = Color(0xFFFF9800),
-                    title    = "Updating from a previous version?",
-                    subtitle = "A clean reinstall is recommended to ensure the new PIN lock screen is set up correctly."
-                )
-            }
-            item {
                 Row(
                     modifier              = Modifier.fillMaxWidth().padding(vertical = 20.dp),
                     verticalAlignment     = Alignment.CenterVertically,
@@ -1699,6 +1691,48 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
                     }
+                }
+            }
+            // ── 1.1.1 entries ─────────────────────────────────────────────
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Security,
+                    color    = Color(0xFF22C55E),
+                    title    = "Keyfiles never touch disk",
+                    subtitle = "Keyfiles are now read directly into memory and never written to the app's cache. Previous builds left a temporary plaintext copy on disk during mounting."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Fingerprint,
+                    color    = Color(0xFF7C3AED),
+                    title    = "Biometric unlock remembers keyfiles",
+                    subtitle = "Containers protected with a keyfile can now be unlocked with biometrics. If a keyfile is later moved or deleted, a clear error screen guides you back to manual mounting."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Refresh,
+                    color    = Color(0xFFD97706),
+                    title    = "Biometric credentials auto-update",
+                    subtitle = "Manually mounting a container with the biometric toggle on now refreshes the saved credentials — useful when changing your password or keyfiles."
+                )
+            }
+
+            // ── 1.1.0 section ─────────────────────────────────────────────
+            item {
+                Row(
+                    modifier          = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                    Text(
+                        text  = "Version 1.1.0",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f))
                 }
             }
             // ── 1.1.0 entries ─────────────────────────────────────────────

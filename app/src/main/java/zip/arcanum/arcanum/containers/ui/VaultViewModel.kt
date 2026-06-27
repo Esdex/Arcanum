@@ -30,7 +30,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 import zip.arcanum.arcanum.containers.data.ContainerRepository
@@ -209,13 +211,13 @@ class VaultViewModel @Inject constructor(
     fun mountContainer(
         container: ContainerEntity,
         password: String,
-        keyfilePaths: List<String> = emptyList(),
+        keyfileData: List<ByteArray> = emptyList(),
         pim: Int = 0,
         algorithm: Int = VeraCryptEngine.ALGO_AUTO,
         hashAlgorithm: Int = VeraCryptEngine.HASH_AUTO,
         protectHiddenPassword: String? = null,
         protectHiddenPim: Int = 0,
-        protectHiddenKeyfilePaths: List<String> = emptyList(),
+        protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         onSuccess: (containerId: String) -> Unit
     ) {
         mountJob = viewModelScope.launch {
@@ -231,7 +233,7 @@ class VaultViewModel @Inject constructor(
             }
             var pfdConsumed = false
             try {
-                if (keyfilePaths.isNotEmpty()) mountLogger.log("Keyfiles: ${keyfilePaths.size} file(s)")
+                if (keyfileData.isNotEmpty()) mountLogger.log("Keyfiles: ${keyfileData.size} file(s)")
                 if (pim > 0) mountLogger.log("PIM: $pim")
                 val algoLabel = if (algorithm  == VeraCryptEngine.ALGO_AUTO) "auto-detect (all ciphers)"
                                 else VeraCryptEngine.algorithmIdToString(algorithm)
@@ -255,20 +257,20 @@ class VaultViewModel @Inject constructor(
                 val result = if (pfd != null) {
                     cryptoEngine.mountContainerFd(
                         fd = pfd.fd, password = password,
-                        keyfilePaths = keyfilePaths, pim = pim,
+                        keyfileData = keyfileData, pim = pim,
                         algorithm = algorithm, hashAlgorithm = hashAlgorithm,
                         protectHiddenPassword = protectHiddenPassword,
-                        protectHiddenKeyfilePaths = protectHiddenKeyfilePaths,
+                        protectHiddenKeyfileData = protectHiddenKeyfileData,
                         protectHiddenPim = protectHiddenPim,
                         mountProgressListener = progressListener
                     )
                 } else {
                     cryptoEngine.mountContainer(
                         path = container.path, password = password,
-                        keyfilePaths = keyfilePaths, pim = pim,
+                        keyfileData = keyfileData, pim = pim,
                         algorithm = algorithm, hashAlgorithm = hashAlgorithm,
                         protectHiddenPassword = protectHiddenPassword,
-                        protectHiddenKeyfilePaths = protectHiddenKeyfilePaths,
+                        protectHiddenKeyfileData = protectHiddenKeyfileData,
                         protectHiddenPim = protectHiddenPim,
                         mountProgressListener = progressListener
                     )
@@ -479,12 +481,53 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch { repo.updateBiometric(containerId, true) }
     }
 
+    fun saveKeyfileUrisForBiometric(containerId: String, uris: List<String>) {
+        biometricCryptoManager.saveKeyfileUris(containerId, uris)
+    }
+
     fun decryptBiometricCredentials(containerId: String, cipher: Cipher): Pair<String, Int>? =
         biometricCryptoManager.loadDecryptedCredentials(containerId, cipher)
 
     fun deleteBiometricCredentials(containerId: String) {
         biometricCryptoManager.deleteCredentials(containerId)
         viewModelScope.launch { repo.updateBiometric(containerId, false) }
+    }
+
+    fun biometricMountContainer(
+        container: ContainerEntity,
+        cipher: Cipher,
+        onMissingKeyfiles: () -> Unit,
+        onInvalidCredentials: () -> Unit,
+        onSuccess: (String) -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val creds = biometricCryptoManager.loadDecryptedCredentials(container.id, cipher)
+            if (creds == null) {
+                withContext(Dispatchers.Main) { onInvalidCredentials() }
+                return@launch
+            }
+            val uris = biometricCryptoManager.loadKeyfileUris(container.id)
+            val keyfileData = uris.map { uriStr ->
+                try { context.contentResolver.openInputStream(Uri.parse(uriStr))?.use { it.readBytes() } }
+                catch (_: Exception) { null }
+            }
+            if (keyfileData.any { it == null }) {
+                withContext(Dispatchers.Main) { onMissingKeyfiles() }
+                return@launch
+            }
+            withContext(Dispatchers.Main) {
+                mountContainer(
+                    container                 = container,
+                    password                  = creds.first,
+                    keyfileData               = keyfileData.filterNotNull(),
+                    pim                       = creds.second,
+                    protectHiddenPassword     = null,
+                    protectHiddenKeyfileData  = emptyList(),
+                    protectHiddenPim          = 0,
+                    onSuccess                 = onSuccess
+                )
+            }
+        }
     }
 
     // ── Rename vault ───────────────────────────────────────────────────

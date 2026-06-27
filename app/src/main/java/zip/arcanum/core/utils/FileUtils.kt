@@ -10,6 +10,21 @@ import java.io.RandomAccessFile
 object FileUtils {
 
     /**
+     * Reads a SAF URI into a ByteArray without writing anything to disk.
+     * Returns (bytes, displayName) or null on failure.
+     * Caller should zero the array when done: bytes.fill(0).
+     */
+    fun readKeyfileBytes(context: Context, uri: Uri): Pair<ByteArray, String>? = try {
+        val displayName = context.contentResolver.query(
+            uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        } ?: uri.lastPathSegment ?: "keyfile"
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+        bytes to displayName
+    } catch (_: Exception) { null }
+
+    /**
      * Copies a SAF URI to a temp file in the app's cache dir.
      * Returns (absolutePath, displayName) or null on failure.
      * The caller is responsible for deleting the file when done.
