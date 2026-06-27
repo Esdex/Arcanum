@@ -2,6 +2,8 @@ package zip.arcanum.core.utils
 
 import android.content.Context
 import android.net.Uri
+import android.os.MemoryFile
+import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import java.io.File
@@ -9,10 +11,14 @@ import java.io.RandomAccessFile
 
 object FileUtils {
 
+    /** Holds in-memory keyfile handles alive until [secureZeroAndDelete] is called. */
+    private val memKeyHandles =
+        java.util.concurrent.ConcurrentHashMap<String, Pair<ParcelFileDescriptor, MemoryFile>>()
+
     /**
-     * Copies a SAF URI to a temp file in the app's cache dir.
-     * Returns (absolutePath, displayName) or null on failure.
-     * The caller is responsible for deleting the file when done.
+     * Reads a SAF URI keyfile into anonymous shared memory — no plaintext disk write.
+     * Returns (/proc/self/fd/N, displayName) or null on failure.
+     * The caller must call [secureZeroAndDelete] when done to release the memory handle.
      */
     fun copyUriToCache(context: Context, uri: Uri): Pair<String, String>? = try {
         val displayName = context.contentResolver.query(
@@ -21,15 +27,26 @@ object FileUtils {
             if (cursor.moveToFirst()) cursor.getString(0) else null
         } ?: uri.lastPathSegment ?: "keyfile"
 
-        val cacheFile = File(context.cacheDir, "arcanum_keyfile_${System.currentTimeMillis()}")
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            cacheFile.outputStream().use { output -> input.copyTo(output) }
-        }
-        cacheFile.absolutePath to displayName
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+        val mf = MemoryFile("kf", bytes.size.coerceAtLeast(1))
+        if (bytes.isNotEmpty()) mf.writeBytes(bytes, 0, 0, bytes.size)
+        @Suppress("DiscouragedPrivateApi")
+        val rawFd = mf.javaClass.getMethod("getFileDescriptor").invoke(mf) as java.io.FileDescriptor
+        val pfd = ParcelFileDescriptor.dup(rawFd)
+        val path = "/proc/self/fd/${pfd.fd}"
+        memKeyHandles[path] = pfd to mf
+        path to displayName
     } catch (_: Exception) { null }
 
 
     fun secureZeroAndDelete(file: File) {
+        // For in-memory keyfiles backed by MemoryFile, close the handles — no disk data to wipe
+        val handle = memKeyHandles.remove(file.absolutePath)
+        if (handle != null) {
+            try { handle.first.close() } catch (_: Exception) {}
+            try { handle.second.close() } catch (_: Exception) {}
+            return
+        }
         try {
             val len = file.length()
             if (len > 0L) {
