@@ -20,9 +20,16 @@ Builds:
     gradle:
       - fdroid
 
+  - versionName: 1.1.0
+    versionCode: 2
+    commit: 750a832e5cd453419a0d1f4a3af46ea7838968ea
+    subdir: app
+    gradle:
+      - fdroid
+
 AllowedAPKSigningKeys: d534fa173dbc640e4486cfc05665ee82395908542b45e25d5cc0562e4cca553b
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 1.0.0
-CurrentVersionCode: 1
+CurrentVersion: 1.1.0
+CurrentVersionCode: 2
