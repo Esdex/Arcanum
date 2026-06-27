@@ -66,6 +66,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -79,6 +80,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalAutofill
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.ui.autofill.AutofillNode
+import androidx.compose.ui.autofill.AutofillType
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -131,7 +147,7 @@ fun MountScreen(
     MountScreenContent(container, viewModel, onBack, onMountSuccess)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 private fun MountScreenContent(
     container: ContainerEntity,
@@ -177,7 +193,61 @@ private fun MountScreenContent(
     }
 
     // ── Form state ────────────────────────────────────────────────────────
-    var password          by remember { mutableStateOf("") }
+    val passwordState       = remember { mutableStateOf("") }
+    var password            by passwordState
+    val hiddenPasswordState = remember { mutableStateOf("") }
+
+    val autofill               = LocalAutofill.current
+    val autofillManager        = remember { context.getSystemService(android.view.autofill.AutofillManager::class.java) }
+    val lifecycleOwner         = LocalLifecycleOwner.current
+    val autofillScope          = rememberCoroutineScope()
+    val passwordFocusRequester       = remember { FocusRequester() }
+    val hiddenPasswordFocusRequester = remember { FocusRequester() }
+    val passwordAutofillNode = remember {
+        AutofillNode(listOf(AutofillType.Password)) { passwordState.value = it }
+    }
+    val hiddenPasswordAutofillNode = remember {
+        AutofillNode(listOf(AutofillType.Password)) { hiddenPasswordState.value = it }
+    }
+    val autofillTree = LocalAutofillTree.current
+
+    // Only the currently focused field's node lives in the tree at any time.
+    // This prevents KeePassDX from caching a mapping to the wrong node after auth.
+    var focusedField by remember { mutableStateOf("password") }
+    if (focusedField == "hidden") {
+        autofillTree.children.remove(passwordAutofillNode.id)
+        autofillTree += hiddenPasswordAutofillNode
+    } else {
+        autofillTree.children.remove(hiddenPasswordAutofillNode.id)
+        autofillTree += passwordAutofillNode
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            autofillTree.children.remove(passwordAutofillNode.id)
+            autofillTree.children.remove(hiddenPasswordAutofillNode.id)
+        }
+    }
+
+    var refocusCount by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                autofillManager?.cancel()
+                refocusCount++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(refocusCount) {
+        if (refocusCount == 0) return@LaunchedEffect
+        delay(200)
+        focusManager.clearFocus()
+        delay(50)
+        if (focusedField == "hidden") hiddenPasswordFocusRequester.requestFocus()
+        else passwordFocusRequester.requestFocus()
+        keyboardController?.show()
+    }
     var showPassword      by remember { mutableStateOf(false) }
     var algorithmExpanded by remember { mutableStateOf(false) }
     var hashExpanded      by remember { mutableStateOf(false) }
@@ -187,7 +257,7 @@ private fun MountScreenContent(
     var pimValue          by remember { mutableStateOf("") }
     var showPim           by remember { mutableStateOf(false) }
     var protectHidden      by remember { mutableStateOf(false) }
-    var hiddenPassword     by remember { mutableStateOf("") }
+    var hiddenPassword     by hiddenPasswordState
     var showHiddenPassword by remember { mutableStateOf(false) }
     var hiddenPimValue     by remember { mutableStateOf("") }
     var shakeKey          by remember { mutableIntStateOf(0) }
@@ -584,6 +654,20 @@ private fun MountScreenContent(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .offset { IntOffset(shakeAnim.value.roundToInt(), 0) }
+                                    .focusRequester(passwordFocusRequester)
+                                    .onGloballyPositioned { passwordAutofillNode.boundingBox = it.boundsInRoot() }
+                                    .onFocusChanged { focusState ->
+                                        if (focusState.isFocused) {
+                                            focusedField = "password"
+                                            autofillScope.launch {
+                                                delay(150)
+                                                autofillManager?.cancel()
+                                                autofill?.requestAutofillForNode(passwordAutofillNode)
+                                            }
+                                        } else {
+                                            autofill?.cancelAutofillForNode(passwordAutofillNode)
+                                        }
+                                    }
                             )
 
                             OutlinedTextField(
@@ -806,7 +890,22 @@ private fun MountScreenContent(
                                                     }
                                                 },
                                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                                modifier = Modifier.fillMaxWidth()
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .focusRequester(hiddenPasswordFocusRequester)
+                                                    .onGloballyPositioned { hiddenPasswordAutofillNode.boundingBox = it.boundsInRoot() }
+                                                    .onFocusChanged { focusState ->
+                                                        if (focusState.isFocused) {
+                                                            focusedField = "hidden"
+                                                            autofillScope.launch {
+                                                                delay(150)
+                                                                autofillManager?.cancel()
+                                                                autofill?.requestAutofillForNode(hiddenPasswordAutofillNode)
+                                                            }
+                                                        } else {
+                                                            autofill?.cancelAutofillForNode(hiddenPasswordAutofillNode)
+                                                        }
+                                                    }
                                             )
                                             OutlinedTextField(
                                                 value         = hiddenPimValue,

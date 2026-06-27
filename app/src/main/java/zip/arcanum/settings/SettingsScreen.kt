@@ -1696,6 +1696,14 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             // ── 1.1.1 entries ─────────────────────────────────────────────
             item {
                 WhatsNewEntry(
+                    icon     = Icons.Outlined.AutoAwesome,
+                    color    = Color(0xFF6366F1),
+                    title    = "Password manager autofill",
+                    subtitle = "Password fields now show suggestions from your autofill service (e.g. KeePassDX). Selecting a credential automatically fills the Confirm Password field too."
+                )
+            }
+            item {
+                WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
                     color    = Color(0xFF22C55E),
                     title    = "Keyfiles never touch disk",
