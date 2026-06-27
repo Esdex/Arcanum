@@ -186,11 +186,13 @@ private enum class SubScreen {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onBack:       () -> Unit = {},
-    viewModel:    SettingsViewModel = hiltViewModel(),
-    panicViewModel: PanicModeViewModel = hiltViewModel()
+    onBack:         () -> Unit = {},
+    viewModel:      SettingsViewModel = hiltViewModel(),
+    panicViewModel: PanicModeViewModel = hiltViewModel(),
+    openWhatsNew:   Boolean = false
 ) {
-    var subScreen           by remember { mutableStateOf<SubScreen?>(null) }
+    var subScreen by remember { mutableStateOf<SubScreen?>(null) }
+    LaunchedEffect(openWhatsNew) { if (openWhatsNew) subScreen = SubScreen.WHATS_NEW }
     val autoLockEnabled         by viewModel.autoLockEnabled.collectAsState()
     val autoLockDelayIndex      by viewModel.autoLockDelayIndex.collectAsState()
     val themeMode               by viewModel.themeMode.collectAsState()
@@ -1668,6 +1670,14 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             )
         ) {
             item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Info,
+                    color    = Color(0xFFFF9800),
+                    title    = "Updating from a previous version?",
+                    subtitle = "A clean reinstall is recommended to ensure the new PIN lock screen is set up correctly."
+                )
+            }
+            item {
                 Row(
                     modifier              = Modifier.fillMaxWidth().padding(vertical = 20.dp),
                     verticalAlignment     = Alignment.CenterVertically,
@@ -1748,14 +1758,6 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                     )
                     HorizontalDivider(modifier = Modifier.weight(1f))
                 }
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Info,
-                    color    = Color(0xFFFF9800),
-                    title    = "Updating from a previous version?",
-                    subtitle = "A clean reinstall is recommended to ensure the new PIN lock screen is set up correctly."
-                )
             }
             item {
                 WhatsNewEntry(
