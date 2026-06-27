@@ -352,11 +352,6 @@ class DebugViewModel @Inject constructor(
         )
         if (suPaths.any { java.io.File(it).exists() }) return true
         if (Build.TAGS?.contains("test-keys") == true) return true
-        return try {
-            val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
-            val out  = proc.inputStream.bufferedReader().readLine()
-            proc.destroy()
-            out?.contains("uid=0") == true
-        } catch (_: Exception) { false }
+        return false
     }
 }
