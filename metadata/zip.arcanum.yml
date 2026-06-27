@@ -22,7 +22,7 @@ Builds:
 
   - versionName: 1.1.0
     versionCode: 2
-    commit: 750a832e5cd453419a0d1f4a3af46ea7838968ea
+    commit: 84aaaae476a42a4d78b82d7cf7e27e12c09b98c8
     subdir: app
     gradle:
       - fdroid
