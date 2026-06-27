@@ -370,6 +370,8 @@
     <string name="vault_biometric_skip">Skip</string>
     <string name="vault_biometric_indicator">Tap fingerprint sensor to open</string>
     <string name="vault_biometric_failed">Biometric authentication failed</string>
+    <string name="vault_outer_protected_title">Hidden volume protection active</string>
+    <string name="vault_outer_protected_body">The outer volume is mounted. The hidden volume is protected from accidental overwriting.</string>
     <string name="vault_biometric_keyfile_missing_title">One or more keyfiles not accessible</string>
     <string name="vault_biometric_keyfile_missing_body">The keyfiles saved for this container could not be read — they may have been moved or deleted. Mount manually to select them again.</string>
     <string name="vault_biometric_try_again">Try Again</string>

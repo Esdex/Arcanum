@@ -1718,6 +1718,14 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                     subtitle = "Manually mounting a container with the biometric toggle on now refreshes the saved credentials — useful when changing your password or keyfiles."
                 )
             }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Lock,
+                    color    = Color(0xFF0EA5E9),
+                    title    = "Hidden volume protection confirmed",
+                    subtitle = "When mounting an outer volume with hidden volume protection enabled, a confirmation screen now appears to confirm that protection is active."
+                )
+            }
 
             // ── 1.1.0 section ─────────────────────────────────────────────
             item {
