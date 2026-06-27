@@ -31,6 +31,8 @@ body:
       options:
         - F-Droid
         - Google Play
+        - GitHub Releases
+        - Obtainium
         - Built from source
     validations:
       required: true
