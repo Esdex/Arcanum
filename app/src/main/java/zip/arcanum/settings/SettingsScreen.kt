@@ -1734,6 +1734,14 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                     subtitle = "When mounting an outer volume with hidden volume protection enabled, a confirmation screen now appears to confirm that protection is active."
                 )
             }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.BugReport,
+                    color    = Color(0xFFF59E0B),
+                    title    = "Fix: container creation on 32-bit devices",
+                    subtitle = "Creating containers on arm32 (armeabi-v7a) devices produced a broken, unreadable container. The XTS encryption layer silently operated as 32-bit due to a type definition issue, corrupting the header."
+                )
+            }
 
             // ── 1.1.0 section ─────────────────────────────────────────────
             item {
