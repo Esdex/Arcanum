@@ -162,8 +162,9 @@ private fun MountScreenContent(
         hiddenKeyfiles = hiddenKeyfiles + KeyfileEntry(bytes, name, uri.toString())
     }
 
-    var isMounting               by remember { mutableStateOf(false) }
-    var biometricKeyfileMissing by remember { mutableStateOf(false) }
+    var isMounting                      by remember { mutableStateOf(false) }
+    var biometricKeyfileMissing         by remember { mutableStateOf(false) }
+    var hiddenProtectionMountSuccessId  by remember { mutableStateOf<String?>(null) }
 
     // Close all open PFDs if the composable leaves composition without explicit cleanup.
     val keyfilesRef       = rememberUpdatedState(keyfiles)
@@ -228,7 +229,11 @@ private fun MountScreenContent(
                 keyfiles       = emptyList()
                 hiddenKeyfiles = emptyList()
                 isMounting     = false
-                onMountSuccess(id)
+                if (!protectPw.isNullOrBlank()) {
+                    hiddenProtectionMountSuccessId = id
+                } else {
+                    onMountSuccess(id)
+                }
             }
         )
     }
@@ -866,6 +871,66 @@ private fun MountScreenContent(
                     onCancel       = { viewModel.cancelMount(); onBack() },
                     onDismissError = { viewModel.resetMountState(); isMounting = false }
                 )
+            }
+        }
+
+        // ── Hidden volume protection success overlay ──────────────────────────
+        AnimatedVisibility(
+            visible  = hiddenProtectionMountSuccessId != null,
+            enter    = fadeIn(animationSpec = tween(250)),
+            exit     = fadeOut(animationSpec = tween(300)),
+            modifier = Modifier.fillMaxSize().zIndex(99f)
+        ) {
+            val shieldComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.shield))
+            val shieldProgress    by animateLottieCompositionAsState(shieldComposition, iterations = 1)
+            BackHandler(enabled = hiddenProtectionMountSuccessId != null) {
+                hiddenProtectionMountSuccessId?.let { latestOnMountSuccess.value(it) }
+                hiddenProtectionMountSuccessId = null
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color.Black)
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication        = null
+                    ) {}
+            ) {
+                Column(
+                    modifier            = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 40.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    LottieAnimation(shieldComposition, { shieldProgress }, modifier = Modifier.size(180.dp))
+                    Spacer(Modifier.height(36.dp))
+                    Text(
+                        text       = stringResource(R.string.vault_outer_protected_title),
+                        style      = MaterialTheme.typography.titleLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        color      = androidx.compose.ui.graphics.Color.White,
+                        textAlign  = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        text      = stringResource(R.string.vault_outer_protected_body),
+                        style     = MaterialTheme.typography.bodyMedium,
+                        color     = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f),
+                        textAlign = TextAlign.Center
+                    )
+                }
+                androidx.compose.material3.Button(
+                    onClick  = {
+                        hiddenProtectionMountSuccessId?.let { latestOnMountSuccess.value(it) }
+                        hiddenProtectionMountSuccessId = null
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 24.dp)
+                ) {
+                    Text(stringResource(R.string.common_done), style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
 
