@@ -146,6 +146,9 @@ import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.InAppNotificationBanner
 import java.text.DecimalFormat
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Button
 import com.airbnb.lottie.compose.LottieAnimation
@@ -297,6 +300,7 @@ fun VaultScreen(
 
     val appStorageLabel   = stringResource(R.string.vault_storage_app)
     val localStorageLabel = stringResource(R.string.vault_storage_local)
+    val navBarPadding     = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     CompositionLocalProvider(LocalHazeState provides hazeState) {
         Box(Modifier.fillMaxSize()) {
@@ -365,13 +369,13 @@ fun VaultScreen(
                             modifier  = Modifier
                                 .fillMaxSize()
                                 .padding(top = innerPadding.calculateTopPadding())
-                                .padding(bottom = 80.dp)
+                                .padding(bottom = 80.dp + navBarPadding)
                         )
                     } else {
                         LazyColumn(
                             contentPadding = PaddingValues(
                                 top    = innerPadding.calculateTopPadding(),
-                                bottom = 80.dp
+                                bottom = 80.dp + navBarPadding
                             ),
                             modifier = Modifier.fillMaxSize()
                         ) {
@@ -473,6 +477,7 @@ fun VaultScreen(
             if (!selectionMode) Column(
                 modifier             = Modifier
                     .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
                     .padding(end = 8.dp, bottom = 88.dp)
                     .zIndex(4f),
                 verticalArrangement  = Arrangement.spacedBy(8.dp),
@@ -522,6 +527,7 @@ fun VaultScreen(
             if (!selectionMode) Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
                     .padding(16.dp)
                     .zIndex(5f)
             ) {
