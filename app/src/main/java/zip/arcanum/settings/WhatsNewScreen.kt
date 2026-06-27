@@ -98,7 +98,7 @@ fun WhatsNewScreen(onBack: () -> Unit) {
                 icon        = Icons.Outlined.BugReport,
                 iconTint    = Color(0xFFEF4444),
                 title       = "Bug fixes",
-                description = "• Containers created in VeraCrypt 1.26+ now open correctly — BLAKE2s-256 compatibility was missing (#48)\n• Keyboard and text cursor now close when tapping the mount button\n• Swipe-dismissing the update banner no longer permanently marks it as seen — it returns on next launch"
+                description = "• Containers with a custom PIM now open correctly — the iteration formula didn't match the VeraCrypt spec (#48)\n• Keyboard and text cursor now close when tapping the mount button\n• Swipe-dismissing the update banner no longer permanently marks it as seen — it returns on next launch"
             )
         )
     }

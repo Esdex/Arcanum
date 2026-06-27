@@ -1729,7 +1729,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                     icon     = Icons.Outlined.BugReport,
                     color    = Color(0xFFEF4444),
                     title    = "Bug fixes",
-                    subtitle = "• Containers created in VeraCrypt 1.26+ now open correctly — BLAKE2s-256 compatibility was missing (#48)\n• Keyboard and text cursor now close when tapping the mount button\n• Swipe-dismissing the update banner no longer permanently marks it as seen\n• Biometric prompt now reappears correctly after the app auto-locks in the background"
+                    subtitle = "• Containers with a custom PIM now open correctly — the iteration formula didn't match the VeraCrypt spec (#48)\n• Keyboard and text cursor now close when tapping the mount button\n• Swipe-dismissing the update banner no longer permanently marks it as seen\n• Biometric prompt now reappears correctly after the app auto-locks in the background"
                 )
             }
 
