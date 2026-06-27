@@ -51,21 +51,21 @@ class VeraCryptEngine @Inject constructor() {
     suspend fun mountContainer(
         path: String,
         password: String,
-        keyfilePaths: List<String> = emptyList(),
+        keyfileData: List<ByteArray> = emptyList(),
         pim: Int = 0,
         algorithm: Int = ALGO_AUTO,
         hashAlgorithm: Int = HASH_AUTO,
         protectHiddenPassword: String? = null,
-        protectHiddenKeyfilePaths: List<String> = emptyList(),
+        protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         protectHiddenPim: Int = 0,
         mountProgressListener: MountProgressListener? = null
     ): CryptoResult<Long> = withContext(Dispatchers.IO) {
         val handle = nativeOpenContainer(
             path, password,
-            keyfilePaths.toTypedArray().ifEmpty { null },
+            keyfileData.toTypedArray().ifEmpty { null },
             pim, algorithm, hashAlgorithm,
             protectHiddenPassword,
-            protectHiddenKeyfilePaths.toTypedArray().ifEmpty { null },
+            protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
             protectHiddenPim,
             mountProgressListener
         )
@@ -98,21 +98,21 @@ class VeraCryptEngine @Inject constructor() {
     suspend fun mountContainerFd(
         fd: Int,
         password: String,
-        keyfilePaths: List<String> = emptyList(),
+        keyfileData: List<ByteArray> = emptyList(),
         pim: Int = 0,
         algorithm: Int = ALGO_AUTO,
         hashAlgorithm: Int = HASH_AUTO,
         protectHiddenPassword: String? = null,
-        protectHiddenKeyfilePaths: List<String> = emptyList(),
+        protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         protectHiddenPim: Int = 0,
         mountProgressListener: MountProgressListener? = null
     ): CryptoResult<Long> = withContext(Dispatchers.IO) {
         val handle = nativeOpenContainerFd(
             fd, password,
-            keyfilePaths.toTypedArray().ifEmpty { null },
+            keyfileData.toTypedArray().ifEmpty { null },
             pim, algorithm, hashAlgorithm,
             protectHiddenPassword,
-            protectHiddenKeyfilePaths.toTypedArray().ifEmpty { null },
+            protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
             protectHiddenPim,
             mountProgressListener
         )
@@ -211,12 +211,12 @@ class VeraCryptEngine @Inject constructor() {
     external fun nativeOpenContainer(
         path: String,
         password: String,
-        keyfilePaths: Array<String>?,
+        keyfileData: Array<ByteArray>?,
         pim: Int,
         algorithm: Int,
         hashAlgorithm: Int,
         protectHiddenPassword: String?,
-        protectHiddenKeyfilePaths: Array<String>?,
+        protectHiddenKeyfileData: Array<ByteArray>?,
         protectHiddenPim: Int,
         mountProgressListener: MountProgressListener?
     ): Long
@@ -224,12 +224,12 @@ class VeraCryptEngine @Inject constructor() {
     external fun nativeOpenContainerFd(
         fd: Int,
         password: String,
-        keyfilePaths: Array<String>?,
+        keyfileData: Array<ByteArray>?,
         pim: Int,
         algorithm: Int,
         hashAlgorithm: Int,
         protectHiddenPassword: String?,
-        protectHiddenKeyfilePaths: Array<String>?,
+        protectHiddenKeyfileData: Array<ByteArray>?,
         protectHiddenPim: Int,
         mountProgressListener: MountProgressListener?
     ): Long

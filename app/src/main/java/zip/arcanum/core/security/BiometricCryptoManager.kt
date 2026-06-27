@@ -104,10 +104,24 @@ class BiometricCryptoManager @Inject constructor(
     fun hasSavedCredentials(containerId: String): Boolean =
         prefs.getString("bio_enc_$containerId", null) != null
 
+    fun saveKeyfileUris(containerId: String, uris: List<String>) {
+        val json = org.json.JSONArray(uris).toString()
+        prefs.edit().putString("bio_kf_$containerId", json).apply()
+    }
+
+    fun loadKeyfileUris(containerId: String): List<String> {
+        val json = prefs.getString("bio_kf_$containerId", null) ?: return emptyList()
+        return try {
+            val arr = org.json.JSONArray(json)
+            (0 until arr.length()).map { arr.getString(it) }
+        } catch (_: Exception) { emptyList() }
+    }
+
     fun deleteCredentials(containerId: String) {
         prefs.edit()
             .remove("bio_enc_$containerId")
             .remove("bio_iv_$containerId")
+            .remove("bio_kf_$containerId")
             .apply()
     }
 }

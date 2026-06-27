@@ -808,6 +808,41 @@ static void apply_keyfiles_to_password(const std::vector<std::string>& paths,
     memset(pool, 0, sizeof(pool));
 }
 
+/* Same as apply_keyfiles_to_password but reads from JNI byte arrays (no disk access).
+ * jKeyfileData is an Array<ByteArray>? — null or empty means no-op. */
+static void apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
+                                   uint8_t *pwd_buf, int *pwd_len) {
+    if (!jKeyfileData) return;
+    jsize count = env->GetArrayLength(jKeyfileData);
+    if (count == 0) return;
+
+    uint8_t pool[VC_KEYFILE_POOL_SIZE] = {};
+
+    for (jsize i = 0; i < count; i++) {
+        auto jBuf = (jbyteArray)env->GetObjectArrayElement(jKeyfileData, i);
+        if (!jBuf) continue;
+        jsize  len   = env->GetArrayLength(jBuf);
+        jbyte *bytes = env->GetByteArrayElements(jBuf, nullptr);
+        if (bytes) {
+            size_t lim = (size_t)len < (size_t)VC_KEYFILE_MAX_READ
+                         ? (size_t)len : (size_t)VC_KEYFILE_MAX_READ;
+            vc_process_keyfile_buf((uint8_t*)bytes, lim, pool);
+            memset(bytes, 0, (size_t)len);
+            env->ReleaseByteArrayElements(jBuf, bytes, JNI_ABORT);
+        }
+        env->DeleteLocalRef(jBuf);
+    }
+
+    if (*pwd_len < VC_KEYFILE_POOL_SIZE) {
+        memset(pwd_buf + *pwd_len, 0, (size_t)(VC_KEYFILE_POOL_SIZE - *pwd_len));
+        *pwd_len = VC_KEYFILE_POOL_SIZE;
+    }
+    for (int i = 0; i < VC_KEYFILE_POOL_SIZE; i++)
+        pwd_buf[i] = (uint8_t)((uint8_t)pwd_buf[i] + pool[i]);
+
+    memset(pool, 0, sizeof(pool));
+}
+
 /* ─── Big-endian helpers ─────────────────────────────────────────────── */
 
 static void put_be32(uint8_t *b, uint32_t v) {
@@ -1464,13 +1499,12 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
 extern "C" JNIEXPORT jlong JNICALL
 Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
         JNIEnv *env, jobject /*thiz*/,
-        jint safFd, jstring jPassword, jobjectArray jKeyfilePaths,
+        jint safFd, jstring jPassword, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
-        jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfilePaths, jint protectHiddenPim,
+        jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
         jobject mountProgressListener)
 {
     std::string password = jstring_to_string(env, jPassword);
-    auto keyfilePaths    = jstringArray_to_vector(env, jKeyfilePaths);
 
     int fd = dup((int)safFd);
     if (fd < 0) { LOGE("[fd/open] dup failed: errno=%d", errno); return (jlong)ERR_FILE; }
@@ -1479,17 +1513,16 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     int effPwdLen = (int)password.size();
     if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
     memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
-    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
+    apply_keyfile_buffers(env, jKeyfileData, effPwd, &effPwdLen);
 
     /* Prepare hidden-volume credentials for boundary derivation */
     std::string hiddenPassword = jProtectHiddenPassword ? jstring_to_string(env, jProtectHiddenPassword) : "";
-    auto hiddenKeyfilePaths    = jstringArray_to_vector(env, jProtectHiddenKeyfilePaths);
     uint8_t hidEffPwd[VC_MAX_PWD_LEN] = {};
     int hidEffPwdLen = (int)hiddenPassword.size();
     if (hidEffPwdLen > VC_MAX_PWD_LEN) hidEffPwdLen = VC_MAX_PWD_LEN;
     if (hidEffPwdLen > 0) {
         memcpy(hidEffPwd, hiddenPassword.c_str(), (size_t)hidEffPwdLen);
-        apply_keyfiles_to_password(hiddenKeyfilePaths, hidEffPwd, &hidEffPwdLen);
+        apply_keyfile_buffers(env, jProtectHiddenKeyfileData, hidEffPwd, &hidEffPwdLen);
     }
 
     struct stat st{};
@@ -1584,30 +1617,28 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
 extern "C" JNIEXPORT jlong JNICALL
 Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
         JNIEnv *env, jobject /*thiz*/,
-        jstring jPath, jstring jPassword, jobjectArray jKeyfilePaths,
+        jstring jPath, jstring jPassword, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
-        jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfilePaths, jint protectHiddenPim,
+        jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
         jobject mountProgressListener)
 {
     std::string path     = jstring_to_string(env, jPath);
     std::string password = jstring_to_string(env, jPassword);
-    auto keyfilePaths    = jstringArray_to_vector(env, jKeyfilePaths);
 
     uint8_t effPwd[VC_MAX_PWD_LEN] = {};
     int effPwdLen = (int)password.size();
     if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
     memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
-    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
+    apply_keyfile_buffers(env, jKeyfileData, effPwd, &effPwdLen);
 
     /* Prepare hidden-volume credentials for boundary derivation */
     std::string hiddenPassword = jProtectHiddenPassword ? jstring_to_string(env, jProtectHiddenPassword) : "";
-    auto hiddenKeyfilePaths    = jstringArray_to_vector(env, jProtectHiddenKeyfilePaths);
     uint8_t hidEffPwd[VC_MAX_PWD_LEN] = {};
     int hidEffPwdLen = (int)hiddenPassword.size();
     if (hidEffPwdLen > VC_MAX_PWD_LEN) hidEffPwdLen = VC_MAX_PWD_LEN;
     if (hidEffPwdLen > 0) {
         memcpy(hidEffPwd, hiddenPassword.c_str(), (size_t)hidEffPwdLen);
-        apply_keyfiles_to_password(hiddenKeyfilePaths, hidEffPwd, &hidEffPwdLen);
+        apply_keyfile_buffers(env, jProtectHiddenKeyfileData, hidEffPwd, &hidEffPwdLen);
     }
 
     int fd = open(path.c_str(), O_RDWR);

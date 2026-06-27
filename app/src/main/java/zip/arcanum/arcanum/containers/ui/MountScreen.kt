@@ -8,6 +8,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -56,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -83,6 +87,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.animateLottieCompositionAsState
+import com.airbnb.lottie.compose.rememberLottieComposition
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.database.entities.ContainerEntity
@@ -90,6 +98,10 @@ import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.crypto.Cipher
 import kotlin.math.roundToInt
+
+private class KeyfileEntry(val content: ByteArray, val displayName: String, val uriString: String) {
+    fun zero() = content.fill(0)
+}
 
 private sealed interface BioUiMode {
     data object Indicator : BioUiMode
@@ -104,7 +116,7 @@ private data class EncryptPending(
     val hash: Int,
     val protectHidden: String?,
     val protectHiddenPim: Int,
-    val protectHiddenKeyfilePaths: List<String>
+    val protectHiddenKeyfileData: List<ByteArray>
 )
 
 @Composable
@@ -134,21 +146,34 @@ private fun MountScreenContent(
     val mountLogs  by viewModel.mountLogs.collectAsState()
     val mountId    = container.id
 
-    var keyfiles by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-    var hiddenKeyfiles by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var keyfiles by remember { mutableStateOf<List<KeyfileEntry>>(emptyList()) }
+    var hiddenKeyfiles by remember { mutableStateOf<List<KeyfileEntry>>(emptyList()) }
 
-    val keyfilePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val keyfilePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val (path, name) = FileUtils.copyUriToCache(context, uri) ?: return@rememberLauncherForActivityResult
-        keyfiles = keyfiles + Pair(path, name)
+        runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        val (bytes, name) = FileUtils.readKeyfileBytes(context, uri) ?: return@rememberLauncherForActivityResult
+        keyfiles = keyfiles + KeyfileEntry(bytes, name, uri.toString())
     }
-    val hiddenKeyfilePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val hiddenKeyfilePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val (path, name) = FileUtils.copyUriToCache(context, uri) ?: return@rememberLauncherForActivityResult
-        hiddenKeyfiles = hiddenKeyfiles + Pair(path, name)
+        runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        val (bytes, name) = FileUtils.readKeyfileBytes(context, uri) ?: return@rememberLauncherForActivityResult
+        hiddenKeyfiles = hiddenKeyfiles + KeyfileEntry(bytes, name, uri.toString())
     }
 
-    var isMounting by remember { mutableStateOf(false) }
+    var isMounting               by remember { mutableStateOf(false) }
+    var biometricKeyfileMissing by remember { mutableStateOf(false) }
+
+    // Close all open PFDs if the composable leaves composition without explicit cleanup.
+    val keyfilesRef       = rememberUpdatedState(keyfiles)
+    val hiddenKeyfilesRef = rememberUpdatedState(hiddenKeyfiles)
+    DisposableEffect(Unit) {
+        onDispose {
+            keyfilesRef.value.forEach { it.zero() }
+            hiddenKeyfilesRef.value.forEach { it.zero() }
+        }
+    }
 
     // ── Form state ────────────────────────────────────────────────────────
     var password          by remember { mutableStateOf("") }
@@ -185,21 +210,21 @@ private fun MountScreenContent(
     // ── Biometric prompt setup ────────────────────────────────────────────
     val activity = LocalContext.current as FragmentActivity
 
-    val onUnlock: (String, Int, Int, Int, String?, Int, List<String>) -> Unit = { pw, pim, algo, hash, protectPw, protectPim, protectKeyfilePaths ->
+    val onUnlock: (String, Int, Int, Int, String?, Int, List<ByteArray>) -> Unit = { pw, pim, algo, hash, protectPw, protectPim, protectKeyfileData ->
         isMounting = true
         viewModel.mountContainer(
-            container                  = container,
-            password                   = pw,
-            keyfilePaths               = keyfiles.map { it.first },
-            pim                        = pim,
-            algorithm                  = algo,
-            hashAlgorithm              = hash,
-            protectHiddenPassword      = protectPw,
-            protectHiddenPim           = protectPim,
-            protectHiddenKeyfilePaths  = protectKeyfilePaths,
+            container                 = container,
+            password                  = pw,
+            keyfileData               = keyfiles.map { it.content },
+            pim                       = pim,
+            algorithm                 = algo,
+            hashAlgorithm             = hash,
+            protectHiddenPassword     = protectPw,
+            protectHiddenPim          = protectPim,
+            protectHiddenKeyfileData  = protectKeyfileData,
             onSuccess = { id ->
-                keyfiles.forEach { FileUtils.secureZeroAndDelete(java.io.File(it.first)) }
-                hiddenKeyfiles.forEach { FileUtils.secureZeroAndDelete(java.io.File(it.first)) }
+                keyfiles.forEach { it.zero() }
+                hiddenKeyfiles.forEach { it.zero() }
                 keyfiles       = emptyList()
                 hiddenKeyfiles = emptyList()
                 isMounting     = false
@@ -207,12 +232,12 @@ private fun MountScreenContent(
             }
         )
     }
-    val latestOnUnlock    = rememberUpdatedState(onUnlock)
-    val latestOnSaveBio   = rememberUpdatedState<(Cipher, String, Int) -> Unit> { cipher, pw, pim ->
+    val latestOnUnlock      = rememberUpdatedState(onUnlock)
+    val latestContainer     = rememberUpdatedState(container)
+    val latestOnMountSuccess = rememberUpdatedState(onMountSuccess)
+    val latestOnSaveBio     = rememberUpdatedState<(Cipher, String, Int) -> Unit> { cipher, pw, pim ->
         viewModel.saveBiometricCredentials(mountId, cipher, pw, pim)
-    }
-    val latestOnDecryptBio = rememberUpdatedState<(Cipher) -> Pair<String, Int>?> { cipher ->
-        viewModel.decryptBiometricCredentials(mountId, cipher)
+        viewModel.saveKeyfileUrisForBiometric(mountId, keyfiles.map { it.uriString })
     }
 
     val biometricCallback = remember {
@@ -220,17 +245,30 @@ private fun MountScreenContent(
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 val cipher = result.cryptoObject?.cipher ?: return
                 if (isDecryptModeState.value) {
-                    val creds = latestOnDecryptBio.value(cipher)
-                    if (creds == null) {
-                        bioModeState.value          = BioUiMode.Cancelled
-                        biometricEnabledState.value = false
-                        return
-                    }
-                    latestOnUnlock.value(creds.first, creds.second, VeraCryptEngine.ALGO_AUTO, VeraCryptEngine.HASH_AUTO, null, 0, emptyList())
+                    isMounting = true
+                    viewModel.biometricMountContainer(
+                        container             = latestContainer.value,
+                        cipher                = cipher,
+                        onMissingKeyfiles     = {
+                            isMounting              = false
+                            bioModeState.value      = BioUiMode.Cancelled
+                            biometricEnabledState.value = false
+                            biometricKeyfileMissing = true
+                        },
+                        onInvalidCredentials  = {
+                            isMounting              = false
+                            bioModeState.value      = BioUiMode.Cancelled
+                            biometricEnabledState.value = false
+                        },
+                        onSuccess             = { id ->
+                            isMounting = false
+                            latestOnMountSuccess.value(id)
+                        }
+                    )
                 } else {
                     val data = pendingEncryptState.value ?: return
                     latestOnSaveBio.value(cipher, data.password, data.pim)
-                    latestOnUnlock.value(data.password, data.pim, data.algorithm, data.hash, data.protectHidden, data.protectHiddenPim, data.protectHiddenKeyfilePaths)
+                    latestOnUnlock.value(data.password, data.pim, data.algorithm, data.hash, data.protectHidden, data.protectHiddenPim, data.protectHiddenKeyfileData)
                     pendingEncryptState.value = null
                 }
             }
@@ -240,7 +278,7 @@ private fun MountScreenContent(
                     biometricEnabledState.value = false
                 } else {
                     pendingEncryptState.value?.let { data ->
-                        latestOnUnlock.value(data.password, data.pim, data.algorithm, data.hash, data.protectHidden, data.protectHiddenPim, data.protectHiddenKeyfilePaths)
+                        latestOnUnlock.value(data.password, data.pim, data.algorithm, data.hash, data.protectHidden, data.protectHiddenPim, data.protectHiddenKeyfileData)
                     }
                     pendingEncryptState.value = null
                 }
@@ -294,8 +332,8 @@ private fun MountScreenContent(
     val canUnlock = bioMode == BioUiMode.Form && (password.isNotEmpty() || keyfiles.isNotEmpty()) && !isLoading
 
     BackHandler(enabled = !isMounting) {
-        keyfiles.forEach { FileUtils.secureZeroAndDelete(java.io.File(it.first)) }
-        hiddenKeyfiles.forEach { FileUtils.secureZeroAndDelete(java.io.File(it.first)) }
+        keyfiles.forEach { it.zero() }
+        hiddenKeyfiles.forEach { it.zero() }
         keyfiles       = emptyList()
         hiddenKeyfiles = emptyList()
         viewModel.resetMountState()
@@ -329,8 +367,8 @@ private fun MountScreenContent(
                     title = { Text(stringResource(R.string.mount_screen_title), fontWeight = FontWeight.SemiBold) },
                     navigationIcon = {
                         IconButton(onClick = {
-                            keyfiles.forEach { FileUtils.secureZeroAndDelete(java.io.File(it.first)) }
-                            hiddenKeyfiles.forEach { FileUtils.secureZeroAndDelete(java.io.File(it.first)) }
+                            keyfiles.forEach { it.zero() }
+                            hiddenKeyfiles.forEach { it.zero() }
                             keyfiles       = emptyList()
                             hiddenKeyfiles = emptyList()
                             viewModel.resetMountState()
@@ -350,8 +388,8 @@ private fun MountScreenContent(
                                     keyboardController?.hide()
                                     val protectedPassword = if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null
                                     val protectedPim = if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0
-                                    val protectedKeyfilePaths = if (protectHidden) hiddenKeyfiles.map { it.first } else emptyList()
-                                    if (biometricEnabled && !localHasBiometricSaved) {
+                                    val protectedKeyfileData = if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList()
+                                    if (biometricEnabled) {
                                         val cryptoObj = viewModel.getBiometricCryptoObjectForEncrypt()
                                         if (cryptoObj != null) {
                                             isDecryptModeState.value  = false
@@ -362,7 +400,7 @@ private fun MountScreenContent(
                                                 hash                       = selectedHash,
                                                 protectHidden              = protectedPassword,
                                                 protectHiddenPim           = protectedPim,
-                                                protectHiddenKeyfilePaths  = protectedKeyfilePaths
+                                                protectHiddenKeyfileData  = protectedKeyfileData
                                             )
                                             biometricPrompt.authenticate(
                                                 BiometricPrompt.PromptInfo.Builder()
@@ -373,10 +411,10 @@ private fun MountScreenContent(
                                                 cryptoObj
                                             )
                                         } else {
-                                            latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, protectedPassword, protectedPim, protectedKeyfilePaths)
+                                            latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
                                         }
                                     } else {
-                                        latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, protectedPassword, protectedPim, protectedKeyfilePaths)
+                                        latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
                                     }
                                 }
                             ) {
@@ -565,7 +603,7 @@ private fun MountScreenContent(
                                 ),
                                 keyboardActions = KeyboardActions(
                                     onDone = {
-                                        if (canUnlock) latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null, if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0, if (protectHidden) hiddenKeyfiles.map { it.first } else emptyList())
+                                        if (canUnlock) latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null, if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0, if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList())
                                     }
                                 ),
                                 singleLine = true,
@@ -632,18 +670,18 @@ private fun MountScreenContent(
                                 }
                             }
 
-                            keyfiles.forEachIndexed { index, (_, displayName) ->
+                            keyfiles.forEachIndexed { index, entry ->
                                 Row(
                                     modifier          = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(Icons.Outlined.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text(displayName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                    Text(entry.displayName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                                     IconButton(
                                         onClick  = {
                                             val updated = keyfiles.toMutableList()
-                                            FileUtils.secureZeroAndDelete(java.io.File(updated[index].first))
+                                            updated[index].zero()
                                             updated.removeAt(index)
                                             keyfiles = updated
                                         },
@@ -654,7 +692,7 @@ private fun MountScreenContent(
                                 }
                             }
                             TextButton(
-                                onClick  = { keyfilePickerLauncher.launch("*/*") },
+                                onClick  = { keyfilePickerLauncher.launch(arrayOf("*/*")) },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Icon(Icons.Outlined.Lock, null, modifier = Modifier.size(16.dp))
@@ -780,18 +818,18 @@ private fun MountScreenContent(
                                                 singleLine = true,
                                                 modifier   = Modifier.fillMaxWidth()
                                             )
-                                            hiddenKeyfiles.forEachIndexed { index, (_, displayName) ->
+                                            hiddenKeyfiles.forEachIndexed { index, entry ->
                                                 Row(
                                                     modifier          = Modifier.fillMaxWidth(),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Icon(Icons.Outlined.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                                     Spacer(Modifier.width(6.dp))
-                                                    Text(displayName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                                    Text(entry.displayName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                                                     IconButton(
                                                         onClick  = {
                                                             val updated = hiddenKeyfiles.toMutableList()
-                                                            FileUtils.secureZeroAndDelete(java.io.File(updated[index].first))
+                                                            updated[index].zero()
                                                             updated.removeAt(index)
                                                             hiddenKeyfiles = updated
                                                         },
@@ -802,7 +840,7 @@ private fun MountScreenContent(
                                                 }
                                             }
                                             TextButton(
-                                                onClick  = { hiddenKeyfilePickerLauncher.launch("*/*") },
+                                                onClick  = { hiddenKeyfilePickerLauncher.launch(arrayOf("*/*")) },
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
                                                 Icon(Icons.Outlined.Lock, null, modifier = Modifier.size(16.dp))
@@ -828,6 +866,60 @@ private fun MountScreenContent(
                     onCancel       = { viewModel.cancelMount(); onBack() },
                     onDismissError = { viewModel.resetMountState(); isMounting = false }
                 )
+            }
+        }
+
+        // ── Keyfile missing overlay ───────────────────────────────────────────
+        AnimatedVisibility(
+            visible  = biometricKeyfileMissing,
+            enter    = fadeIn(animationSpec = tween(250)),
+            exit     = fadeOut(animationSpec = tween(300)),
+            modifier = Modifier.fillMaxSize().zIndex(99f)
+        ) {
+            val errorComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.error))
+            val errorProgress    by animateLottieCompositionAsState(errorComposition, iterations = 1)
+            BackHandler(enabled = biometricKeyfileMissing) { biometricKeyfileMissing = false; bioMode = BioUiMode.Form }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color.Black)
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication        = null
+                    ) {}
+            ) {
+                Column(
+                    modifier            = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 40.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    LottieAnimation(errorComposition, { errorProgress }, modifier = Modifier.size(180.dp))
+                    Spacer(Modifier.height(36.dp))
+                    Text(
+                        text       = stringResource(R.string.vault_biometric_keyfile_missing_title),
+                        style      = MaterialTheme.typography.titleLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        color      = androidx.compose.ui.graphics.Color.White,
+                        textAlign  = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        text      = stringResource(R.string.vault_biometric_keyfile_missing_body),
+                        style     = MaterialTheme.typography.bodyMedium,
+                        color     = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f),
+                        textAlign = TextAlign.Center
+                    )
+                }
+                androidx.compose.material3.Button(
+                    onClick  = { biometricKeyfileMissing = false; bioMode = BioUiMode.Form },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 24.dp)
+                ) {
+                    Text(stringResource(R.string.common_done), style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }
