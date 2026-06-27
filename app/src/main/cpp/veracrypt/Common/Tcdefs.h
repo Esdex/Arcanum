@@ -149,10 +149,11 @@ typedef uint64_t uint64;
 #endif
 #define __int32 int
 
-/* On LP64 (arm64, x86-64), long == 64-bit == uint64_t, so unsigned __int64
-   resolves to the same type as the uint64 typedef below. */
+/* long long is always 64-bit on all platforms (ILP32 and LP64). Using long
+   would be correct on LP64 (arm64, x86-64) but breaks arm32 (ILP32) where
+   long is 32-bit, corrupting all XTS 64-bit arithmetic in Xts.c. */
 #ifndef __int64
-#  define __int64 long
+#  define __int64 long long
 #endif
 
 typedef uint64 TC_LARGEST_COMPILER_UINT;
