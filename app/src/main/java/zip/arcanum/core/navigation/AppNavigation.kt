@@ -52,7 +52,6 @@ import zip.arcanum.onboarding.OnboardingScreen
 import zip.arcanum.settings.SettingsScreen
 import zip.arcanum.arcanum.containers.ui.CreateContainerScreen
 import zip.arcanum.arcanum.containers.ui.MoveVaultScreen
-import zip.arcanum.settings.WhatsNewScreen
 import zip.arcanum.setup.PinEntryScreen
 import zip.arcanum.setup.SetupPinScreen
 
@@ -386,13 +385,17 @@ fun AppNavigation(pinManager: PinManager) {
             )
         }
 
-        // ── What's new ───────────────────────────────────────────────────
+        // ── What's new (opens Settings directly at the What's New subscreen) ─
         composable(
             route             = Screen.WhatsNew.route,
             enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
             popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
         ) {
-            WhatsNewScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(
+                onBack       = { navController.popBackStack() },
+                viewModel    = settingsViewModel,
+                openWhatsNew = true
+            )
         }
 
         // ── Mount screen ──────────────────────────────────────────────────
