@@ -48,12 +48,32 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.autofill.AutofillNode
+import androidx.compose.ui.autofill.AutofillType
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalAutofill
+import androidx.compose.ui.platform.LocalAutofillTree
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.launch
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -290,7 +310,7 @@ fun StepHiddenSize(state: CreateContainerState, onUpdate: (CreateContainerState.
 
 // ─── Step 13: Hidden Password ─────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun StepHiddenPassword(
     state: CreateContainerState,
@@ -298,6 +318,46 @@ fun StepHiddenPassword(
     onAddKeyfile: () -> Unit = {},
     onRemoveKeyfile: (index: Int) -> Unit = {}
 ) {
+    val context            = LocalContext.current
+    val autofill           = LocalAutofill.current
+    val autofillManager    = remember { context.getSystemService(android.view.autofill.AutofillManager::class.java) }
+    val autofillScope      = rememberCoroutineScope()
+    val focusManager       = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val lifecycleOwner     = LocalLifecycleOwner.current
+    val passwordFocusRequester = remember { FocusRequester() }
+    val latestOnUpdate     = rememberUpdatedState(onUpdate)
+    val passwordAutofillNode = remember {
+        AutofillNode(listOf(AutofillType.Password)) { filled ->
+            latestOnUpdate.value { copy(hiddenPassword = filled, hiddenConfirmPassword = filled) }
+        }
+    }
+    val autofillTree = LocalAutofillTree.current
+    DisposableEffect(Unit) {
+        autofillTree += passwordAutofillNode
+        onDispose { autofillTree.children.remove(passwordAutofillNode.id) }
+    }
+
+    var refocusCount by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                autofillManager?.cancel()
+                refocusCount++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(refocusCount) {
+        if (refocusCount == 0) return@LaunchedEffect
+        delay(200)
+        focusManager.clearFocus()
+        delay(50)
+        passwordFocusRequester.requestFocus()
+        keyboardController?.show()
+    }
+
     var showPwd         by remember { mutableStateOf(false) }
     var showConfirmPwd  by remember { mutableStateOf(false) }
     var keyfileExpanded by remember { mutableStateOf(false) }
@@ -335,7 +395,21 @@ fun StepHiddenPassword(
                     Icon(if (showPwd) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(passwordFocusRequester)
+                .onGloballyPositioned { passwordAutofillNode.boundingBox = it.boundsInRoot() }
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        autofillScope.launch {
+                            delay(150)
+                            autofillManager?.cancel()
+                            autofill?.requestAutofillForNode(passwordAutofillNode)
+                        }
+                    } else {
+                        autofill?.cancelAutofillForNode(passwordAutofillNode)
+                    }
+                }
         )
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
