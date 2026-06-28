@@ -1696,8 +1696,8 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             // ── 1.1.1 entries ─────────────────────────────────────────────
             item {
                 WhatsNewEntry(
-                    icon     = Icons.Outlined.AutoAwesome,
-                    color    = Color(0xFF6366F1),
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
                     title    = "Password manager autofill",
                     subtitle = "Password fields now show suggestions from your autofill service (e.g. KeePassDX). Selecting a credential automatically fills the Confirm Password field too."
                 )
@@ -1712,8 +1712,8 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             }
             item {
                 WhatsNewEntry(
-                    icon     = Icons.Outlined.Fingerprint,
-                    color    = Color(0xFF7C3AED),
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
                     title    = "Biometric unlock remembers keyfiles",
                     subtitle = "Containers protected with a keyfile can now be unlocked with biometrics. If a keyfile is later moved or deleted, a clear error screen guides you back to manual mounting."
                 )
@@ -1721,15 +1721,15 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Refresh,
-                    color    = Color(0xFFD97706),
+                    color    = Color(0xFF3B82F6),
                     title    = "Biometric credentials auto-update",
                     subtitle = "Manually mounting a container with the biometric toggle on now refreshes the saved credentials — useful when changing your password or keyfiles."
                 )
             }
             item {
                 WhatsNewEntry(
-                    icon     = Icons.Outlined.Lock,
-                    color    = Color(0xFF0EA5E9),
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
                     title    = "Hidden volume protection confirmed",
                     subtitle = "When mounting an outer volume with hidden volume protection enabled, a confirmation screen now appears to confirm that protection is active."
                 )
@@ -1737,7 +1737,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.BugReport,
-                    color    = Color(0xFFF59E0B),
+                    color    = Color(0xFFEF4444),
                     title    = "Fix: container creation on 32-bit devices",
                     subtitle = "Creating containers on arm32 (armeabi-v7a) devices produced a broken, unreadable container. The XTS encryption layer silently operated as 32-bit due to a type definition issue, corrupting the header."
                 )
@@ -1762,32 +1762,32 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             // ── 1.1.0 entries ─────────────────────────────────────────────
             item {
                 WhatsNewEntry(
-                    icon     = Icons.Outlined.Terminal,
-                    color    = Color(0xFF57FF81),
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
                     title    = "Live mount log",
                     subtitle = "Enable in debug settings to watch every cipher and PRF combination tried in real time as your container is being unlocked."
                 )
             }
             item {
                 WhatsNewEntry(
-                    icon     = Icons.Outlined.NewReleases,
-                    color    = Color(0xFF7C3AED),
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
                     title    = "Update notifications",
                     subtitle = "A banner appears the first time you open the app after an update. Tap it to open the What's New screen."
                 )
             }
             item {
                 WhatsNewEntry(
-                    icon     = Icons.Outlined.Edit,
-                    color    = Color(0xFF0891B2),
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
                     title    = "Container rename",
                     subtitle = "Rename your containers directly from the container config sheet."
                 )
             }
             item {
                 WhatsNewEntry(
-                    icon     = Icons.Outlined.AutoAwesome,
-                    color    = Color(0xFFD97706),
+                    icon     = Icons.Outlined.Refresh,
+                    color    = Color(0xFF3B82F6),
                     title    = "Smoother UI",
                     subtitle = "Tab switches are now animated, and password fields no longer show IME suggestions for better privacy."
                 )
@@ -1820,7 +1820,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF4CAF50),
+                    color    = Color(0xFF22C55E),
                     title    = "Full VeraCrypt compatibility",
                     subtitle = "Open containers created on Windows, macOS, or Linux — no conversion needed. AES, Twofish, Serpent and all cascades supported."
                 )
@@ -1828,7 +1828,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF4CAF50),
+                    color    = Color(0xFF22C55E),
                     title    = "All hash algorithms",
                     subtitle = "BLAKE2s-256, SHA-512, and Whirlpool — fully compatible with VeraCrypt 1.26+."
                 )
@@ -1836,7 +1836,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF4CAF50),
+                    color    = Color(0xFF22C55E),
                     title    = "Hidden volumes",
                     subtitle = "Two passwords, two independent datasets. Plausible deniability under coercion — mathematically impossible to prove the hidden volume exists."
                 )
@@ -1844,7 +1844,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF4CAF50),
+                    color    = Color(0xFF22C55E),
                     title    = "Keyfile support",
                     subtitle = "Add one or more keyfiles as a second authentication factor — required alongside the password to open the vault."
                 )
@@ -1852,7 +1852,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF4CAF50),
+                    color    = Color(0xFF22C55E),
                     title    = "PIM support",
                     subtitle = "Personal Iterations Multiplier for fine-tuned key derivation strength and unlock time."
                 )
@@ -1860,15 +1860,15 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF4CAF50),
+                    color    = Color(0xFF22C55E),
                     title    = "Panic mode",
                     subtitle = "Duress PIN silently wipes vaults, settings, and biometrics — timing-indistinguishable from a normal unlock."
                 )
             }
             item {
                 WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
+                    icon     = Icons.Outlined.Security,
+                    color    = Color(0xFF22C55E),
                     title    = "Calculator disguise",
                     subtitle = "Arcanum looks like a regular calculator app. Your secret PIN is the only way in."
                 )
@@ -2114,7 +2114,7 @@ private fun DebugSubScreen(
                         DebugRow(
                             label      = "libarcanum-native.so",
                             value      = if (r.nativeLib) "Loaded" else "Not loaded",
-                            valueColor = if (r.nativeLib) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error
+                            valueColor = if (r.nativeLib) Color(0xFF22C55E) else MaterialTheme.colorScheme.error
                         )
                     }
                     if (state.runtime == null && state.isLoading) DebugRow("", "Loading…")
@@ -2164,7 +2164,7 @@ private fun DebugSubScreen(
                         DebugRow(
                             label      = "Keystore",
                             value      = s.keystore,
-                            valueColor = if (s.keystore.startsWith("Hardware")) Color(0xFF4CAF50) else Color(0xFFFFA000),
+                            valueColor = if (s.keystore.startsWith("Hardware")) Color(0xFF22C55E) else Color(0xFFFFA000),
                             infoText   = "Stores cryptographic keys used for biometric authentication.\n\n" +
                                 "Hardware-backed (TEE) — keys live in a Trusted Execution Environment, " +
                                 "isolated from the main OS. Even root access cannot extract them.\n\n" +
@@ -2196,7 +2196,7 @@ private fun DebugSubScreen(
                             label      = "SELinux",
                             value      = s.selinux,
                             valueColor = when (s.selinux) {
-                                "Enforcing"  -> Color(0xFF4CAF50)
+                                "Enforcing"  -> Color(0xFF22C55E)
                                 "Permissive" -> Color(0xFFFFA000)
                                 else         -> MaterialTheme.colorScheme.onSurfaceVariant
                             },
@@ -2208,7 +2208,7 @@ private fun DebugSubScreen(
                         DebugRow(
                             label      = "Root",
                             value      = if (s.rooted) "Detected" else "Not detected",
-                            valueColor = if (s.rooted) MaterialTheme.colorScheme.error else Color(0xFF4CAF50),
+                            valueColor = if (s.rooted) MaterialTheme.colorScheme.error else Color(0xFF22C55E),
                             infoText   = "Checks for signs of root access: su binary in common system paths, " +
                                 "test-keys build signature, and response to su commands.\n\n" +
                                 "Not detected — no root indicators found.\n\n" +
@@ -2218,7 +2218,7 @@ private fun DebugSubScreen(
                         DebugRow(
                             label      = "Bootloader",
                             value      = if (s.bootloaderUnlocked) "Unlocked" else "Locked",
-                            valueColor = if (s.bootloaderUnlocked) MaterialTheme.colorScheme.error else Color(0xFF4CAF50),
+                            valueColor = if (s.bootloaderUnlocked) MaterialTheme.colorScheme.error else Color(0xFF22C55E),
                             infoText   = "Verified Boot state reported by the firmware.\n\n" +
                                 "Locked — device boots only signed, unmodified system images. " +
                                 "Provides the strongest hardware-level integrity guarantee.\n\n" +
@@ -2229,7 +2229,7 @@ private fun DebugSubScreen(
                         DebugRow(
                             label      = "USB Debugging",
                             value      = if (s.adbEnabled) "Enabled" else "Disabled",
-                            valueColor = if (s.adbEnabled) Color(0xFFFFA000) else Color(0xFF4CAF50),
+                            valueColor = if (s.adbEnabled) Color(0xFFFFA000) else Color(0xFF22C55E),
                             infoText   = "Android Debug Bridge (ADB) over USB.\n\n" +
                                 "Disabled — normal state for production use. " +
                                 "No shell access to the device over USB without unlocking.\n\n" +
@@ -2240,7 +2240,7 @@ private fun DebugSubScreen(
                         DebugRow(
                             label      = "Developer Options",
                             value      = if (s.devOptionsEnabled) "Enabled" else "Disabled",
-                            valueColor = if (s.devOptionsEnabled) Color(0xFFFFA000) else Color(0xFF4CAF50),
+                            valueColor = if (s.devOptionsEnabled) Color(0xFFFFA000) else Color(0xFF22C55E),
                             infoText   = "Android Developer Options menu.\n\n" +
                                 "Disabled — normal state for end users. " +
                                 "Hides advanced settings that can affect device security and behavior.\n\n" +
@@ -2254,7 +2254,7 @@ private fun DebugSubScreen(
                             value      = if (overlayCount < 0) "Unknown" else "$overlayCount",
                             valueColor = when {
                                 overlayCount < 0 -> MaterialTheme.colorScheme.onSurfaceVariant
-                                overlayCount == 0 -> Color(0xFF4CAF50)
+                                overlayCount == 0 -> Color(0xFF22C55E)
                                 else              -> Color(0xFFFFA000)
                             },
                             infoText   = "Number of apps granted the Draw Over Other Apps (SYSTEM_ALERT_WINDOW) permission.\n\n" +
@@ -2267,7 +2267,7 @@ private fun DebugSubScreen(
                         DebugRow(
                             label      = "FLAG_SECURE",
                             value      = if (isWindowSecure) "Active" else "Inactive",
-                            valueColor = if (isWindowSecure) Color(0xFF4CAF50) else MaterialTheme.colorScheme.error,
+                            valueColor = if (isWindowSecure) Color(0xFF22C55E) else MaterialTheme.colorScheme.error,
                             infoText   = "Window-level security flag set by Arcanum on every screen.\n\n" +
                                 "Active — the OS blocks screenshot APIs and screen recording for this window. " +
                                 "Overlay apps cannot capture vault content through the standard capture pipeline, " +
@@ -2484,7 +2484,7 @@ private fun IconPreview(label: String, bgColor: Color, fgRes: Int, active: Boole
 
 @Composable
 private fun biometricStatusColor(status: String): Color = when (status) {
-    "Available"    -> Color(0xFF4CAF50)
+    "Available"    -> Color(0xFF22C55E)
     "Not enrolled" -> Color(0xFFFFA000)
     else           -> MaterialTheme.colorScheme.error
 }
