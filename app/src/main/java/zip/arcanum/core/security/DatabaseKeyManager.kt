@@ -10,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
-import net.sqlcipher.database.SQLiteDatabase
 import java.io.File
 import java.security.SecureRandom
 import java.util.Base64
@@ -45,20 +44,14 @@ class DatabaseKeyManager @Inject constructor(
         passphrase
     }
 
-    // Detects a plaintext DB left by older app versions and encrypts it in-place.
-    // No-op on fresh installs or already-encrypted databases.
-    fun migrateIfNeeded(passphrase: ByteArray) {
+    // Plaintext DB from older app versions cannot be opened by SupportFactory.
+    // Delete it so Room recreates it encrypted — container files on disk are not affected.
+    fun migrateIfNeeded() {
         val dbFile = context.getDatabasePath("arcanum.db")
         if (!dbFile.exists() || !isPlaintext(dbFile)) return
-        SQLiteDatabase.loadLibs(context)
-        try {
-            SQLiteDatabase.openDatabase(
-                dbFile.absolutePath, ByteArray(0), null, SQLiteDatabase.OPEN_READWRITE
-            ).use { db -> db.changePassword(passphrase) }
-        } catch (_: Exception) {
-            // If migration fails, delete the metadata DB — containers (files on disk) are safe.
-            dbFile.delete()
-        }
+        dbFile.delete()
+        File("${dbFile.absolutePath}-wal").delete()
+        File("${dbFile.absolutePath}-shm").delete()
     }
 
     private fun isPlaintext(file: File): Boolean {
