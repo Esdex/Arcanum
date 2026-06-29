@@ -85,6 +85,11 @@
 -keep class androidx.security.crypto.** { *; }
 -dontwarn androidx.security.crypto.**
 
+# ── SQLCipher ────────────────────────────────────────────────────────────────
+# SQLCipher loads its native library and accesses Java classes via JNI.
+-keep class net.sqlcipher.** { *; }
+-dontwarn net.sqlcipher.**
+
 # ── Coil ─────────────────────────────────────────────────────────────────────
 -dontwarn coil.**
 
