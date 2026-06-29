@@ -3,4 +3,7 @@
     <cache-path
         name="arcanum_temp"
         path="arcanum_temp/" />
+    <files-path
+        name="arcanum_logs"
+        path="." />
 </paths>

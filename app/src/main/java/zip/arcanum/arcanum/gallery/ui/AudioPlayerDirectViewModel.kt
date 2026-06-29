@@ -37,6 +37,7 @@ import zip.arcanum.arcanum.gallery.domain.AudioMetadata
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
+import timber.log.Timber
 import kotlin.math.sqrt
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -100,15 +101,23 @@ class AudioPlayerDirectViewModel @Inject constructor(
             _state.update { it.copy(isPlaying = isPlaying) }
         }
         override fun onPlayerError(error: PlaybackException) {
+            Timber.tag(TAG).e("ExoPlayer error: code=${error.errorCode} msg=${error.message}")
             _state.update { it.copy(error = error.message) }
         }
     }
 
     init {
+        Timber.tag(TAG).d("init containerId=$containerId handle=$handle path=$navPath size=$navSize")
         mutableFactory = MutableEncryptedDataSourceFactory(engine, handle)
-        exoPlayer = ExoPlayer.Builder(appContext)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(mutableFactory))
-            .build()
+        try {
+            exoPlayer = ExoPlayer.Builder(appContext)
+                .setMediaSourceFactory(DefaultMediaSourceFactory(mutableFactory))
+                .build()
+            Timber.tag(TAG).d("ExoPlayer built OK")
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "ExoPlayer build FAILED")
+            throw e
+        }
         exoPlayer.addListener(playerListener)
         startProgressTracking()
         viewModelScope.launch(Dispatchers.IO) { loadTrackAt(posInOrder) }
@@ -121,12 +130,16 @@ class AudioPlayerDirectViewModel @Inject constructor(
         val size = currentSize()
         val name = currentName()
         val h = handle
+        Timber.tag(TAG).d("loadTrackAt pos=$position path=$path size=$size handle=$h")
 
         // Keep old metadata visible until new one arrives — avoids blank flash during transition
         _state.update { it.copy(waveformBars = null, error = null) }
 
         val headerBytes = runCatching {
             engine.nativeReadFile(h, path, 0L, minOf(size, 524288L).toInt())
+        }.also { r ->
+            r.onSuccess { Timber.tag(TAG).d("nativeReadFile header: ${it?.size ?: 0} bytes") }
+            r.onFailure { Timber.tag(TAG).e(it, "nativeReadFile FAILED") }
         }.getOrNull()
 
         val metadata = parseMetadata(headerBytes, name)
@@ -144,8 +157,10 @@ class AudioPlayerDirectViewModel @Inject constructor(
             mutableFactory.configure(path, size)
             exoPlayer.stop()
             exoPlayer.clearMediaItems()
+            Timber.tag(TAG).d("ExoPlayer setMediaItem path=$path")
             exoPlayer.setMediaItem(MediaItem.fromUri(Uri.parse("${EncryptedDataSource.URI_SCHEME}://$path")))
             exoPlayer.prepare()
+            Timber.tag(TAG).d("ExoPlayer prepare() called")
             exoPlayer.playWhenReady = true
         }
 
@@ -222,9 +237,11 @@ class AudioPlayerDirectViewModel @Inject constructor(
     private fun generateWaveformViaPcm(h: Long, path: String, fileSize: Long, barCount: Int): List<Float>? {
         var extractor: MediaExtractor? = null
         var codec: MediaCodec? = null
+        Timber.tag(TAG).d("generateWaveformViaPcm path=$path size=$fileSize bars=$barCount")
         return try {
             extractor = MediaExtractor()
             extractor.setDataSource(JniMediaDataSource(engine, h, path, fileSize))
+            Timber.tag(TAG).d("MediaExtractor trackCount=${extractor.trackCount}")
 
             var audioTrackIdx = -1
             var durationUs = 0L
@@ -239,14 +256,20 @@ class AudioPlayerDirectViewModel @Inject constructor(
                     break
                 }
             }
-            if (audioTrackIdx < 0 || durationUs <= 0L || trackFormat == null) return null
+            if (audioTrackIdx < 0 || durationUs <= 0L || trackFormat == null) {
+                Timber.tag(TAG).w("no audio track found: trackIdx=$audioTrackIdx durationUs=$durationUs")
+                return null
+            }
 
             val mime = trackFormat.getString(MediaFormat.KEY_MIME)!!
+            Timber.tag(TAG).d("audio track $audioTrackIdx mime=$mime durationUs=$durationUs")
             extractor.selectTrack(audioTrackIdx)
 
             codec = MediaCodec.createDecoderByType(mime)
+            Timber.tag(TAG).d("MediaCodec created for $mime")
             codec.configure(trackFormat, null, null, 0)
             codec.start()
+            Timber.tag(TAG).d("MediaCodec started")
 
             val stepUs = durationUs / barCount
             val bars = FloatArray(barCount)
@@ -313,7 +336,10 @@ class AudioPlayerDirectViewModel @Inject constructor(
             val maxVal = bars.maxOrNull()!!
             val range = (maxVal - minVal).coerceAtLeast(0.001f)
             bars.map { ((it - minVal) / range).coerceIn(0f, 1f) }
-        } catch (_: Exception) { null } finally {
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "generateWaveformViaPcm FAILED")
+            null
+        } finally {
             try { codec?.stop() } catch (_: Exception) {}
             try { codec?.release() } catch (_: Exception) {}
             try { extractor?.release() } catch (_: Exception) {}
@@ -459,6 +485,10 @@ class AudioPlayerDirectViewModel @Inject constructor(
             ?.size?.takeIf { it > 0L } ?: navSize
 
     private fun stripExtension(name: String) = name.substringBeforeLast(".", name)
+
+    companion object {
+        private const val TAG = "AudioPlayer"
+    }
 
     override fun onCleared() {
         progressJob?.cancel()

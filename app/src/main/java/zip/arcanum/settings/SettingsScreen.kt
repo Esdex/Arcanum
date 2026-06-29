@@ -155,6 +155,9 @@ import zip.arcanum.core.theme.LocalDynamicColor
 import zip.arcanum.core.theme.ThemeMode
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.content.FileProvider
+import zip.arcanum.core.utils.FileLoggingTree
+import java.io.File
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.core.os.LocaleListCompat
@@ -2331,6 +2334,50 @@ private fun DebugSubScreen(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text(stringResource(R.string.settings_debug_reset_disguise), style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
+
+                // ── Debug Log ─────────────────────────────────────────────────
+                if (BuildConfig.DEBUG) {
+                    PanicSectionLabel("Debug Log")
+                    SettingsGroup {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    runCatching {
+                                        val logFile = File(activity.filesDir, FileLoggingTree.LOG_FILE_NAME)
+                                        if (!logFile.exists()) {
+                                            Toast.makeText(activity, "Log file is empty", Toast.LENGTH_SHORT).show()
+                                            return@OutlinedButton
+                                        }
+                                        val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.provider", logFile)
+                                        val intent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        activity.startActivity(Intent.createChooser(intent, "Share debug log"))
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Share Log", style = MaterialTheme.typography.labelMedium)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    File(activity.filesDir, FileLoggingTree.LOG_FILE_NAME).delete()
+                                    Toast.makeText(activity, "Log cleared", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Clear Log", style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
