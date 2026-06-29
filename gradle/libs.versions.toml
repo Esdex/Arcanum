@@ -34,7 +34,7 @@ palette = "1.0.0"
 aboutlibraries = "14.2.1"
 bouncycastle = "1.79"
 billing = "7.1.1"
-sqlcipher = "4.6.0"
+sqlcipher = "4.5.4"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
