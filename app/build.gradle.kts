@@ -175,6 +175,7 @@ dependencies {
     implementation(libs.androidx.documentfile)
     implementation(libs.biometric)
     implementation(libs.bouncycastle.provider)
+    implementation(libs.sqlcipher)
 
     // Media
     implementation(libs.coil.compose)
