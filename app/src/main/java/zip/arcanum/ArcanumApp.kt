@@ -9,6 +9,7 @@ import androidx.work.WorkManager
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
 import zip.arcanum.R
+import zip.arcanum.core.utils.FileLoggingTree
 import zip.arcanum.arcanum.containers.service.ContainerCreationService
 import javax.inject.Inject
 
@@ -27,6 +28,7 @@ class ArcanumApp : Application() {
         )
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
+            Timber.plant(FileLoggingTree(this))
         }
         createNotificationChannels()
     }
