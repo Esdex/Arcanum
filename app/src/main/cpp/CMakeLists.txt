@@ -65,6 +65,18 @@ target_compile_definitions(arcanum-native PRIVATE
     SAFE_IO=1
 )
 
+# ── arm32: use 32-bit XTS variant to avoid broken 64-bit pointer arithmetic ──
+# On armeabi-v7a, the 64-bit XTS path (unsigned __int64 *bufPtr) produces
+# incorrect results even with __int64=long long, likely due to strict-aliasing
+# UB under -O2.  TC_NO_COMPILER_INT64 switches Xts.c to the uint32_t-based
+# EncryptDecryptBufferXTS32 which works correctly.  Applied per-source so
+# arcanum_jni.cpp retains UINT64_STRUCT::Value (guarded by the same #ifndef).
+if(ANDROID_ABI STREQUAL "armeabi-v7a")
+    set_source_files_properties(veracrypt/Common/Xts.c PROPERTIES
+        COMPILE_DEFINITIONS "TC_NO_COMPILER_INT64"
+    )
+endif()
+
 # ── Reproducible build: disable non-deterministic Build ID ───────────
 target_link_options(arcanum-native PRIVATE "-Wl,--build-id=none")
 
