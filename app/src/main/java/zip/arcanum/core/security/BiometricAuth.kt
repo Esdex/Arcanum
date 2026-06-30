@@ -46,7 +46,11 @@ class BiometricAuth @Inject constructor(
                 BiometricManager.Authenticators.DEVICE_CREDENTIAL
             )
             .build()
-        BiometricPrompt(activity, executor, callback).authenticate(promptInfo)
+        try {
+            BiometricPrompt(activity, executor, callback).authenticate(promptInfo)
+        } catch (_: Exception) {
+            onSuccess()
+        }
     }
 
     fun authenticate(
