@@ -20,7 +20,10 @@ class ContainerCreationParams @Inject constructor() {
         val keyfilePaths: List<String>,
         val pim: Int,
         val safFd: Int = -1,
-        val safPfd: ParcelFileDescriptor? = null
+        val safPfd: ParcelFileDescriptor? = null,
+        // When true the service skips keyfile deletion - caller is responsible for cleanup.
+        // Used for hidden volume flow: outer keyfiles must survive until startHiddenCreation().
+        val preserveKeyfiles: Boolean = false
     )
 
     private val pending = AtomicReference<Params?>()
