@@ -175,6 +175,46 @@ class VeraCryptEngine @Inject constructor() {
         rc.toResult()
     }
 
+    suspend fun changePassword(
+        path: String,
+        oldPassword: String,
+        oldKeyfilePaths: List<String> = emptyList(),
+        oldPim: Int = 0,
+        newPassword: String,
+        newKeyfilePaths: List<String> = emptyList(),
+        newHashAlgorithm: Int = HASH_AUTO,
+        newPim: Int = 0,
+        wipePassCount: Int = 3
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        nativeChangePassword(
+            path, oldPassword,
+            oldKeyfilePaths.toTypedArray().ifEmpty { null }, oldPim,
+            newPassword,
+            newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm, newPim,
+            wipePassCount
+        ).toResult()
+    }
+
+    suspend fun changePasswordFd(
+        fd: Int,
+        oldPassword: String,
+        oldKeyfilePaths: List<String> = emptyList(),
+        oldPim: Int = 0,
+        newPassword: String,
+        newKeyfilePaths: List<String> = emptyList(),
+        newHashAlgorithm: Int = HASH_AUTO,
+        newPim: Int = 0,
+        wipePassCount: Int = 3
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        nativeChangePasswordFd(
+            fd, oldPassword,
+            oldKeyfilePaths.toTypedArray().ifEmpty { null }, oldPim,
+            newPassword,
+            newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm, newPim,
+            wipePassCount
+        ).toResult()
+    }
+
     fun getVolumeType(handle: Long): Int = nativeGetVolumeType(handle)
     fun hasHiddenVolume(handle: Long): Boolean = nativeHasHiddenVolume(handle)
 
@@ -293,6 +333,30 @@ class VeraCryptEngine @Inject constructor() {
         quickFormat: Boolean,
         entropyBytes: ByteArray,
         progressListener: CreationProgressListener?
+    ): Int
+
+    external fun nativeChangePassword(
+        path: String,
+        oldPassword: String,
+        oldKeyfilePaths: Array<String>?,
+        oldPim: Int,
+        newPassword: String,
+        newKeyfilePaths: Array<String>?,
+        newHashAlgorithm: Int,
+        newPim: Int,
+        wipePassCount: Int
+    ): Int
+
+    external fun nativeChangePasswordFd(
+        fd: Int,
+        oldPassword: String,
+        oldKeyfilePaths: Array<String>?,
+        oldPim: Int,
+        newPassword: String,
+        newKeyfilePaths: Array<String>?,
+        newHashAlgorithm: Int,
+        newPim: Int,
+        wipePassCount: Int
     ): Int
 
     external fun nativeGetVolumeType(handle: Long): Int

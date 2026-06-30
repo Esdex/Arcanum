@@ -43,7 +43,7 @@ enum class CipherAlgorithm(val displayName: String, val description: String, val
     KUZNYECHIK_SERPENT_CAMELLIA("Kuznyechik-Serpent-Camellia", "Cascade: three ciphers", AlgorithmSpeed.SLOW),
     KUZNYECHIK_TWOFISH("Kuznyechik-Twofish", "Cascade: GOST + Twofish", AlgorithmSpeed.SLOW)
 }
-enum class AlgorithmSpeed { FAST, MEDIUM, SLOW }
+enum class AlgorithmSpeed { FAST, MEDIUM, SLOW, EXTREMELY_SLOW, PARANOIA }
 enum class HashAlgorithm(val displayName: String) {
     SHA512("SHA-512"),
     SHA256("SHA-256"),

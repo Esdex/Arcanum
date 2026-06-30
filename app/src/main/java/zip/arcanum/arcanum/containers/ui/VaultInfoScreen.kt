@@ -27,7 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material3.Button
@@ -102,14 +101,6 @@ fun VaultInfoScreen(
             rawColor  = Color(0xFF1E88E5),
             isDynamic = isDynamic,
             onClick   = { showInfoSheet = true }
-        )
-        VaultCard(
-            title     = stringResource(R.string.vault_info_op_change_password),
-            subtitle  = stringResource(R.string.vault_card_change_password_desc),
-            icon      = Icons.Outlined.Lock,
-            rawColor  = Color(0xFF43A047),
-            isDynamic = isDynamic,
-            onClick   = { Toast.makeText(context, comingSoon, Toast.LENGTH_SHORT).show() }
         )
         VaultCard(
             title     = stringResource(R.string.vault_info_op_expand_volume),

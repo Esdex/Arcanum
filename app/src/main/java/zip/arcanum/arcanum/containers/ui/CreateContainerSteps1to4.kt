@@ -248,14 +248,18 @@ fun StepEncryptionAlgorithm(state: CreateContainerState, onUpdate: (CreateContai
 internal fun AlgorithmRow(name: String, description: String, speed: AlgorithmSpeed, selected: Boolean, onClick: () -> Unit) {
     val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
     val speedColor = when (speed) {
-        AlgorithmSpeed.FAST   -> MaterialTheme.colorScheme.tertiary
-        AlgorithmSpeed.MEDIUM -> MaterialTheme.colorScheme.secondary
-        AlgorithmSpeed.SLOW   -> MaterialTheme.colorScheme.error
+        AlgorithmSpeed.FAST           -> MaterialTheme.colorScheme.tertiary
+        AlgorithmSpeed.MEDIUM         -> MaterialTheme.colorScheme.secondary
+        AlgorithmSpeed.SLOW           -> MaterialTheme.colorScheme.error
+        AlgorithmSpeed.EXTREMELY_SLOW -> MaterialTheme.colorScheme.error
+        AlgorithmSpeed.PARANOIA       -> MaterialTheme.colorScheme.error
     }
     val speedLabel = when (speed) {
-        AlgorithmSpeed.FAST   -> stringResource(R.string.create_size_speed_fast)
-        AlgorithmSpeed.MEDIUM -> stringResource(R.string.create_size_speed_medium)
-        AlgorithmSpeed.SLOW   -> stringResource(R.string.create_size_speed_slow)
+        AlgorithmSpeed.FAST           -> stringResource(R.string.create_size_speed_fast)
+        AlgorithmSpeed.MEDIUM         -> stringResource(R.string.create_size_speed_medium)
+        AlgorithmSpeed.SLOW           -> stringResource(R.string.create_size_speed_slow)
+        AlgorithmSpeed.EXTREMELY_SLOW -> stringResource(R.string.create_size_speed_extremely_slow)
+        AlgorithmSpeed.PARANOIA       -> stringResource(R.string.create_size_speed_paranoia)
     }
     Card(
         onClick  = onClick,
