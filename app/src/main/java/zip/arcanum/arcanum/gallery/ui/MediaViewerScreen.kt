@@ -79,7 +79,6 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -91,10 +90,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimeInput
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -149,12 +145,12 @@ import zip.arcanum.arcanum.gallery.MediaExifData
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.LocalHazeState
+import zip.arcanum.core.components.WheelDateTimePicker
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.notifications.InAppNotification
 import java.text.DecimalFormat
 import java.time.Instant
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.abs
@@ -570,7 +566,7 @@ fun MediaViewerScreen(
                     onDismissRequest = { showDateSheet = false; showInfoSheet = true },
                     sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 ) {
-                    DateTimeEditContent(
+                    WheelDateTimePicker(
                         initialMillis = file.dateCreated,
                         onDismiss     = { showDateSheet = false; showInfoSheet = true },
                         onSave        = { millis ->
@@ -1056,70 +1052,7 @@ private fun InfoDivider() {
     )
 }
 
-// ── Date/time edit sheet ──────────────────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DateTimeEditContent(
-    initialMillis: Long,
-    onDismiss: () -> Unit,
-    onSave: (Long) -> Unit
-) {
-    val zdt           = Instant.ofEpochMilli(initialMillis).atZone(ZoneId.systemDefault())
-    val dateMidnight  = zdt.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-    val dateState     = rememberDatePickerState(initialSelectedDateMillis = dateMidnight)
-    val timeState = rememberTimePickerState(initialHour = zdt.hour, initialMinute = zdt.minute)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
-            .padding(bottom = 24.dp)
-    ) {
-        Text(
-            text       = stringResource(R.string.viewer_edit_date_title),
-            style      = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            modifier   = Modifier.padding(horizontal = 8.dp, vertical = 16.dp)
-        )
-
-        DatePicker(state = dateState, modifier = Modifier.fillMaxWidth())
-
-        Spacer(Modifier.height(8.dp))
-
-        TimeInput(state = timeState, modifier = Modifier.align(Alignment.CenterHorizontally))
-
-        Spacer(Modifier.height(12.dp))
-
-        Text(
-            text     = stringResource(R.string.viewer_edit_date_warning),
-            style    = MaterialTheme.typography.bodySmall,
-            color    = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 8.dp)
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
-            Spacer(Modifier.width(8.dp))
-            TextButton(
-                onClick = {
-                    val sel = dateState.selectedDateMillis ?: initialMillis
-                    val combined = Instant.ofEpochMilli(sel)
-                        .atZone(ZoneId.systemDefault())
-                        .withHour(timeState.hour)
-                        .withMinute(timeState.minute)
-                        .withSecond(0)
-                        .toInstant()
-                        .toEpochMilli()
-                    onSave(combined)
-                }
-            ) { Text(stringResource(R.string.common_save)) }
-        }
-    }
-}
+// DateTimeEditContent delegates to the shared WheelDateTimePicker composable.
 
 // ── Rename dialog ─────────────────────────────────────────────────────────
 
