@@ -491,7 +491,7 @@ private fun MountScreenContent(
                                             latestOnUnlock.value(password.text, pim, selectedAlgorithm, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
                                         }
                                     } else {
-                                        latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
+                                        latestOnUnlock.value(password.text, pim, selectedAlgorithm, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
                                     }
                                 }
                             ) {
