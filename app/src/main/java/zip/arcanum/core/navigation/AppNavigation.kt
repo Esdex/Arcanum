@@ -50,6 +50,7 @@ import zip.arcanum.core.security.PinManager
 import zip.arcanum.settings.SettingsViewModel
 import zip.arcanum.onboarding.OnboardingScreen
 import zip.arcanum.settings.SettingsScreen
+import zip.arcanum.arcanum.containers.ui.ChangePasswordScreen
 import zip.arcanum.arcanum.containers.ui.CreateContainerScreen
 import zip.arcanum.arcanum.containers.ui.MoveVaultScreen
 import zip.arcanum.setup.PinEntryScreen
@@ -248,6 +249,9 @@ fun AppNavigation(pinManager: PinManager) {
                 },
                 onOpenWhatsNew            = {
                     navController.navigate(Screen.WhatsNew.route)
+                },
+                onChangePassword          = { containerId ->
+                    navController.navigate(Screen.ChangePassword.buildRoute(containerId))
                 }
             )
         }
@@ -395,6 +399,20 @@ fun AppNavigation(pinManager: PinManager) {
                 onBack       = { navController.popBackStack() },
                 viewModel    = settingsViewModel,
                 openWhatsNew = true
+            )
+        }
+
+        // ── Change password wizard ────────────────────────────────────────
+        composable(
+            route             = Screen.ChangePassword.route,
+            arguments         = listOf(navArgument(Screen.ChangePassword.ARG) { type = NavType.StringType }),
+            enterTransition   = { slideInHorizontally(tween(300)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(300)) { it } }
+        ) { backStackEntry ->
+            val containerId = backStackEntry.arguments?.getString(Screen.ChangePassword.ARG) ?: return@composable
+            ChangePasswordScreen(
+                containerId = containerId,
+                onBack      = { navController.popBackStack() }
             )
         }
 

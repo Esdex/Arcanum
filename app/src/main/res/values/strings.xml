@@ -42,6 +42,10 @@
     <string name="notif_channel_vault_creation_desc">Shows progress while creating an encrypted vault</string>
     <string name="notif_creating_vault">Creating vault…</string>
     <string name="notif_creation_progress">%1$d%% complete</string>
+    <string name="notif_channel_change_password">Password Change</string>
+    <string name="notif_channel_change_password_desc">Shows progress while changing a vault password</string>
+    <string name="notif_changing_password">Changing password…</string>
+    <string name="notif_changing_password_desc">Do not close the app</string>
 
     <!-- In-app notification banners -->
     <string name="notif_vault_mounted">Vault mounted successfully</string>
@@ -94,6 +98,8 @@
     <!-- Common / shared -->
     <string name="common_cancel">Cancel</string>
     <string name="common_done">Done</string>
+    <string name="common_next">Next</string>
+    <string name="common_exit">Exit</string>
     <string name="common_save">Save</string>
     <string name="common_back">Back</string>
     <string name="common_delete">Delete</string>
@@ -330,6 +336,7 @@
     <string name="vault_config_move_to_internal_desc">Move vault to a shared storage folder</string>
     <string name="vault_config_rename">Rename</string>
     <string name="vault_config_rename_desc">Change container name and filename</string>
+    <string name="vault_config_change_password">Change Password</string>
     <string name="vault_rename_title">Rename Container</string>
     <string name="vault_rename_label">Container name</string>
     <string name="vault_rename_confirm">Rename</string>
@@ -564,6 +571,8 @@
     <string name="create_size_speed_fast">Fast</string>
     <string name="create_size_speed_medium">Medium</string>
     <string name="create_size_speed_slow">Slow</string>
+    <string name="create_size_speed_extremely_slow">Extremely Slow</string>
+    <string name="create_size_speed_paranoia">Paranoia Slow</string>
 
     <!-- Create container steps 5–7 -->
     <string name="create_step5_outer_title">Set Outer Volume Password</string>
@@ -785,5 +794,38 @@
     <string name="whats_new_title">What\'s new</string>
     <string name="whats_new_version">Version %s</string>
     <string name="whats_new_subtitle">Here\'s what arrived in this release</string>
+
+    <!-- Change Password wizard -->
+    <string name="chpwd_title">Change Password</string>
+    <string name="chpwd_config_desc">Change encryption password, PIM and keyfiles</string>
+    <string name="chpwd_step1_title">Current Credentials</string>
+    <string name="chpwd_step1_subtitle">Enter the current password and keyfiles for this container.</string>
+    <string name="chpwd_step2_title">New Credentials</string>
+    <string name="chpwd_step2_subtitle">Enter the new password, PIM and keyfiles. You can also change the PKCS-5 PRF.</string>
+    <string name="chpwd_step3_title">Header Wipe Mode</string>
+    <string name="chpwd_step3_subtitle">Choose how many times the old header is overwritten before writing the new one.</string>
+    <string name="chpwd_step4_title">Changing Password…</string>
+    <string name="chpwd_step4_success_title">Password Changed</string>
+    <string name="chpwd_step4_success_body">The container password has been updated successfully.</string>
+    <string name="chpwd_step4_error_wrong_password">Wrong password or incorrect keyfile.</string>
+    <string name="chpwd_step4_error_generic">Failed to change password: %s</string>
+    <string name="chpwd_current_pwd_label">Current Password</string>
+    <string name="chpwd_new_pwd_label">New Password</string>
+    <string name="chpwd_new_pwd_confirm_label">Confirm New Password</string>
+    <string name="chpwd_pkcs5_label">PKCS-5 PRF (Hash)</string>
+    <string name="chpwd_wipe_1pass">1 pass — random data</string>
+    <string name="chpwd_wipe_1pass_desc">Fastest. Overwrites the old header once with random data.</string>
+    <string name="chpwd_wipe_3pass">3 passes — US DoD 5220.22-M</string>
+    <string name="chpwd_wipe_3pass_desc">Recommended. Three random overwrites per the DoD standard.</string>
+    <string name="chpwd_wipe_7pass">7 passes — US DoD 5220.22-M</string>
+    <string name="chpwd_wipe_7pass_desc">Extended DoD standard with seven overwrite passes.</string>
+    <string name="chpwd_wipe_35pass">35 passes — Gutmann</string>
+    <string name="chpwd_wipe_35pass_desc">Paranoia-level. Thirty-five passes following Gutmann\'s method.</string>
+    <string name="chpwd_wipe_256pass">256 passes</string>
+    <string name="chpwd_wipe_256pass_desc">Maximum. 256 random overwrite passes.</string>
+    <string name="chpwd_btn_change">Change Password</string>
+    <string name="chpwd_cancel_title">Cancel?</string>
+    <string name="chpwd_cancel_body">Password change is not complete. Exit anyway?</string>
+    <string name="chpwd_mounted_warning">This container must be unmounted before changing the password.</string>
 
 </resources>

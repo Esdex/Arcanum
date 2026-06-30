@@ -179,6 +179,7 @@ fun VaultScreen(
     onAutoMountHandled: () -> Unit = {},
     onMoveVault: (containerId: String, toApp: Boolean) -> Unit = { _, _ -> },
     onOpenWhatsNew: () -> Unit = {},
+    onChangePassword: (containerId: String) -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context              = LocalContext.current
@@ -738,6 +739,33 @@ fun VaultScreen(
                                     renameContainer = c
                                     configContainer = null
                                 }
+                            }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                        // ── Change Password ───────────────────────────────
+                        val changePwdEnabled = !c.isMounted
+                        androidx.compose.material3.ListItem(
+                            headlineContent = { Text(stringResource(R.string.vault_config_change_password)) },
+                            supportingContent = {
+                                Text(
+                                    if (changePwdEnabled) stringResource(R.string.chpwd_config_desc)
+                                    else stringResource(R.string.vault_config_unmount_to_move),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            },
+                            trailingContent = {
+                                Icon(
+                                    imageVector = androidx.compose.material.icons.Icons.Outlined.Lock,
+                                    contentDescription = null,
+                                    tint = if (changePwdEnabled) MaterialTheme.colorScheme.primary
+                                           else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                )
+                            },
+                            modifier = Modifier.clickable(enabled = changePwdEnabled) {
+                                configContainer = null
+                                onChangePassword(c.id)
                             }
                         )
 
