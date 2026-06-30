@@ -124,6 +124,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.pluralStringResource
@@ -1158,7 +1160,7 @@ private fun FabMenuItem(label: String, icon: ImageVector, onClick: () -> Unit) {
 
 @Composable
 private fun NewFolderDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
-    var folderName by rememberSaveable { mutableStateOf("") }
+    var folderName by remember { mutableStateOf(TextFieldValue("")) }
     AppDialog(
         onDismissRequest = onDismiss,
         title            = { Text(stringResource(R.string.files_new_folder_title)) },
@@ -1173,8 +1175,8 @@ private fun NewFolderDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
         },
         confirmButton = {
             TextButton(
-                onClick  = { if (folderName.isNotBlank()) onCreate(folderName.trim()) },
-                enabled  = folderName.isNotBlank()
+                onClick  = { if (folderName.text.isNotBlank()) onCreate(folderName.text.trim()) },
+                enabled  = folderName.text.isNotBlank()
             ) { Text(stringResource(R.string.files_new_folder_create)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } }
@@ -1184,7 +1186,7 @@ private fun NewFolderDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
 @Composable
 private fun RenameDialog(currentName: String, onDismiss: () -> Unit, onRename: (String) -> Unit) {
     val nameWithoutExt = currentName.substringBeforeLast(".", currentName)
-    var newName by rememberSaveable { mutableStateOf(nameWithoutExt) }
+    var newName by remember { mutableStateOf(TextFieldValue(nameWithoutExt, TextRange(nameWithoutExt.length))) }
     AppDialog(
         onDismissRequest = onDismiss,
         title            = { Text(stringResource(R.string.files_rename_title)) },
@@ -1199,8 +1201,8 @@ private fun RenameDialog(currentName: String, onDismiss: () -> Unit, onRename: (
         },
         confirmButton = {
             TextButton(
-                onClick  = { if (newName.isNotBlank()) onRename(newName.trim()) },
-                enabled  = newName.isNotBlank()
+                onClick  = { if (newName.text.isNotBlank()) onRename(newName.text.trim()) },
+                enabled  = newName.text.isNotBlank()
             ) { Text(stringResource(R.string.files_rename_title)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } }

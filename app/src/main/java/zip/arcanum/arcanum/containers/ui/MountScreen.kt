@@ -96,7 +96,9 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -193,9 +195,9 @@ private fun MountScreenContent(
     }
 
     // ── Form state ────────────────────────────────────────────────────────
-    val passwordState       = remember { mutableStateOf("") }
+    val passwordState       = remember { mutableStateOf(TextFieldValue("")) }
     var password            by passwordState
-    val hiddenPasswordState = remember { mutableStateOf("") }
+    val hiddenPasswordState = remember { mutableStateOf(TextFieldValue("")) }
 
     val autofill               = LocalAutofill.current
     val autofillManager        = remember { context.getSystemService(android.view.autofill.AutofillManager::class.java) }
@@ -204,10 +206,10 @@ private fun MountScreenContent(
     val passwordFocusRequester       = remember { FocusRequester() }
     val hiddenPasswordFocusRequester = remember { FocusRequester() }
     val passwordAutofillNode = remember {
-        AutofillNode(listOf(AutofillType.Password)) { passwordState.value = it }
+        AutofillNode(listOf(AutofillType.Password)) { passwordState.value = TextFieldValue(it, TextRange(it.length)) }
     }
     val hiddenPasswordAutofillNode = remember {
-        AutofillNode(listOf(AutofillType.Password)) { hiddenPasswordState.value = it }
+        AutofillNode(listOf(AutofillType.Password)) { hiddenPasswordState.value = TextFieldValue(it, TextRange(it.length)) }
     }
     val autofillTree = LocalAutofillTree.current
 
@@ -404,7 +406,7 @@ private fun MountScreenContent(
     val pim       = pimValue.toIntOrNull() ?: 0
     val isError   = mountState is VaultViewModel.MountState.Error
     val isLoading = mountState is VaultViewModel.MountState.Loading
-    val canUnlock = bioMode == BioUiMode.Form && (password.isNotEmpty() || keyfiles.isNotEmpty()) && !isLoading
+    val canUnlock = bioMode == BioUiMode.Form && (password.text.isNotEmpty() || keyfiles.isNotEmpty()) && !isLoading
 
     BackHandler(enabled = !isMounting) {
         keyfiles.forEach { it.zero() }
@@ -461,7 +463,7 @@ private fun MountScreenContent(
                                 onClick = {
                                     focusManager.clearFocus()
                                     keyboardController?.hide()
-                                    val protectedPassword = if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null
+                                    val protectedPassword = if (protectHidden && hiddenPassword.text.isNotBlank()) hiddenPassword.text else null
                                     val protectedPim = if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0
                                     val protectedKeyfileData = if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList()
                                     if (biometricEnabled) {
@@ -469,7 +471,7 @@ private fun MountScreenContent(
                                         if (cryptoObj != null) {
                                             isDecryptModeState.value  = false
                                             pendingEncryptState.value = EncryptPending(
-                                                password                   = password,
+                                                password                   = password.text,
                                                 pim                        = pim,
                                                 algorithm                  = selectedAlgorithm,
                                                 hash                       = selectedHash,
@@ -486,7 +488,7 @@ private fun MountScreenContent(
                                                 cryptoObj
                                             )
                                         } else {
-                                            latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
+                                            latestOnUnlock.value(password.text, pim, selectedAlgorithm, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
                                         }
                                     } else {
                                         latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
@@ -692,7 +694,7 @@ private fun MountScreenContent(
                                 ),
                                 keyboardActions = KeyboardActions(
                                     onDone = {
-                                        if (canUnlock) latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null, if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0, if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList())
+                                        if (canUnlock) latestOnUnlock.value(password.text, pim, selectedAlgorithm, selectedHash, if (protectHidden && hiddenPassword.text.isNotBlank()) hiddenPassword.text else null, if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0, if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList())
                                     }
                                 ),
                                 singleLine = true,
