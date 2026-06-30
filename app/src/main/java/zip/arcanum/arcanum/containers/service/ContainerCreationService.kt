@@ -105,9 +105,10 @@ class ContainerCreationService : Service() {
                     )
                 }
             } finally {
-                // Always release resources regardless of success, failure, or cancellation
                 p.safPfd?.close()
-                p.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+                if (!p.preserveKeyfiles) {
+                    p.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+                }
             }
 
             if (result is zip.arcanum.crypto.CryptoResult.Success) {

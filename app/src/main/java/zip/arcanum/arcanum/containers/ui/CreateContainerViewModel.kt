@@ -246,38 +246,51 @@ class CreateContainerViewModel @Inject constructor(
         val fullPath = if (s.safUri.isEmpty()) "${s.filePath.trimEnd('/')}/${s.fileName}" else ""
         viewModelScope.launch {
             val pfd = safParcelFd
-            val result = if (pfd != null) {
-                cryptoEngine.createHiddenVolumeFd(
-                    fd                  = pfd.fd,
-                    hiddenSizeBytes     = s.hiddenSizeMb * 1024L * 1024L,
-                    outerPassword       = s.password,
-                    outerKeyfilePaths   = s.keyfilePaths,
-                    outerPim            = s.pim,
-                    hiddenPassword      = s.hiddenPassword,
-                    hiddenKeyfilePaths  = s.hiddenKeyfilePaths,
-                    hiddenPim           = s.hiddenPim,
-                    hiddenAlgorithm     = s.hiddenAlgorithm.ordinal,
-                    hiddenHashAlgorithm = s.hiddenHashAlgorithm.ordinal,
-                    quickFormat         = true,
-                    entropyBytes        = hiddenEntropyBuffer.toByteArray(),
-                    progressListener    = null
-                )
-            } else {
-                cryptoEngine.createHiddenVolume(
-                path                = fullPath,
-                hiddenSizeBytes     = s.hiddenSizeMb * 1024L * 1024L,
-                outerPassword       = s.password,
-                outerKeyfilePaths   = s.keyfilePaths,
-                outerPim            = s.pim,
-                hiddenPassword      = s.hiddenPassword,
-                hiddenKeyfilePaths  = s.hiddenKeyfilePaths,
-                hiddenPim           = s.hiddenPim,
-                hiddenAlgorithm     = s.hiddenAlgorithm.ordinal,
-                hiddenHashAlgorithm = s.hiddenHashAlgorithm.ordinal,
-                quickFormat         = true,
-                entropyBytes        = hiddenEntropyBuffer.toByteArray(),
-                progressListener    = null
-                )
+            val result = try {
+                if (pfd != null) {
+                    cryptoEngine.createHiddenVolumeFd(
+                        fd                  = pfd.fd,
+                        hiddenSizeBytes     = s.hiddenSizeMb * 1024L * 1024L,
+                        outerPassword       = s.password,
+                        outerKeyfilePaths   = s.keyfilePaths,
+                        outerPim            = s.pim,
+                        hiddenPassword      = s.hiddenPassword,
+                        hiddenKeyfilePaths  = s.hiddenKeyfilePaths,
+                        hiddenPim           = s.hiddenPim,
+                        hiddenAlgorithm     = s.hiddenAlgorithm.ordinal,
+                        hiddenHashAlgorithm = s.hiddenHashAlgorithm.ordinal,
+                        quickFormat         = true,
+                        entropyBytes        = hiddenEntropyBuffer.toByteArray(),
+                        progressListener    = null
+                    )
+                } else {
+                    cryptoEngine.createHiddenVolume(
+                        path                = fullPath,
+                        hiddenSizeBytes     = s.hiddenSizeMb * 1024L * 1024L,
+                        outerPassword       = s.password,
+                        outerKeyfilePaths   = s.keyfilePaths,
+                        outerPim            = s.pim,
+                        hiddenPassword      = s.hiddenPassword,
+                        hiddenKeyfilePaths  = s.hiddenKeyfilePaths,
+                        hiddenPim           = s.hiddenPim,
+                        hiddenAlgorithm     = s.hiddenAlgorithm.ordinal,
+                        hiddenHashAlgorithm = s.hiddenHashAlgorithm.ordinal,
+                        quickFormat         = true,
+                        entropyBytes        = hiddenEntropyBuffer.toByteArray(),
+                        progressListener    = null
+                    )
+                }
+            } finally {
+                // Always delete keyfile copies regardless of success, failure, or exception.
+                // Outer keyfiles were preserved by the service (preserveKeyfiles=true) - delete here.
+                s.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+                s.hiddenKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+                _state.update { it.copy(
+                    keyfilePaths              = emptyList(),
+                    keyfileDisplayNames       = emptyList(),
+                    hiddenKeyfilePaths        = emptyList(),
+                    hiddenKeyfileDisplayNames = emptyList()
+                ) }
             }
             when (result) {
                 is CryptoResult.Success -> _state.update { it.copy(
@@ -291,7 +304,6 @@ class CreateContainerViewModel @Inject constructor(
                     error      = "Hidden volume creation failed: ${result.error}"
                 ) }
             }
-            s.hiddenKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
         }
     }
 
@@ -333,18 +345,19 @@ class CreateContainerViewModel @Inject constructor(
         // from the ViewModel's pfd, eliminating the raw-fd race on ViewModel.onCleared().
         val servicePfd = safParcelFd?.dup()
         creationParams.set(ContainerCreationParams.Params(
-            path          = fullPath,
-            sizeBytes     = s.sizeMb * 1024L * 1024L,
-            password      = s.password,
-            algorithm     = s.algorithm.ordinal,
-            hashAlgorithm = s.hashAlgorithm.ordinal,
-            filesystem    = s.filesystem.ordinal,
-            quickFormat   = s.quickFormat,
-            entropyBytes  = entropyBuffer.toByteArray(),
-            keyfilePaths  = s.keyfilePaths,
-            pim           = s.pim,
-            safFd         = servicePfd?.fd ?: -1,
-            safPfd        = servicePfd
+            path             = fullPath,
+            sizeBytes        = s.sizeMb * 1024L * 1024L,
+            password         = s.password,
+            algorithm        = s.algorithm.ordinal,
+            hashAlgorithm    = s.hashAlgorithm.ordinal,
+            filesystem       = s.filesystem.ordinal,
+            quickFormat      = s.quickFormat,
+            entropyBytes     = entropyBuffer.toByteArray(),
+            keyfilePaths     = s.keyfilePaths,
+            pim              = s.pim,
+            safFd            = servicePfd?.fd ?: -1,
+            safPfd           = servicePfd,
+            preserveKeyfiles = s.volumeType == VolumeType.HIDDEN
         ))
         context.startForegroundService(Intent(context, ContainerCreationService::class.java))
     }
@@ -380,6 +393,8 @@ class CreateContainerViewModel @Inject constructor(
         val s = _state.value
         safParcelFd?.close()
         safParcelFd = null
+        s.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+        s.hiddenKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
         if (s.safUri.isEmpty()) {
             val fullPath = "${s.filePath.trimEnd('/')}/${s.fileName}"
             java.io.File(fullPath).delete()
@@ -390,7 +405,15 @@ class CreateContainerViewModel @Inject constructor(
                 )
             }
         }
-        _state.update { it.copy(isCreating = false, currentStep = 1, safUri = "") }
+        _state.update { it.copy(
+            isCreating                = false,
+            currentStep               = 1,
+            safUri                    = "",
+            keyfilePaths              = emptyList(),
+            keyfileDisplayNames       = emptyList(),
+            hiddenKeyfilePaths        = emptyList(),
+            hiddenKeyfileDisplayNames = emptyList()
+        ) }
     }
 
     override fun onCleared() {
