@@ -154,6 +154,7 @@ import zip.arcanum.core.notifications.InAppNotification
 import java.text.DecimalFormat
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.abs
@@ -1064,8 +1065,9 @@ private fun DateTimeEditContent(
     onDismiss: () -> Unit,
     onSave: (Long) -> Unit
 ) {
-    val zdt       = Instant.ofEpochMilli(initialMillis).atZone(ZoneId.systemDefault())
-    val dateState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+    val zdt           = Instant.ofEpochMilli(initialMillis).atZone(ZoneId.systemDefault())
+    val dateMidnight  = zdt.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+    val dateState     = rememberDatePickerState(initialSelectedDateMillis = dateMidnight)
     val timeState = rememberTimePickerState(initialHour = zdt.hour, initialMinute = zdt.minute)
 
     Column(
@@ -1082,7 +1084,7 @@ private fun DateTimeEditContent(
             modifier   = Modifier.padding(horizontal = 8.dp, vertical = 16.dp)
         )
 
-        DatePicker(state = dateState, modifier = Modifier.fillMaxWidth(), showModeToggle = false)
+        DatePicker(state = dateState, modifier = Modifier.fillMaxWidth())
 
         Spacer(Modifier.height(8.dp))
 
