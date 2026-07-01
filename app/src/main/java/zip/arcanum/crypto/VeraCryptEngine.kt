@@ -184,14 +184,15 @@ class VeraCryptEngine @Inject constructor() {
         newKeyfilePaths: List<String> = emptyList(),
         newHashAlgorithm: Int = HASH_AUTO,
         newPim: Int = 0,
-        wipePassCount: Int = 3
+        wipePassCount: Int = 3,
+        extraEntropy: ByteArray = ByteArray(0)
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
         nativeChangePassword(
             path, oldPassword,
             oldKeyfilePaths.toTypedArray().ifEmpty { null }, oldPim,
             newPassword,
             newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm, newPim,
-            wipePassCount
+            wipePassCount, extraEntropy
         ).toResult()
     }
 
@@ -204,14 +205,49 @@ class VeraCryptEngine @Inject constructor() {
         newKeyfilePaths: List<String> = emptyList(),
         newHashAlgorithm: Int = HASH_AUTO,
         newPim: Int = 0,
-        wipePassCount: Int = 3
+        wipePassCount: Int = 3,
+        extraEntropy: ByteArray = ByteArray(0)
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
         nativeChangePasswordFd(
             fd, oldPassword,
             oldKeyfilePaths.toTypedArray().ifEmpty { null }, oldPim,
             newPassword,
             newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm, newPim,
-            wipePassCount
+            wipePassCount, extraEntropy
+        ).toResult()
+    }
+
+    suspend fun changeKeyfile(
+        path: String,
+        password: String,
+        oldKeyfilePaths: List<String> = emptyList(),
+        pim: Int = 0,
+        newKeyfilePaths: List<String> = emptyList(),
+        newHashAlgorithm: Int = HASH_AUTO,
+        extraEntropy: ByteArray = ByteArray(0)
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        nativeChangeKeyfile(
+            path, password,
+            oldKeyfilePaths.toTypedArray().ifEmpty { null }, pim,
+            newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm,
+            extraEntropy
+        ).toResult()
+    }
+
+    suspend fun changeKeyfileFd(
+        fd: Int,
+        password: String,
+        oldKeyfilePaths: List<String> = emptyList(),
+        pim: Int = 0,
+        newKeyfilePaths: List<String> = emptyList(),
+        newHashAlgorithm: Int = HASH_AUTO,
+        extraEntropy: ByteArray = ByteArray(0)
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        nativeChangeKeyfileFd(
+            fd, password,
+            oldKeyfilePaths.toTypedArray().ifEmpty { null }, pim,
+            newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm,
+            extraEntropy
         ).toResult()
     }
 
@@ -344,7 +380,8 @@ class VeraCryptEngine @Inject constructor() {
         newKeyfilePaths: Array<String>?,
         newHashAlgorithm: Int,
         newPim: Int,
-        wipePassCount: Int
+        wipePassCount: Int,
+        extraEntropy: ByteArray
     ): Int
 
     external fun nativeChangePasswordFd(
@@ -356,7 +393,28 @@ class VeraCryptEngine @Inject constructor() {
         newKeyfilePaths: Array<String>?,
         newHashAlgorithm: Int,
         newPim: Int,
-        wipePassCount: Int
+        wipePassCount: Int,
+        extraEntropy: ByteArray
+    ): Int
+
+    external fun nativeChangeKeyfile(
+        path: String,
+        password: String,
+        oldKeyfilePaths: Array<String>?,
+        pim: Int,
+        newKeyfilePaths: Array<String>?,
+        newHashAlgorithm: Int,
+        extraEntropy: ByteArray
+    ): Int
+
+    external fun nativeChangeKeyfileFd(
+        fd: Int,
+        password: String,
+        oldKeyfilePaths: Array<String>?,
+        pim: Int,
+        newKeyfilePaths: Array<String>?,
+        newHashAlgorithm: Int,
+        extraEntropy: ByteArray
     ): Int
 
     external fun nativeGetVolumeType(handle: Long): Int

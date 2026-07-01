@@ -33,7 +33,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.SaveAlt
-import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -115,14 +114,6 @@ fun VaultInfoScreen(
             subtitle  = stringResource(R.string.vault_card_backup_desc),
             icon      = Icons.Outlined.SaveAlt,
             rawColor  = Color(0xFFE65100),
-            isDynamic = isDynamic,
-            onClick   = { Toast.makeText(context, comingSoon, Toast.LENGTH_SHORT).show() }
-        )
-        VaultCard(
-            title     = stringResource(R.string.vault_info_op_change_keyfile),
-            subtitle  = stringResource(R.string.vault_card_keyfile_desc),
-            icon      = Icons.Outlined.VpnKey,
-            rawColor  = Color(0xFF00897B),
             isDynamic = isDynamic,
             onClick   = { Toast.makeText(context, comingSoon, Toast.LENGTH_SHORT).show() }
         )

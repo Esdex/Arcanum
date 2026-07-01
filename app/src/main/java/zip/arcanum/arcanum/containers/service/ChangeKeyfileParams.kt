@@ -6,26 +6,22 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class ChangePasswordParams @Inject constructor() {
+class ChangeKeyfileParams @Inject constructor() {
 
     data class Params(
         val path: String,
         val safFd: Int = -1,
         val safPfd: ParcelFileDescriptor? = null,
-        val oldPassword: String,
+        val password: String,
         val oldKeyfilePaths: List<String>,
-        val oldPim: Int,
-        val newPassword: String,
+        val pim: Int,
         val newKeyfilePaths: List<String>,
         val newHashAlgorithm: Int,
-        val newPim: Int,
-        val wipePassCount: Int,
         val extraEntropy: ByteArray
     )
 
-    private val pending = AtomicReference<Params?>()
+    private val ref = AtomicReference<Params?>(null)
 
-    fun set(params: Params) { pending.set(params) }
-
-    fun take(): Params? = pending.getAndSet(null)
+    fun set(p: Params) { ref.set(p) }
+    fun take(): Params? = ref.getAndSet(null)
 }

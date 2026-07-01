@@ -67,6 +67,7 @@ import androidx.compose.material.icons.outlined.FolderOff
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
@@ -180,6 +181,7 @@ fun VaultScreen(
     onMoveVault: (containerId: String, toApp: Boolean) -> Unit = { _, _ -> },
     onOpenWhatsNew: () -> Unit = {},
     onChangePassword: (containerId: String) -> Unit = {},
+    onChangeKeyfile: (containerId: String) -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context              = LocalContext.current
@@ -766,6 +768,33 @@ fun VaultScreen(
                             modifier = Modifier.clickable(enabled = changePwdEnabled) {
                                 configContainer = null
                                 onChangePassword(c.id)
+                            }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                        // ── Change Keyfile ────────────────────────────────
+                        val changeKfEnabled = !c.isMounted
+                        androidx.compose.material3.ListItem(
+                            headlineContent = { Text(stringResource(R.string.vault_config_change_keyfile)) },
+                            supportingContent = {
+                                Text(
+                                    if (changeKfEnabled) stringResource(R.string.chkeyfile_config_desc)
+                                    else stringResource(R.string.vault_config_unmount_to_move),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            },
+                            trailingContent = {
+                                Icon(
+                                    imageVector = androidx.compose.material.icons.Icons.Outlined.VpnKey,
+                                    contentDescription = null,
+                                    tint = if (changeKfEnabled) MaterialTheme.colorScheme.primary
+                                           else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                )
+                            },
+                            modifier = Modifier.clickable(enabled = changeKfEnabled) {
+                                configContainer = null
+                                onChangeKeyfile(c.id)
                             }
                         )
 
