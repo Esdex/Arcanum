@@ -1,5 +1,6 @@
 package zip.arcanum.arcanum.containers.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -9,6 +10,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -59,25 +62,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.autofill.AutofillNode
-import androidx.compose.ui.autofill.AutofillType
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalAutofill
-import androidx.compose.ui.platform.LocalAutofillTree
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -85,11 +86,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.utils.FileUtils
@@ -126,14 +124,14 @@ fun ChangePasswordScreen(
 
     BackHandler {
         when {
-            state.currentStep == 4 && state.isRunning -> showCancelDialog = true
+            state.currentStep == 5 && state.isRunning -> showCancelDialog = true
             state.currentStep > 1 && !state.isRunning -> viewModel.prevStep()
             state.currentStep == 1                    -> onBack()
         }
     }
 
     LaunchedEffect(state.currentStep) {
-        if (state.currentStep == 4 && !state.isRunning && !state.isSuccess && state.error == null) {
+        if (state.currentStep == 5 && !state.isRunning && !state.isSuccess && state.error == null) {
             viewModel.startChange()
         }
         prevStep = state.currentStep
@@ -166,7 +164,7 @@ fun ChangePasswordScreen(
             Column(modifier = Modifier.fillMaxSize()) {
 
                 // ── Top bar ────────────────────────────────────────────────────
-                val showTopBar = state.currentStep < 4 || state.isSuccess || state.error != null
+                val showTopBar = state.currentStep < 5 || state.isSuccess || state.error != null
                 if (showTopBar) {
                     Row(
                         modifier          = Modifier
@@ -192,7 +190,7 @@ fun ChangePasswordScreen(
                             fontWeight = FontWeight.SemiBold,
                             modifier   = Modifier.weight(1f)
                         )
-                        if (state.currentStep < 4) {
+                        if (state.currentStep < 5) {
                             Text(
                                 text     = stringResource(R.string.create_step_counter, state.currentStep, state.totalSteps - 1),
                                 style    = MaterialTheme.typography.bodySmall,
@@ -203,7 +201,7 @@ fun ChangePasswordScreen(
                     }
                 }
 
-                if (showTopBar && state.currentStep < 4) {
+                if (showTopBar && state.currentStep < 5) {
                     LinearProgressIndicator(
                         progress   = { (state.currentStep - 1) / (state.totalSteps - 2f) },
                         modifier   = Modifier
@@ -243,24 +241,26 @@ fun ChangePasswordScreen(
                             onAddKeyfile    = { newKeyfileLauncher.launch("*/*") },
                             onRemoveKeyfile = viewModel::removeNewKeyfile
                         )
-                        3 -> ChPwdStep3(state = state, onUpdate = viewModel::update)
-                        4 -> ChPwdStep4(state = state, onBack = onBack)
+                        3 -> ChPwdStep3(state = state, onAddEntropyPoint = viewModel::addEntropyPoint)
+                        4 -> ChPwdStep4(state = state, onUpdate = viewModel::update)
+                        5 -> ChPwdStep5(state = state, onBack = onBack)
                         else -> {}
                     }
                 }
 
                 // ── Bottom button ─────────────────────────────────────────────
-                if (state.currentStep < 4) {
+                if (state.currentStep < 5) {
                     val canProceed = when (state.currentStep) {
                         1    -> state.oldPassword.isNotEmpty()
                         2    -> state.newPassword.isNotEmpty() &&
                                 state.newPassword == state.newConfirmPassword
-                        3    -> true
+                        3    -> state.entropyProgress >= 1f
+                        4    -> true
                         else -> false
                     }
                     Button(
                         onClick  = {
-                            if (state.currentStep == 3) viewModel.startChange()
+                            if (state.currentStep == 4) viewModel.startChange()
                             else viewModel.nextStep()
                         },
                         enabled  = canProceed,
@@ -269,7 +269,7 @@ fun ChangePasswordScreen(
                             .padding(horizontal = 20.dp, vertical = 16.dp)
                     ) {
                         Text(
-                            if (state.currentStep == 3) stringResource(R.string.chpwd_btn_change)
+                            if (state.currentStep == 4) stringResource(R.string.chpwd_btn_change)
                             else stringResource(R.string.common_next)
                         )
                     }
@@ -281,7 +281,6 @@ fun ChangePasswordScreen(
 
 // ─── Step 1: Current Credentials ─────────────────────────────────────────────
 
-@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun ChPwdStep1(
     state: ChangePasswordState,
@@ -289,38 +288,6 @@ private fun ChPwdStep1(
     onAddKeyfile: () -> Unit,
     onRemoveKeyfile: (Int) -> Unit
 ) {
-    val context         = LocalContext.current
-    val autofill        = LocalAutofill.current
-    val autofillManager = remember { context.getSystemService(android.view.autofill.AutofillManager::class.java) }
-    val autofillScope   = rememberCoroutineScope()
-    val lifecycleOwner  = LocalLifecycleOwner.current
-    val focusRequester  = remember { FocusRequester() }
-    val latestOnUpdate  = rememberUpdatedState(onUpdate)
-
-    val autofillNode = remember {
-        AutofillNode(listOf(AutofillType.Password)) { filled ->
-            latestOnUpdate.value { copy(oldPassword = filled) }
-        }
-    }
-    val autofillTree = LocalAutofillTree.current
-    DisposableEffect(Unit) {
-        autofillTree += autofillNode
-        onDispose { autofillTree.children.remove(autofillNode.id) }
-    }
-
-    var refocusCount by remember { mutableIntStateOf(0) }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) { autofillManager?.cancel(); refocusCount++ }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    LaunchedEffect(refocusCount) {
-        if (refocusCount == 0) return@LaunchedEffect
-        delay(200); focusRequester.requestFocus()
-    }
-
     var showPassword    by remember { mutableStateOf(false) }
     var keyfileExpanded by remember { mutableStateOf(state.oldKeyfilePaths.isNotEmpty()) }
     var pimText         by remember { mutableStateOf(if (state.oldPim > 0) state.oldPim.toString() else "") }
@@ -346,19 +313,7 @@ private fun ChPwdStep1(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(focusRequester)
-                .onGloballyPositioned { autofillNode.boundingBox = it.boundsInRoot() }
-                .onFocusChanged { fs ->
-                    if (fs.isFocused) {
-                        autofillScope.launch {
-                            delay(150)
-                            autofillManager?.cancel()
-                            autofill?.requestAutofillForNode(autofillNode)
-                        }
-                    } else {
-                        autofill?.cancelAutofillForNode(autofillNode)
-                    }
-                }
+                .semantics { contentType = ContentType.Password }
         )
         Spacer(Modifier.height(12.dp))
 
@@ -390,7 +345,6 @@ private fun ChPwdStep1(
 
 // ─── Step 2: New Credentials ──────────────────────────────────────────────────
 
-@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun ChPwdStep2(
     state: ChangePasswordState,
@@ -398,40 +352,6 @@ private fun ChPwdStep2(
     onAddKeyfile: () -> Unit,
     onRemoveKeyfile: (Int) -> Unit
 ) {
-    val context         = LocalContext.current
-    val autofill        = LocalAutofill.current
-    val autofillManager = remember { context.getSystemService(android.view.autofill.AutofillManager::class.java) }
-    val autofillScope   = rememberCoroutineScope()
-    val lifecycleOwner  = LocalLifecycleOwner.current
-    val focusRequester  = remember { FocusRequester() }
-    val latestOnUpdate  = rememberUpdatedState(onUpdate)
-
-    // NewPassword type — password managers know to generate/suggest a new credential.
-    // Fills both fields so the user never has to manually match them.
-    val autofillNode = remember {
-        AutofillNode(listOf(AutofillType.NewPassword)) { filled ->
-            latestOnUpdate.value { copy(newPassword = filled, newConfirmPassword = filled) }
-        }
-    }
-    val autofillTree = LocalAutofillTree.current
-    DisposableEffect(Unit) {
-        autofillTree += autofillNode
-        onDispose { autofillTree.children.remove(autofillNode.id) }
-    }
-
-    var refocusCount by remember { mutableIntStateOf(0) }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) { autofillManager?.cancel(); refocusCount++ }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    LaunchedEffect(refocusCount) {
-        if (refocusCount == 0) return@LaunchedEffect
-        delay(200); focusRequester.requestFocus()
-    }
-
     var showPassword    by remember { mutableStateOf(false) }
     var showConfirm     by remember { mutableStateOf(false) }
     var keyfileExpanded by remember { mutableStateOf(state.newKeyfilePaths.isNotEmpty()) }
@@ -458,19 +378,7 @@ private fun ChPwdStep2(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .focusRequester(focusRequester)
-                .onGloballyPositioned { autofillNode.boundingBox = it.boundsInRoot() }
-                .onFocusChanged { fs ->
-                    if (fs.isFocused) {
-                        autofillScope.launch {
-                            delay(150)
-                            autofillManager?.cancel()
-                            autofill?.requestAutofillForNode(autofillNode)
-                        }
-                    } else {
-                        autofill?.cancelAutofillForNode(autofillNode)
-                    }
-                }
+                .semantics { contentType = ContentType.NewPassword }
         )
         Spacer(Modifier.height(12.dp))
 
@@ -493,7 +401,9 @@ private fun ChPwdStep2(
                     )
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentType = ContentType.NewPassword }
         )
         Spacer(Modifier.height(12.dp))
 
@@ -546,10 +456,87 @@ private fun ChPwdStep2(
     }
 }
 
-// ─── Step 3: Wipe Mode ────────────────────────────────────────────────────────
+// ─── Step 3: Entropy ─────────────────────────────────────────────────────────
+
+private data class ChPwdParticle(val offset: Offset, val birthMs: Long)
 
 @Composable
 private fun ChPwdStep3(
+    state: ChangePasswordState,
+    onAddEntropyPoint: (Int, Int) -> Unit
+) {
+    val accentColor = MaterialTheme.colorScheme.primary
+    val done        = state.entropyProgress >= 1f
+    val view        = LocalView.current
+
+    val particles = remember { mutableStateListOf<ChPwdParticle>() }
+    val uniquePts = remember { mutableSetOf<Pair<Int, Int>>() }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(50)
+            val now = System.currentTimeMillis()
+            particles.removeAll { now - it.birthMs > 1000L }
+        }
+    }
+
+    StepContent(
+        title    = stringResource(R.string.create_entropy_title),
+        subtitle = stringResource(R.string.create_entropy_subtitle)
+    ) {
+        Card(
+            colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+            shape    = RoundedCornerShape(20.dp),
+            border   = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+            modifier = Modifier.fillMaxWidth().height(260.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, _ ->
+                            val pos   = change.position
+                            val gridX = (pos.x / 10).roundToInt()
+                            val gridY = (pos.y / 10).roundToInt()
+                            if (uniquePts.add(gridX to gridY)) {
+                                onAddEntropyPoint(gridX, gridY)
+                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            }
+                            particles.add(ChPwdParticle(pos, System.currentTimeMillis()))
+                        }
+                    }
+            ) {
+                val now = System.currentTimeMillis()
+                particles.forEach { p ->
+                    val age    = (now - p.birthMs) / 1000f
+                    val alpha  = (1f - age).coerceIn(0f, 1f)
+                    val radius = 6f * (1f - age * 0.5f)
+                    drawCircle(color = accentColor.copy(alpha = alpha), radius = radius, center = p.offset)
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        LinearProgressIndicator(
+            progress   = { state.entropyProgress },
+            color      = if (done) Color(0xFF16A34A) else accentColor,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            strokeCap  = StrokeCap.Round,
+            modifier   = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(99.dp))
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text  = if (done) stringResource(R.string.create_entropy_done)
+                    else stringResource(R.string.create_entropy_progress, (state.entropyProgress * 100).toInt()),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (done) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+// ─── Step 4: Wipe Mode ────────────────────────────────────────────────────────
+
+@Composable
+private fun ChPwdStep4(
     state: ChangePasswordState,
     onUpdate: (ChangePasswordState.() -> ChangePasswordState) -> Unit
 ) {
@@ -618,10 +605,10 @@ private fun ChPwdStep3(
     }
 }
 
-// ─── Step 4: Progress / Result ────────────────────────────────────────────────
+// ─── Step 5: Progress / Result ────────────────────────────────────────────────
 
 @Composable
-private fun ChPwdStep4(state: ChangePasswordState, onBack: () -> Unit) {
+private fun ChPwdStep5(state: ChangePasswordState, onBack: () -> Unit) {
     when {
         state.isRunning  -> ChPwdStep4Loading()
         state.isSuccess  -> ChPwdStep4Success(onBack)
@@ -744,7 +731,7 @@ private fun ChPwdStep4Error(error: String, onBack: () -> Unit) {
 // ─── Shared: Keyfile section ──────────────────────────────────────────────────
 
 @Composable
-private fun KeyfileSection(
+internal fun KeyfileSection(
     expanded: Boolean,
     displayNames: List<String>,
     onToggle: () -> Unit,

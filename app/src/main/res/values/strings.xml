@@ -827,5 +827,32 @@
     <string name="chpwd_cancel_title">Cancel?</string>
     <string name="chpwd_cancel_body">Password change is not complete. Exit anyway?</string>
     <string name="chpwd_mounted_warning">This container must be unmounted before changing the password.</string>
+    <!-- Change Keyfile -->
+    <string name="vault_config_change_keyfile">Change Keyfiles</string>
+    <string name="chkeyfile_config_desc">Re-encrypt header with a different keyfile set</string>
+    <string name="chkeyfile_title">Change Keyfiles</string>
+    <string name="chkeyfile_step1_title">Current Credentials</string>
+    <string name="chkeyfile_step1_subtitle">Enter the password used to unlock this container</string>
+    <string name="chkeyfile_step2_title">New Keyfiles</string>
+    <string name="chkeyfile_step2_subtitle">Add keyfiles for the container, or disable to remove all keyfiles</string>
+    <string name="chkeyfile_add_keyfiles_toggle">Add Keyfiles</string>
+    <string name="chkeyfile_no_keyfiles_hint">Keyfiles disabled — container will be unlocked by password alone</string>
+    <string name="chkeyfile_no_keyfiles_warning_title">Remove All Keyfiles?</string>
+    <string name="chkeyfile_no_keyfiles_warning_body">Add Keyfiles is disabled. If this container currently uses keyfiles, they will all be removed. The container will be accessible by password alone.</string>
+    <string name="chkeyfile_step3_title">Random Pool Enrichment</string>
+    <string name="chkeyfile_step3_subtitle">Move your finger across the canvas to collect entropy for the new header salt</string>
+    <string name="chkeyfile_entropy_label">Entropy collected</string>
+    <string name="chkeyfile_btn_change">Change Keyfiles</string>
+    <string name="chkeyfile_cancel_title">Cancel?</string>
+    <string name="chkeyfile_cancel_body">Keyfile change is not complete. Exit anyway?</string>
+    <string name="chkeyfile_success_title">Keyfiles Changed</string>
+    <string name="chkeyfile_success_body">Keyfiles updated. Use the new keyfiles to unlock this container.</string>
+    <string name="chkeyfile_error_title">Change Failed</string>
+
+    <!-- Change Keyfile notifications -->
+    <string name="notif_channel_change_keyfile">Keyfile Change</string>
+    <string name="notif_channel_change_keyfile_desc">Shows progress while changing vault keyfiles</string>
+    <string name="notif_changing_keyfile">Changing keyfiles…</string>
+    <string name="notif_changing_keyfile_desc">Do not close the app</string>
 
 </resources>

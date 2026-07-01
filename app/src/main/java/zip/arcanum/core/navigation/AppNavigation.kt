@@ -50,6 +50,7 @@ import zip.arcanum.core.security.PinManager
 import zip.arcanum.settings.SettingsViewModel
 import zip.arcanum.onboarding.OnboardingScreen
 import zip.arcanum.settings.SettingsScreen
+import zip.arcanum.arcanum.containers.ui.ChangeKeyfileScreen
 import zip.arcanum.arcanum.containers.ui.ChangePasswordScreen
 import zip.arcanum.arcanum.containers.ui.CreateContainerScreen
 import zip.arcanum.arcanum.containers.ui.MoveVaultScreen
@@ -252,6 +253,9 @@ fun AppNavigation(pinManager: PinManager) {
                 },
                 onChangePassword          = { containerId ->
                     navController.navigate(Screen.ChangePassword.buildRoute(containerId))
+                },
+                onChangeKeyfile           = { containerId ->
+                    navController.navigate(Screen.ChangeKeyfile.buildRoute(containerId))
                 }
             )
         }
@@ -411,6 +415,20 @@ fun AppNavigation(pinManager: PinManager) {
         ) { backStackEntry ->
             val containerId = backStackEntry.arguments?.getString(Screen.ChangePassword.ARG) ?: return@composable
             ChangePasswordScreen(
+                containerId = containerId,
+                onBack      = { navController.popBackStack() }
+            )
+        }
+
+        // ── Change keyfile wizard ─────────────────────────────────────────
+        composable(
+            route             = Screen.ChangeKeyfile.route,
+            arguments         = listOf(navArgument(Screen.ChangeKeyfile.ARG) { type = NavType.StringType }),
+            enterTransition   = { slideInHorizontally(tween(300)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(300)) { it } }
+        ) { backStackEntry ->
+            val containerId = backStackEntry.arguments?.getString(Screen.ChangeKeyfile.ARG) ?: return@composable
+            ChangeKeyfileScreen(
                 containerId = containerId,
                 onBack      = { navController.popBackStack() }
             )

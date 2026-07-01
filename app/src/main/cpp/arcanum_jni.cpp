@@ -2478,12 +2478,15 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeHasHiddenVolume(
 /* ─── Header wipe helper ─────────────────────────────────────────────── */
 /* Overwrites the 512-byte header at fileOff with random data for wipeCount
    passes, then writes the new header encrypted with the new credentials.
-   existingSalt is NULL → generate a fresh salt (recommended for password changes). */
+   extraEntropy/extraEntropyLen: optional user-collected bytes XOR'd into the
+   new salt before writing (Random Pool Enrichment). Pass nullptr/0 to skip. */
 static int wipe_and_rewrite_header(int fd, uint64_t fileOff,
                                     uint64_t dataSz, uint64_t dataOff,
                                     const uint8_t *masterKey, int algId, int newHashAlg,
                                     const char *newPwd, int newPwdLen, int newPim,
-                                    uint64_t hiddenVolSize, int wipePassCount) {
+                                    uint64_t hiddenVolSize, int wipePassCount,
+                                    const uint8_t* extraEntropy = nullptr,
+                                    size_t extraEntropyLen = 0) {
     uint8_t wipeBuf[VC_HEADER_SIZE];
     int rfd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
     for (int pass = 0; pass < wipePassCount; pass++) {
@@ -2509,9 +2512,19 @@ static int wipe_and_rewrite_header(int fd, uint64_t fileOff,
     }
     if (rfd >= 0) close(rfd);
     memset(wipeBuf, 0, sizeof(wipeBuf));
-    return write_vc_header(fd, fileOff, dataSz, dataOff,
-                           masterKey, algId, newHashAlg,
-                           newPwd, newPwdLen, newPim, hiddenVolSize, nullptr);
+
+    /* Generate new salt; XOR in user entropy if provided */
+    uint8_t newSalt[VC_HEADER_SALT_SIZE] = {};
+    if (!read_urandom(newSalt, sizeof(newSalt))) return ERR_RAND;
+    if (extraEntropy && extraEntropyLen > 0) {
+        for (size_t i = 0; i < VC_HEADER_SALT_SIZE; i++)
+            newSalt[i] ^= extraEntropy[i % extraEntropyLen];
+    }
+    int ret = write_vc_header(fd, fileOff, dataSz, dataOff,
+                              masterKey, algId, newHashAlg,
+                              newPwd, newPwdLen, newPim, hiddenVolSize, newSalt);
+    secure_memset(newSalt, 0, sizeof(newSalt));
+    return ret;
 }
 
 /* ─── JNI: nativeChangePassword ─────────────────────────────────────── */
@@ -2522,7 +2535,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePassword(
         jstring jPath,
         jstring jOldPassword, jobjectArray jOldKeyfilePaths, jint oldPim,
         jstring jNewPassword, jobjectArray jNewKeyfilePaths, jint newHashAlg, jint newPim,
-        jint wipePassCount)
+        jint wipePassCount, jbyteArray jExtraEntropy)
 {
     std::string path        = jstring_to_string(env, jPath);
     std::string oldPassword = jstring_to_string(env, jOldPassword);
@@ -2588,28 +2601,35 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePassword(
     if (!oldPassword.empty()) secure_memset(reinterpret_cast<volatile uint8_t*>(&oldPassword[0]), 0, oldPassword.size());
     if (!newPassword.empty()) secure_memset(reinterpret_cast<volatile uint8_t*>(&newPassword[0]), 0, newPassword.size());
 
+    /* Acquire entropy pin only after all validation passes, so every subsequent
+     * exit path can release it without needing early-return bookkeeping. */
+    jbyte* entropyData = jExtraEntropy ? env->GetByteArrayElements(jExtraEntropy, nullptr) : nullptr;
+    jsize  entropyLen  = jExtraEntropy ? env->GetArrayLength(jExtraEntropy) : 0;
+
     /* Wipe + rewrite primary header.
      * If this fails the backup header is still intact with old credentials — container
      * is recoverable. Bail immediately so we never touch the backup. */
     int r1 = wipe_and_rewrite_header(fd, 0,
                                       dataSz, dataOff, masterKey, algId, newHash,
                                       (const char*)newEffPwd, newEffPwdLen,
-                                      (int)newPim, hiddenVolSize, passes);
+                                      (int)newPim, hiddenVolSize, passes,
+                                      (const uint8_t*)entropyData, (size_t)entropyLen);
     if (r1 != 0) {
         secure_memset(masterKey, 0, sizeof(masterKey));
         secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
         close(fd); return ERR_FILE;
     }
 
-    /* Wipe + rewrite backup header.
-     * If this fails primary already has the new credentials — container is still usable. */
     int r2 = wipe_and_rewrite_header(fd, backupAreaOff,
                                       dataSz, dataOff, masterKey, algId, newHash,
                                       (const char*)newEffPwd, newEffPwdLen,
-                                      (int)newPim, hiddenVolSize, passes);
+                                      (int)newPim, hiddenVolSize, passes,
+                                      (const uint8_t*)entropyData, (size_t)entropyLen);
 
     secure_memset(masterKey, 0, sizeof(masterKey));
     secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+    if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
     close(fd);
     return r2 == 0 ? ERR_OK : ERR_FILE;
 }
@@ -2623,7 +2643,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePasswordFd(
         jint safFd,
         jstring jOldPassword, jobjectArray jOldKeyfilePaths, jint oldPim,
         jstring jNewPassword, jobjectArray jNewKeyfilePaths, jint newHashAlg, jint newPim,
-        jint wipePassCount)
+        jint wipePassCount, jbyteArray jExtraEntropy)
 {
     std::string oldPassword = jstring_to_string(env, jOldPassword);
     std::string newPassword = jstring_to_string(env, jNewPassword);
@@ -2677,29 +2697,222 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePasswordFd(
     if (!oldPassword.empty()) secure_memset(reinterpret_cast<volatile uint8_t*>(&oldPassword[0]), 0, oldPassword.size());
     if (!newPassword.empty()) secure_memset(reinterpret_cast<volatile uint8_t*>(&newPassword[0]), 0, newPassword.size());
 
+    /* Acquire entropy pin only after all validation passes. */
+    jbyte* entropyData = jExtraEntropy ? env->GetByteArrayElements(jExtraEntropy, nullptr) : nullptr;
+    jsize  entropyLen  = jExtraEntropy ? env->GetArrayLength(jExtraEntropy) : 0;
+
     /* Wipe + rewrite primary header.
      * If this fails the backup header is still intact with old credentials — container
      * is recoverable. Bail immediately so we never touch the backup. */
     int r1 = wipe_and_rewrite_header(fd, 0,
                                       dataSz, dataOff, masterKey, algId, newHash,
                                       (const char*)newEffPwd, newEffPwdLen,
-                                      (int)newPim, hiddenVolSize, passes);
+                                      (int)newPim, hiddenVolSize, passes,
+                                      (const uint8_t*)entropyData, (size_t)entropyLen);
     if (r1 != 0) {
         secure_memset(masterKey, 0, sizeof(masterKey));
         secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
         close(fd); return ERR_FILE;
     }
 
-    /* Wipe + rewrite backup header.
-     * If this fails primary already has the new credentials — container is still usable. */
     int r2 = wipe_and_rewrite_header(fd, backupAreaOff,
                                       dataSz, dataOff, masterKey, algId, newHash,
                                       (const char*)newEffPwd, newEffPwdLen,
-                                      (int)newPim, hiddenVolSize, passes);
+                                      (int)newPim, hiddenVolSize, passes,
+                                      (const uint8_t*)entropyData, (size_t)entropyLen);
 
     secure_memset(masterKey, 0, sizeof(masterKey));
     secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+    if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
     close(fd);
     return r2 == 0 ? ERR_OK : ERR_FILE;
 }
 
+
+/* ─── JNI: nativeChangeKeyfile ──────────────────────────────────────── */
+/* Re-encrypts the container header with a new keyfile set (password unchanged).
+   extraEntropy: user-collected touch bytes XOR'd into the new salt. */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfile(
+        JNIEnv *env, jobject /*thiz*/,
+        jstring jPath,
+        jstring jPassword, jobjectArray jOldKeyfilePaths, jint pim,
+        jobjectArray jNewKeyfilePaths, jint newHashAlg,
+        jbyteArray jExtraEntropy)
+{
+    std::string path     = jstring_to_string(env, jPath);
+    std::string password = jstring_to_string(env, jPassword);
+    auto oldKeyfilePaths = jstringArray_to_vector(env, jOldKeyfilePaths);
+    auto newKeyfilePaths = jstringArray_to_vector(env, jNewKeyfilePaths);
+
+    if (path.empty()) return ERR_FILE;
+
+    jbyte* entropyData = jExtraEntropy ? env->GetByteArrayElements(jExtraEntropy, nullptr) : nullptr;
+    jsize  entropyLen  = jExtraEntropy ? env->GetArrayLength(jExtraEntropy) : 0;
+
+    uint8_t oldEffPwd[VC_MAX_PWD_LEN] = {};
+    int oldEffPwdLen = (int)password.size();
+    if (oldEffPwdLen > VC_MAX_PWD_LEN) oldEffPwdLen = VC_MAX_PWD_LEN;
+    memcpy(oldEffPwd, password.c_str(), (size_t)oldEffPwdLen);
+    apply_keyfiles_to_password(oldKeyfilePaths, oldEffPwd, &oldEffPwdLen);
+
+    uint8_t newEffPwd[VC_MAX_PWD_LEN] = {};
+    int newEffPwdLen = (int)password.size();
+    if (newEffPwdLen > VC_MAX_PWD_LEN) newEffPwdLen = VC_MAX_PWD_LEN;
+    memcpy(newEffPwd, password.c_str(), (size_t)newEffPwdLen);
+    apply_keyfiles_to_password(newKeyfilePaths, newEffPwd, &newEffPwdLen);
+
+    if (!password.empty()) secure_memset(reinterpret_cast<volatile uint8_t*>(&password[0]), 0, password.size());
+
+    int fd = open(path.c_str(), O_RDWR);
+    if (fd < 0) {
+        secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
+        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
+        return ERR_FILE;
+    }
+
+    off_t fileSzOff = lseek(fd, 0, SEEK_END);
+    if (fileSzOff < 0) {
+        secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
+        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
+        close(fd); return ERR_FILE;
+    }
+    uint64_t fileSize = (uint64_t)fileSzOff;
+
+    uint8_t masterKey[192] = {};
+    int mkLen = 0, algId = 0, hashId = 0;
+    uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
+    int rc = read_vc_header(fd, 0,
+                            (const char*)oldEffPwd, oldEffPwdLen,
+                            masterKey, &mkLen, &dataSz, &dataOff,
+                            &algId, &hashId, (int)pim, &hiddenVolSize);
+    secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
+    if (rc != ERR_OK) {
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
+        close(fd); return ERR_WRONG_PASSWORD;
+    }
+
+    int newHash = (int)newHashAlg; if (newHash < 0 || newHash > 4) newHash = hashId;
+    uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
+
+    int r1 = wipe_and_rewrite_header(fd, 0,
+                                      dataSz, dataOff, masterKey, algId, newHash,
+                                      (const char*)newEffPwd, newEffPwdLen,
+                                      (int)pim, hiddenVolSize, /*wipePassCount=*/3,
+                                      (const uint8_t*)entropyData, (size_t)entropyLen);
+    if (r1 != 0) {
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
+        close(fd); return ERR_FILE;
+    }
+
+    int r2 = wipe_and_rewrite_header(fd, backupAreaOff,
+                                      dataSz, dataOff, masterKey, algId, newHash,
+                                      (const char*)newEffPwd, newEffPwdLen,
+                                      (int)pim, hiddenVolSize, /*wipePassCount=*/3,
+                                      (const uint8_t*)entropyData, (size_t)entropyLen);
+
+    secure_memset(masterKey, 0, sizeof(masterKey));
+    secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+    if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
+    close(fd);
+    return r2 == 0 ? ERR_OK : ERR_FILE;
+}
+
+/* ─── JNI: nativeChangeKeyfileFd ────────────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfileFd(
+        JNIEnv *env, jobject /*thiz*/,
+        jint safFd,
+        jstring jPassword, jobjectArray jOldKeyfilePaths, jint pim,
+        jobjectArray jNewKeyfilePaths, jint newHashAlg,
+        jbyteArray jExtraEntropy)
+{
+    std::string password = jstring_to_string(env, jPassword);
+    auto oldKeyfilePaths = jstringArray_to_vector(env, jOldKeyfilePaths);
+    auto newKeyfilePaths = jstringArray_to_vector(env, jNewKeyfilePaths);
+
+    jbyte* entropyData = jExtraEntropy ? env->GetByteArrayElements(jExtraEntropy, nullptr) : nullptr;
+    jsize  entropyLen  = jExtraEntropy ? env->GetArrayLength(jExtraEntropy) : 0;
+
+    uint8_t oldEffPwd[VC_MAX_PWD_LEN] = {};
+    int oldEffPwdLen = (int)password.size();
+    if (oldEffPwdLen > VC_MAX_PWD_LEN) oldEffPwdLen = VC_MAX_PWD_LEN;
+    memcpy(oldEffPwd, password.c_str(), (size_t)oldEffPwdLen);
+    apply_keyfiles_to_password(oldKeyfilePaths, oldEffPwd, &oldEffPwdLen);
+
+    uint8_t newEffPwd[VC_MAX_PWD_LEN] = {};
+    int newEffPwdLen = (int)password.size();
+    if (newEffPwdLen > VC_MAX_PWD_LEN) newEffPwdLen = VC_MAX_PWD_LEN;
+    memcpy(newEffPwd, password.c_str(), (size_t)newEffPwdLen);
+    apply_keyfiles_to_password(newKeyfilePaths, newEffPwd, &newEffPwdLen);
+
+    if (!password.empty()) secure_memset(reinterpret_cast<volatile uint8_t*>(&password[0]), 0, password.size());
+
+    int fd = dup((int)safFd);
+    if (fd < 0) {
+        secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
+        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
+        return ERR_FILE;
+    }
+
+    off_t fileSzOff = lseek(fd, 0, SEEK_END);
+    if (fileSzOff < 0) {
+        secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
+        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
+        close(fd); return ERR_FILE;
+    }
+    uint64_t fileSize = (uint64_t)fileSzOff;
+
+    uint8_t masterKey[192] = {};
+    int mkLen = 0, algId = 0, hashId = 0;
+    uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
+    int rc = read_vc_header(fd, 0,
+                            (const char*)oldEffPwd, oldEffPwdLen,
+                            masterKey, &mkLen, &dataSz, &dataOff,
+                            &algId, &hashId, (int)pim, &hiddenVolSize);
+    secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
+    if (rc != ERR_OK) {
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
+        close(fd); return ERR_WRONG_PASSWORD;
+    }
+
+    int newHash = (int)newHashAlg; if (newHash < 0 || newHash > 4) newHash = hashId;
+    uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
+
+    int r1 = wipe_and_rewrite_header(fd, 0,
+                                      dataSz, dataOff, masterKey, algId, newHash,
+                                      (const char*)newEffPwd, newEffPwdLen,
+                                      (int)pim, hiddenVolSize, /*wipePassCount=*/3,
+                                      (const uint8_t*)entropyData, (size_t)entropyLen);
+    if (r1 != 0) {
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
+        close(fd); return ERR_FILE;
+    }
+
+    int r2 = wipe_and_rewrite_header(fd, backupAreaOff,
+                                      dataSz, dataOff, masterKey, algId, newHash,
+                                      (const char*)newEffPwd, newEffPwdLen,
+                                      (int)pim, hiddenVolSize, /*wipePassCount=*/3,
+                                      (const uint8_t*)entropyData, (size_t)entropyLen);
+
+    secure_memset(masterKey, 0, sizeof(masterKey));
+    secure_memset(newEffPwd, 0, sizeof(newEffPwd));
+    if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
+    close(fd);
+    return r2 == 0 ? ERR_OK : ERR_FILE;
+}

@@ -8,10 +8,10 @@ import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,10 +24,10 @@ import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class ChangePasswordService : Service() {
+class ChangeKeyfileService : Service() {
 
     @Inject lateinit var cryptoEngine: VeraCryptEngine
-    @Inject lateinit var changePasswordParams: ChangePasswordParams
+    @Inject lateinit var changeKeyfileParams: ChangeKeyfileParams
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -39,8 +39,8 @@ class ChangePasswordService : Service() {
     }
 
     companion object {
-        const val CHANNEL_ID      = "change_password"
-        const val NOTIFICATION_ID = 1003
+        const val CHANNEL_ID      = "change_keyfile"
+        const val NOTIFICATION_ID = 1004
 
         private val _state = MutableStateFlow<State>(State.Idle)
         val state: StateFlow<State> = _state.asStateFlow()
@@ -54,7 +54,7 @@ class ChangePasswordService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val p = changePasswordParams.take() ?: return START_NOT_STICKY
+        val p = changeKeyfileParams.take() ?: return START_NOT_STICKY
 
         _state.value = State.Running
         startForeground(NOTIFICATION_ID, buildNotification())
@@ -63,29 +63,23 @@ class ChangePasswordService : Service() {
             try {
                 val result = try {
                     if (p.safFd >= 0) {
-                        cryptoEngine.changePasswordFd(
+                        cryptoEngine.changeKeyfileFd(
                             fd               = p.safFd,
-                            oldPassword      = p.oldPassword,
+                            password         = p.password,
                             oldKeyfilePaths  = p.oldKeyfilePaths,
-                            oldPim           = p.oldPim,
-                            newPassword      = p.newPassword,
+                            pim              = p.pim,
                             newKeyfilePaths  = p.newKeyfilePaths,
                             newHashAlgorithm = p.newHashAlgorithm,
-                            newPim           = p.newPim,
-                            wipePassCount    = p.wipePassCount,
                             extraEntropy     = p.extraEntropy
                         )
                     } else {
-                        cryptoEngine.changePassword(
+                        cryptoEngine.changeKeyfile(
                             path             = p.path,
-                            oldPassword      = p.oldPassword,
+                            password         = p.password,
                             oldKeyfilePaths  = p.oldKeyfilePaths,
-                            oldPim           = p.oldPim,
-                            newPassword      = p.newPassword,
+                            pim              = p.pim,
                             newKeyfilePaths  = p.newKeyfilePaths,
                             newHashAlgorithm = p.newHashAlgorithm,
-                            newPim           = p.newPim,
-                            wipePassCount    = p.wipePassCount,
                             extraEntropy     = p.extraEntropy
                         )
                     }
@@ -102,8 +96,6 @@ class ChangePasswordService : Service() {
                 }
                 stopSelf()
             } catch (e: CancellationException) {
-                // Service scope cancelled (e.g. onDestroy) — mark failure so collector doesn't
-                // get stuck in Running state, then re-throw so the coroutine actually cancels.
                 _state.value = State.Failure("CANCELLED")
                 throw e
             }
@@ -124,9 +116,9 @@ class ChangePasswordService : Service() {
         if (nm.getNotificationChannel(CHANNEL_ID) == null) {
             val ch = NotificationChannel(
                 CHANNEL_ID,
-                getString(R.string.notif_channel_change_password),
+                getString(R.string.notif_channel_change_keyfile),
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { description = getString(R.string.notif_channel_change_password_desc) }
+            ).apply { description = getString(R.string.notif_channel_change_keyfile_desc) }
             nm.createNotificationChannel(ch)
         }
     }
@@ -134,8 +126,8 @@ class ChangePasswordService : Service() {
     private fun buildNotification(): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.notif_changing_password))
-            .setContentText(getString(R.string.notif_changing_password_desc))
+            .setContentTitle(getString(R.string.notif_changing_keyfile))
+            .setContentText(getString(R.string.notif_changing_keyfile_desc))
             .setProgress(0, 0, true)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

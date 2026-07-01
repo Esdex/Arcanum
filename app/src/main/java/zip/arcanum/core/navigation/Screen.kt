@@ -83,4 +83,9 @@ sealed class Screen(val route: String) {
         const val ARG = "containerId"
         fun buildRoute(containerId: String) = "change_password/$containerId"
     }
+
+    object ChangeKeyfile : Screen("change_keyfile/{containerId}") {
+        const val ARG = "containerId"
+        fun buildRoute(containerId: String) = "change_keyfile/$containerId"
+    }
 }
