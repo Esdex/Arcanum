@@ -23,7 +23,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Eject
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -137,7 +137,7 @@ fun ContainerScreen(
                         navigationIcon = { BackIconButton(onBack) },
                         actions        = {
                             IconButton(onClick = { showUnmountConfirm = true }) {
-                                Icon(Icons.Outlined.Lock, contentDescription = null)
+                                Icon(Icons.Outlined.Eject, contentDescription = null)
                             }
                         },
                         modifier       = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier,
