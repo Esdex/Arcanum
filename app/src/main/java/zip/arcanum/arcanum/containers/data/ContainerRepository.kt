@@ -26,6 +26,8 @@ class ContainerRepository @Inject constructor(
     private val mountedDataSize     = mutableMapOf<String, Long>()
     // SAF file descriptor kept open for the duration the container is mounted
     private val mountedParcelFds    = mutableMapOf<String, ParcelFileDescriptor>()
+    // In-memory read-only flag: containerId → isReadOnly
+    private val mountedIsReadOnly   = mutableMapOf<String, Boolean>()
 
     fun getAllContainers(): Flow<List<Container>> =
         dao.getAllContainers().map { list -> list.map { it.toDomain() } }
@@ -48,12 +50,14 @@ class ContainerRepository @Inject constructor(
         id: String, handle: Long, pim: Int = 0,
         isHidden: Boolean = false, hasHidden: Boolean = false,
         dataSize: Long = 0L,
-        parcelFd: ParcelFileDescriptor? = null
+        parcelFd: ParcelFileDescriptor? = null,
+        isReadOnly: Boolean = false
     ) {
         mountedHandles[id] = handle
         if (pim > 0) mountedPims[id] = pim else mountedPims.remove(id)
-        mountedIsHidden[id]  = isHidden
-        mountedHasHidden[id] = hasHidden
+        mountedIsHidden[id]   = isHidden
+        mountedHasHidden[id]  = hasHidden
+        mountedIsReadOnly[id] = isReadOnly
         if (dataSize > 0L) mountedDataSize[id] = dataSize else mountedDataSize.remove(id)
         parcelFd?.let { mountedParcelFds[id] = it }
         dao.setMounted(id, true)
@@ -67,6 +71,7 @@ class ContainerRepository @Inject constructor(
         mountedPims.remove(id)
         mountedIsHidden.remove(id)
         mountedHasHidden.remove(id)
+        mountedIsReadOnly.remove(id)
         mountedDataSize.remove(id)
         mountedParcelFds.remove(id)?.close()
         dao.setMounted(id, false)
@@ -80,6 +85,7 @@ class ContainerRepository @Inject constructor(
         mountedPims.clear()
         mountedIsHidden.clear()
         mountedHasHidden.clear()
+        mountedIsReadOnly.clear()
         mountedDataSize.clear()
         mountedParcelFds.values.forEach { runCatching { it.close() } }
         mountedParcelFds.clear()
@@ -131,9 +137,36 @@ class ContainerRepository @Inject constructor(
     suspend fun updateName(id: String, name: String) =
         dao.updateName(id, name)
 
+    suspend fun updateKeySize(id: String, keySize: Int) =
+        dao.updateKeySize(id, keySize)
+
+    suspend fun updateEncryptionMode(id: String, mode: String) =
+        dao.updateEncryptionMode(id, mode)
+
+    suspend fun updateBlockSize(id: String, blockSize: Int) =
+        dao.updateBlockSize(id, blockSize)
+
+    suspend fun updateFormatVersion(id: String, version: Int) =
+        dao.updateFormatVersion(id, version)
+
+    suspend fun updateHasBackupHeader(id: String, has: Boolean) =
+        dao.updateHasBackupHeader(id, has)
+
+    suspend fun updatePkcs5Iterations(id: String, iterations: Int) =
+        dao.updatePkcs5Iterations(id, iterations)
+
+    suspend fun updateHeaderModifiedAt(id: String, time: Long) =
+        dao.updateHeaderModifiedAt(id, time)
+
     suspend fun deleteContainersById(ids: Set<String>) {
         ids.forEach { id ->
             mountedHandles.remove(id)
+            mountedPims.remove(id)
+            mountedIsHidden.remove(id)
+            mountedHasHidden.remove(id)
+            mountedIsReadOnly.remove(id)
+            mountedDataSize.remove(id)
+            mountedParcelFds.remove(id)?.close()
             dao.deleteContainerById(id)
         }
     }
@@ -184,21 +217,36 @@ class ContainerRepository @Inject constructor(
         isMounted       = isMounted,
         isHiddenVolume  = mountedIsHidden[id] ?: false,
         hasHiddenVolume = mountedHasHidden[id] ?: false,
-        safUri          = safUri
+        safUri          = safUri,
+        keySize         = keySize,
+        encryptionMode  = encryptionMode,
+        blockSize       = blockSize,
+        formatVersion   = formatVersion,
+        hasBackupHeader = hasBackupHeader,
+        pkcs5Iterations = pkcs5Iterations,
+        headerModifiedAt = headerModifiedAt,
+        isReadOnly      = mountedIsReadOnly[id] ?: false
     )
 
     private fun Container.toEntity() = ContainerEntity(
-        id             = id,
-        name           = name,
-        path           = path,
-        size           = size,
-        algorithm      = algorithm,
-        prf            = prf,
-        filesystem     = filesystem,
-        safUri         = safUri,
-        createdAt      = createdAt,
-        lastAccessedAt = lastAccessedAt,
-        isFavorite     = isFavorite,
-        isMounted      = isMounted
+        id               = id,
+        name             = name,
+        path             = path,
+        size             = size,
+        algorithm        = algorithm,
+        prf              = prf,
+        filesystem       = filesystem,
+        safUri           = safUri,
+        createdAt        = createdAt,
+        lastAccessedAt   = lastAccessedAt,
+        isFavorite       = isFavorite,
+        isMounted        = isMounted,
+        keySize          = keySize,
+        encryptionMode   = encryptionMode,
+        blockSize        = blockSize,
+        formatVersion    = formatVersion,
+        hasBackupHeader  = hasBackupHeader,
+        pkcs5Iterations  = pkcs5Iterations,
+        headerModifiedAt = headerModifiedAt
     )
 }

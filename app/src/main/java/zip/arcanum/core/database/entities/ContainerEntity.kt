@@ -20,5 +20,12 @@ data class ContainerEntity(
     @ColumnInfo(defaultValue = "0") val hasBiometric: Boolean = false,
     @ColumnInfo(defaultValue = "0") val unmountOnLock: Boolean = false,
     @ColumnInfo(defaultValue = "0") val unmountOnBackground: Boolean = false,
-    @ColumnInfo(defaultValue = "") val safUri: String = ""
+    @ColumnInfo(defaultValue = "") val safUri: String = "",
+    @ColumnInfo(defaultValue = "0") val keySize: Int = 0,
+    @ColumnInfo(defaultValue = "XTS") val encryptionMode: String = "XTS",
+    @ColumnInfo(defaultValue = "128") val blockSize: Int = 128,
+    @ColumnInfo(defaultValue = "2") val formatVersion: Int = 2,
+    @ColumnInfo(defaultValue = "1") val hasBackupHeader: Boolean = true,
+    @ColumnInfo(defaultValue = "0") val pkcs5Iterations: Int = 0,
+    @ColumnInfo(defaultValue = "0") val headerModifiedAt: Long = 0L
 )

@@ -49,6 +49,7 @@ class ChangeKeyfileViewModel @Inject constructor(
     private val _state = MutableStateFlow(ChangeKeyfileState())
     val state = _state.asStateFlow()
 
+    private var containerId: String = ""
     private var containerPath: String = ""
     private var safUri: String = ""
     // PRF is always the existing volume's hash — user cannot change it (VeraCrypt: enablePkcs5Prf=false)
@@ -57,9 +58,10 @@ class ChangeKeyfileViewModel @Inject constructor(
     private val collectedEntropy: ByteArray = ByteArray(ENTROPY_REQUIRED * 2)
     private var entropyIndex: Int = 0
 
-    fun init(containerId: String) {
+    fun init(id: String) {
+        containerId = id
         viewModelScope.launch {
-            val c = repo.getContainerById(containerId) ?: return@launch
+            val c = repo.getContainerById(id) ?: return@launch
             containerPath          = c.path
             safUri                 = c.safUri
             containerHashAlgorithm = HashAlgorithm.entries.firstOrNull { it.displayName == c.prf }
@@ -136,6 +138,10 @@ class ChangeKeyfileViewModel @Inject constructor(
 
     fun startChange() {
         if (_state.value.isRunning) return
+        if (repo.getContainerHandle(containerId) != null) {
+            _state.update { it.copy(error = "Unmount the vault before changing its keyfiles") }
+            return
+        }
         val s = _state.value
         _state.update { it.copy(isRunning = true, error = null, currentStep = 4) }
 

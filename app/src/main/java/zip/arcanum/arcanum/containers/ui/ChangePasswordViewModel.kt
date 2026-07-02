@@ -62,6 +62,7 @@ class ChangePasswordViewModel @Inject constructor(
     private val _state = MutableStateFlow(ChangePasswordState())
     val state = _state.asStateFlow()
 
+    private var containerId: String = ""
     private var containerPath: String = ""
     private var safUri: String = ""
 
@@ -76,9 +77,10 @@ class ChangePasswordViewModel @Inject constructor(
         _state.update { it.copy(entropyProgress = progress) }
     }
 
-    fun init(containerId: String) {
+    fun init(id: String) {
+        containerId = id
         viewModelScope.launch {
-            val c = repo.getContainerById(containerId) ?: return@launch
+            val c = repo.getContainerById(id) ?: return@launch
             containerPath = c.path
             safUri        = c.safUri
         }
@@ -128,6 +130,10 @@ class ChangePasswordViewModel @Inject constructor(
 
     fun startChange() {
         if (_state.value.isRunning) return
+        if (repo.getContainerHandle(containerId) != null) {
+            _state.update { it.copy(error = "Unmount the vault before changing its password") }
+            return
+        }
         val s = _state.value
         _state.update { it.copy(isRunning = true, error = null, currentStep = 5) }
 

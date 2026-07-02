@@ -82,4 +82,25 @@ interface ContainerDao {
 
     @Query("SELECT COUNT(*) FROM containers WHERE safUri = :safUri AND safUri != ''")
     suspend fun countBySafUri(safUri: String): Int
+
+    @Query("UPDATE containers SET keySize = :keySize WHERE id = :id")
+    suspend fun updateKeySize(id: String, keySize: Int)
+
+    @Query("UPDATE containers SET encryptionMode = :mode WHERE id = :id")
+    suspend fun updateEncryptionMode(id: String, mode: String)
+
+    @Query("UPDATE containers SET blockSize = :blockSize WHERE id = :id")
+    suspend fun updateBlockSize(id: String, blockSize: Int)
+
+    @Query("UPDATE containers SET formatVersion = :version WHERE id = :id")
+    suspend fun updateFormatVersion(id: String, version: Int)
+
+    @Query("UPDATE containers SET hasBackupHeader = :has WHERE id = :id")
+    suspend fun updateHasBackupHeader(id: String, has: Boolean)
+
+    @Query("UPDATE containers SET pkcs5Iterations = :iterations WHERE id = :id")
+    suspend fun updatePkcs5Iterations(id: String, iterations: Int)
+
+    @Query("UPDATE containers SET headerModifiedAt = :time WHERE id = :id")
+    suspend fun updateHeaderModifiedAt(id: String, time: Long)
 }
