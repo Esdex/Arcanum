@@ -491,7 +491,7 @@
 
     <!-- Create container steps 1–4 -->
     <string name="create_step1_title">Выбрать тип тома</string>
-    <string name="create_volume_standard">Стандартный том</string>
+    <string name="create_volume_standard">Обычный том</string>
     <string name="create_volume_standard_desc">Обычное зашифрованное хранилище, защищённое одним паролем.</string>
     <string name="create_volume_hidden">Скрытый том</string>
     <string name="create_volume_hidden_desc">Два пароля, два набора данных. Правдоподобное отрицание под принуждением.</string>
@@ -633,7 +633,7 @@
     <string name="vault_info_label_volume_type">Тип тома</string>
     <string name="vault_info_type_hidden">Скрытый</string>
     <string name="vault_info_type_outer">Внешний</string>
-    <string name="vault_info_type_standard">Стандартный</string>
+    <string name="vault_info_type_standard">Обычный</string>
     <string name="vault_info_label_algorithm">Алгоритм</string>
     <string name="vault_info_label_prf">PKCS-5 PRF</string>
     <string name="vault_info_label_filesystem">Файловая система</string>

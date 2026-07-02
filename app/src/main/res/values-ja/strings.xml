@@ -470,7 +470,7 @@
 
     <!-- Create container steps 1–4 -->
     <string name="create_step1_title">ボリュームタイプを選択</string>
-    <string name="create_volume_standard">標準ボリューム</string>
+    <string name="create_volume_standard">通常ボリューム</string>
     <string name="create_volume_standard_desc">単一のパスワードで保護された通常の暗号化ボールト。</string>
     <string name="create_volume_hidden">隠しボリューム</string>
     <string name="create_volume_hidden_desc">2つのパスワード、2つのデータセット。強制下での合理的な否認。</string>
@@ -609,7 +609,7 @@
     <string name="vault_info_label_volume_type">ボリュームタイプ</string>
     <string name="vault_info_type_hidden">隠し</string>
     <string name="vault_info_type_outer">外部</string>
-    <string name="vault_info_type_standard">標準</string>
+    <string name="vault_info_type_standard">通常</string>
     <string name="vault_info_label_algorithm">アルゴリズム</string>
     <string name="vault_info_label_prf">PKCS-5 PRF</string>
     <string name="vault_info_label_filesystem">ファイルシステム</string>

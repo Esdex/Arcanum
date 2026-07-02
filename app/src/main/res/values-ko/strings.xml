@@ -470,7 +470,7 @@
 
     <!-- Create container steps 1–4 -->
     <string name="create_step1_title">볼륨 유형 선택</string>
-    <string name="create_volume_standard">표준 볼륨</string>
+    <string name="create_volume_standard">일반 볼륨</string>
     <string name="create_volume_standard_desc">단일 비밀번호로 보호된 일반 암호화 보관함.</string>
     <string name="create_volume_hidden">숨김 볼륨</string>
     <string name="create_volume_hidden_desc">두 개의 비밀번호, 두 개의 데이터 세트. 강압 하에서의 합리적 부인.</string>
@@ -609,7 +609,7 @@
     <string name="vault_info_label_volume_type">볼륨 유형</string>
     <string name="vault_info_type_hidden">숨김</string>
     <string name="vault_info_type_outer">외부</string>
-    <string name="vault_info_type_standard">표준</string>
+    <string name="vault_info_type_standard">일반</string>
     <string name="vault_info_label_algorithm">알고리즘</string>
     <string name="vault_info_label_prf">PKCS-5 PRF</string>
     <string name="vault_info_label_filesystem">파일 시스템</string>

@@ -112,7 +112,7 @@ fun CreateContainerScreen(
         }
     }
 
-    // Register container in the repo once outer creation is done (standard volume)
+    // Register container in the repo once outer creation is done (normal volume)
     LaunchedEffect(state.isCreated) {
         if (state.isCreated && state.volumeType == VolumeType.STANDARD) {
             viewModel.registerCreatedContainer()

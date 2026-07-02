@@ -477,7 +477,7 @@
 
     <!-- Create container steps 1–4 -->
     <string name="create_step1_title">Birim Türünü Seçin</string>
-    <string name="create_volume_standard">Standart Birim</string>
+    <string name="create_volume_standard">Normal Birim</string>
     <string name="create_volume_standard_desc">Tek bir parola ile korunan normal şifreli kasa.</string>
     <string name="create_volume_hidden">Gizli Birim</string>
     <string name="create_volume_hidden_desc">İki parola, iki veri kümesi. Zorlamalara karşı makul inkâr edilebilirlik.</string>
@@ -617,7 +617,7 @@
     <string name="vault_info_label_volume_type">Birim Türü</string>
     <string name="vault_info_type_hidden">Gizli</string>
     <string name="vault_info_type_outer">Dış</string>
-    <string name="vault_info_type_standard">Standart</string>
+    <string name="vault_info_type_standard">Normal</string>
     <string name="vault_info_label_algorithm">Algoritma</string>
     <string name="vault_info_label_prf">PKCS-5 PRF</string>
     <string name="vault_info_label_filesystem">Dosya Sistemi</string>
