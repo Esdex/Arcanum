@@ -45,8 +45,9 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Switch
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import zip.arcanum.core.components.AppSheet
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -127,7 +128,6 @@ private sealed interface BioUiMode {
 private data class EncryptPending(
     val password: String,
     val pim: Int,
-    val algorithm: Int,
     val hash: Int,
     val protectHidden: String?,
     val protectHiddenPim: Int,
@@ -247,23 +247,20 @@ private fun MountScreenContent(
         else passwordFocusRequester.requestFocus()
         keyboardController?.show()
     }
-    var showPassword      by remember { mutableStateOf(false) }
-    var algorithmExpanded by remember { mutableStateOf(false) }
-    var hashExpanded      by remember { mutableStateOf(false) }
-    var selectedAlgorithm by rememberSaveable { mutableIntStateOf(VeraCryptEngine.ALGO_AUTO) }
-    var selectedHash      by rememberSaveable { mutableIntStateOf(VeraCryptEngine.HASH_AUTO) }
-    var showAdvanced      by remember { mutableStateOf(false) }
-    var pimValue          by remember { mutableStateOf("") }
-    var showPim           by remember { mutableStateOf(false) }
+    var showPassword   by remember { mutableStateOf(false) }
+    var showHashSheet  by remember { mutableStateOf(false) }
+    var showAdvanced  by remember { mutableStateOf(false) }
+    var pimValue      by remember { mutableStateOf("") }
+    var showPim       by remember { mutableStateOf(false) }
     var protectHidden      by remember { mutableStateOf(false) }
     var hiddenPassword     by hiddenPasswordState
     var showHiddenPassword by remember { mutableStateOf(false) }
     var hiddenPimValue     by remember { mutableStateOf("") }
-    var shakeKey          by remember { mutableIntStateOf(0) }
-    val shakeAnim         = remember { Animatable(0f) }
+    var shakeKey      by remember { mutableIntStateOf(0) }
+    val shakeAnim     = remember { Animatable(0f) }
 
-    val algorithms = remember { listOf(-1 to "Auto") + (0..14).map { id -> id to VeraCryptEngine.algorithmIdToString(id).replace("-256-XTS", "") } }
-    val hashes     = remember { listOf(-1 to "Auto") + (0..4).map { it to VeraCryptEngine.hashIdToString(it) } }
+    var selectedHash by rememberSaveable { mutableIntStateOf(VeraCryptEngine.HASH_AUTO) }
+    val hashes = remember { listOf(-1 to "Auto") + (0..4).map { it to VeraCryptEngine.hashIdToString(it) } }
 
     // ── Biometric state ───────────────────────────────────────────────────
     val hasBiometricSaved  = remember(mountId) { viewModel.hasBiometricCredentials(mountId) }
@@ -280,14 +277,14 @@ private fun MountScreenContent(
     // ── Biometric prompt setup ────────────────────────────────────────────
     val activity = LocalContext.current as FragmentActivity
 
-    val onUnlock: (String, Int, Int, Int, String?, Int, List<ByteArray>) -> Unit = { pw, pim, algo, hash, protectPw, protectPim, protectKeyfileData ->
+    val onUnlock: (String, Int, Int, String?, Int, List<ByteArray>) -> Unit = { pw, pim, hash, protectPw, protectPim, protectKeyfileData ->
         isMounting = true
         viewModel.mountContainer(
             container                 = container,
             password                  = pw,
             keyfileData               = keyfiles.map { it.content },
             pim                       = pim,
-            algorithm                 = algo,
+            algorithm                 = VeraCryptEngine.ALGO_AUTO,
             hashAlgorithm             = hash,
             protectHiddenPassword     = protectPw,
             protectHiddenPim          = protectPim,
@@ -342,7 +339,7 @@ private fun MountScreenContent(
                 } else {
                     val data = pendingEncryptState.value ?: return
                     latestOnSaveBio.value(cipher, data.password, data.pim)
-                    latestOnUnlock.value(data.password, data.pim, data.algorithm, data.hash, data.protectHidden, data.protectHiddenPim, data.protectHiddenKeyfileData)
+                    latestOnUnlock.value(data.password, data.pim, data.hash, data.protectHidden, data.protectHiddenPim, data.protectHiddenKeyfileData)
                     pendingEncryptState.value = null
                 }
             }
@@ -352,7 +349,7 @@ private fun MountScreenContent(
                     biometricEnabledState.value = false
                 } else {
                     pendingEncryptState.value?.let { data ->
-                        latestOnUnlock.value(data.password, data.pim, data.algorithm, data.hash, data.protectHidden, data.protectHiddenPim, data.protectHiddenKeyfileData)
+                        latestOnUnlock.value(data.password, data.pim, data.hash, data.protectHidden, data.protectHiddenPim, data.protectHiddenKeyfileData)
                     }
                     pendingEncryptState.value = null
                 }
@@ -468,12 +465,11 @@ private fun MountScreenContent(
                                         if (cryptoObj != null) {
                                             isDecryptModeState.value  = false
                                             pendingEncryptState.value = EncryptPending(
-                                                password                   = password,
-                                                pim                        = pim,
-                                                algorithm                  = selectedAlgorithm,
-                                                hash                       = selectedHash,
-                                                protectHidden              = protectedPassword,
-                                                protectHiddenPim           = protectedPim,
+                                                password                  = password,
+                                                pim                       = pim,
+                                                hash                      = selectedHash,
+                                                protectHidden             = protectedPassword,
+                                                protectHiddenPim          = protectedPim,
                                                 protectHiddenKeyfileData  = protectedKeyfileData
                                             )
                                             biometricPrompt.authenticate(
@@ -485,10 +481,10 @@ private fun MountScreenContent(
                                                 cryptoObj
                                             )
                                         } else {
-                                            latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
+                                            latestOnUnlock.value(password, pim, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
                                         }
                                     } else {
-                                        latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
+                                        latestOnUnlock.value(password, pim, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
                                     }
                                 }
                             ) {
@@ -669,68 +665,58 @@ private fun MountScreenContent(
                                 ),
                                 keyboardActions = KeyboardActions(
                                     onDone = {
-                                        if (canUnlock) latestOnUnlock.value(password, pim, selectedAlgorithm, selectedHash, if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null, if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0, if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList())
+                                        if (canUnlock) latestOnUnlock.value(password, pim, selectedHash, if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null, if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0, if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList())
                                     }
                                 ),
                                 singleLine = true,
                                 modifier   = Modifier.fillMaxWidth()
                             )
 
-                            Row(
-                                modifier              = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Box(modifier = Modifier.weight(1f)) {
-                                    OutlinedTextField(
-                                        value         = algorithms.first { it.first == selectedAlgorithm }.second,
-                                        onValueChange = {},
-                                        readOnly      = true,
-                                        label         = { Text(stringResource(R.string.vault_mount_algorithm)) },
-                                        trailingIcon  = {
-                                            Icon(
-                                                if (algorithmExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                                                contentDescription = null
-                                            )
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    Box(Modifier.matchParentSize().clickable { algorithmExpanded = !algorithmExpanded })
-                                    DropdownMenu(
-                                        expanded         = algorithmExpanded,
-                                        onDismissRequest = { algorithmExpanded = false }
-                                    ) {
-                                        algorithms.forEach { (id, label) ->
-                                            DropdownMenuItem(
-                                                text    = { Text(label, style = MaterialTheme.typography.bodySmall) },
-                                                onClick = { selectedAlgorithm = id; algorithmExpanded = false }
-                                            )
-                                        }
-                                    }
-                                }
-                                Box(modifier = Modifier.weight(1f)) {
-                                    OutlinedTextField(
-                                        value         = hashes.first { it.first == selectedHash }.second,
-                                        onValueChange = {},
-                                        readOnly      = true,
-                                        label         = { Text(stringResource(R.string.vault_mount_hash)) },
-                                        trailingIcon  = {
-                                            Icon(
-                                                if (hashExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                                                contentDescription = null
-                                            )
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    Box(Modifier.matchParentSize().clickable { hashExpanded = !hashExpanded })
-                                    DropdownMenu(
-                                        expanded         = hashExpanded,
-                                        onDismissRequest = { hashExpanded = false }
-                                    ) {
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                OutlinedTextField(
+                                    value         = hashes.first { it.first == selectedHash }.second,
+                                    onValueChange = {},
+                                    readOnly      = true,
+                                    label         = { Text(stringResource(R.string.vault_mount_hash)) },
+                                    trailingIcon  = {
+                                        Icon(Icons.Outlined.ExpandMore, contentDescription = null)
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Box(Modifier.matchParentSize().clickable { showHashSheet = true })
+                            }
+
+                            if (showHashSheet) {
+                                val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                                AppSheet(
+                                    onDismissRequest = { showHashSheet = false },
+                                    sheetState       = sheetState
+                                ) {
+                                    Column(modifier = Modifier.padding(bottom = 32.dp)) {
+                                        Text(
+                                            text       = stringResource(R.string.vault_mount_hash),
+                                            style      = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier   = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                                        )
                                         hashes.forEach { (id, label) ->
-                                            DropdownMenuItem(
-                                                text    = { Text(label, style = MaterialTheme.typography.bodySmall) },
-                                                onClick = { selectedHash = id; hashExpanded = false }
-                                            )
+                                            Row(
+                                                modifier          = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { selectedHash = id; showHashSheet = false }
+                                                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                RadioButton(
+                                                    selected = selectedHash == id,
+                                                    onClick  = { selectedHash = id; showHashSheet = false }
+                                                )
+                                                Text(
+                                                    text     = label,
+                                                    style    = MaterialTheme.typography.bodyMedium,
+                                                    modifier = Modifier.padding(start = 8.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }

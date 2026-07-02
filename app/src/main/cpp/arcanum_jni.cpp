@@ -1045,7 +1045,9 @@ static int read_vc_header(int fd, uint64_t fileOff,
 
     static const int NUM_HASHES = 5;
 
-    if (mountCb) { mountCb->attempt = 1; mountCb->total = NUM_HASHES * NUM_ALGORITHMS; }
+    /* Progress denominator: a hash hint restricts the scan to one hash's ciphers. */
+    bool hashHinted = (hintHashId >= 0 && hintHashId < NUM_HASHES);
+    if (mountCb) { mountCb->attempt = 1; mountCb->total = hashHinted ? NUM_ALGORITHMS : NUM_HASHES * NUM_ALGORITHMS; }
 
     /* ── Fast path: try hinted (hash, algorithm) combination first ── */
     bool hintTried = false;
@@ -1086,14 +1088,19 @@ static int read_vc_header(int fd, uint64_t fileOff,
         secure_memset((volatile uint8_t *)hintKey, 0, sizeof(hintKey));
     }
 
-    /* ── Full scan: derive all 5 keys in parallel, then check ciphers ── */
+    /* ── Full scan: derive keys (1 if hash hinted, 5 in parallel otherwise), then check ciphers ── */
     uint8_t allDerivedKeys[NUM_HASHES][192];
     memset(allDerivedKeys, 0, sizeof(allDerivedKeys));
 
-    /* PBKDF2 is the bottleneck — run all 5 hashes concurrently (matches VeraCrypt thread pool).
-     * Exception safety: if thread creation fails (EAGAIN), join started threads then fall back
-     * to sequential derivation for the remainder so allDerivedKeys is always fully populated. */
-    {
+    bool singleHashHint = hashHinted;
+    if (singleHashHint) {
+        /* Hash hint: one derivation instead of five — mirrors VeraCrypt selected_pkcs5_prf */
+        derive_header_key(hintHashId, (const uint8_t*)password, pwd_len,
+                          salt, pim, allDerivedKeys[hintHashId]);
+    } else {
+        /* No hash hint: run all 5 derivations concurrently (matches VeraCrypt thread pool).
+         * Exception safety: if thread creation fails (EAGAIN), join started threads then fall
+         * back to sequential for the remainder so allDerivedKeys is always fully populated. */
         std::thread kdfThreads[NUM_HASHES];
         int threadsStarted = 0;
         try {
@@ -1110,8 +1117,10 @@ static int read_vc_header(int fd, uint64_t fileOff,
             derive_header_key(hi, (const uint8_t*)password, pwd_len, salt, pim, allDerivedKeys[hi]);
     }
 
-    /* Check all hash × cipher combinations — cheap (XTS decrypt 448 B + CRC) */
-    for (int hi = 0; hi < NUM_HASHES; hi++) {
+    /* Check cipher combinations — restrict to hinted hash if one was given */
+    int hiStart = singleHashHint ? hintHashId : 0;
+    int hiEnd   = singleHashHint ? hintHashId + 1 : NUM_HASHES;
+    for (int hi = hiStart; hi < hiEnd; hi++) {
         for (int ai = 0; ai < NUM_ALGORITHMS; ai++) {
             if (hintTried && hi == hintHashId && ai == hintAlgId) continue;
 
