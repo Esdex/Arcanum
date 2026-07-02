@@ -477,7 +477,7 @@
 
     <!-- Create container steps 1–4 -->
     <string name="create_step1_title">Seleziona tipo di volume</string>
-    <string name="create_volume_standard">Volume standard</string>
+    <string name="create_volume_standard">Volume normale</string>
     <string name="create_volume_standard_desc">Una normale cassaforte cifrata protetta da una singola password.</string>
     <string name="create_volume_hidden">Volume nascosto</string>
     <string name="create_volume_hidden_desc">Due password, due set di dati. Negazione plausibile sotto coercizione.</string>
@@ -617,7 +617,7 @@
     <string name="vault_info_label_volume_type">Tipo di volume</string>
     <string name="vault_info_type_hidden">Nascosto</string>
     <string name="vault_info_type_outer">Esterno</string>
-    <string name="vault_info_type_standard">Standard</string>
+    <string name="vault_info_type_standard">Normale</string>
     <string name="vault_info_label_algorithm">Algoritmo</string>
     <string name="vault_info_label_prf">PKCS-5 PRF</string>
     <string name="vault_info_label_filesystem">File system</string>

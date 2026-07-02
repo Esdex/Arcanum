@@ -477,7 +477,7 @@
 
     <!-- Create container steps 1–4 -->
     <string name="create_step1_title">Volume-Typ auswählen</string>
-    <string name="create_volume_standard">Standard-Volume</string>
+    <string name="create_volume_standard">Normal-Volume</string>
     <string name="create_volume_standard_desc">Ein normaler verschlüsselter Tresor, der durch ein einzelnes Passwort geschützt ist.</string>
     <string name="create_volume_hidden">Verstecktes Volume</string>
     <string name="create_volume_hidden_desc">Zwei Passwörter, zwei Datensätze. Glaubwürdige Abstreitbarkeit unter Zwang.</string>
@@ -617,7 +617,7 @@
     <string name="vault_info_label_volume_type">Volume-Typ</string>
     <string name="vault_info_type_hidden">Versteckt</string>
     <string name="vault_info_type_outer">Äußeres</string>
-    <string name="vault_info_type_standard">Standard</string>
+    <string name="vault_info_type_standard">Normal</string>
     <string name="vault_info_label_algorithm">Algorithmus</string>
     <string name="vault_info_label_prf">PKCS-5 PRF</string>
     <string name="vault_info_label_filesystem">Dateisystem</string>

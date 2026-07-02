@@ -470,7 +470,7 @@
 
     <!-- Create container steps 1–4 -->
     <string name="create_step1_title">選擇卷類型</string>
-    <string name="create_volume_standard">標準卷</string>
+    <string name="create_volume_standard">普通卷</string>
     <string name="create_volume_standard_desc">由單一密碼保護的普通加密保險庫。</string>
     <string name="create_volume_hidden">隱藏卷</string>
     <string name="create_volume_hidden_desc">兩個密碼，兩套資料。在脅迫下具有合理的否認性。</string>
@@ -609,7 +609,7 @@
     <string name="vault_info_label_volume_type">卷類型</string>
     <string name="vault_info_type_hidden">隱藏</string>
     <string name="vault_info_type_outer">外層</string>
-    <string name="vault_info_type_standard">標準</string>
+    <string name="vault_info_type_standard">普通</string>
     <string name="vault_info_label_algorithm">演算法</string>
     <string name="vault_info_label_prf">PKCS-5 PRF</string>
     <string name="vault_info_label_filesystem">檔案系統</string>

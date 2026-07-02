@@ -539,7 +539,7 @@
 
     <!-- Create container steps 1–4 -->
     <string name="create_step1_title">Select Volume Type</string>
-    <string name="create_volume_standard">Standard Volume</string>
+    <string name="create_volume_standard">Normal Volume</string>
     <string name="create_volume_standard_desc">A regular encrypted vault protected by a single password.</string>
     <string name="create_volume_hidden">Hidden Volume</string>
     <string name="create_volume_hidden_desc">Two passwords, two sets of data. Plausible deniability under coercion.</string>
@@ -686,7 +686,7 @@
     <string name="vault_info_label_volume_type">Volume Type</string>
     <string name="vault_info_type_hidden">Hidden</string>
     <string name="vault_info_type_outer">Outer</string>
-    <string name="vault_info_type_standard">Standard</string>
+    <string name="vault_info_type_standard">Normal</string>
     <string name="vault_info_label_algorithm">Algorithm</string>
     <string name="vault_info_label_prf">PKCS-5 PRF</string>
     <string name="vault_info_label_filesystem">Filesystem</string>

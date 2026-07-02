@@ -491,7 +491,7 @@
 
     <!-- Create container steps 1–4 -->
     <string name="create_step1_title">Wybierz typ woluminu</string>
-    <string name="create_volume_standard">Wolumin standardowy</string>
+    <string name="create_volume_standard">Wolumin normalny</string>
     <string name="create_volume_standard_desc">Zwykły zaszyfrowany skarbiec chroniony jednym hasłem.</string>
     <string name="create_volume_hidden">Ukryty wolumin</string>
     <string name="create_volume_hidden_desc">Dwa hasła, dwa zestawy danych. Wiarygodne zaprzeczenie pod przymusem.</string>
@@ -633,7 +633,7 @@
     <string name="vault_info_label_volume_type">Typ woluminu</string>
     <string name="vault_info_type_hidden">Ukryty</string>
     <string name="vault_info_type_outer">Zewnętrzny</string>
-    <string name="vault_info_type_standard">Standardowy</string>
+    <string name="vault_info_type_standard">Normalny</string>
     <string name="vault_info_label_algorithm">Algorytm</string>
     <string name="vault_info_label_prf">PKCS-5 PRF</string>
     <string name="vault_info_label_filesystem">System plików</string>

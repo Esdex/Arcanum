@@ -477,7 +477,7 @@
 
     <!-- Create container steps 1–4 -->
     <string name="create_step1_title">Seleccionar tipo de volume</string>
-    <string name="create_volume_standard">Volume padrão</string>
+    <string name="create_volume_standard">Volume normal</string>
     <string name="create_volume_standard_desc">Um cofre encriptado normal protegido por uma única palavra-passe.</string>
     <string name="create_volume_hidden">Volume oculto</string>
     <string name="create_volume_hidden_desc">Duas palavras-passe, dois conjuntos de dados. Negação plausível sob coacção.</string>
@@ -617,7 +617,7 @@
     <string name="vault_info_label_volume_type">Tipo de volume</string>
     <string name="vault_info_type_hidden">Oculto</string>
     <string name="vault_info_type_outer">Externo</string>
-    <string name="vault_info_type_standard">Padrão</string>
+    <string name="vault_info_type_standard">Normal</string>
     <string name="vault_info_label_algorithm">Algoritmo</string>
     <string name="vault_info_label_prf">PKCS-5 PRF</string>
     <string name="vault_info_label_filesystem">Sistema de ficheiros</string>
