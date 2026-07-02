@@ -703,6 +703,7 @@
     <string name="vault_info_op_change_keyfile">Change Keyfile</string>
     <string name="vault_info_unmount_button">Unmount Vault</string>
     <string name="vault_info_unmount_title">Unmount %1$s?</string>
+    <string name="vault_unmount_dialog_title">Unmount vault?</string>
     <string name="vault_info_unmount_body">Make sure all files are saved before unmounting.</string>
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">View volume details and metadata</string>
@@ -797,7 +798,7 @@
 
     <!-- Change Password wizard -->
     <string name="chpwd_title">Change Password</string>
-    <string name="chpwd_config_desc">Change encryption password, PIM and keyfiles</string>
+    <string name="chpwd_config_desc">Change password, PIM and keyfiles</string>
     <string name="chpwd_step1_title">Current Credentials</string>
     <string name="chpwd_step1_subtitle">Enter the current password and keyfiles for this container.</string>
     <string name="chpwd_step2_title">New Credentials</string>
@@ -854,5 +855,17 @@
     <string name="notif_channel_change_keyfile_desc">Shows progress while changing vault keyfiles</string>
     <string name="notif_changing_keyfile">Changing keyfiles…</string>
     <string name="notif_changing_keyfile_desc">Do not close the app</string>
+
+    <!-- Vault Config Screen -->
+    <string name="vault_config_op_mount">Mount</string>
+    <string name="vault_config_op_mount_desc">Unlock and access vault contents</string>
+    <string name="vault_config_op_open">Open</string>
+    <string name="vault_config_op_open_desc">Browse vault contents</string>
+    <string name="vault_config_op_auto_unmount">Auto-unmount</string>
+    <string name="vault_config_op_auto_unmount_desc">Configure automatic unmount behavior</string>
+    <string name="vault_config_unmount_first">Unmount vault first</string>
+    <string name="vault_config_move_sheet_title">Move</string>
+    <string name="vault_config_auto_unmount_title">Auto-unmount</string>
+    <string name="vault_config_title">Vault Config</string>
 
 </resources>

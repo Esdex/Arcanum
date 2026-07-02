@@ -69,11 +69,9 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.DeleteForever
-import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.Add
@@ -91,8 +89,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -141,7 +137,6 @@ import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.EmptyStateView
 import zip.arcanum.core.components.LocalHazeState
-import zip.arcanum.core.components.SettingsSwitch
 import zip.arcanum.core.components.UpgradeOverlay
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.notifications.InAppNotification
@@ -152,11 +147,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Button
-import com.airbnb.lottie.compose.LottieAnimation
-import com.airbnb.lottie.compose.LottieCompositionSpec
-import com.airbnb.lottie.compose.LottieConstants
-import com.airbnb.lottie.compose.animateLottieCompositionAsState
-import com.airbnb.lottie.compose.rememberLottieComposition
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -169,8 +159,8 @@ fun VaultScreen(
     onLock: () -> Unit,
     onCreateContainer: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenContainer: (id: String) -> Unit,
-    onMountContainer: (containerId: String) -> Unit,
+    onVaultConfig: (containerId: String) -> Unit,
+    onMountContainer: (containerId: String) -> Unit = {},
     onMountSuccess: (id: String) -> Unit = {},
     onUnmountStart: (containerId: String) -> Unit = {},
     unmountedContainerId: String? = null,
@@ -178,10 +168,7 @@ fun VaultScreen(
     suppressBackHandler: Boolean = false,
     autoMountContainerId: String? = null,
     onAutoMountHandled: () -> Unit = {},
-    onMoveVault: (containerId: String, toApp: Boolean) -> Unit = { _, _ -> },
     onOpenWhatsNew: () -> Unit = {},
-    onChangePassword: (containerId: String) -> Unit = {},
-    onChangeKeyfile: (containerId: String) -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context              = LocalContext.current
@@ -207,15 +194,9 @@ fun VaultScreen(
     var selectionMode      by remember { mutableStateOf(false) }
     var selectedIds        by remember { mutableStateOf(emptySet<String>()) }
     var contextMenuContainerId   by remember { mutableStateOf<String?>(null) }
-    var configContainer              by remember { mutableStateOf<ContainerEntity?>(null) }
     var showUpgradeDialog            by remember { mutableStateOf(false) }
     var containerNotFound            by remember { mutableStateOf<ContainerEntity?>(null) }
     var showRemoveNotFoundConfirm    by remember { mutableStateOf(false) }
-    var renameContainer              by remember { mutableStateOf<ContainerEntity?>(null) }
-    var renameMountedWarning         by remember { mutableStateOf(false) }
-    var renameSuccess                by remember { mutableStateOf(false) }
-    var renameText                   by remember { mutableStateOf("") }
-    val renameResult                 by viewModel.renameResult.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.initVersionCheck() }
 
@@ -254,21 +235,6 @@ fun VaultScreen(
             is VaultViewModel.AddVaultResult.Error         -> notification = InAppNotification.VaultAddError(result.message)
         }
         viewModel.clearAddVaultResult()
-    }
-
-    LaunchedEffect(renameResult) {
-        when (val r = renameResult) {
-            is VaultViewModel.RenameResult.Success -> {
-                renameContainer = null
-                renameSuccess   = true
-                viewModel.clearRenameResult()
-            }
-            is VaultViewModel.RenameResult.Error -> {
-                notification = InAppNotification.VaultAddError(r.message)
-                viewModel.clearRenameResult()
-            }
-            null -> {}
-        }
     }
 
     // FAB rotation animation
@@ -412,19 +378,16 @@ fun VaultScreen(
                                             onContextMenuChange    = { open -> contextMenuContainerId = if (open) container.id else null },
                                             onSelect               = { selectedIds = if (container.id in selectedIds) selectedIds - container.id else selectedIds + container.id },
                                             onOpen                 = {
-                                            if (container.isMounted) {
-                                                onOpenContainer(container.id)
-                                            } else if (isContainerAccessible(context, container)) {
-                                                onMountContainer(container.id)
-                                            } else {
-                                                containerNotFound = container
-                                            }
-                                        },
+                                                if (container.isMounted || isContainerAccessible(context, container)) {
+                                                    onVaultConfig(container.id)
+                                                } else {
+                                                    containerNotFound = container
+                                                }
+                                            },
                                             onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
                                             onUnmount              = { containerToUnmount = container },
                                             onRemoveFromList       = { containerToRemoveFromList = container },
-                                            onDeleteVault          = { containerToDeleteFile = container },
-                                            onConfig               = { configContainer = container }
+                                            onDeleteVault          = { containerToDeleteFile = container }
                                         )
                                     }
                                 }
@@ -440,10 +403,8 @@ fun VaultScreen(
                                         onContextMenuChange    = { open -> contextMenuContainerId = if (open) container.id else null },
                                         onSelect               = { selectedIds = if (container.id in selectedIds) selectedIds - container.id else selectedIds + container.id },
                                         onOpen                 = {
-                                            if (container.isMounted) {
-                                                onOpenContainer(container.id)
-                                            } else if (isContainerAccessible(context, container)) {
-                                                onMountContainer(container.id)
+                                            if (container.isMounted || isContainerAccessible(context, container)) {
+                                                onVaultConfig(container.id)
                                             } else {
                                                 containerNotFound = container
                                             }
@@ -451,8 +412,7 @@ fun VaultScreen(
                                         onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
                                         onUnmount              = { containerToUnmount = container },
                                         onRemoveFromList       = { containerToRemoveFromList = container },
-                                        onDeleteVault          = { containerToDeleteFile = container },
-                                        onConfig               = { configContainer = container }
+                                        onDeleteVault          = { containerToDeleteFile = container }
                                     )
                                 }
                             }
@@ -680,188 +640,6 @@ fun VaultScreen(
                 )
             }
 
-            // ── Per-vault config sheet ────────────────────────────────────────
-            configContainer?.let { c ->
-                AppSheet(
-                    onDismissRequest = { configContainer = null },
-                    sheetState       = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
-                ) {
-                    Column(modifier = Modifier.padding(bottom = 32.dp)) {
-                        Text(
-                            text     = c.name,
-                            style    = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                        )
-                        SettingsSwitch(
-                            title           = stringResource(R.string.vault_config_unmount_on_lock),
-                            subtitle        = stringResource(R.string.vault_config_unmount_on_lock_desc),
-                            checked         = c.unmountOnLock,
-                            onCheckedChange = {
-                                viewModel.updateUnmountOnLock(c.id, it)
-                                configContainer = c.copy(unmountOnLock = it)
-                            }
-                        )
-                        SettingsSwitch(
-                            title           = stringResource(R.string.vault_config_unmount_on_background),
-                            subtitle        = stringResource(R.string.vault_config_unmount_on_background_desc),
-                            checked         = c.unmountOnBackground,
-                            onCheckedChange = {
-                                viewModel.updateUnmountOnBackground(c.id, it)
-                                configContainer = c.copy(unmountOnBackground = it)
-                            }
-                        )
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                        // ── Rename ────────────────────────────────────────
-                        val renameEnabled = !c.isMounted
-                        androidx.compose.material3.ListItem(
-                            headlineContent = { Text(stringResource(R.string.vault_config_rename)) },
-                            supportingContent = {
-                                Text(
-                                    if (renameEnabled) stringResource(R.string.vault_config_rename_desc)
-                                    else stringResource(R.string.vault_config_unmount_to_move),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            },
-                            trailingContent = {
-                                Icon(
-                                    imageVector = Icons.Outlined.DriveFileRenameOutline,
-                                    contentDescription = null,
-                                    tint = if (renameEnabled) MaterialTheme.colorScheme.primary
-                                           else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                )
-                            },
-                            modifier = Modifier.clickable {
-                                if (c.isMounted) {
-                                    renameMountedWarning = true
-                                } else {
-                                    renameText      = c.name
-                                    renameContainer = c
-                                    configContainer = null
-                                }
-                            }
-                        )
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                        // ── Change Password ───────────────────────────────
-                        val changePwdEnabled = !c.isMounted
-                        androidx.compose.material3.ListItem(
-                            headlineContent = { Text(stringResource(R.string.vault_config_change_password)) },
-                            supportingContent = {
-                                Text(
-                                    if (changePwdEnabled) stringResource(R.string.chpwd_config_desc)
-                                    else stringResource(R.string.vault_config_unmount_to_move),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            },
-                            trailingContent = {
-                                Icon(
-                                    imageVector = androidx.compose.material.icons.Icons.Outlined.Lock,
-                                    contentDescription = null,
-                                    tint = if (changePwdEnabled) MaterialTheme.colorScheme.primary
-                                           else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                )
-                            },
-                            modifier = Modifier.clickable(enabled = changePwdEnabled) {
-                                configContainer = null
-                                onChangePassword(c.id)
-                            }
-                        )
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                        // ── Change Keyfile ────────────────────────────────
-                        val changeKfEnabled = !c.isMounted
-                        androidx.compose.material3.ListItem(
-                            headlineContent = { Text(stringResource(R.string.vault_config_change_keyfile)) },
-                            supportingContent = {
-                                Text(
-                                    if (changeKfEnabled) stringResource(R.string.chkeyfile_config_desc)
-                                    else stringResource(R.string.vault_config_unmount_to_move),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            },
-                            trailingContent = {
-                                Icon(
-                                    imageVector = androidx.compose.material.icons.Icons.Outlined.VpnKey,
-                                    contentDescription = null,
-                                    tint = if (changeKfEnabled) MaterialTheme.colorScheme.primary
-                                           else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                )
-                            },
-                            modifier = Modifier.clickable(enabled = changeKfEnabled) {
-                                configContainer = null
-                                onChangeKeyfile(c.id)
-                            }
-                        )
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                        val moveEnabled = !c.isMounted
-                        val isInAppStorage = c.safUri.isEmpty() &&
-                                            (c.path.startsWith(context.filesDir.absolutePath) ||
-                                             c.path.startsWith(context.noBackupFilesDir.absolutePath))
-
-                        if (!isInAppStorage) {
-                            androidx.compose.material3.ListItem(
-                                headlineContent = { Text(stringResource(R.string.vault_config_move_to_app)) },
-                                supportingContent = {
-                                    Text(
-                                        if (moveEnabled) stringResource(R.string.vault_config_move_to_app_desc)
-                                        else stringResource(R.string.vault_config_unmount_to_move),
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                },
-                                trailingContent = {
-                                    Icon(
-                                        imageVector = androidx.compose.material.icons.Icons.Outlined.FolderOpen,
-                                        contentDescription = null,
-                                        tint = if (moveEnabled) MaterialTheme.colorScheme.primary
-                                               else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                    )
-                                },
-                                modifier = Modifier
-                                    .then(
-                                        if (moveEnabled) Modifier.clickable {
-                                            configContainer = null
-                                            onMoveVault(c.id, true)
-                                        } else Modifier
-                                    )
-                            )
-                        }
-
-                        androidx.compose.material3.ListItem(
-                            headlineContent = { Text(stringResource(R.string.vault_config_move_to_internal)) },
-                            supportingContent = {
-                                Text(
-                                    if (moveEnabled) stringResource(R.string.vault_config_move_to_internal_desc)
-                                    else stringResource(R.string.vault_config_unmount_to_move),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            },
-                            trailingContent = {
-                                Icon(
-                                    imageVector = androidx.compose.material.icons.Icons.Outlined.FolderOpen,
-                                    contentDescription = null,
-                                    tint = if (moveEnabled) MaterialTheme.colorScheme.primary
-                                           else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                )
-                            },
-                            modifier = Modifier
-                                .then(
-                                    if (moveEnabled) Modifier.clickable {
-                                        configContainer = null
-                                        onMoveVault(c.id, false)
-                                    } else Modifier
-                                )
-                        )
-                    }
-                }
-            }
-
             // ── Sort / group sheet ────────────────────────────────────────────
             if (showSortSheet) {
                 SortFilterSheet(
@@ -880,99 +658,6 @@ fun VaultScreen(
                     onBiometricFirstToggle = { viewModel.toggleBiometricFirst() },
                     onDismiss           = { showSortSheet = false }
                 )
-            }
-
-            // ── Rename: mounted warning dialog ────────────────────────────────
-            if (renameMountedWarning) {
-                AppDialog(
-                    onDismissRequest = { renameMountedWarning = false },
-                    title            = { Text(stringResource(R.string.vault_rename_mounted_title)) },
-                    text             = { Text(stringResource(R.string.vault_rename_mounted_body)) },
-                    confirmButton    = {
-                        TextButton(onClick = { renameMountedWarning = false }) {
-                            Text(stringResource(R.string.common_ok))
-                        }
-                    }
-                )
-            }
-
-            // ── Rename: input dialog ──────────────────────────────────────────
-            renameContainer?.let { c ->
-                AppDialog(
-                    onDismissRequest = { renameContainer = null },
-                    title            = { Text(stringResource(R.string.vault_rename_title)) },
-                    text             = {
-                        OutlinedTextField(
-                            value         = renameText,
-                            onValueChange = { renameText = it },
-                            label         = { Text(stringResource(R.string.vault_rename_label)) },
-                            singleLine    = true,
-                            modifier      = Modifier.fillMaxWidth()
-                        )
-                    },
-                    confirmButton    = {
-                        TextButton(
-                            onClick  = { if (renameText.isNotBlank()) viewModel.renameContainer(c.id, renameText.trim()) },
-                            enabled  = renameText.isNotBlank()
-                        ) {
-                            Text(stringResource(R.string.vault_rename_confirm))
-                        }
-                    },
-                    dismissButton    = {
-                        TextButton(onClick = { renameContainer = null }) {
-                            Text(stringResource(R.string.common_cancel))
-                        }
-                    }
-                )
-            }
-
-            // ── Rename: success overlay ───────────────────────────────────────
-            AnimatedVisibility(
-                visible  = renameSuccess,
-                enter    = fadeIn(tween(250)),
-                exit     = fadeOut(tween(200)),
-                modifier = Modifier.zIndex(30f)
-            ) {
-                val successComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_check))
-                val successProgress    by animateLottieCompositionAsState(composition = successComposition, iterations = 1)
-                androidx.compose.material3.Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color    = MaterialTheme.colorScheme.background
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Column(
-                            modifier            = Modifier
-                                .align(Alignment.Center)
-                                .padding(horizontal = 40.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            LottieAnimation(
-                                composition = successComposition,
-                                progress    = { successProgress },
-                                modifier    = Modifier.size(160.dp)
-                            )
-                            Spacer(Modifier.height(16.dp))
-                            Text(
-                                text       = stringResource(R.string.vault_rename_success_title),
-                                style      = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                textAlign  = TextAlign.Center,
-                                color      = MaterialTheme.colorScheme.onBackground
-                            )
-                        }
-                        Button(
-                            onClick  = { renameSuccess = false },
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .padding(horizontal = 40.dp)
-                                .navigationBarsPadding()
-                                .padding(bottom = 24.dp)
-                        ) {
-                            Text(stringResource(R.string.common_done))
-                        }
-                    }
-                }
             }
 
         } // Box
@@ -996,7 +681,6 @@ private fun VaultCardItem(
     onUnmount: () -> Unit,
     onRemoveFromList: () -> Unit,
     onDeleteVault: () -> Unit,
-    onConfig: () -> Unit,
 ) {
     VaultCard(
         container               = container,
@@ -1010,8 +694,7 @@ private fun VaultCardItem(
         onClick                 = { if (selectionMode) onSelect() else onOpen() },
         onLongClick             = onLongClick,
         onRemoveFromList        = onRemoveFromList,
-        onDeleteVault           = onDeleteVault,
-        onConfig                = onConfig
+        onDeleteVault           = onDeleteVault
     )
 }
 
@@ -1201,7 +884,6 @@ private fun VaultCard(
     onLongClick: () -> Unit,
     onRemoveFromList: () -> Unit,
     onDeleteVault: () -> Unit,
-    onConfig: () -> Unit,
 ) {
     val context = LocalContext.current
     val appStr   = stringResource(R.string.vault_storage_app)
@@ -1355,11 +1037,6 @@ private fun VaultCard(
             text        = { Text(stringResource(R.string.vault_menu_select)) },
             leadingIcon = { Icon(Icons.Outlined.CheckBox, contentDescription = null) },
             onClick     = { onShowContextMenuChange(false); onLongClick() }
-        )
-        DropdownMenuItem(
-            text        = { Text(stringResource(R.string.vault_menu_config)) },
-            leadingIcon = { Icon(Icons.Outlined.Tune, contentDescription = null) },
-            onClick     = { onShowContextMenuChange(false); onConfig() }
         )
         DropdownMenuItem(
             text        = { Text(stringResource(R.string.vault_menu_remove)) },

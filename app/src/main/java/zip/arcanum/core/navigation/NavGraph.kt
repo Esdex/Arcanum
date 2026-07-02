@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,7 +32,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import zip.arcanum.core.components.AppDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -97,7 +100,8 @@ fun ContainerScreen(
     val isAmoled            = LocalAmoledMode.current
     val hazeState           = remember { HazeState() }
     var selectedTab       by rememberSaveable { mutableStateOf(BottomNavItem.ContainerGallery.route) }
-    var notification      by remember { mutableStateOf<InAppNotification?>(null) }
+    var notification        by remember { mutableStateOf<InAppNotification?>(null) }
+    var showUnmountConfirm  by remember { mutableStateOf(false) }
 
     // Per-tab offset: 0f = center, 1f = off-screen right, -1f = off-screen left.
     // Initialized so the default tab (Gallery) is at 0 and others wait off to the right.
@@ -129,8 +133,13 @@ fun ContainerScreen(
                     )
                     BottomNavItem.ContainerFiles.route -> {} // FileManagerScreen owns its top bar
                     else -> TopAppBar(
-                        title          = { Text(container?.name ?: stringResource(R.string.nav_vault_fallback_name)) },
+                        title          = { Text(stringResource(R.string.nav_info)) },
                         navigationIcon = { BackIconButton(onBack) },
+                        actions        = {
+                            IconButton(onClick = { showUnmountConfirm = true }) {
+                                Icon(Icons.Outlined.Lock, contentDescription = null)
+                            }
+                        },
                         modifier       = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier,
                         colors         = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                                          else TopAppBarDefaults.topAppBarColors()
@@ -192,11 +201,7 @@ fun ContainerScreen(
                                 )
                                 BottomNavItem.ContainerInfo -> VaultInfoScreen(
                                     container      = container,
-                                    contentPadding = PaddingValues(bottom = 60.dp + navBarPadding),
-                                    onUnmount      = {
-                                        viewModel.unmount {}
-                                        onUnmountStart(viewModel.containerId)
-                                    }
+                                    contentPadding = PaddingValues(bottom = 60.dp + navBarPadding)
                                 )
                                 else -> Box(Modifier.fillMaxSize())
                             }
@@ -248,6 +253,28 @@ fun ContainerScreen(
                 )
 
             }
+        }
+
+        if (showUnmountConfirm) {
+            AppDialog(
+                onDismissRequest = { showUnmountConfirm = false },
+                title            = { Text(stringResource(R.string.vault_unmount_dialog_title)) },
+                text             = { Text(stringResource(R.string.vault_info_unmount_body)) },
+                confirmButton    = {
+                    TextButton(onClick = {
+                        showUnmountConfirm = false
+                        viewModel.unmount {}
+                        onUnmountStart(viewModel.containerId)
+                    }) {
+                        Text(stringResource(R.string.vault_unmount_confirm), color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton    = {
+                    TextButton(onClick = { showUnmountConfirm = false }) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                }
+            )
         }
     }
 }
