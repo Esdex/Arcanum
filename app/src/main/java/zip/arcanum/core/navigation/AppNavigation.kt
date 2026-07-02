@@ -37,6 +37,7 @@ import zip.arcanum.arcanum.containers.ui.MountCoordinator
 import zip.arcanum.arcanum.containers.ui.MountScreen
 import zip.arcanum.arcanum.containers.ui.MountSuccessOverlay
 import zip.arcanum.arcanum.containers.ui.UnmountAnimationOverlay
+import zip.arcanum.arcanum.containers.ui.VaultConfigScreen
 import zip.arcanum.arcanum.containers.ui.VaultScreen
 import zip.arcanum.arcanum.containers.ui.VaultViewModel
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerDirectScreen
@@ -226,8 +227,8 @@ fun AppNavigation(pinManager: PinManager) {
                 onOpenSettings = {
                     navController.navigate(Screen.AppSettings.route)
                 },
-                onOpenContainer = { containerId ->
-                    navController.navigate(Screen.ContainerScreen.buildRoute(containerId))
+                onVaultConfig = { containerId ->
+                    navController.navigate(Screen.VaultConfig.buildRoute(containerId))
                 },
                 onMountContainer = { containerId ->
                     navController.navigate(Screen.MountScreen.buildRoute(containerId))
@@ -245,17 +246,8 @@ fun AppNavigation(pinManager: PinManager) {
                 suppressBackHandler       = showUnmountOverlay,
                 autoMountContainerId      = pendingMountContainerId,
                 onAutoMountHandled        = { pendingMountContainerId = null },
-                onMoveVault               = { containerId, toApp ->
-                    navController.navigate(Screen.MoveVault.buildRoute(containerId, toApp))
-                },
                 onOpenWhatsNew            = {
                     navController.navigate(Screen.WhatsNew.route)
-                },
-                onChangePassword          = { containerId ->
-                    navController.navigate(Screen.ChangePassword.buildRoute(containerId))
-                },
-                onChangeKeyfile           = { containerId ->
-                    navController.navigate(Screen.ChangeKeyfile.buildRoute(containerId))
                 }
             )
         }
@@ -431,6 +423,28 @@ fun AppNavigation(pinManager: PinManager) {
             ChangeKeyfileScreen(
                 containerId = containerId,
                 onBack      = { navController.popBackStack() }
+            )
+        }
+
+        // ── Vault config ─────────────────────────────────────────────────
+        composable(
+            route             = Screen.VaultConfig.route,
+            arguments         = listOf(navArgument(Screen.VaultConfig.ARG) { type = NavType.StringType }),
+            enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
+        ) { backStackEntry ->
+            val containerId = backStackEntry.arguments?.getString(Screen.VaultConfig.ARG) ?: return@composable
+            val parentEntry = remember(backStackEntry) { navController.getBackStackEntry(Screen.VaultScreen.route) }
+            val vaultViewModel: VaultViewModel = hiltViewModel(parentEntry)
+            VaultConfigScreen(
+                containerId      = containerId,
+                viewModel        = vaultViewModel,
+                onBack           = { navController.popBackStack() },
+                onMount          = { id -> navController.navigate(Screen.MountScreen.buildRoute(id)) },
+                onOpenVault      = { id -> navController.navigate(Screen.ContainerScreen.buildRoute(id)) },
+                onChangePassword = { id -> navController.navigate(Screen.ChangePassword.buildRoute(id)) },
+                onChangeKeyfile  = { id -> navController.navigate(Screen.ChangeKeyfile.buildRoute(id)) },
+                onMoveVault      = { id, toApp -> navController.navigate(Screen.MoveVault.buildRoute(id, toApp)) }
             )
         }
 

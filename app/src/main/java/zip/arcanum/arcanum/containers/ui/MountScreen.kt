@@ -41,7 +41,6 @@ import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.HideSource
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
-import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Switch
@@ -525,7 +524,7 @@ private fun MountScreenContent(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Outlined.Storage,
+                        Icons.Outlined.Lock,
                         contentDescription = null,
                         tint     = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(48.dp)
@@ -538,28 +537,6 @@ private fun MountScreenContent(
                     fontWeight = FontWeight.SemiBold,
                     textAlign  = TextAlign.Center
                 )
-                val displayPath = remember(container.path, container.safUri) {
-                    when {
-                        container.path.isNotBlank() -> container.path
-                        container.safUri.isNotBlank() -> {
-                            val seg = android.net.Uri.decode(
-                                android.net.Uri.parse(container.safUri).lastPathSegment ?: ""
-                            )
-                            val after = seg.substringAfter(':')
-                            if (after.isNotEmpty()) "/$after" else seg
-                        }
-                        else -> ""
-                    }
-                }
-                if (displayPath.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text      = displayPath,
-                        style     = MaterialTheme.typography.bodySmall,
-                        color     = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
-                }
                 Spacer(Modifier.height(32.dp))
 
                 // ── Form body ─────────────────────────────────────────────────
