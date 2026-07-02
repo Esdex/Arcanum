@@ -251,6 +251,64 @@ class VeraCryptEngine @Inject constructor() {
         ).toResult()
     }
 
+    suspend fun backupVolumeHeader(
+        path: String,
+        password: String,
+        keyfilePaths: List<String> = emptyList(),
+        pim: Int = 0,
+        outputPath: String
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        nativeBackupVolumeHeader(
+            path, password,
+            keyfilePaths.toTypedArray().ifEmpty { null }, pim,
+            outputPath
+        ).toResult()
+    }
+
+    suspend fun backupVolumeHeaderFd(
+        volumeFd: Int,
+        password: String,
+        keyfilePaths: List<String> = emptyList(),
+        pim: Int = 0,
+        outputFd: Int
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        nativeBackupVolumeHeaderFd(
+            volumeFd, password,
+            keyfilePaths.toTypedArray().ifEmpty { null }, pim,
+            outputFd
+        ).toResult()
+    }
+
+    suspend fun restoreVolumeHeader(
+        path: String,
+        password: String,
+        keyfilePaths: List<String> = emptyList(),
+        pim: Int = 0,
+        fromExternal: Boolean,
+        backupPath: String = ""
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        nativeRestoreVolumeHeader(
+            path, password,
+            keyfilePaths.toTypedArray().ifEmpty { null }, pim,
+            fromExternal, backupPath
+        ).toResult()
+    }
+
+    suspend fun restoreVolumeHeaderFd(
+        volumeFd: Int,
+        password: String,
+        keyfilePaths: List<String> = emptyList(),
+        pim: Int = 0,
+        fromExternal: Boolean,
+        backupFd: Int = -1
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        nativeRestoreVolumeHeaderFd(
+            volumeFd, password,
+            keyfilePaths.toTypedArray().ifEmpty { null }, pim,
+            fromExternal, backupFd
+        ).toResult()
+    }
+
     fun getVolumeType(handle: Long): Int = nativeGetVolumeType(handle)
     fun hasHiddenVolume(handle: Long): Boolean = nativeHasHiddenVolume(handle)
 
@@ -415,6 +473,40 @@ class VeraCryptEngine @Inject constructor() {
         newKeyfilePaths: Array<String>?,
         newHashAlgorithm: Int,
         extraEntropy: ByteArray
+    ): Int
+
+    external fun nativeBackupVolumeHeader(
+        volumePath: String,
+        password: String,
+        keyfilePaths: Array<String>?,
+        pim: Int,
+        outputPath: String
+    ): Int
+
+    external fun nativeBackupVolumeHeaderFd(
+        volumeFd: Int,
+        password: String,
+        keyfilePaths: Array<String>?,
+        pim: Int,
+        outputFd: Int
+    ): Int
+
+    external fun nativeRestoreVolumeHeader(
+        volumePath: String,
+        password: String,
+        keyfilePaths: Array<String>?,
+        pim: Int,
+        fromExternal: Boolean,
+        backupPath: String
+    ): Int
+
+    external fun nativeRestoreVolumeHeaderFd(
+        volumeFd: Int,
+        password: String,
+        keyfilePaths: Array<String>?,
+        pim: Int,
+        fromExternal: Boolean,
+        backupFd: Int
     ): Int
 
     external fun nativeGetVolumeType(handle: Long): Int

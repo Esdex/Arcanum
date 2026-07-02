@@ -2874,6 +2874,307 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfile(
     return r2 == 0 ? ERR_OK : ERR_FILE;
 }
 
+/* ─── JNI: nativeBackupVolumeHeader ─────────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeBackupVolumeHeader(
+        JNIEnv *env, jobject /*thiz*/,
+        jstring jVolumePath, jstring jPassword,
+        jobjectArray jKeyfilePaths, jint pim, jstring jOutputPath)
+{
+    std::string volumePath = jstring_to_string(env, jVolumePath);
+    std::string outputPath = jstring_to_string(env, jOutputPath);
+    std::string password   = jstring_to_string(env, jPassword);
+    auto keyfilePaths = jstringArray_to_vector(env, jKeyfilePaths);
+
+    uint8_t effPwd[VC_MAX_PWD_LEN] = {};
+    int effPwdLen = (int)password.size();
+    if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
+    memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
+    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
+    if (!password.empty()) secure_memset(reinterpret_cast<volatile uint8_t*>(&password[0]), 0, password.size());
+
+    int fd = open(volumePath.c_str(), O_RDONLY);
+    if (fd < 0) { secure_memset(effPwd, 0, sizeof(effPwd)); return ERR_FILE; }
+
+    uint8_t masterKey[192] = {};
+    int mkLen = 0, algId = 0, hashId = 0;
+    uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
+    int rc = read_vc_header(fd, 0, (const char*)effPwd, effPwdLen,
+                            masterKey, &mkLen, &dataSz, &dataOff,
+                            &algId, &hashId, (int)pim, &hiddenVolSize);
+    close(fd);
+    if (rc != ERR_OK) {
+        secure_memset(effPwd, 0, sizeof(effPwd));
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        return ERR_WRONG_PASSWORD;
+    }
+
+    int outFd = open(outputPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (outFd < 0) {
+        secure_memset(effPwd, 0, sizeof(effPwd));
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        return ERR_FILE;
+    }
+
+    // Fill 128 KB with random data (VeraCrypt backup file layout: two 64 KB slots)
+    uint8_t chunk[4096];
+    for (int i = 0; i < 32; i++) {
+        read_urandom(chunk, sizeof(chunk));
+        write(outFd, chunk, sizeof(chunk));
+    }
+    secure_memset(chunk, 0, sizeof(chunk));
+
+    // Write re-encrypted header at offset 0 with a fresh random salt
+    int r = wipe_and_rewrite_header(outFd, 0,
+                                    dataSz, dataOff, masterKey, algId, hashId,
+                                    (const char*)effPwd, effPwdLen,
+                                    (int)pim, hiddenVolSize, /*wipePassCount=*/1,
+                                    nullptr, 0);
+    secure_memset(effPwd, 0, sizeof(effPwd));
+    secure_memset(masterKey, 0, sizeof(masterKey));
+    close(outFd);
+    return r == 0 ? ERR_OK : ERR_FILE;
+}
+
+/* ─── JNI: nativeBackupVolumeHeaderFd ──────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeBackupVolumeHeaderFd(
+        JNIEnv *env, jobject /*thiz*/,
+        jint safVolumeFd, jstring jPassword,
+        jobjectArray jKeyfilePaths, jint pim, jint safOutputFd)
+{
+    std::string password = jstring_to_string(env, jPassword);
+    auto keyfilePaths = jstringArray_to_vector(env, jKeyfilePaths);
+
+    uint8_t effPwd[VC_MAX_PWD_LEN] = {};
+    int effPwdLen = (int)password.size();
+    if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
+    memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
+    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
+    if (!password.empty()) secure_memset(reinterpret_cast<volatile uint8_t*>(&password[0]), 0, password.size());
+
+    int fd = dup((int)safVolumeFd);
+    if (fd < 0) { secure_memset(effPwd, 0, sizeof(effPwd)); return ERR_FILE; }
+
+    uint8_t masterKey[192] = {};
+    int mkLen = 0, algId = 0, hashId = 0;
+    uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
+    int rc = read_vc_header(fd, 0, (const char*)effPwd, effPwdLen,
+                            masterKey, &mkLen, &dataSz, &dataOff,
+                            &algId, &hashId, (int)pim, &hiddenVolSize);
+    close(fd);
+    if (rc != ERR_OK) {
+        secure_memset(effPwd, 0, sizeof(effPwd));
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        return ERR_WRONG_PASSWORD;
+    }
+
+    int outFd = dup((int)safOutputFd);
+    if (outFd < 0) {
+        secure_memset(effPwd, 0, sizeof(effPwd));
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        return ERR_FILE;
+    }
+
+    ftruncate(outFd, 0);
+    lseek(outFd, 0, SEEK_SET);
+
+    uint8_t chunk2[4096];
+    for (int i = 0; i < 32; i++) {
+        read_urandom(chunk2, sizeof(chunk2));
+        write(outFd, chunk2, sizeof(chunk2));
+    }
+    secure_memset(chunk2, 0, sizeof(chunk2));
+
+    int r = wipe_and_rewrite_header(outFd, 0,
+                                    dataSz, dataOff, masterKey, algId, hashId,
+                                    (const char*)effPwd, effPwdLen,
+                                    (int)pim, hiddenVolSize, /*wipePassCount=*/1,
+                                    nullptr, 0);
+    secure_memset(effPwd, 0, sizeof(effPwd));
+    secure_memset(masterKey, 0, sizeof(masterKey));
+    close(outFd);
+    return r == 0 ? ERR_OK : ERR_FILE;
+}
+
+/* ─── JNI: nativeRestoreVolumeHeader ───────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeRestoreVolumeHeader(
+        JNIEnv *env, jobject /*thiz*/,
+        jstring jVolumePath, jstring jPassword,
+        jobjectArray jKeyfilePaths, jint pim,
+        jboolean fromExternal, jstring jBackupPath)
+{
+    std::string volumePath = jstring_to_string(env, jVolumePath);
+    std::string backupPath = jstring_to_string(env, jBackupPath);
+    std::string password   = jstring_to_string(env, jPassword);
+    auto keyfilePaths = jstringArray_to_vector(env, jKeyfilePaths);
+
+    uint8_t effPwd[VC_MAX_PWD_LEN] = {};
+    int effPwdLen = (int)password.size();
+    if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
+    memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
+    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
+    if (!password.empty()) secure_memset(reinterpret_cast<volatile uint8_t*>(&password[0]), 0, password.size());
+
+    int volFd = open(volumePath.c_str(), O_RDWR);
+    if (volFd < 0) { secure_memset(effPwd, 0, sizeof(effPwd)); return ERR_FILE; }
+
+    off_t fileSzOff = lseek(volFd, 0, SEEK_END);
+    if (fileSzOff < 0) {
+        secure_memset(effPwd, 0, sizeof(effPwd));
+        close(volFd); return ERR_FILE;
+    }
+    uint64_t fileSize = (uint64_t)fileSzOff;
+
+    int srcFd;
+    uint64_t srcOffset;
+    bool closeSrcFd = false;
+    if ((bool)fromExternal) {
+        srcFd = open(backupPath.c_str(), O_RDONLY);
+        if (srcFd < 0) {
+            secure_memset(effPwd, 0, sizeof(effPwd));
+            close(volFd); return ERR_FILE;
+        }
+        srcOffset  = 0;
+        closeSrcFd = true;
+    } else {
+        srcFd     = volFd;
+        srcOffset = fileSize - VC_BACKUP_AREA_SIZE;
+    }
+
+    uint8_t masterKey[192] = {};
+    int mkLen = 0, algId = 0, hashId = 0;
+    uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
+    int rc = read_vc_header(srcFd, srcOffset, (const char*)effPwd, effPwdLen,
+                            masterKey, &mkLen, &dataSz, &dataOff,
+                            &algId, &hashId, (int)pim, &hiddenVolSize);
+    if (closeSrcFd) close(srcFd);
+
+    if (rc != ERR_OK) {
+        secure_memset(effPwd, 0, sizeof(effPwd));
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        close(volFd); return ERR_WRONG_PASSWORD;
+    }
+
+    // Restore primary header at offset 0
+    int r1 = wipe_and_rewrite_header(volFd, 0,
+                                     dataSz, dataOff, masterKey, algId, hashId,
+                                     (const char*)effPwd, effPwdLen,
+                                     (int)pim, hiddenVolSize, /*wipePassCount=*/3,
+                                     nullptr, 0);
+    if (r1 != 0) {
+        secure_memset(effPwd, 0, sizeof(effPwd));
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        close(volFd); return ERR_FILE;
+    }
+
+    // When restoring from external, also update the embedded backup
+    int r2 = 0;
+    if ((bool)fromExternal) {
+        uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
+        r2 = wipe_and_rewrite_header(volFd, backupAreaOff,
+                                     dataSz, dataOff, masterKey, algId, hashId,
+                                     (const char*)effPwd, effPwdLen,
+                                     (int)pim, hiddenVolSize, /*wipePassCount=*/3,
+                                     nullptr, 0);
+    }
+
+    secure_memset(effPwd, 0, sizeof(effPwd));
+    secure_memset(masterKey, 0, sizeof(masterKey));
+    close(volFd);
+    return r2 == 0 ? ERR_OK : ERR_FILE;
+}
+
+/* ─── JNI: nativeRestoreVolumeHeaderFd ─────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeRestoreVolumeHeaderFd(
+        JNIEnv *env, jobject /*thiz*/,
+        jint safVolumeFd, jstring jPassword,
+        jobjectArray jKeyfilePaths, jint pim,
+        jboolean fromExternal, jint safBackupFd)
+{
+    std::string password = jstring_to_string(env, jPassword);
+    auto keyfilePaths = jstringArray_to_vector(env, jKeyfilePaths);
+
+    uint8_t effPwd[VC_MAX_PWD_LEN] = {};
+    int effPwdLen = (int)password.size();
+    if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
+    memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
+    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
+    if (!password.empty()) secure_memset(reinterpret_cast<volatile uint8_t*>(&password[0]), 0, password.size());
+
+    int volFd = dup((int)safVolumeFd);
+    if (volFd < 0) { secure_memset(effPwd, 0, sizeof(effPwd)); return ERR_FILE; }
+
+    off_t fileSzOff = lseek(volFd, 0, SEEK_END);
+    if (fileSzOff < 0) {
+        secure_memset(effPwd, 0, sizeof(effPwd));
+        close(volFd); return ERR_FILE;
+    }
+    uint64_t fileSize = (uint64_t)fileSzOff;
+
+    int srcFd;
+    uint64_t srcOffset;
+    bool closeSrcFd = false;
+    if ((bool)fromExternal) {
+        srcFd = dup((int)safBackupFd);
+        if (srcFd < 0) {
+            secure_memset(effPwd, 0, sizeof(effPwd));
+            close(volFd); return ERR_FILE;
+        }
+        srcOffset  = 0;
+        closeSrcFd = true;
+    } else {
+        srcFd     = volFd;
+        srcOffset = fileSize - VC_BACKUP_AREA_SIZE;
+    }
+
+    uint8_t masterKey[192] = {};
+    int mkLen = 0, algId = 0, hashId = 0;
+    uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
+    int rc = read_vc_header(srcFd, srcOffset, (const char*)effPwd, effPwdLen,
+                            masterKey, &mkLen, &dataSz, &dataOff,
+                            &algId, &hashId, (int)pim, &hiddenVolSize);
+    if (closeSrcFd) close(srcFd);
+
+    if (rc != ERR_OK) {
+        secure_memset(effPwd, 0, sizeof(effPwd));
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        close(volFd); return ERR_WRONG_PASSWORD;
+    }
+
+    int r1 = wipe_and_rewrite_header(volFd, 0,
+                                     dataSz, dataOff, masterKey, algId, hashId,
+                                     (const char*)effPwd, effPwdLen,
+                                     (int)pim, hiddenVolSize, /*wipePassCount=*/3,
+                                     nullptr, 0);
+    if (r1 != 0) {
+        secure_memset(effPwd, 0, sizeof(effPwd));
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        close(volFd); return ERR_FILE;
+    }
+
+    int r2 = 0;
+    if ((bool)fromExternal) {
+        uint64_t backupAreaOff2 = fileSize - VC_BACKUP_AREA_SIZE;
+        r2 = wipe_and_rewrite_header(volFd, backupAreaOff2,
+                                     dataSz, dataOff, masterKey, algId, hashId,
+                                     (const char*)effPwd, effPwdLen,
+                                     (int)pim, hiddenVolSize, /*wipePassCount=*/3,
+                                     nullptr, 0);
+    }
+
+    secure_memset(effPwd, 0, sizeof(effPwd));
+    secure_memset(masterKey, 0, sizeof(masterKey));
+    close(volFd);
+    return r2 == 0 ? ERR_OK : ERR_FILE;
+}
+
 /* ─── JNI: nativeChangeKeyfileFd ────────────────────────────────────── */
 
 extern "C" JNIEXPORT jint JNICALL
