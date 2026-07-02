@@ -25,6 +25,7 @@
 #include <sys/stat.h>
 #include <android/log.h>
 #include <mutex>
+#include <thread>
 
 extern "C" {
 #include "Crypto/Aes.h"
@@ -1085,15 +1086,32 @@ static int read_vc_header(int fd, uint64_t fileOff,
         secure_memset((volatile uint8_t *)hintKey, 0, sizeof(hintKey));
     }
 
-    /* ── Full brute-force (skips the hint combo if already tried) ── */
+    /* ── Full scan: derive all 5 keys in parallel, then check ciphers ── */
     uint8_t allDerivedKeys[NUM_HASHES][192];
     memset(allDerivedKeys, 0, sizeof(allDerivedKeys));
 
+    /* PBKDF2 is the bottleneck — run all 5 hashes concurrently (matches VeraCrypt thread pool).
+     * Exception safety: if thread creation fails (EAGAIN), join started threads then fall back
+     * to sequential derivation for the remainder so allDerivedKeys is always fully populated. */
+    {
+        std::thread kdfThreads[NUM_HASHES];
+        int threadsStarted = 0;
+        try {
+            for (int hi = 0; hi < NUM_HASHES; hi++) {
+                kdfThreads[hi] = std::thread([hi, password, pwd_len, salt, pim, &allDerivedKeys]() {
+                    derive_header_key(hi, (const uint8_t*)password, pwd_len,
+                                      salt, pim, allDerivedKeys[hi]);
+                });
+                threadsStarted++;
+            }
+        } catch (...) {}
+        for (int hi = 0; hi < threadsStarted; hi++) kdfThreads[hi].join();
+        for (int hi = threadsStarted; hi < NUM_HASHES; hi++)
+            derive_header_key(hi, (const uint8_t*)password, pwd_len, salt, pim, allDerivedKeys[hi]);
+    }
+
+    /* Check all hash × cipher combinations — cheap (XTS decrypt 448 B + CRC) */
     for (int hi = 0; hi < NUM_HASHES; hi++) {
-        derive_header_key(hi, (const uint8_t*)password, pwd_len, salt, pim, allDerivedKeys[hi]);
-
-        uint8_t *derivedKey = allDerivedKeys[hi];
-
         for (int ai = 0; ai < NUM_ALGORITHMS; ai++) {
             if (hintTried && hi == hintHashId && ai == hintAlgId) continue;
 
@@ -1135,20 +1153,20 @@ static int read_vc_header(int fd, uint64_t fileOff,
             if (outAlgId)  *outAlgId  = ai;
             if (outHashId) *outHashId = hi;
 
-            /* field28 = hidden volume size (0 for standard or hidden-volume headers) */
+            /* field28 = hidden volume size (0 for normal or hidden-volume headers) */
             uint64_t field28 = get_be64(body + 28);
             if (outHiddenVolSize) *outHiddenVolSize = field28;
             /* body+36 = usable data size, body+44 = absolute data area offset */
             if (dataSz)  *dataSz  = get_be64(body + 36);
             if (dataOff) *dataOff = get_be64(body + 44);
 
-            memset(body, 0, sizeof(body));
-            memset(allDerivedKeys, 0, sizeof(allDerivedKeys));
+            secure_memset((volatile uint8_t*)body, 0, sizeof(body));
+            secure_memset((volatile uint8_t*)allDerivedKeys, 0, sizeof(allDerivedKeys));
             return ERR_OK;
         }
-        memset(allDerivedKeys[hi], 0, 192);
     }
 
+    secure_memset((volatile uint8_t*)allDerivedKeys, 0, sizeof(allDerivedKeys));
     return ERR_WRONG_PASSWORD;
 }
 
@@ -1538,13 +1556,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     int mkLen = 0, algId = 0, hashId = 0;
     uint64_t dataSz = 0, dataOff = 0;
 
-    uint64_t tryOffsets[4] = {
-        0,
-        VC_HIDDEN_HEADER_OFFSET,
-        fileSize - VC_BACKUP_AREA_SIZE,
-        fileSize - VC_HIDDEN_HEADER_OFFSET
-    };
-    bool tryIsHidden[4] = { false, true, false, true };
+    /* Try primary headers only — matching VeraCrypt default mount (no backup headers) */
+    uint64_t tryOffsets[2] = { 0, VC_HIDDEN_HEADER_OFFSET };
+    bool tryIsHidden[2] = { false, true };
 
     int rc = ERR_WRONG_PASSWORD;
     bool authIsHidden = false;
@@ -1553,7 +1567,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     MountCb mountCb{ env, mountProgressListener, resolve_mount_mid(env, mountProgressListener), 1, 75 };
     MountCb *pMountCb = mountProgressListener ? &mountCb : nullptr;
 
-    for (int ti = 0; ti < 4 && rc != ERR_OK; ti++) {
+    for (int ti = 0; ti < 2 && rc != ERR_OK; ti++) {
         if (tryOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
         uint64_t hvSz = 0;
         rc = read_vc_header(fd, tryOffsets[ti], (const char*)effPwd, effPwdLen,
@@ -1664,14 +1678,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     int mkLen = 0, algId = 0, hashId = 0;
     uint64_t dataSz = 0, dataOff = 0;
 
-    /* Try all 4 header locations: outer primary, hidden primary, outer backup, hidden backup */
-    uint64_t tryOffsets[4] = {
-        0,
-        VC_HIDDEN_HEADER_OFFSET,
-        fileSize - VC_BACKUP_AREA_SIZE,
-        fileSize - VC_HIDDEN_HEADER_OFFSET
-    };
-    bool tryIsHidden[4] = { false, true, false, true };
+    /* Try primary headers only — matching VeraCrypt default mount (no backup headers) */
+    uint64_t tryOffsets[2] = { 0, VC_HIDDEN_HEADER_OFFSET };
+    bool tryIsHidden[2] = { false, true };
 
     int rc = ERR_WRONG_PASSWORD;
     bool authIsHidden = false;
@@ -1680,7 +1689,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     MountCb mountCb{ env, mountProgressListener, resolve_mount_mid(env, mountProgressListener), 1, 75 };
     MountCb *pMountCb = mountProgressListener ? &mountCb : nullptr;
 
-    for (int ti = 0; ti < 4 && rc != ERR_OK; ti++) {
+    for (int ti = 0; ti < 2 && rc != ERR_OK; ti++) {
         if (tryOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
         uint64_t hvSz = 0;
         rc = read_vc_header(fd, tryOffsets[ti], (const char*)effPwd, effPwdLen,
