@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.OpenInFull
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.DropdownMenu
@@ -85,6 +86,8 @@ fun VaultConfigScreen(
     onOpenVault: (containerId: String) -> Unit,
     onChangePassword: (containerId: String) -> Unit,
     onChangeKeyfile: (containerId: String) -> Unit,
+    onBackupHeader: (containerId: String) -> Unit,
+    onRestoreHeader: (containerId: String) -> Unit,
     onMoveVault: (containerId: String, toApp: Boolean) -> Unit
 ) {
     val context      = LocalContext.current
@@ -224,9 +227,19 @@ fun VaultConfigScreen(
                         icon      = Icons.Outlined.SaveAlt,
                         rawColor  = Color(0xFFE65100),
                         title     = stringResource(R.string.vault_info_op_backup_header),
-                        subtitle  = stringResource(R.string.vault_card_backup_desc),
+                        subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.vault_card_backup_desc),
                         isDynamic = isDynamic,
-                        onClick   = { Toast.makeText(context, comingSoon, Toast.LENGTH_SHORT).show() }
+                        enabled   = !isMounted,
+                        onClick   = { onBackupHeader(containerId) }
+                    )
+                    VaultOperationItem(
+                        icon      = Icons.Outlined.Restore,
+                        rawColor  = Color(0xFF00838F),
+                        title     = stringResource(R.string.vault_info_op_restore_header),
+                        subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.vault_card_restore_desc),
+                        isDynamic = isDynamic,
+                        enabled   = !isMounted,
+                        onClick   = { onRestoreHeader(containerId) }
                     )
                     VaultOperationItem(
                         icon      = Icons.Outlined.OpenInFull,
