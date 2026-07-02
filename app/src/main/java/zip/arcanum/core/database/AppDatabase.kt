@@ -20,14 +20,14 @@ import zip.arcanum.core.database.entities.MountPointEntity
         CalculationEntity::class,
         MountPointEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     companion object {
-        const val VERSION = 7
+        const val VERSION = 9
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -69,6 +69,18 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE containers ADD COLUMN safUri TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE containers ADD COLUMN keySize INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE containers ADD COLUMN encryptionMode TEXT NOT NULL DEFAULT 'XTS'")
+                db.execSQL("ALTER TABLE containers ADD COLUMN blockSize INTEGER NOT NULL DEFAULT 128")
+                db.execSQL("ALTER TABLE containers ADD COLUMN formatVersion INTEGER NOT NULL DEFAULT 2")
+                db.execSQL("ALTER TABLE containers ADD COLUMN hasBackupHeader INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE containers ADD COLUMN pkcs5Iterations INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE containers ADD COLUMN headerModifiedAt INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

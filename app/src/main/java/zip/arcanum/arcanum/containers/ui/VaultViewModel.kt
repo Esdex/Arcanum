@@ -280,20 +280,25 @@ class VaultViewModel @Inject constructor(
                         mountLogger.log("Header decrypted successfully.")
                         val isHidden  = cryptoEngine.getVolumeType(result.value) == 1
                         val hasHidden = !protectHiddenPassword.isNullOrBlank()
-                        val dataSize  = cryptoEngine.nativeGetDataSize(result.value).coerceAtLeast(0L)
-                        val algId  = cryptoEngine.nativeGetAlgorithmId(result.value)
-                        val hashId = cryptoEngine.nativeGetHashId(result.value)
-                        val fsType = cryptoEngine.nativeGetFilesystem(result.value)
+                        val dataSize   = cryptoEngine.nativeGetDataSize(result.value).coerceAtLeast(0L)
+                        val algId      = cryptoEngine.nativeGetAlgorithmId(result.value)
+                        val hashId     = cryptoEngine.nativeGetHashId(result.value)
+                        val fsType     = cryptoEngine.nativeGetFilesystem(result.value)
+                        val keySize    = cryptoEngine.nativeGetKeySize(result.value)
+                        val iterations = cryptoEngine.nativeGetIterationCount(result.value)
                         if (algId  >= 0) mountLogger.log("Cipher: ${VeraCryptEngine.algorithmIdToString(algId)}")
                         if (hashId >= 0) mountLogger.log("PRF: ${VeraCryptEngine.hashIdToString(hashId)}")
+                        if (iterations > 0) mountLogger.log("PKCS-5 iterations: $iterations")
                         mountLogger.log("Mounting FatFs virtual filesystem...")
                         repo.mountContainer(container.id, result.value, pim,
                             isHidden = isHidden, hasHidden = hasHidden,
                             dataSize = dataSize, parcelFd = pfd)
                         pfdConsumed = true
-                        if (algId  >= 0) repo.updateAlgorithm(container.id, VeraCryptEngine.algorithmIdToString(algId))
-                        if (hashId >= 0) repo.updatePrf(container.id, VeraCryptEngine.hashIdToString(hashId))
-                        if (fsType >= 0) repo.updateFilesystem(container.id, VeraCryptEngine.filesystemIdToString(fsType))
+                        if (algId      >= 0) repo.updateAlgorithm(container.id, VeraCryptEngine.algorithmIdToString(algId))
+                        if (hashId     >= 0) repo.updatePrf(container.id, VeraCryptEngine.hashIdToString(hashId))
+                        if (fsType     >= 0) repo.updateFilesystem(container.id, VeraCryptEngine.filesystemIdToString(fsType))
+                        if (keySize    >  0) repo.updateKeySize(container.id, keySize)
+                        if (iterations >  0) repo.updatePkcs5Iterations(container.id, iterations)
                         mountLogger.log("Mount successful.")
                         lastMountTimeMillis = System.currentTimeMillis()
                         _mountState.value = MountState.Idle

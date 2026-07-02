@@ -15,5 +15,13 @@ data class Container(
     val isMounted: Boolean = false,
     val isHiddenVolume: Boolean = false,
     val hasHiddenVolume: Boolean = false,
-    val safUri: String = ""
+    val safUri: String = "",
+    val keySize: Int = 0,
+    val encryptionMode: String = "XTS",
+    val blockSize: Int = 128,
+    val formatVersion: Int = 2,
+    val hasBackupHeader: Boolean = true,
+    val pkcs5Iterations: Int = 0,
+    val headerModifiedAt: Long = 0L,
+    val isReadOnly: Boolean = false
 )

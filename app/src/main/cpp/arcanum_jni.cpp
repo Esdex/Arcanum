@@ -383,18 +383,20 @@ void vc_crypt_sector(GenCipherCtx *ctx, uint8_t *buf, uint64_t sn, bool enc) {
 
 static int alloc_drive(int fd, uint64_t dataOff, uint64_t sectors,
                        const uint8_t *masterKey, int algId, int hashId = 0,
-                       bool isHidden = false, uint64_t hiddenBoundary = 0) {
+                       bool isHidden = false, uint64_t hiddenBoundary = 0,
+                       uint32_t iterCount = 0) {
     if (algId < 0 || algId >= NUM_ALGORITHMS) return -1;
     for (int i = 0; i < MAX_DRIVES; i++) {
         if (!g_drives[i].active) {
-            g_drives[i].fd              = fd;
-            g_drives[i].dataOffset      = dataOff;
-            g_drives[i].sectorCount     = sectors;
-            g_drives[i].active          = true;
-            g_drives[i].algId           = algId;
-            g_drives[i].hashId          = hashId;
-            g_drives[i].isHidden        = isHidden;
-            g_drives[i].hiddenBoundary  = hiddenBoundary;
+            g_drives[i].fd               = fd;
+            g_drives[i].dataOffset       = dataOff;
+            g_drives[i].sectorCount      = sectors;
+            g_drives[i].active           = true;
+            g_drives[i].algId            = algId;
+            g_drives[i].hashId           = hashId;
+            g_drives[i].pkcs5Iterations  = iterCount;
+            g_drives[i].isHidden         = isHidden;
+            g_drives[i].hiddenBoundary   = hiddenBoundary;
 
             auto *ctx = static_cast<GenCipherCtx*>(malloc(sizeof(GenCipherCtx)));
             if (!ctx) { g_drives[i].active = false; return -1; }
@@ -1589,8 +1591,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     }
     memset(hidEffPwd, 0, sizeof(hidEffPwd));
 
+    uint32_t iterCount = vc_get_iterations(hashId, (int)pim);
     int pdrv = alloc_drive(fd, dataOff, dataSz / VC_SECTOR_SIZE, masterKey, algId, hashId,
-                           authIsHidden, hiddenBoundary);
+                           authIsHidden, hiddenBoundary, iterCount);
     memset(masterKey, 0, sizeof(masterKey));
     if (pdrv < 0) { close(fd); return (jlong)ERR_NO_SLOT; }
 
@@ -1723,8 +1726,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     }
     memset(hidEffPwd, 0, sizeof(hidEffPwd));
 
+    uint32_t iterCount = vc_get_iterations(hashId, (int)pim);
     int pdrv = alloc_drive(fd, dataOff, dataSz / VC_SECTOR_SIZE, masterKey, algId, hashId,
-                           authIsHidden, hiddenBoundary);
+                           authIsHidden, hiddenBoundary, iterCount);
     memset(masterKey, 0, sizeof(masterKey));
     if (pdrv < 0) { close(fd); return (jlong)ERR_NO_SLOT; }
 
@@ -1993,6 +1997,32 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeGetDataSize(
     int pdrv = (int)handle;
     if (pdrv < 0 || pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return -1;
     return (jlong)(g_drives[pdrv].sectorCount * (uint64_t)VC_SECTOR_SIZE);
+}
+
+/* ─── JNI: nativeGetKeySize ──────────────────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeGetKeySize(
+        JNIEnv */*env*/, jobject /*thiz*/, jlong handle)
+{
+    int pdrv = (int)handle;
+    if (pdrv < 0 || pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return -1;
+    int algId = g_drives[pdrv].algId;
+    if (algId < 0 || algId >= NUM_ALGORITHMS) return -1;
+    /* All supported VeraCrypt ciphers (AES, Serpent, Twofish, Camellia, Kuznyechik)
+       use 256-bit keys. Return per-cipher key size as VeraCrypt's UI does. */
+    return 256;
+}
+
+/* ─── JNI: nativeGetIterationCount ──────────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeGetIterationCount(
+        JNIEnv */*env*/, jobject /*thiz*/, jlong handle)
+{
+    int pdrv = (int)handle;
+    if (pdrv < 0 || pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return -1;
+    return (jint)g_drives[pdrv].pkcs5Iterations;
 }
 
 /* ─── JNI: nativeDeleteFile ──────────────────────────────────────────── */

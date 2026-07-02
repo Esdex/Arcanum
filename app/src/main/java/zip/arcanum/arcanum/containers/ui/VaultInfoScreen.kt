@@ -3,10 +3,13 @@ package zip.arcanum.arcanum.containers.ui
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,70 +42,127 @@ fun VaultInfoScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(contentPadding)
-            .padding(horizontal = 16.dp, vertical = 16.dp)
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         if (container == null) {
             Text(stringResource(R.string.vault_info_loading), style = MaterialTheme.typography.bodyMedium)
             return@Column
         }
 
-        Surface(
-            shape    = RoundedCornerShape(16.dp),
-            color    = MaterialTheme.colorScheme.surfaceContainerHigh,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column {
-                InfoRow(
-                    label = stringResource(R.string.vault_info_label_name),
-                    value = container.name
-                )
+        // ── General ──────────────────────────────────────────────────────────
+        InfoSection(stringResource(R.string.vault_info_section_general)) {
+            InfoRow(stringResource(R.string.vault_info_label_name), container.name)
+            InfoDivider()
+            InfoRow(
+                label = stringResource(R.string.vault_info_label_volume_type),
+                value = when {
+                    container.isHiddenVolume  -> stringResource(R.string.vault_info_type_hidden)
+                    container.hasHiddenVolume -> stringResource(R.string.vault_info_type_outer)
+                    else                      -> stringResource(R.string.vault_info_type_standard)
+                }
+            )
+            InfoDivider()
+            InfoRow(
+                label = stringResource(R.string.vault_info_label_read_only),
+                value = if (container.isReadOnly) stringResource(R.string.vault_info_yes)
+                        else stringResource(R.string.vault_info_no)
+            )
+            InfoDivider()
+            InfoRow(
+                label = stringResource(R.string.vault_info_label_format_version),
+                value = container.formatVersion.toString()
+            )
+            InfoDivider()
+            InfoRow(
+                label = stringResource(R.string.vault_info_label_backup_header),
+                value = if (container.hasBackupHeader) stringResource(R.string.vault_info_yes)
+                        else stringResource(R.string.vault_info_no)
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ── Encryption ───────────────────────────────────────────────────────
+        InfoSection(stringResource(R.string.vault_info_section_encryption)) {
+            InfoRow(stringResource(R.string.vault_info_label_algorithm), container.algorithm.cipherName())
+            InfoDivider()
+            InfoRow(stringResource(R.string.vault_info_label_mode), container.encryptionMode)
+            InfoDivider()
+            InfoRow(
+                label = stringResource(R.string.vault_info_label_key_size),
+                value = if (container.keySize > 0) "${container.keySize} bits" else "—"
+            )
+            if (container.encryptionMode == "XTS" && container.keySize > 0) {
                 InfoDivider()
                 InfoRow(
-                    label = stringResource(R.string.vault_info_label_volume_type),
-                    value = when {
-                        container.isHiddenVolume  -> stringResource(R.string.vault_info_type_hidden)
-                        container.hasHiddenVolume -> stringResource(R.string.vault_info_type_outer)
-                        else                      -> stringResource(R.string.vault_info_type_standard)
-                    }
+                    label = stringResource(R.string.vault_info_label_key_size_secondary),
+                    value = "${container.keySize} bits"
                 )
+            }
+            InfoDivider()
+            InfoRow(
+                label = stringResource(R.string.vault_info_label_block_size),
+                value = "${container.blockSize} bits"
+            )
+            InfoDivider()
+            InfoRow(stringResource(R.string.vault_info_label_prf), container.prf)
+            InfoDivider()
+            InfoRow(
+                label = stringResource(R.string.vault_info_label_iterations),
+                value = if (container.pkcs5Iterations > 0)
+                            "%,d".format(container.pkcs5Iterations)
+                        else "—"
+            )
+            InfoDivider()
+            InfoRow(
+                label = stringResource(R.string.vault_info_label_pim),
+                value = if (container.pim > 0) stringResource(R.string.vault_info_pim_custom)
+                        else stringResource(R.string.vault_info_pim_default)
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ── Storage ──────────────────────────────────────────────────────────
+        InfoSection(stringResource(R.string.vault_info_section_storage)) {
+            InfoRow(stringResource(R.string.vault_info_label_filesystem), container.filesystem)
+            InfoDivider()
+            InfoRow(stringResource(R.string.vault_info_label_size), container.size.formatSize())
+            InfoDivider()
+            InfoRow(stringResource(R.string.vault_info_label_location), container.locationDisplay())
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ── Dates ────────────────────────────────────────────────────────────
+        InfoSection(stringResource(R.string.vault_info_section_dates)) {
+            InfoRow(stringResource(R.string.vault_info_label_created), container.createdAt.formatDate())
+            if (container.headerModifiedAt > 0L) {
                 InfoDivider()
                 InfoRow(
-                    label = stringResource(R.string.vault_info_label_algorithm),
-                    value = container.algorithm
-                )
-                InfoDivider()
-                InfoRow(
-                    label = stringResource(R.string.vault_info_label_prf),
-                    value = container.prf
-                )
-                InfoDivider()
-                InfoRow(
-                    label = stringResource(R.string.vault_info_label_filesystem),
-                    value = container.filesystem
-                )
-                InfoDivider()
-                InfoRow(
-                    label = stringResource(R.string.vault_info_label_pim),
-                    value = if (container.pim > 0) stringResource(R.string.vault_info_pim_custom)
-                            else stringResource(R.string.vault_info_pim_default)
-                )
-                InfoDivider()
-                InfoRow(
-                    label = stringResource(R.string.vault_info_label_size),
-                    value = container.size.formatSize()
-                )
-                InfoDivider()
-                InfoRow(
-                    label = stringResource(R.string.vault_info_label_created),
-                    value = container.createdAt.formatDate()
-                )
-                InfoDivider()
-                InfoRow(
-                    label = stringResource(R.string.vault_info_label_location),
-                    value = container.locationDisplay()
+                    label = stringResource(R.string.vault_info_label_header_modified),
+                    value = container.headerModifiedAt.formatDate()
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun InfoSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Text(
+        text     = title.uppercase(),
+        style    = MaterialTheme.typography.labelSmall,
+        color    = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
+    )
+    Surface(
+        shape    = RoundedCornerShape(16.dp),
+        color    = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(content = content)
     }
 }
 
@@ -137,6 +197,9 @@ private fun InfoRow(label: String, value: String) {
         )
     }
 }
+
+// "AES-256-XTS" → "AES", "AES-Twofish-Serpent-256-XTS" → "AES-Twofish-Serpent"
+private fun String.cipherName(): String = replace(Regex("-\\d+.*$"), "").ifEmpty { this }
 
 private fun Long.formatSize(): String {
     val gb  = this / (1024.0 * 1024.0 * 1024.0)

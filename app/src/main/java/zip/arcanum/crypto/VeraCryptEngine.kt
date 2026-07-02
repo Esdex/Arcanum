@@ -429,6 +429,10 @@ class VeraCryptEngine @Inject constructor() {
 
     external fun nativeGetDataSize(handle: Long): Long
 
+    external fun nativeGetKeySize(handle: Long): Int
+
+    external fun nativeGetIterationCount(handle: Long): Int
+
     // ── Companion ──────────────────────────────────────────────────────
     companion object {
         const val ALGO_AUTO = -1

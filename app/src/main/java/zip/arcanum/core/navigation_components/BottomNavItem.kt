@@ -6,7 +6,7 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.ui.graphics.vector.ImageVector
 import zip.arcanum.R
 
@@ -23,5 +23,5 @@ sealed class BottomNavItem(
     // Container-screen tabs (shown when inside a mounted container)
     object ContainerGallery : BottomNavItem("ct_gallery", R.string.nav_gallery,  Icons.Outlined.PhotoLibrary)
     object ContainerFiles   : BottomNavItem("ct_files",   R.string.nav_files,    Icons.Outlined.Folder)
-    object ContainerInfo    : BottomNavItem("ct_info",    R.string.nav_vault_fallback_name, Icons.Outlined.Storage)
+    object ContainerInfo    : BottomNavItem("ct_info",    R.string.nav_info,                Icons.Outlined.Info)
 }
