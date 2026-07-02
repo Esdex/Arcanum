@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
@@ -30,6 +29,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Warning
+import zip.arcanum.core.icons.ArcanumIcons
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -435,7 +435,7 @@ fun StepHiddenPassword(
             onClick  = { keyfileExpanded = !keyfileExpanded },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(Icons.Outlined.AttachFile, contentDescription = null)
+            Icon(ArcanumIcons.Keyfile, contentDescription = null)
             Spacer(Modifier.size(6.dp))
             Text(
                 if (state.hiddenKeyfileDisplayNames.isNotEmpty())
@@ -456,7 +456,7 @@ fun StepHiddenPassword(
                             modifier          = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Outlined.AttachFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                            Icon(ArcanumIcons.Keyfile, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(displayName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                             IconButton(onClick = { onRemoveKeyfile(index) }, modifier = Modifier.size(32.dp)) {

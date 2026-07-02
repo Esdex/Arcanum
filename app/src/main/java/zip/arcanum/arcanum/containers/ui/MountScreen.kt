@@ -108,6 +108,7 @@ import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import zip.arcanum.R
+import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.utils.FileUtils
@@ -727,7 +728,7 @@ private fun MountScreenContent(
                                     modifier          = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Outlined.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                    Icon(ArcanumIcons.Keyfile, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(6.dp))
                                     Text(entry.displayName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                                     IconButton(
@@ -747,7 +748,7 @@ private fun MountScreenContent(
                                 onClick  = { keyfilePickerLauncher.launch(arrayOf("*/*")) },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(Icons.Outlined.Lock, null, modifier = Modifier.size(16.dp))
+                                Icon(ArcanumIcons.Keyfile, null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text(stringResource(R.string.vault_mount_add_keyfile), style = MaterialTheme.typography.labelMedium)
                             }
@@ -890,7 +891,7 @@ private fun MountScreenContent(
                                                     modifier          = Modifier.fillMaxWidth(),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Icon(Icons.Outlined.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                                    Icon(ArcanumIcons.Keyfile, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                                     Spacer(Modifier.width(6.dp))
                                                     Text(entry.displayName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                                                     IconButton(
@@ -910,7 +911,7 @@ private fun MountScreenContent(
                                                 onClick  = { hiddenKeyfilePickerLauncher.launch(arrayOf("*/*")) },
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
-                                                Icon(Icons.Outlined.Lock, null, modifier = Modifier.size(16.dp))
+                                                Icon(ArcanumIcons.Keyfile, null, modifier = Modifier.size(16.dp))
                                                 Spacer(Modifier.width(6.dp))
                                                 Text(stringResource(R.string.vault_mount_add_keyfile_hidden), style = MaterialTheme.typography.labelMedium)
                                             }

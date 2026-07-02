@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Info
@@ -29,6 +28,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Warning
+import zip.arcanum.core.icons.ArcanumIcons
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -308,7 +308,7 @@ fun StepPassword(
             onClick  = { keyfileExpanded = !keyfileExpanded },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(Icons.Outlined.AttachFile, contentDescription = null)
+            Icon(ArcanumIcons.Keyfile, contentDescription = null)
             Spacer(Modifier.size(6.dp))
             Text(
                 if (state.keyfileDisplayNames.isNotEmpty()) pluralStringResource(R.plurals.create_keyfile_count, state.keyfileDisplayNames.size, state.keyfileDisplayNames.size)
@@ -329,7 +329,7 @@ fun StepPassword(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                Icons.Outlined.AttachFile,
+                                ArcanumIcons.Keyfile,
                                 contentDescription = null,
                                 tint     = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(16.dp)
