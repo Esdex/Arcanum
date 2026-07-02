@@ -211,7 +211,7 @@ private fun BackupFormContent(
         onDispose { autofillTree.children.remove(passwordAutofillNode.id) }
     }
 
-    var keyfileExpanded by remember { mutableStateOf(state.keyfilePaths.isNotEmpty()) }
+    var showPim by remember { mutableStateOf(false) }
     var pimText by remember { mutableStateOf(if (state.pim > 0) state.pim.toString() else "") }
 
     Column(
@@ -276,13 +276,22 @@ private fun BackupFormContent(
         OutlinedTextField(
             value         = pimText,
             onValueChange = {
-                if (it.all { c -> c.isDigit() } && it.length <= 4) {
-                    pimText = it
-                    onUpdate { copy(pim = it.toIntOrNull() ?: 0) }
+                if (it.all { c -> c.isDigit() } && it.length <= 7) {
+                    val v = it.toLongOrNull() ?: 0L
+                    if (it.isEmpty() || v in 1L..2_147_468L) {
+                        pimText = it
+                        onUpdate { copy(pim = v.toInt()) }
+                    }
                 }
             },
-            label           = { Text(stringResource(R.string.vault_mount_pim_label)) },
-            placeholder     = { Text(stringResource(R.string.vault_mount_pim_placeholder)) },
+            label                = { Text(stringResource(R.string.vault_mount_pim_label)) },
+            placeholder          = { Text(stringResource(R.string.vault_mount_pim_placeholder)) },
+            visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon         = {
+                IconButton(onClick = { showPim = !showPim }) {
+                    Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
+                }
+            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             singleLine      = true,
             modifier        = Modifier.fillMaxWidth()
@@ -292,9 +301,7 @@ private fun BackupFormContent(
 
         // ── Keyfiles ──────────────────────────────────────────────────────
         KeyfileSectionCompact(
-            expanded     = keyfileExpanded,
             displayNames = state.keyfileDisplayNames,
-            onToggle     = { keyfileExpanded = !keyfileExpanded },
             onAdd        = onAddKeyfile,
             onRemove     = onRemoveKeyfile
         )
@@ -383,35 +390,11 @@ private fun BackupSuccessContent(onBack: () -> Unit) {
 
 @Composable
 internal fun KeyfileSectionCompact(
-    expanded     : Boolean,
     displayNames : List<String>,
-    onToggle     : () -> Unit,
     onAdd        : () -> Unit,
     onRemove     : (Int) -> Unit
 ) {
-    TextButton(
-        onClick  = onToggle,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Icon(ArcanumIcons.Keyfile, contentDescription = null, modifier = Modifier.size(16.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text     = if (displayNames.isEmpty()) stringResource(R.string.vault_mount_add_keyfile)
-                       else "${displayNames.size} keyfile${if (displayNames.size > 1) "s" else ""} selected",
-            modifier = Modifier.weight(1f)
-        )
-        Icon(
-            if (expanded) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp)
-        )
-    }
-
-    AnimatedVisibility(
-        visible = expanded,
-        enter   = fadeIn(tween(150)) + expandVertically(tween(200)),
-        exit    = fadeOut(tween(100)) + shrinkVertically(tween(150))
-    ) {
+    if (displayNames.isNotEmpty()) {
         Card(
             colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
             shape    = RoundedCornerShape(12.dp),
@@ -430,12 +413,16 @@ internal fun KeyfileSectionCompact(
                         }
                     }
                 }
-                TextButton(onClick = onAdd, modifier = Modifier.fillMaxWidth()) {
-                    Icon(ArcanumIcons.Keyfile, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.vault_mount_add_keyfile))
-                }
             }
         }
+        Spacer(Modifier.height(4.dp))
+    }
+    TextButton(
+        onClick  = onAdd,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Icon(ArcanumIcons.Keyfile, contentDescription = null, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(stringResource(R.string.vault_mount_add_keyfile))
     }
 }

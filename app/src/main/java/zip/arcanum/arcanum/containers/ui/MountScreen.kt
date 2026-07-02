@@ -257,6 +257,7 @@ private fun MountScreenContent(
     var hiddenPassword     by hiddenPasswordState
     var showHiddenPassword by remember { mutableStateOf(false) }
     var hiddenPimValue     by remember { mutableStateOf("") }
+    var showHiddenPim      by remember { mutableStateOf(false) }
     var shakeKey      by remember { mutableIntStateOf(0) }
     val shakeAnim     = remember { Animatable(0f) }
 
@@ -647,7 +648,10 @@ private fun MountScreenContent(
                             OutlinedTextField(
                                 value         = pimValue,
                                 onValueChange = {
-                                    if (it.all { c -> c.isDigit() } && it.length <= 4) pimValue = it
+                                    if (it.all { c -> c.isDigit() } && it.length <= 7) {
+                                        val v = it.toLongOrNull() ?: 0L
+                                        if (it.isEmpty() || v in 1L..2_147_468L) pimValue = it
+                                    }
                                 },
                                 label                = { Text(stringResource(R.string.vault_mount_pim_label)) },
                                 placeholder          = { Text(stringResource(R.string.vault_mount_pim_placeholder)) },
@@ -874,11 +878,19 @@ private fun MountScreenContent(
                                             OutlinedTextField(
                                                 value         = hiddenPimValue,
                                                 onValueChange = {
-                                                    if (it.all { c -> c.isDigit() } && it.length <= 4) hiddenPimValue = it
+                                                    if (it.all { c -> c.isDigit() } && it.length <= 7) {
+                                                        val v = it.toLongOrNull() ?: 0L
+                                                        if (it.isEmpty() || v in 1L..2_147_468L) hiddenPimValue = it
+                                                    }
                                                 },
                                                 label                = { Text(stringResource(R.string.vault_mount_pim_label)) },
                                                 placeholder          = { Text(stringResource(R.string.vault_mount_pim_placeholder)) },
-                                                visualTransformation = PasswordVisualTransformation(),
+                                                visualTransformation = if (showHiddenPim) VisualTransformation.None else PasswordVisualTransformation(),
+                                                trailingIcon         = {
+                                                    IconButton(onClick = { showHiddenPim = !showHiddenPim }) {
+                                                        Icon(if (showHiddenPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
+                                                    }
+                                                },
                                                 keyboardOptions      = KeyboardOptions(
                                                     keyboardType = KeyboardType.NumberPassword,
                                                     imeAction    = ImeAction.Done

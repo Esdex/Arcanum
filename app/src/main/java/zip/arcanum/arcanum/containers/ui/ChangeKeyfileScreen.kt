@@ -342,9 +342,9 @@ private fun ChKfStep1(
         delay(200); focusRequester.requestFocus()
     }
 
-    var showPassword    by remember { mutableStateOf(false) }
-    var keyfileExpanded by remember { mutableStateOf(state.oldKeyfilePaths.isNotEmpty()) }
-    var pimText         by remember { mutableStateOf(if (state.pim > 0) state.pim.toString() else "") }
+    var showPassword by remember { mutableStateOf(false) }
+    var showPim      by remember { mutableStateOf(false) }
+    var pimText      by remember { mutableStateOf(if (state.pim > 0) state.pim.toString() else "") }
 
     StepContent(
         title    = stringResource(R.string.chkeyfile_step1_title),
@@ -386,13 +386,22 @@ private fun ChKfStep1(
         OutlinedTextField(
             value         = pimText,
             onValueChange = {
-                if (it.all { c -> c.isDigit() } && it.length <= 4) {
-                    pimText = it
-                    onUpdate { copy(pim = it.toIntOrNull() ?: 0) }
+                if (it.all { c -> c.isDigit() } && it.length <= 7) {
+                    val v = it.toLongOrNull() ?: 0L
+                    if (it.isEmpty() || v in 1L..2_147_468L) {
+                        pimText = it
+                        onUpdate { copy(pim = v.toInt()) }
+                    }
                 }
             },
-            label           = { Text(stringResource(R.string.create_pim_short_label)) },
-            placeholder     = { Text(stringResource(R.string.create_pim_placeholder)) },
+            label                = { Text(stringResource(R.string.create_pim_short_label)) },
+            placeholder          = { Text(stringResource(R.string.create_pim_placeholder)) },
+            visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon         = {
+                IconButton(onClick = { showPim = !showPim }) {
+                    Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
+                }
+            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             singleLine      = true,
             modifier        = Modifier.fillMaxWidth()
@@ -400,9 +409,7 @@ private fun ChKfStep1(
         Spacer(Modifier.height(8.dp))
 
         KeyfileSection(
-            expanded     = keyfileExpanded,
             displayNames = state.oldKeyfileDisplayNames,
-            onToggle     = { keyfileExpanded = !keyfileExpanded },
             onAdd        = onAddKeyfile,
             onRemove     = onRemoveKeyfile
         )
