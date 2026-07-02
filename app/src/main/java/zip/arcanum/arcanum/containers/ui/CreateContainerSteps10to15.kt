@@ -358,10 +358,10 @@ fun StepHiddenPassword(
         keyboardController?.show()
     }
 
-    var showPwd         by remember { mutableStateOf(false) }
-    var showConfirmPwd  by remember { mutableStateOf(false) }
-    var keyfileExpanded by remember { mutableStateOf(false) }
-    var showPimSection  by remember { mutableStateOf(state.hiddenPim > 0) }
+    var showPwd        by remember { mutableStateOf(false) }
+    var showConfirmPwd by remember { mutableStateOf(false) }
+    var showPimSection by remember { mutableStateOf(state.hiddenPim > 0) }
+    var showPim        by remember { mutableStateOf(false) }
     val mismatch = state.hiddenConfirmPassword.isNotEmpty() && state.hiddenPassword != state.hiddenConfirmPassword
 
     StepContent(title = stringResource(R.string.create_hidden_pwd_title), subtitle = stringResource(R.string.create_hidden_pwd_subtitle)) {
@@ -431,20 +431,7 @@ fun StepHiddenPassword(
         Spacer(Modifier.height(16.dp))
 
         // Keyfile section
-        TextButton(
-            onClick  = { keyfileExpanded = !keyfileExpanded },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(ArcanumIcons.Keyfile, contentDescription = null)
-            Spacer(Modifier.size(6.dp))
-            Text(
-                if (state.hiddenKeyfileDisplayNames.isNotEmpty())
-                    pluralStringResource(R.plurals.create_keyfile_count, state.hiddenKeyfileDisplayNames.size, state.hiddenKeyfileDisplayNames.size)
-                else if (keyfileExpanded) stringResource(R.string.create_keyfile_hide)
-                else stringResource(R.string.create_keyfile_add)
-            )
-        }
-        if (keyfileExpanded) {
+        if (state.hiddenKeyfileDisplayNames.isNotEmpty()) {
             Card(
                 colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                 shape    = RoundedCornerShape(12.dp),
@@ -464,14 +451,17 @@ fun StepHiddenPassword(
                             }
                         }
                     }
-                    if (state.hiddenKeyfileDisplayNames.isNotEmpty()) {
-                        Text(stringResource(R.string.create_keyfile_safe_warning), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                    }
-                    TextButton(onClick = onAddKeyfile) { Text(stringResource(R.string.create_keyfile_add_item)) }
-                    Text(stringResource(R.string.create_keyfile_desc), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.create_keyfile_safe_warning), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                 }
             }
+            Spacer(Modifier.height(4.dp))
         }
+        TextButton(onClick = onAddKeyfile, modifier = Modifier.fillMaxWidth()) {
+            Icon(ArcanumIcons.Keyfile, contentDescription = null)
+            Spacer(Modifier.size(6.dp))
+            Text(stringResource(R.string.create_keyfile_add))
+        }
+        Text(stringResource(R.string.create_keyfile_desc), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
 
         // PIM section
@@ -493,10 +483,20 @@ fun StepHiddenPassword(
                 OutlinedTextField(
                     value         = if (state.hiddenPim > 0) state.hiddenPim.toString() else "",
                     onValueChange = { v ->
-                        onUpdate { copy(hiddenPim = v.filter { c -> c.isDigit() }.take(4).toIntOrNull() ?: 0) }
+                        val digits = v.filter { c -> c.isDigit() }.take(7)
+                        val n = digits.toLongOrNull() ?: 0L
+                        if (digits.isEmpty() || n in 1L..2_147_468L) {
+                            onUpdate { copy(hiddenPim = n.toInt()) }
+                        }
                     },
-                    label           = { Text(stringResource(R.string.create_pim_short_label)) },
-                    placeholder     = { Text(stringResource(R.string.create_pim_placeholder)) },
+                    label                = { Text(stringResource(R.string.create_pim_short_label)) },
+                    placeholder          = { Text(stringResource(R.string.create_pim_placeholder)) },
+                    visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon         = {
+                        IconButton(onClick = { showPim = !showPim }) {
+                            Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
+                        }
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     singleLine      = true,
                     modifier        = Modifier.fillMaxWidth()
