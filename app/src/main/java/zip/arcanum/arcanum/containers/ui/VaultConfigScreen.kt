@@ -21,8 +21,10 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.OpenInFull
@@ -188,7 +190,7 @@ fun VaultConfigScreen(
 
                     // ── Operations ───────────────────────────────────────────────
                     VaultOperationItem(
-                        icon      = if (isMounted) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
+                        icon      = if (isMounted) Icons.Outlined.LockOpen else Icons.Outlined.PlayArrow,
                         rawColor  = Color(0xFF16A34A),
                         title     = stringResource(if (isMounted) R.string.vault_config_op_open else R.string.vault_config_op_mount),
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_op_open_desc else R.string.vault_config_op_mount_desc),
@@ -205,7 +207,7 @@ fun VaultConfigScreen(
                     )
 
                     VaultOperationItem(
-                        icon      = Icons.Outlined.Lock,
+                        icon      = Icons.Outlined.Key,
                         rawColor  = Color(0xFF1E88E5),
                         title     = stringResource(R.string.vault_config_change_password),
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.chpwd_config_desc),

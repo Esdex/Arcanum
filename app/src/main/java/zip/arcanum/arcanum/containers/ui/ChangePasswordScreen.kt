@@ -30,9 +30,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.AttachFile
+
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Key
+
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
@@ -90,6 +90,7 @@ import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
+import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.utils.FileUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -763,7 +764,7 @@ internal fun KeyfileSection(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Outlined.Key,
+                            ArcanumIcons.Keyfile,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
                             tint     = MaterialTheme.colorScheme.onSurfaceVariant
@@ -787,7 +788,7 @@ internal fun KeyfileSection(
         onClick  = onAdd,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Icon(Icons.Outlined.AttachFile, contentDescription = null)
+        Icon(ArcanumIcons.Keyfile, contentDescription = null)
         Spacer(Modifier.size(6.dp))
         Text(stringResource(R.string.create_keyfile_add))
     }
