@@ -132,4 +132,5 @@ object ArcanumIcons {
             }
         }.build()
     }
+
 }

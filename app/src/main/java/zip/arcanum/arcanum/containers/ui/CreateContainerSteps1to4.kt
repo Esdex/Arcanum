@@ -24,7 +24,7 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -66,7 +66,7 @@ fun StepVolumeType(state: CreateContainerState, onUpdate: (CreateContainerState.
         Spacer(Modifier.height(12.dp))
         SelectionCard(
             selected    = state.volumeType == VolumeType.HIDDEN,
-            icon        = Icons.Outlined.Visibility,
+            icon        = Icons.Outlined.VisibilityOff,
             title       = stringResource(R.string.create_volume_hidden),
             description = stringResource(R.string.create_volume_hidden_desc),
             onClick     = { onUpdate { copy(volumeType = VolumeType.HIDDEN, totalSteps = 16) } }
