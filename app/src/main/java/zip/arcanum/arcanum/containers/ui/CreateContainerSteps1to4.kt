@@ -50,6 +50,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import zip.arcanum.R
+import zip.arcanum.core.icons.ArcanumIcons
 
 // ─── Step 1: Volume Type ─────────────────────────────────────────────────────
 
@@ -58,7 +59,7 @@ fun StepVolumeType(state: CreateContainerState, onUpdate: (CreateContainerState.
     StepContent(title = stringResource(R.string.create_step1_title)) {
         SelectionCard(
             selected    = state.volumeType == VolumeType.STANDARD,
-            icon        = Icons.Outlined.Lock,
+            icon        = ArcanumIcons.Encrypted,
             title       = stringResource(R.string.create_volume_standard),
             description = stringResource(R.string.create_volume_standard_desc),
             onClick     = { onUpdate { copy(volumeType = VolumeType.STANDARD, totalSteps = 10) } }

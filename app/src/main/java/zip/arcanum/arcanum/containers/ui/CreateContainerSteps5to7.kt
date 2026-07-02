@@ -368,7 +368,7 @@ fun StepPassword(
     }
 }
 
-private fun passwordStrength(pwd: String): Int {
+internal fun passwordStrength(pwd: String): Int {
     if (pwd.length < 4) return 0
     var score = 0
     if (pwd.length >= 8) score++
