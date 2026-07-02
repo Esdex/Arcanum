@@ -9,7 +9,56 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
+@Suppress("CheckReturnValue")
 object ArcanumIcons {
+
+    val Encrypted: ImageVector by lazy {
+        ImageVector.Builder(
+            name           = "Arcanum.Encrypted",
+            defaultWidth   = 24.dp,
+            defaultHeight  = 24.dp,
+            viewportWidth  = 24f,
+            viewportHeight = 24f
+        ).apply {
+            path(fill = SolidColor(Color.White)) {
+                moveTo(10.5f, 15f)
+                horizontalLineToRelative(3f)
+                lineTo(12.93f, 11.77f)
+                quadToRelative(0.5f, -0.25f, 0.79f, -0.72f)
+                reflectiveQuadTo(14f, 10f)
+                quadTo(14f, 9.17f, 13.41f, 8.59f)
+                reflectiveQuadTo(12f, 8f)
+                reflectiveQuadTo(10.59f, 8.59f)
+                reflectiveQuadTo(10f, 10f)
+                quadToRelative(0f, 0.57f, 0.29f, 1.05f)
+                reflectiveQuadToRelative(0.79f, 0.72f)
+                lineTo(10.5f, 15f)
+                close()
+                moveTo(12f, 22f)
+                quadTo(8.53f, 21.13f, 6.26f, 18.01f)
+                reflectiveQuadTo(4f, 11.1f)
+                verticalLineTo(5f)
+                lineTo(12f, 2f)
+                lineToRelative(8f, 3f)
+                verticalLineToRelative(6.1f)
+                quadToRelative(0f, 3.8f, -2.26f, 6.91f)
+                reflectiveQuadTo(12f, 22f)
+                close()
+                moveToRelative(0f, -2.1f)
+                quadToRelative(2.6f, -0.82f, 4.3f, -3.3f)
+                reflectiveQuadTo(18f, 11.1f)
+                verticalLineTo(6.38f)
+                lineTo(12f, 4.13f)
+                lineTo(6f, 6.38f)
+                verticalLineTo(11.1f)
+                quadToRelative(0f, 3.03f, 1.7f, 5.5f)
+                reflectiveQuadTo(12f, 19.9f)
+                close()
+                moveTo(12f, 12f)
+                close()
+            }
+        }.build()
+    }
 
     val KeyfileFilled: ImageVector by lazy {
         ImageVector.Builder(

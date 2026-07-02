@@ -1,9 +1,9 @@
 package zip.arcanum.arcanum.containers.ui
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -23,8 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -210,7 +208,7 @@ private val hiddenPresets = listOf(50L, 100L, 250L, 512L, 1024L)
 fun StepHiddenSize(state: CreateContainerState, onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit) {
     val maxHiddenMb = (state.sizeMb - 4L).coerceAtLeast(4L)
     val minHiddenMb = 4L
-    var customInput by remember { mutableStateOf(state.hiddenSizeMb.toString()) }
+    var customInput by remember { mutableStateOf(if (state.hiddenSizeMb > 0L) state.hiddenSizeMb.toString() else "") }
     var unitGb      by remember { mutableStateOf(false) }
 
     val selectedPreset = hiddenPresets.find { it == state.hiddenSizeMb }
@@ -360,9 +358,39 @@ fun StepHiddenPassword(
 
     var showPwd        by remember { mutableStateOf(false) }
     var showConfirmPwd by remember { mutableStateOf(false) }
-    var showPimSection by remember { mutableStateOf(state.hiddenPim > 0) }
     var showPim        by remember { mutableStateOf(false) }
     val mismatch = state.hiddenConfirmPassword.isNotEmpty() && state.hiddenPassword != state.hiddenConfirmPassword
+
+    val hiddenStrength = passwordStrength(state.hiddenPassword)
+    val hiddenStrengthColor by animateColorAsState(
+        targetValue   = when (hiddenStrength) {
+            0    -> MaterialTheme.colorScheme.error
+            1    -> Color(0xFFFF6B35)
+            else -> Color(0xFF16A34A)
+        },
+        animationSpec = tween(300),
+        label         = "hidden_strength_color"
+    )
+    val strengthLabels = listOf(
+        stringResource(R.string.create_pwd_strength_weak),
+        stringResource(R.string.create_pwd_strength_fair),
+        stringResource(R.string.create_pwd_strength_strong),
+        stringResource(R.string.create_pwd_strength_very_strong)
+    )
+    val hiddenStrengthLabel    = strengthLabels.getOrElse(hiddenStrength) { stringResource(R.string.create_pwd_strength_weak) }
+    val hiddenStrengthProgress = when { hiddenStrength >= 2 -> 1f; else -> (hiddenStrength + 1) / 4f }
+
+    val hiddenPimInt = state.hiddenPim
+    val pimStatusDefault  = stringResource(R.string.create_pim_status_default)
+    val pimStatusBelow    = stringResource(R.string.create_pim_status_below)
+    val pimStatusSimilar  = stringResource(R.string.create_pim_status_similar)
+    val pimStatusEnhanced = stringResource(R.string.create_pim_status_enhanced)
+    val (pimIcon, pimMsg) = when {
+        hiddenPimInt == 0   -> "ℹ️" to pimStatusDefault
+        hiddenPimInt < 486  -> "⚠️" to pimStatusBelow
+        hiddenPimInt <= 500 -> "✅" to pimStatusSimilar
+        else                -> "🔒" to pimStatusEnhanced
+    }
 
     StepContent(title = stringResource(R.string.create_hidden_pwd_title), subtitle = stringResource(R.string.create_hidden_pwd_subtitle)) {
 
@@ -411,6 +439,20 @@ fun StepHiddenPassword(
                     }
                 }
         )
+        if (state.hiddenPassword.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            LinearProgressIndicator(
+                progress   = { hiddenStrengthProgress },
+                color      = hiddenStrengthColor,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                strokeCap  = StrokeCap.Round,
+                modifier   = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(99.dp))
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(hiddenStrengthLabel, style = MaterialTheme.typography.labelSmall, color = hiddenStrengthColor)
+                Text(stringResource(R.string.create_pwd_char_count, state.hiddenPassword.length), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value                = state.hiddenConfirmPassword,
@@ -428,7 +470,36 @@ fun StepHiddenPassword(
             },
             modifier             = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
+
+        // PIM field
+        OutlinedTextField(
+            value         = if (hiddenPimInt > 0) hiddenPimInt.toString() else "",
+            onValueChange = { v ->
+                val digits = v.filter { c -> c.isDigit() }.take(7)
+                val n = digits.toLongOrNull() ?: 0L
+                if (digits.isEmpty() || n in 1L..2_147_468L) {
+                    onUpdate { copy(hiddenPim = n.toInt()) }
+                }
+            },
+            label                = { Text(stringResource(R.string.create_pim_short_label)) },
+            placeholder          = { Text(stringResource(R.string.create_pim_placeholder)) },
+            visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon         = {
+                IconButton(onClick = { showPim = !showPim }) {
+                    Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
+                }
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            singleLine      = true,
+            modifier        = Modifier.fillMaxWidth()
+        )
+        Text("$pimIcon $pimMsg", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (hiddenPimInt in 1..484 && state.hiddenPassword.length < 20 && state.hiddenKeyfilePaths.isEmpty()) {
+            Text(stringResource(R.string.create_pim_short_pwd_error), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        }
+
+        Spacer(Modifier.height(8.dp))
 
         // Keyfile section
         if (state.hiddenKeyfileDisplayNames.isNotEmpty()) {
@@ -460,51 +531,6 @@ fun StepHiddenPassword(
             Icon(ArcanumIcons.Keyfile, contentDescription = null)
             Spacer(Modifier.size(6.dp))
             Text(stringResource(R.string.create_keyfile_add))
-        }
-        Text(stringResource(R.string.create_keyfile_desc), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(8.dp))
-
-        // PIM section
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { showPimSection = !showPimSection }
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Icon(Icons.Outlined.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-            Text(stringResource(R.string.create_pim_label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-            Icon(if (showPimSection) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-        }
-        AnimatedVisibility(visible = showPimSection) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Spacer(Modifier.height(4.dp))
-                OutlinedTextField(
-                    value         = if (state.hiddenPim > 0) state.hiddenPim.toString() else "",
-                    onValueChange = { v ->
-                        val digits = v.filter { c -> c.isDigit() }.take(7)
-                        val n = digits.toLongOrNull() ?: 0L
-                        if (digits.isEmpty() || n in 1L..2_147_468L) {
-                            onUpdate { copy(hiddenPim = n.toInt()) }
-                        }
-                    },
-                    label                = { Text(stringResource(R.string.create_pim_short_label)) },
-                    placeholder          = { Text(stringResource(R.string.create_pim_placeholder)) },
-                    visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon         = {
-                        IconButton(onClick = { showPim = !showPim }) {
-                            Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
-                        }
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    singleLine      = true,
-                    modifier        = Modifier.fillMaxWidth()
-                )
-                if (state.hiddenPim in 1..484 && state.hiddenPassword.length < 20 && state.hiddenKeyfilePaths.isEmpty()) {
-                    Text(stringResource(R.string.create_pim_short_pwd_error), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                }
-            }
         }
     }
 }
