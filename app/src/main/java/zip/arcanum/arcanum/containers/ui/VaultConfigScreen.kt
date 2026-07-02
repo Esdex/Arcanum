@@ -28,7 +28,6 @@ import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Timer
-import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -66,6 +65,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import zip.arcanum.R
+import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.LocalHazeState
@@ -211,7 +211,7 @@ fun VaultConfigScreen(
                         onClick   = { onChangePassword(containerId) }
                     )
                     VaultOperationItem(
-                        icon      = Icons.Outlined.VpnKey,
+                        icon      = ArcanumIcons.Keyfile,
                         rawColor  = Color(0xFF7B1FA2),
                         title     = stringResource(R.string.vault_config_change_keyfile),
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.chkeyfile_config_desc),
