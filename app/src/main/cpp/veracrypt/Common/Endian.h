@@ -32,7 +32,23 @@ extern "C"
 
 #elif !defined(BYTE_ORDER)
 
-#	ifdef TC_MACOSX
+#	if defined(__ANDROID__)
+#		ifndef LITTLE_ENDIAN
+#			define LITTLE_ENDIAN 1234
+#		endif
+#		ifndef BIG_ENDIAN
+#			define BIG_ENDIAN 4321
+#		endif
+#		ifndef BYTE_ORDER
+#			if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#				define BYTE_ORDER LITTLE_ENDIAN
+#			elif defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#				define BYTE_ORDER BIG_ENDIAN
+#			else
+#				error Byte order cannot be determined for Android
+#			endif
+#		endif
+#	elif defined(TC_MACOSX)
 #		include <machine/endian.h>
 #	elif defined (TC_BSD)
 #		include <sys/endian.h>

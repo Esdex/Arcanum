@@ -15,6 +15,10 @@ set(VERACRYPT_SOURCES
     veracrypt/Crypto/kuznyechik.c
     veracrypt/Crypto/cpu.c
     veracrypt/Crypto/blake2s.c
+    veracrypt/Crypto/Argon2/src/argon2.c
+    veracrypt/Crypto/Argon2/src/core.c
+    veracrypt/Crypto/Argon2/src/ref.c
+    veracrypt/Crypto/Argon2/src/blake2/blake2b.c
     veracrypt/Common/Crc.c
     veracrypt/Common/Xts.c
 )
@@ -41,6 +45,8 @@ target_include_directories(arcanum-native PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}                # arcanum_impl.h
     ${CMAKE_CURRENT_SOURCE_DIR}/veracrypt      # Common/Tcdefs.h etc.
     ${CMAKE_CURRENT_SOURCE_DIR}/veracrypt/Crypto  # Aes.h, Sha2.h, config.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/veracrypt/Crypto/Argon2/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/veracrypt/Crypto/Argon2/src
     ${CMAKE_CURRENT_SOURCE_DIR}/veracrypt/Common  # Xts.h, Crypto.h, cpu.h, misc.h
     ${CMAKE_CURRENT_SOURCE_DIR}/fatfs          # ff.h, diskio.h, ffconf.h
 )
@@ -61,6 +67,7 @@ target_compile_options(arcanum-native PRIVATE
 
 target_compile_definitions(arcanum-native PRIVATE
     CRYPTOPP_DISABLE_ASM=1
+    ARGON2_NO_THREADS=1
     _FILE_OFFSET_BITS=64
     SAFE_IO=1
 )
