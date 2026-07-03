@@ -196,4 +196,14 @@ class SettingsViewModel @Inject constructor(
         onSuccess: () -> Unit,
         onError: (Int, CharSequence) -> Unit
     ) = biometricAuth.authenticateForDebug(activity, onSuccess, onError)
+
+    val unmountOnAutoLock = prefs.unmountOnAutoLock.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = false
+    )
+
+    fun setUnmountOnAutoLock(enabled: Boolean) {
+        viewModelScope.launch { prefs.setUnmountOnAutoLock(enabled) }
+    }
 }

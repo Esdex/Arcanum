@@ -36,6 +36,7 @@ class AppPreferences @Inject constructor(
         val BIOMETRIC_UNLOCK_ENABLED  = booleanPreferencesKey("biometric_unlock_enabled")
         val SHOW_MOUNT_LOG            = booleanPreferencesKey("show_mount_log")
         val LAST_SEEN_VERSION_CODE    = intPreferencesKey("last_seen_version_code")
+        val UNMOUNT_ON_AUTO_LOCK      = booleanPreferencesKey("unmount_on_auto_lock")
     }
 
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
@@ -134,5 +135,12 @@ class AppPreferences @Inject constructor(
 
     suspend fun setLastSeenVersionCode(code: Int) {
         context.appPrefsDataStore.edit { it[Keys.LAST_SEEN_VERSION_CODE] = code }
+    }
+
+    val unmountOnAutoLock: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.UNMOUNT_ON_AUTO_LOCK] ?: false }
+
+    suspend fun setUnmountOnAutoLock(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.UNMOUNT_ON_AUTO_LOCK] = enabled }
     }
 }

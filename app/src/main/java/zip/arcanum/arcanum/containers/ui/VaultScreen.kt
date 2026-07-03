@@ -70,7 +70,6 @@ import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.CheckBox
-import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.Add
@@ -188,7 +187,6 @@ fun VaultScreen(
     var showLockDialog     by remember { mutableStateOf(false) }
     var containerToUnmount        by remember { mutableStateOf<ContainerEntity?>(null) }
     var containerToRemoveFromList by remember { mutableStateOf<ContainerEntity?>(null) }
-    var containerToDeleteFile     by remember { mutableStateOf<ContainerEntity?>(null) }
     var notification              by remember { mutableStateOf<InAppNotification?>(null) }
     var selectionMode      by remember { mutableStateOf(false) }
     var selectedIds        by remember { mutableStateOf(emptySet<String>()) }
@@ -385,8 +383,7 @@ fun VaultScreen(
                                             },
                                             onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
                                             onUnmount              = { containerToUnmount = container },
-                                            onRemoveFromList       = { containerToRemoveFromList = container },
-                                            onDeleteVault          = { containerToDeleteFile = container }
+                                            onRemoveFromList       = { containerToRemoveFromList = container }
                                         )
                                     }
                                 }
@@ -410,8 +407,7 @@ fun VaultScreen(
                                         },
                                         onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
                                         onUnmount              = { containerToUnmount = container },
-                                        onRemoveFromList       = { containerToRemoveFromList = container },
-                                        onDeleteVault          = { containerToDeleteFile = container }
+                                        onRemoveFromList       = { containerToRemoveFromList = container }
                                     )
                                 }
                             }
@@ -564,24 +560,6 @@ fun VaultScreen(
                 )
             }
 
-            // ── Delete vault file confirm dialog ─────────────────────────────
-            containerToDeleteFile?.let { c ->
-                AppDialog(
-                    onDismissRequest = { containerToDeleteFile = null },
-                    title            = { Text(stringResource(R.string.vault_delete_title, c.name)) },
-                    text             = { Text(stringResource(R.string.vault_delete_body)) },
-                    confirmButton    = {
-                        TextButton(onClick = {
-                            containerToDeleteFile = null
-                            viewModel.deleteVaultFile(c.id)
-                        }) { Text(stringResource(R.string.vault_delete_confirm), color = MaterialTheme.colorScheme.error) }
-                    },
-                    dismissButton    = {
-                        TextButton(onClick = { containerToDeleteFile = null }) { Text(stringResource(R.string.common_cancel)) }
-                    }
-                )
-            }
-
             // ── Upgrade overlay ───────────────────────────────────────────────
             if (showUpgradeDialog) {
                 UpgradeOverlay(onDismiss = { showUpgradeDialog = false })
@@ -679,7 +657,6 @@ private fun VaultCardItem(
     onLongClick: () -> Unit,
     onUnmount: () -> Unit,
     onRemoveFromList: () -> Unit,
-    onDeleteVault: () -> Unit,
 ) {
     VaultCard(
         container               = container,
@@ -692,8 +669,7 @@ private fun VaultCardItem(
         onShowContextMenuChange = onContextMenuChange,
         onClick                 = { if (selectionMode) onSelect() else onOpen() },
         onLongClick             = onLongClick,
-        onRemoveFromList        = onRemoveFromList,
-        onDeleteVault           = onDeleteVault
+        onRemoveFromList        = onRemoveFromList
     )
 }
 
@@ -882,7 +858,6 @@ private fun VaultCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onRemoveFromList: () -> Unit,
-    onDeleteVault: () -> Unit,
 ) {
     val context = LocalContext.current
     val appStr   = stringResource(R.string.vault_storage_app)
@@ -1041,18 +1016,6 @@ private fun VaultCard(
             text        = { Text(stringResource(R.string.vault_menu_remove)) },
             leadingIcon = { Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = null) },
             onClick     = { onShowContextMenuChange(false); onRemoveFromList() }
-        )
-        HorizontalDivider()
-        DropdownMenuItem(
-            text        = { Text(stringResource(R.string.vault_menu_delete), color = MaterialTheme.colorScheme.error) },
-            leadingIcon = {
-                Icon(
-                    imageVector        = Icons.Outlined.DeleteForever,
-                    contentDescription = null,
-                    tint               = MaterialTheme.colorScheme.error
-                )
-            },
-            onClick = { onShowContextMenuChange(false); onDeleteVault() }
         )
     }
     } // Box

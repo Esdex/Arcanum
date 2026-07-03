@@ -19,10 +19,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import zip.arcanum.R
 import zip.arcanum.arcanum.containers.domain.Container
@@ -37,6 +40,39 @@ fun VaultInfoScreen(
     container: Container?,
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
+    val context = LocalContext.current
+    val locationDisplay = remember(container?.path, container?.safUri) {
+        when {
+            container == null -> "—"
+            container.path.isNotBlank() -> {
+                val path = container.path
+                val appDataDir = context.filesDir.parentFile?.absolutePath ?: ""
+                when {
+                    path.startsWith(context.filesDir.absolutePath) ||
+                    path.startsWith(context.noBackupFilesDir.absolutePath) -> {
+                        val relative = if (appDataDir.isNotEmpty())
+                            path.removePrefix(appDataDir).trimStart('/')
+                        else path
+                        "App Storage/$relative"
+                    }
+                    path.startsWith("/storage/emulated/0/") ->
+                        "Internal/" + path.removePrefix("/storage/emulated/0/")
+                    path.startsWith("/sdcard/") ->
+                        "Internal/" + path.removePrefix("/sdcard/")
+                    else -> path
+                }
+            }
+            container.safUri.isNotBlank() -> {
+                val seg = android.net.Uri.decode(
+                    Uri.parse(container.safUri).lastPathSegment ?: ""
+                )
+                val after = seg.substringAfter(':')
+                if (after.isNotEmpty()) "Internal/$after" else seg
+            }
+            else -> "—"
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -130,7 +166,7 @@ fun VaultInfoScreen(
             InfoDivider()
             InfoRow(stringResource(R.string.vault_info_label_size), container.size.formatSize())
             InfoDivider()
-            InfoRow(stringResource(R.string.vault_info_label_location), container.locationDisplay())
+            InfoRow(stringResource(R.string.vault_info_label_location), locationDisplay)
         }
 
         Spacer(Modifier.height(12.dp))
@@ -193,7 +229,8 @@ private fun InfoRow(label: String, value: String) {
             text       = value,
             style      = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
-            modifier   = Modifier.padding(start = 16.dp)
+            textAlign  = TextAlign.End,
+            modifier   = Modifier.weight(1f).padding(start = 16.dp)
         )
     }
 }
@@ -219,11 +256,3 @@ private fun Long.formatDate(): String {
         .format(DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG))
 }
 
-private fun Container.locationDisplay(): String {
-    if (path.isNotEmpty()) return path
-    if (safUri.isNotEmpty()) {
-        val segment = Uri.parse(safUri).lastPathSegment ?: return "External Storage"
-        return segment.removePrefix("primary:").removePrefix("document/primary:")
-    }
-    return "—"
-}
