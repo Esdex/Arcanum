@@ -920,6 +920,7 @@
     <!-- Expand Volume screen -->
     <string name="expand_volume_title">Expand Volume</string>
     <string name="expand_current_size">Current size</string>
+    <string name="expand_available_space">Available</string>
     <string name="expand_new_size_label">New size</string>
     <string name="expand_size_hint">Enter size</string>
     <string name="expand_password_label">Password</string>

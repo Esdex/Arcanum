@@ -3,6 +3,8 @@ package zip.arcanum.arcanum.containers.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
+import android.os.StatFs
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,6 +31,7 @@ data class ExpandVolumeState(
     val newSizeInput: String = "",
     val sizeUnit: SizeUnit = SizeUnit.GB,
     val isReady: Boolean = false,   // M3: true once container info is loaded from DB
+    val availableSpaceMb: Long = Long.MAX_VALUE,
     val isRunning: Boolean = false,
     val progress: Float = 0f,
     val speedMbps: Float = 0f,
@@ -64,7 +67,15 @@ class ExpandVolumeViewModel @Inject constructor(
             safUri        = c.safUri
             // Total file size = data area size + two header groups (262144 bytes)
             currentFileSizeBytes = c.size + 262144L
-            _state.update { it.copy(isReady = true) }  // M3: unblock expand button
+            val statPath = when {
+                c.path.isNotBlank() -> File(c.path).parent ?: c.path
+                c.safUri.isNotBlank() -> Environment.getExternalStorageDirectory().absolutePath
+                else -> null
+            }
+            val avail = statPath?.let {
+                try { StatFs(it).availableBytes / (1024L * 1024L) } catch (_: Exception) { Long.MAX_VALUE }
+            } ?: Long.MAX_VALUE
+            _state.update { it.copy(isReady = true, availableSpaceMb = avail) }
         }
     }
 
