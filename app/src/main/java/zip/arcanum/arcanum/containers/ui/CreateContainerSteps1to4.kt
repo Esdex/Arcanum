@@ -291,11 +291,18 @@ private val presets = listOf(256L, 512L, 1024L, 2048L, 5120L, 10240L)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StepVolumeSize(state: CreateContainerState, onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit) {
+fun StepVolumeSize(
+    state: CreateContainerState,
+    onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit,
+    availableSpaceMb: Long = Long.MAX_VALUE
+) {
     var customInput by remember { mutableStateOf("") }
     var unitGb by remember { mutableStateOf(false) }
-    val isCustom = presets.none { it == state.sizeMb }
-    val availableGb = 45.2f
+    var isCustom by remember { mutableStateOf(presets.none { it == state.sizeMb }) }
+
+    val hasKnownSpace = availableSpaceMb != Long.MAX_VALUE
+    val availableGb   = if (hasKnownSpace) availableSpaceMb / 1024f else 0f
+    val notEnoughSpace = hasKnownSpace && state.sizeMb > 0L && state.sizeMb > availableSpaceMb
 
     val quickSecs = (state.sizeMb / 500.0).toLong().coerceAtLeast(1)
     val secureSecs = (state.sizeMb / 80.0).toLong().coerceAtLeast(1)
@@ -309,13 +316,13 @@ fun StepVolumeSize(state: CreateContainerState, onUpdate: (CreateContainerState.
                 val label = if (mb >= 1024) "${mb / 1024} GB" else "$mb MB"
                 FilterChip(
                     selected = !isCustom && state.sizeMb == mb,
-                    onClick  = { onUpdate { copy(sizeMb = mb) }; customInput = "" },
+                    onClick  = { isCustom = false; onUpdate { copy(sizeMb = mb) }; customInput = "" },
                     label    = { Text(label) }
                 )
             }
             FilterChip(
                 selected = isCustom,
-                onClick  = { onUpdate { copy(sizeMb = 0L) } },
+                onClick  = { isCustom = true; onUpdate { copy(sizeMb = 0L) } },
                 label    = { Text(stringResource(R.string.create_size_custom)) }
             )
         }
@@ -351,22 +358,35 @@ fun StepVolumeSize(state: CreateContainerState, onUpdate: (CreateContainerState.
         }
 
         Spacer(Modifier.height(16.dp))
-        Text(
-            stringResource(R.string.create_size_available, availableGb),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            stringResource(R.string.create_size_quick_est, formatSecs(quickSecs)),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            stringResource(R.string.create_size_secure_est, formatSecs(secureSecs)),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        if (hasKnownSpace) {
+            Text(
+                stringResource(R.string.create_size_available, availableGb),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (notEnoughSpace) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (notEnoughSpace) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.create_size_not_enough_space),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+        if (!notEnoughSpace && state.sizeMb > 0L) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.create_size_quick_est, formatSecs(quickSecs)),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                stringResource(R.string.create_size_secure_est, formatSecs(secureSecs)),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

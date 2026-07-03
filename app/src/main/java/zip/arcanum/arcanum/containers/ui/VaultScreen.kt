@@ -55,7 +55,7 @@ import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.EnhancedEncryption
 import androidx.compose.material.icons.outlined.DataUsage
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FilterList
@@ -470,7 +470,7 @@ fun VaultScreen(
                     exit    = slideOutVertically(tween(200), targetOffsetY = { it / 2 }) + fadeOut(tween(150))
                 ) {
                     FabMenuItem(
-                        icon    = Icons.Outlined.CreateNewFolder,
+                        icon    = Icons.Outlined.EnhancedEncryption,
                         label   = stringResource(R.string.vault_fab_create_new),
                         onClick = {
                             fabExpanded = false

@@ -568,6 +568,7 @@
     <string name="create_size_label">Size</string>
     <string name="create_size_custom">Custom</string>
     <string name="create_size_available">Available: %1$.1f GB</string>
+    <string name="create_size_not_enough_space">Not enough free space on the selected storage</string>
     <string name="create_size_quick_est">⚡ Quick format: ~%1$s</string>
     <string name="create_size_secure_est">🔒 Secure format: ~%1$s</string>
     <string name="create_size_speed_fast">Fast</string>

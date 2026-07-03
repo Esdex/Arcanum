@@ -418,10 +418,20 @@ class CreateContainerViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        _state.value.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-        _state.value.hiddenKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+        val s = _state.value
+        s.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+        s.hiddenKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
         safParcelFd?.close()
         safParcelFd = null
+        // The SAF picker creates a 0-byte placeholder the moment the user picks a location.
+        // Delete it if the wizard was abandoned or creation never completed.
+        if (s.safUri.isNotEmpty() && !s.isCreated && !s.isHiddenCreated) {
+            runCatching {
+                android.provider.DocumentsContract.deleteDocument(
+                    context.contentResolver, android.net.Uri.parse(s.safUri)
+                )
+            }
+        }
     }
 
     private fun formatTime(secs: Long): String = when {
