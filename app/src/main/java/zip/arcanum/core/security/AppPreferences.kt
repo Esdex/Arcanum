@@ -33,9 +33,18 @@ class AppPreferences @Inject constructor(
         val DISGUISE_PROMPT_SHOWN = booleanPreferencesKey("disguise_prompt_shown")
         val FIRST_LOGIN_DONE      = booleanPreferencesKey("first_login_done")
         val CALCULATOR_ENABLED        = booleanPreferencesKey("calculator_enabled")
+        val DISGUISE_ENABLED          = booleanPreferencesKey("disguise_enabled")
+        val DISGUISE_PROFILE          = stringPreferencesKey("disguise_profile")
+        val CUSTOM_DISGUISE_NAME      = stringPreferencesKey("custom_disguise_name")
+        val CUSTOM_DISGUISE_ICON      = stringPreferencesKey("custom_disguise_icon")
+        val CUSTOM_DISGUISE_COLOR     = intPreferencesKey("custom_disguise_color")
+        val HIDE_FROM_RECENTS         = booleanPreferencesKey("hide_from_recents")
         val BIOMETRIC_UNLOCK_ENABLED  = booleanPreferencesKey("biometric_unlock_enabled")
+        val INTRUDER_DETECTION_ENABLED = booleanPreferencesKey("intruder_detection_enabled")
         val SHOW_MOUNT_LOG            = booleanPreferencesKey("show_mount_log")
         val LAST_SEEN_VERSION_CODE    = intPreferencesKey("last_seen_version_code")
+        val DELETE_IMPORTED_FILES     = booleanPreferencesKey("delete_imported_files")
+        val DELETE_EXPORTED_FILES     = booleanPreferencesKey("delete_exported_files")
     }
 
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
@@ -114,11 +123,78 @@ class AppPreferences @Inject constructor(
         context.appPrefsDataStore.edit { it[Keys.CALCULATOR_ENABLED] = enabled }
     }
 
+    val disguiseEnabled: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { prefs ->
+            prefs[Keys.DISGUISE_ENABLED]
+                ?: (prefs[Keys.CALCULATOR_ENABLED] == true && prefs[Keys.DISGUISE_PROMPT_SHOWN] == true)
+        }
+
+    val disguiseProfile: Flow<DisguiseProfile> = context.appPrefsDataStore.data
+        .map { prefs ->
+            DisguiseProfile.fromPrefValue(prefs[Keys.DISGUISE_PROFILE])
+        }
+
+    suspend fun setDisguiseEnabled(enabled: Boolean) {
+        context.appPrefsDataStore.edit { prefs ->
+            prefs[Keys.DISGUISE_ENABLED] = enabled
+            prefs[Keys.CALCULATOR_ENABLED] =
+                enabled && DisguiseProfile.fromPrefValue(prefs[Keys.DISGUISE_PROFILE]) == DisguiseProfile.CALCULATOR
+            if (enabled) prefs[Keys.DISGUISE_PROMPT_SHOWN] = true
+        }
+    }
+
+    suspend fun setDisguiseProfile(profile: DisguiseProfile) {
+        context.appPrefsDataStore.edit { prefs ->
+            prefs[Keys.DISGUISE_PROFILE] = profile.prefValue
+            prefs[Keys.CALCULATOR_ENABLED] =
+                (prefs[Keys.DISGUISE_ENABLED] == true) && profile == DisguiseProfile.CALCULATOR
+        }
+    }
+
+    val customDisguiseName: Flow<String> = context.appPrefsDataStore.data
+        .map { it[Keys.CUSTOM_DISGUISE_NAME] ?: "" }
+
+    suspend fun setCustomDisguiseName(name: String) {
+        context.appPrefsDataStore.edit { prefs ->
+            prefs[Keys.CUSTOM_DISGUISE_NAME] = name.take(32)
+        }
+    }
+
+    val customDisguiseIcon: Flow<CustomDisguiseIcon> = context.appPrefsDataStore.data
+        .map { prefs ->
+            CustomDisguiseIcon.fromPrefValue(prefs[Keys.CUSTOM_DISGUISE_ICON])
+        }
+
+    suspend fun setCustomDisguiseIcon(icon: CustomDisguiseIcon) {
+        context.appPrefsDataStore.edit { it[Keys.CUSTOM_DISGUISE_ICON] = icon.prefValue }
+    }
+
+    val customDisguiseColor: Flow<Int> = context.appPrefsDataStore.data
+        .map { it[Keys.CUSTOM_DISGUISE_COLOR] ?: 0xFF546E7A.toInt() }
+
+    suspend fun setCustomDisguiseColor(color: Int) {
+        context.appPrefsDataStore.edit { it[Keys.CUSTOM_DISGUISE_COLOR] = color }
+    }
+
+    val hideFromRecents: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.HIDE_FROM_RECENTS] ?: false }
+
+    suspend fun setHideFromRecents(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.HIDE_FROM_RECENTS] = enabled }
+    }
+
     val biometricUnlockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
-        .map { it[Keys.BIOMETRIC_UNLOCK_ENABLED] ?: false }
+        .map { it[Keys.BIOMETRIC_UNLOCK_ENABLED] ?: true }
 
     suspend fun setBiometricUnlockEnabled(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.BIOMETRIC_UNLOCK_ENABLED] = enabled }
+    }
+
+    val intruderDetectionEnabled: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.INTRUDER_DETECTION_ENABLED] ?: false }
+
+    suspend fun setIntruderDetectionEnabled(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.INTRUDER_DETECTION_ENABLED] = enabled }
     }
 
     val showMountLog: Flow<Boolean> = context.appPrefsDataStore.data
@@ -134,5 +210,19 @@ class AppPreferences @Inject constructor(
 
     suspend fun setLastSeenVersionCode(code: Int) {
         context.appPrefsDataStore.edit { it[Keys.LAST_SEEN_VERSION_CODE] = code }
+    }
+
+    val deleteImportedFiles: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.DELETE_IMPORTED_FILES] ?: false }
+
+    suspend fun setDeleteImportedFiles(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.DELETE_IMPORTED_FILES] = enabled }
+    }
+
+    val deleteExportedFiles: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.DELETE_EXPORTED_FILES] ?: false }
+
+    suspend fun setDeleteExportedFiles(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.DELETE_EXPORTED_FILES] = enabled }
     }
 }

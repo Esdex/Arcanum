@@ -18,8 +18,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import zip.arcanum.R
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
+import zip.arcanum.core.security.IntruderCaptureManager
 import zip.arcanum.core.security.PanicManager
 import zip.arcanum.core.security.PanicWipeWorker
 import zip.arcanum.core.security.PinManager
@@ -39,6 +41,7 @@ class PinEntryViewModel @Inject constructor(
     private val panicManager: PanicManager,
     private val biometricAuth: BiometricAuth,
     private val prefs: AppPreferences,
+    private val intruderCaptureManager: IntruderCaptureManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -50,7 +53,7 @@ class PinEntryViewModel @Inject constructor(
     val biometricUnlockEnabled = prefs.biometricUnlockEnabled.stateIn(
         scope        = viewModelScope,
         started      = SharingStarted.Eagerly,
-        initialValue = false
+        initialValue = true
     )
 
     // One-shot read: returns the persisted value from DataStore at screen entry time.
@@ -93,6 +96,7 @@ class PinEntryViewModel @Inject constructor(
                 }
                 PinResult.WRONG -> {
                     withContext(Dispatchers.Main) { _state.value = PinEntryState.WrongPin }
+                    viewModelScope.launch { intruderCaptureManager.captureBurstIfEnabled() }
                 }
                 PinResult.LOCKED -> {
                     val sec = (pinManager.lockoutRemainingMs() / 1000L).coerceAtLeast(1L)
@@ -116,8 +120,8 @@ class PinEntryViewModel @Inject constructor(
                         _state.value = PinEntryState.Idle
                         biometricAuth.authenticate(
                             activity  = activity,
-                            title     = "Enable biometric unlock",
-                            subtitle  = "Confirm your identity to register",
+                            title     = context.getString(R.string.biometric_enable_title),
+                            subtitle  = context.getString(R.string.biometric_enable_subtitle),
                             onSuccess = {
                                 viewModelScope.launch {
                                     prefs.setBiometricUnlockEnabled(true)
@@ -148,6 +152,7 @@ class PinEntryViewModel @Inject constructor(
                 }
                 PinResult.WRONG -> {
                     withContext(Dispatchers.Main) { _state.value = PinEntryState.WrongPin }
+                    viewModelScope.launch { intruderCaptureManager.captureBurstIfEnabled() }
                 }
                 PinResult.LOCKED -> {
                     val sec = (pinManager.lockoutRemainingMs() / 1000L).coerceAtLeast(1L)
@@ -160,8 +165,8 @@ class PinEntryViewModel @Inject constructor(
     fun authenticate(activity: FragmentActivity, onAuthenticated: () -> Unit) {
         biometricAuth.authenticate(
             activity  = activity,
-            title     = "Unlock Arcanum",
-            subtitle  = "Confirm your identity",
+            title     = context.getString(R.string.biometric_unlock_title),
+            subtitle  = context.getString(R.string.biometric_unlock_subtitle),
             onSuccess = onAuthenticated,
             onError   = { _, _ -> },
             onFailed  = {}

@@ -43,7 +43,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,6 +59,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.delay
 import zip.arcanum.R
+import zip.arcanum.core.security.AppPasswordPolicy
+import zip.arcanum.core.ui.AppPasswordInputMode
+import zip.arcanum.core.ui.AppPasswordInputModeButton
+import zip.arcanum.core.ui.AppPasswordKeyboardField
 
 @Composable
 fun ChangePinScreen(
@@ -147,6 +153,7 @@ private fun ChangePinEntry(
     onBack: () -> Unit,
     viewModel: ChangePinViewModel
 ) {
+    var inputMode by remember { mutableStateOf(AppPasswordInputMode.Numeric) }
     // Shake offset driven by errorShake counter
     val shakeOffset = remember { Animatable(0f) }
     LaunchedEffect(state.errorShake) {
@@ -229,18 +236,46 @@ private fun ChangePinEntry(
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.offset { IntOffset(shakeOffset.value.toInt(), 0) }
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset { IntOffset(shakeOffset.value.toInt(), 0) }
                 ) {
                     Text(
                         text  = titleText,
                         style = MaterialTheme.typography.headlineSmall,
                         color = titleColor
                     )
-                    Spacer(Modifier.height(40.dp))
-                    ChangePinDots(
-                        pinLength = state.pin.length,
-                        isError   = state.isError
-                    )
+                    Spacer(Modifier.height(28.dp))
+                    if (inputMode == AppPasswordInputMode.Numeric) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            ChangePinDots(
+                                pinLength = state.pin.length,
+                                isError   = state.isError
+                            )
+                            Spacer(Modifier.size(12.dp))
+                            AppPasswordInputModeButton(
+                                mode = inputMode,
+                                onModeChange = { inputMode = it },
+                                enabled = !state.isSaving,
+                                modifier = Modifier.size(48.dp)
+                            )
+                        }
+                    } else {
+                        AppPasswordKeyboardField(
+                            value = state.pin,
+                            onValueChange = viewModel::setPin,
+                            enabled = !state.isSaving,
+                            isError = state.isError,
+                            onUseNumeric = {
+                                if (state.pin.length > 12 || state.pin.any { !it.isDigit() }) viewModel.setPin("")
+                                inputMode = AppPasswordInputMode.Numeric
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                     if (step == ChangePinViewModel.Step.ENTER_NEW) {
                         Spacer(Modifier.height(12.dp))
                         Text(
@@ -251,14 +286,16 @@ private fun ChangePinEntry(
                     }
                 }
 
-                ChangePinNumPad(
-                    onDigit     = { if (!state.isSaving) viewModel.onDigit(it) },
-                    onBackspace = { if (!state.isSaving) viewModel.onBackspace() }
-                )
+                if (inputMode == AppPasswordInputMode.Numeric) {
+                    ChangePinNumPad(
+                        onDigit     = { if (!state.isSaving) viewModel.onDigit(it) },
+                        onBackspace = { if (!state.isSaving) viewModel.onBackspace() }
+                    )
+                }
 
                 Button(
                     onClick  = viewModel::advance,
-                    enabled  = state.pin.length >= 4 && !state.isSaving,
+                    enabled  = AppPasswordPolicy.isValid(state.pin) && !state.isSaving,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),

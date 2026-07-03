@@ -2,6 +2,7 @@ package zip.arcanum.core.navigation
 
 sealed class Screen(val route: String) {
     object Calculator      : Screen("calculator")
+    object DisguiseUnlock  : Screen("disguise_unlock")
     object PinEntry        : Screen("pin_entry")
     object SetupPin        : Screen("setup_pin")
     object Onboarding      : Screen("onboarding")
@@ -66,15 +67,29 @@ sealed class Screen(val route: String) {
         fun buildRoute(containerId: String) = "file_manager/$containerId"
     }
 
+    object TextEditor : Screen("text_editor?cid={cid}&path={path}&name={name}") {
+        const val ARG_CONTAINER = "cid"
+        const val ARG_PATH      = "path"
+        const val ARG_NAME      = "name"
+
+        fun buildRoute(containerId: String, path: String, name: String): String {
+            val encodedPath = android.net.Uri.encode(path)
+            val encodedName = android.net.Uri.encode(name)
+            return "text_editor?cid=$containerId&path=$encodedPath&name=$encodedName"
+        }
+    }
+
     object MoveVault : Screen("move_vault/{containerId}/{toApp}") {
         const val ARG_ID    = "containerId"
         const val ARG_TO_APP = "toApp"
         fun buildRoute(containerId: String, toApp: Boolean) = "move_vault/$containerId/$toApp"
     }
 
-    object MountScreen : Screen("mount_screen/{containerId}") {
+    object MountScreen : Screen("mount_screen/{containerId}?enableBio={enableBio}") {
         const val ARG = "containerId"
-        fun buildRoute(containerId: String) = "mount_screen/$containerId"
+        const val ARG_ENABLE_BIO = "enableBio"
+        fun buildRoute(containerId: String, enableBiometricSetup: Boolean = false) =
+            if (enableBiometricSetup) "mount_screen/$containerId?enableBio=true" else "mount_screen/$containerId"
     }
 
     object WhatsNew : Screen("whats_new")
@@ -92,5 +107,15 @@ sealed class Screen(val route: String) {
     object VaultConfig : Screen("vault_config/{containerId}") {
         const val ARG = "containerId"
         fun buildRoute(containerId: String) = "vault_config/$containerId"
+    }
+
+    object Backup : Screen("backup/{containerId}") {
+        const val ARG = "containerId"
+        fun buildRoute(containerId: String) = "backup/$containerId"
+    }
+
+    object ExpandVolume : Screen("expand_volume/{containerId}") {
+        const val ARG = "containerId"
+        fun buildRoute(containerId: String) = "expand_volume/$containerId"
     }
 }

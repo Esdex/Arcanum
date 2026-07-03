@@ -16,7 +16,10 @@ import kotlinx.coroutines.withContext
 import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
+import zip.arcanum.core.security.DisguiseProfile
 import zip.arcanum.core.security.DisguiseManager
+import zip.arcanum.core.security.IntruderCapture
+import zip.arcanum.core.security.IntruderCaptureManager
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.security.PinResult
 import zip.arcanum.core.theme.ThemeMode
@@ -28,8 +31,15 @@ class SettingsViewModel @Inject constructor(
     private val biometricAuth: BiometricAuth,
     private val pinManager: PinManager,
     private val disguiseManager: DisguiseManager,
+    private val intruderCaptureManager: IntruderCaptureManager,
     private val billingManager: BillingManagerInterface
 ) : ViewModel() {
+
+    init {
+        viewModelScope.launch {
+            disguiseManager.normalizeLegacyAliases()
+        }
+    }
 
     val isPro = billingManager.isPro
 
@@ -75,6 +85,36 @@ class SettingsViewModel @Inject constructor(
         initialValue = true
     )
 
+    val deleteImportedFiles = prefs.deleteImportedFiles.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = false
+    )
+
+    val deleteExportedFiles = prefs.deleteExportedFiles.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = false
+    )
+
+    val hideFromRecents = prefs.hideFromRecents.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = false
+    )
+
+    val biometricUnlockEnabled = prefs.biometricUnlockEnabled.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = true
+    )
+
+    val intruderDetectionEnabled = prefs.intruderDetectionEnabled.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = false
+    )
+
     // null = loading (key absent from DataStore); treat as true (calculator on by default)
     val calculatorEnabled = prefs.calculatorEnabled.stateIn(
         scope        = viewModelScope,
@@ -82,9 +122,23 @@ class SettingsViewModel @Inject constructor(
         initialValue = null
     )
 
+    val disguiseEnabled = prefs.disguiseEnabled.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = disguiseManager.isDisguiseApplied()
+    )
+
+    val disguiseProfile = prefs.disguiseProfile.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = disguiseManager.appliedProfile() ?: DisguiseProfile.default
+    )
+
     private val _manualShowDisguise = MutableStateFlow(false)
     private val _disguiseApplied    = MutableStateFlow(disguiseManager.isDisguiseApplied())
+    private val _intruderCaptures   = MutableStateFlow<List<IntruderCapture>>(emptyList())
     val disguiseApplied = _disguiseApplied.asStateFlow()
+    val intruderCaptures = _intruderCaptures.asStateFlow()
 
     val showDisguiseOverlay = combine(
         pinManager.isPinSetFlow.map { it ?: false },
@@ -94,6 +148,10 @@ class SettingsViewModel @Inject constructor(
     ) { pinSet, promptShown, firstLoginDone, manual ->
         (pinSet && !promptShown && !disguiseManager.isDisguiseApplied() && firstLoginDone) || manual
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    init {
+        refreshIntruderCaptures()
+    }
 
     fun setFirstLoginDone() {
         viewModelScope.launch { prefs.setFirstLoginDone() }
@@ -140,8 +198,74 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.setScreenCaptureProtection(enabled) }
     }
 
+    fun setDeleteImportedFiles(enabled: Boolean) {
+        viewModelScope.launch { prefs.setDeleteImportedFiles(enabled) }
+    }
+
+    fun setDeleteExportedFiles(enabled: Boolean) {
+        viewModelScope.launch { prefs.setDeleteExportedFiles(enabled) }
+    }
+
+    fun setHideFromRecents(enabled: Boolean) {
+        viewModelScope.launch { prefs.setHideFromRecents(enabled) }
+    }
+
+    fun setBiometricUnlockEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setBiometricUnlockEnabled(enabled) }
+    }
+
+    fun setIntruderDetectionEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            prefs.setIntruderDetectionEnabled(enabled)
+            refreshIntruderCaptures()
+        }
+    }
+
+    fun refreshIntruderCaptures() {
+        _intruderCaptures.value = intruderCaptureManager.listCaptures()
+    }
+
+    fun deleteIntruderCapture(capture: IntruderCapture) {
+        viewModelScope.launch {
+            intruderCaptureManager.deleteCapture(capture.file)
+            refreshIntruderCaptures()
+        }
+    }
+
+    fun deleteAllIntruderCaptures() {
+        viewModelScope.launch {
+            intruderCaptureManager.deleteAllCaptures()
+            refreshIntruderCaptures()
+        }
+    }
+
     fun setCalculatorEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setCalculatorEnabled(enabled) }
+    }
+
+    fun setDisguiseEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            if (enabled) {
+                // Enabling is applied only from the explicit profile confirmation button.
+                // This keeps a simple switch tap from changing launcher aliases immediately.
+            } else {
+                disguiseManager.reset()
+                _disguiseApplied.value = false
+            }
+        }
+    }
+
+    fun setDisguiseProfile(profile: DisguiseProfile) {
+        viewModelScope.launch {
+            prefs.setDisguiseProfile(profile)
+        }
+    }
+
+    fun applyDisguiseProfile(profile: DisguiseProfile) {
+        viewModelScope.launch {
+            disguiseManager.apply(profile)
+            _disguiseApplied.value = true
+        }
     }
 
     fun requestDisguise() { _manualShowDisguise.value = true }
@@ -160,11 +284,7 @@ class SettingsViewModel @Inject constructor(
 
     fun applyDisguise(onRestart: () -> Unit) {
         viewModelScope.launch {
-            // Write calculatorEnabled and apply the alias atomically in one coroutine so a
-            // crash between them cannot leave the alias active with calculatorEnabled=false
-            // (which would show PinEntry under the calculator launcher icon).
-            prefs.setCalculatorEnabled(true)
-            disguiseManager.apply()
+            disguiseManager.apply(DisguiseProfile.CALCULATOR)
             _disguiseApplied.value = true
             _manualShowDisguise.value = false
             withContext(Dispatchers.Main) { onRestart() }

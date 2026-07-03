@@ -123,7 +123,7 @@ class CalculatorViewModel @Inject constructor(
         }
     }
 
-    // Called by 2-second long press on = — PIN verification only
+    // Called by deliberate long press on = — PIN verification only
     fun onLongPressEquals() {
         if (_isVerifying.value) return
         val current = _state.value

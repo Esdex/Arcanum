@@ -36,6 +36,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +54,10 @@ import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import zip.arcanum.R
+import zip.arcanum.core.security.AppPasswordPolicy
+import zip.arcanum.core.ui.AppPasswordInputMode
+import zip.arcanum.core.ui.AppPasswordInputModeButton
+import zip.arcanum.core.ui.AppPasswordKeyboardField
 
 @Composable
 fun SetupPinScreen(
@@ -144,6 +151,7 @@ private fun PinEntryContent(
     state: SetupPinViewModel.State,
     viewModel: SetupPinViewModel
 ) {
+    var inputMode by remember { mutableStateOf(AppPasswordInputMode.Numeric) }
     val titleText = when {
         state.isError -> stringResource(R.string.pin_mismatch)
         state.step == SetupPinViewModel.Step.ENTER -> stringResource(R.string.setup_pin_title)
@@ -171,18 +179,53 @@ private fun PinEntryContent(
                 style = MaterialTheme.typography.headlineSmall,
                 color = titleColor
             )
-            Spacer(Modifier.height(40.dp))
-            PinDots(pinLength = state.pin.length, isError = state.isError)
+            Spacer(Modifier.height(28.dp))
+            if (inputMode == AppPasswordInputMode.Numeric) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    PinDots(pinLength = state.pin.length, isError = state.isError)
+                    Spacer(Modifier.size(12.dp))
+                    AppPasswordInputModeButton(
+                        mode = inputMode,
+                        onModeChange = { inputMode = it },
+                        enabled = !state.isSaving,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.app_password_numeric_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                AppPasswordKeyboardField(
+                    value = state.pin,
+                    onValueChange = viewModel::setPin,
+                    enabled = !state.isSaving,
+                    isError = state.isError,
+                    onUseNumeric = {
+                        if (state.pin.length > 6 || state.pin.any { !it.isDigit() }) viewModel.setPin("")
+                        inputMode = AppPasswordInputMode.Numeric
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
 
-        NumPad(
-            onDigit     = { if (!state.isSaving) viewModel.onDigit(it) },
-            onBackspace = { if (!state.isSaving) viewModel.onBackspace() }
-        )
+        if (inputMode == AppPasswordInputMode.Numeric) {
+            NumPad(
+                onDigit     = { if (!state.isSaving) viewModel.onDigit(it) },
+                onBackspace = { if (!state.isSaving) viewModel.onBackspace() }
+            )
+        }
 
         Button(
             onClick  = viewModel::advance,
-            enabled  = state.pin.length >= 4 && !state.isSaving,
+            enabled  = AppPasswordPolicy.isValid(state.pin) && !state.isSaving,
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape    = CircleShape
         ) {

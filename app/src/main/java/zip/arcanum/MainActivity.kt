@@ -1,10 +1,13 @@
 package zip.arcanum
 
+import android.app.ActivityManager
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import androidx.core.view.WindowCompat
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -14,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.core.navigation.AppNavigation
+import zip.arcanum.core.security.DisguiseProfile
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.theme.AppTheme
 import zip.arcanum.crypto.VeraCryptEngine
@@ -51,6 +55,9 @@ class MainActivity : AppCompatActivity() {
             val isDynamicColor          by settingsViewModel.isDynamicColor.collectAsStateWithLifecycle()
             val screenCaptureProtection by settingsViewModel.screenCaptureProtection.collectAsStateWithLifecycle()
             val showDisguiseOverlay     by settingsViewModel.showDisguiseOverlay.collectAsStateWithLifecycle()
+            val hideFromRecents         by settingsViewModel.hideFromRecents.collectAsStateWithLifecycle()
+            val disguiseEnabled         by settingsViewModel.disguiseEnabled.collectAsStateWithLifecycle()
+            val disguiseProfile         by settingsViewModel.disguiseProfile.collectAsStateWithLifecycle()
 
             androidx.compose.runtime.LaunchedEffect(screenCaptureProtection) {
                 if (screenCaptureProtection) {
@@ -61,6 +68,18 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
                 }
+            }
+
+            androidx.compose.runtime.LaunchedEffect(
+                hideFromRecents,
+                disguiseEnabled,
+                disguiseProfile
+            ) {
+                applyTaskPrivacy(
+                    hideFromRecents,
+                    disguiseEnabled,
+                    disguiseProfile
+                )
             }
 
             AppTheme(
@@ -100,5 +119,24 @@ class MainActivity : AppCompatActivity() {
             }
         }
         super.onDestroy()
+    }
+
+    private fun applyTaskPrivacy(
+        hideFromRecents: Boolean,
+        disguiseEnabled: Boolean,
+        disguiseProfile: DisguiseProfile
+    ) {
+        val activityManager = getSystemService(ActivityManager::class.java)
+        activityManager?.appTasks?.forEach { task ->
+            runCatching { task.setExcludeFromRecents(hideFromRecents) }
+        }
+        if (hideFromRecents) return
+
+        val label = getString(if (disguiseEnabled) disguiseProfile.labelRes else R.string.app_name)
+        val iconRes = if (disguiseEnabled) disguiseProfile.launcherIconRes else R.mipmap.ic_launcher
+        val bitmap = ContextCompat.getDrawable(this, iconRes)
+            ?.toBitmap(width = 96, height = 96)
+            ?: return
+        setTaskDescription(ActivityManager.TaskDescription(label, bitmap))
     }
 }

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,10 +39,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import zip.arcanum.R
+import zip.arcanum.core.security.AppPasswordPolicy
+import zip.arcanum.core.ui.AppPasswordInputMode
+import zip.arcanum.core.ui.AppPasswordInputModeButton
+import zip.arcanum.core.ui.AppPasswordKeyboardField
 
 @Composable
 fun PinEntryScreen(
@@ -53,6 +59,7 @@ fun PinEntryScreen(
     val context               = LocalContext.current
     val haptic                = LocalHapticFeedback.current
     var pin                   by remember { mutableStateOf("") }
+    var inputMode             by remember { mutableStateOf(AppPasswordInputMode.Numeric) }
 
     val isVerifying = state is PinEntryState.Verifying
     val isError     = state is PinEntryState.WrongPin || state is PinEntryState.Locked
@@ -94,70 +101,109 @@ fun PinEntryScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceEvenly
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Text(
                 text  = titleText,
                 style = MaterialTheme.typography.headlineSmall,
                 color = titleColor
             )
-            Spacer(Modifier.height(40.dp))
-            PinDots(pinLength = pin.length, isError = isError)
+            Spacer(Modifier.height(28.dp))
+            if (inputMode == AppPasswordInputMode.Numeric) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    PinDots(pinLength = pin.length, isError = isError)
+                    Spacer(Modifier.size(12.dp))
+                    AppPasswordInputModeButton(
+                        mode = inputMode,
+                        onModeChange = { inputMode = it },
+                        enabled = !isVerifying,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.app_password_numeric_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                AppPasswordKeyboardField(
+                    value = pin,
+                    onValueChange = {
+                        pin = it
+                        if (isError) viewModel.clearError()
+                    },
+                    enabled = !isVerifying,
+                    isError = isError,
+                    onUseNumeric = {
+                        if (pin.length > 6 || pin.any { c -> !c.isDigit() }) pin = ""
+                        inputMode = AppPasswordInputMode.Numeric
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
 
-        val showBiometric = viewModel.isBiometricAvailable
+        val showBiometric = viewModel.isBiometricAvailable && biometricUnlockEnabled
 
-        NumPad(
-            onDigit     = {
-                if (!isVerifying && pin.length < 6) {
-                    pin = pin + it
-                    if (isError) viewModel.clearError()
-                }
-            },
-            onBackspace = {
-                if (!isVerifying) {
-                    pin = pin.dropLast(1)
-                    if (isError) viewModel.clearError()
-                }
-            },
-            leftSlot = {
-                if (showBiometric) {
-                    IconButton(
-                        onClick  = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            (context as? FragmentActivity)?.let { activity ->
-                                if (pin.isNotEmpty()) {
-                                    // PIN entered → register biometric
-                                    viewModel.registerBiometricWithPin(pin, activity) {
-                                        onAuthenticated()
-                                    }
-                                } else if (biometricUnlockEnabled) {
-                                    // No PIN → just unlock via biometric (already registered)
-                                    viewModel.authenticate(activity) { onAuthenticated() }
-                                }
-                            }
-                        },
-                        modifier = Modifier.size(72.dp)
-                    ) {
-                        Icon(
-                            imageVector        = Icons.Outlined.Fingerprint,
-                            contentDescription = stringResource(R.string.pin_entry_biometric),
-                            tint               = MaterialTheme.colorScheme.onBackground,
-                            modifier           = Modifier.size(32.dp)
-                        )
+        if (inputMode == AppPasswordInputMode.Numeric) {
+            NumPad(
+                onDigit     = {
+                    if (!isVerifying && pin.length < 6) {
+                        pin = pin + it
+                        if (isError) viewModel.clearError()
                     }
-                } else {
-                    Spacer(Modifier.size(72.dp))
+                },
+                onBackspace = {
+                    if (!isVerifying) {
+                        pin = pin.dropLast(1)
+                        if (isError) viewModel.clearError()
+                    }
+                },
+                leftSlot = {
+                    if (showBiometric) {
+                        IconButton(
+                            onClick  = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                (context as? FragmentActivity)?.let { activity ->
+                                    if (pin.isNotEmpty()) {
+                                        // PIN entered → register biometric
+                                        viewModel.registerBiometricWithPin(pin, activity) {
+                                            onAuthenticated()
+                                        }
+                                    } else if (biometricUnlockEnabled) {
+                                        // No PIN → just unlock via biometric (already registered)
+                                        viewModel.authenticate(activity) { onAuthenticated() }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(72.dp)
+                        ) {
+                            Icon(
+                                imageVector        = Icons.Outlined.Fingerprint,
+                                contentDescription = stringResource(R.string.pin_entry_biometric),
+                                tint               = MaterialTheme.colorScheme.onBackground,
+                                modifier           = Modifier.size(32.dp)
+                            )
+                        }
+                    } else {
+                        Spacer(Modifier.size(72.dp))
+                    }
                 }
-            }
-        )
+            )
+        }
 
         Button(
             onClick  = {
-                if (pin.isNotBlank() && !isVerifying) {
-                    viewModel.submitPin(pin) { onAuthenticated() }
-                }
+                if (AppPasswordPolicy.isValid(pin) && !isVerifying) viewModel.submitPin(pin) { onAuthenticated() }
             },
-            enabled  = pin.isNotBlank() && !isVerifying,
+            enabled  = AppPasswordPolicy.isValid(pin) && !isVerifying,
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape    = CircleShape
         ) {

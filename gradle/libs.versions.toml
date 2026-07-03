@@ -25,6 +25,7 @@ securityCrypto = "1.1.0-alpha06"
 appcompat = "1.7.0"
 biometric = "1.1.0"
 coil = "2.5.0"
+cameraX = "1.4.2"
 media3 = "1.2.0"
 haze = "1.5.3"
 lottieCompose = "6.6.4"
@@ -36,6 +37,7 @@ aboutlibraries = "14.2.1"
 bouncycastle = "1.79"
 billing = "7.1.1"
 sqlcipher = "4.5.4"
+awsAndroidS3 = "2.79.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -73,6 +75,9 @@ androidx-documentfile = { group = "androidx.documentfile", name = "documentfile"
 biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 coil-video = { group = "io.coil-kt", name = "coil-video", version.ref = "coil" }
+camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "cameraX" }
+camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "cameraX" }
+camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraX" }
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
@@ -85,6 +90,7 @@ aboutlibraries-compose-m3 = { group = "com.mikepenz", name = "aboutlibraries-com
 bouncycastle-provider = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 sqlcipher = { group = "net.zetetic", name = "android-database-sqlcipher", version.ref = "sqlcipher" }
+aws-android-sdk-s3 = { group = "com.amazonaws", name = "aws-android-sdk-s3", version.ref = "awsAndroidS3" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

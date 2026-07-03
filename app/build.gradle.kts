@@ -74,6 +74,10 @@ android {
         }
     }
 
+    androidResources {
+        localeFilters += listOf("en", "ru")
+    }
+
     signingConfigs {
         create("release") {
             storeFile     = localProps["KEYSTORE_PATH"]?.let { rootProject.file(it as String) }
@@ -180,6 +184,9 @@ dependencies {
     // Media
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
 
@@ -200,6 +207,7 @@ dependencies {
     // Utilities
     implementation(libs.timber)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.aws.android.sdk.s3)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

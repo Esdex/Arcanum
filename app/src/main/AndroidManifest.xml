@@ -14,9 +14,12 @@
     <!-- Services -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- USB host (for USB container support — future) -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
 
     <application
         android:name=".ArcanumApp"
@@ -27,6 +30,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:localeConfig="@xml/locales_config"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Arcanum">
@@ -43,6 +47,16 @@
 
         <service
             android:name=".arcanum.containers.service.ChangeKeyfileService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".arcanum.containers.service.ExpandVolumeService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".arcanum.backup.BackupService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
@@ -104,6 +118,119 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivitySystem"
+            android:targetActivity=".MainActivity"
+            android:label="@string/app_name_system"
+            android:icon="@mipmap/ic_launcher_system"
+            android:roundIcon="@mipmap/ic_launcher_system_round"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityMail"
+            android:targetActivity=".MainActivity"
+            android:label="@string/app_name_mail"
+            android:icon="@mipmap/ic_launcher_mail"
+            android:roundIcon="@mipmap/ic_launcher_mail_round"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityFlashlight"
+            android:targetActivity=".MainActivity"
+            android:label="@string/app_name_flashlight"
+            android:icon="@mipmap/ic_launcher_flashlight"
+            android:roundIcon="@mipmap/ic_launcher_flashlight_round"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityTools"
+            android:targetActivity=".MainActivity"
+            android:label="@string/app_name_tools"
+            android:icon="@mipmap/ic_launcher_tools"
+            android:roundIcon="@mipmap/ic_launcher_tools_round"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivitySystemTools"
+            android:targetActivity=".MainActivity"
+            android:label="@string/app_name_system_tools"
+            android:icon="@mipmap/ic_launcher_system_tools"
+            android:roundIcon="@mipmap/ic_launcher_system_tools_round"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityTaskManager"
+            android:targetActivity=".MainActivity"
+            android:label="@string/app_name_task_manager"
+            android:icon="@mipmap/ic_launcher_task_manager"
+            android:roundIcon="@mipmap/ic_launcher_task_manager_round"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityTimer"
+            android:targetActivity=".MainActivity"
+            android:label="@string/app_name_timer"
+            android:icon="@mipmap/ic_launcher_timer"
+            android:roundIcon="@mipmap/ic_launcher_timer_round"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityStopwatch"
+            android:targetActivity=".MainActivity"
+            android:label="@string/app_name_stopwatch"
+            android:icon="@mipmap/ic_launcher_stopwatch"
+            android:roundIcon="@mipmap/ic_launcher_stopwatch_round"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
     </application>
 
 </manifest>

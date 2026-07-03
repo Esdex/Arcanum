@@ -1,7 +1,12 @@
 package zip.arcanum.settings
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,18 +27,68 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Alarm
+import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.BatteryFull
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.Business
+import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.DirectionsCar
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.FitnessCenter
+import androidx.compose.material.icons.outlined.Flight
+import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.LocalHospital
+import androidx.compose.material.icons.outlined.LocalShipping
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Notes
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.QrCode
+import androidx.compose.material.icons.outlined.Restaurant
+import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.SportsSoccer
+import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Stars
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material.icons.outlined.Warning
+import androidx.compose.material.icons.outlined.WbSunny
+import androidx.compose.material.icons.outlined.Wifi
+import androidx.compose.material.icons.outlined.Work
+import androidx.compose.material.icons.outlined.Build as BuildIcon
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -100,6 +155,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.fragment.app.FragmentActivity
@@ -122,9 +178,11 @@ import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LocalCafe
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.Switch
@@ -147,6 +205,8 @@ import zip.arcanum.core.components.SettingsRow
 import zip.arcanum.core.components.SettingsSwitch
 import zip.arcanum.core.components.UpgradeOverlay
 import zip.arcanum.core.database.entities.ContainerEntity
+import zip.arcanum.core.security.CustomDisguiseIcon
+import zip.arcanum.core.security.DisguiseProfile
 import zip.arcanum.core.security.VaultPanicAction
 import zip.arcanum.core.theme.ArcanumHazeStyle
 import zip.arcanum.core.theme.LocalAmoledMode
@@ -154,33 +214,27 @@ import zip.arcanum.core.theme.LocalDarkMode
 import zip.arcanum.core.theme.LocalDynamicColor
 import zip.arcanum.core.theme.ThemeMode
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
+import androidx.core.content.ContextCompat
 import androidx.core.os.LocaleListCompat
+import zip.arcanum.core.security.IntruderCapture
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-private data class AppLanguage(val tag: String, val nativeName: String)
+private data class AppLanguage(val tag: String, @StringRes val nameRes: Int?)
 
 private val SUPPORTED_LANGUAGES = listOf(
-    AppLanguage("",      "System default"),
-    AppLanguage("en",    "English"),
-    AppLanguage("de",    "Deutsch"),
-    AppLanguage("es",    "Español"),
-    AppLanguage("fr",    "Français"),
-    AppLanguage("it",    "Italiano"),
-    AppLanguage("ja",    "日本語"),
-    AppLanguage("ko",    "한국어"),
-    AppLanguage("pl",    "Polski"),
-    AppLanguage("pt",    "Português"),
-    AppLanguage("ru",    "Русский"),
-    AppLanguage("tr",    "Türkçe"),
-    AppLanguage("uk",    "Українська"),
-    AppLanguage("zh-CN", "简体中文"),
-    AppLanguage("zh-TW", "繁體中文")
+    AppLanguage("",      null),
+    AppLanguage("en",    R.string.language_name_english),
+    AppLanguage("ru",    R.string.language_name_russian)
 )
 
 private enum class SubScreen {
-    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, ABOUT, LICENSES, WHATS_NEW, PREMIUM, DEBUG
+    SECURITY, CHANGE_PIN, INTRUDER_CAPTURES, PANIC_MODE, SET_PANIC_PIN, FILES, APPEARANCE, ABOUT, LICENSES, WHATS_NEW, PREMIUM, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -193,19 +247,30 @@ fun SettingsScreen(
 ) {
     var subScreen by remember { mutableStateOf<SubScreen?>(null) }
     LaunchedEffect(openWhatsNew) { if (openWhatsNew) subScreen = SubScreen.WHATS_NEW }
+    LaunchedEffect(subScreen) {
+        if (subScreen == SubScreen.SECURITY) viewModel.refreshIntruderCaptures()
+    }
     val autoLockEnabled         by viewModel.autoLockEnabled.collectAsState()
     val autoLockDelayIndex      by viewModel.autoLockDelayIndex.collectAsState()
     val themeMode               by viewModel.themeMode.collectAsState()
     val isAmoledGlass           by viewModel.isAmoledGlass.collectAsState()
     val isDynamicColor          by viewModel.isDynamicColor.collectAsState()
     val screenCaptureProtection by viewModel.screenCaptureProtection.collectAsState()
-    val disguiseApplied         by viewModel.disguiseApplied.collectAsState()
+    val deleteImportedFiles     by viewModel.deleteImportedFiles.collectAsState()
+    val deleteExportedFiles     by viewModel.deleteExportedFiles.collectAsState()
+    val hideFromRecents         by viewModel.hideFromRecents.collectAsState()
+    val biometricUnlockEnabled  by viewModel.biometricUnlockEnabled.collectAsState()
+    val intruderDetectionEnabled by viewModel.intruderDetectionEnabled.collectAsState()
+    val intruderCaptures        by viewModel.intruderCaptures.collectAsState()
+    val disguiseEnabled         by viewModel.disguiseEnabled.collectAsState()
+    val disguiseProfile         by viewModel.disguiseProfile.collectAsState()
     val debugMode               by viewModel.debugMode.collectAsState()
     val isPro                   by viewModel.isPro.collectAsState()
     BackHandler(enabled = subScreen != null) {
         subScreen = when (subScreen) {
             SubScreen.SET_PANIC_PIN -> SubScreen.PANIC_MODE
             SubScreen.CHANGE_PIN    -> SubScreen.SECURITY
+            SubScreen.INTRUDER_CAPTURES -> SubScreen.SECURITY
             SubScreen.LICENSES      -> SubScreen.ABOUT
             SubScreen.WHATS_NEW     -> SubScreen.ABOUT
             else                    -> null
@@ -233,7 +298,21 @@ fun SettingsScreen(
                 autoLockDelayIndex    = autoLockDelayIndex,
                 onAutoLockDelayChange = { viewModel.setAutoLockDelayIndex(it) },
                 screenCaptureProtection = screenCaptureProtection,
-                disguiseApplied       = disguiseApplied,
+                hideFromRecents       = hideFromRecents,
+                onHideFromRecentsChange = { viewModel.setHideFromRecents(it) },
+                biometricUnlockEnabled = biometricUnlockEnabled,
+                onBiometricUnlockEnabledChange = { viewModel.setBiometricUnlockEnabled(it) },
+                intruderDetectionEnabled = intruderDetectionEnabled,
+                intruderCaptureCount = intruderCaptures.size,
+                onIntruderDetectionChange = { viewModel.setIntruderDetectionEnabled(it) },
+                onViewIntruderCaptures = {
+                    viewModel.refreshIntruderCaptures()
+                    subScreen = SubScreen.INTRUDER_CAPTURES
+                },
+                disguiseEnabled       = disguiseEnabled,
+                onDisguiseEnabledChange = { viewModel.setDisguiseEnabled(it) },
+                disguiseProfile       = disguiseProfile,
+                onApplyDisguiseProfile = { viewModel.applyDisguiseProfile(it) },
                 onBack                = { subScreen = null },
                 onChangePin           = { subScreen = SubScreen.CHANGE_PIN },
                 viewModel             = viewModel
@@ -260,7 +339,21 @@ fun SettingsScreen(
                 onDynamicColor = { viewModel.setDynamicColor(it) },
                 onBack         = { subScreen = null }
             )
+            SubScreen.FILES -> FileSettingsSubScreen(
+                deleteImportedFiles = deleteImportedFiles,
+                deleteExportedFiles = deleteExportedFiles,
+                onDeleteImportedChange = { viewModel.setDeleteImportedFiles(it) },
+                onDeleteExportedChange = { viewModel.setDeleteExportedFiles(it) },
+                onBack = { subScreen = null }
+            )
             SubScreen.CHANGE_PIN -> ChangePinScreen(onBack = { subScreen = null })
+            SubScreen.INTRUDER_CAPTURES -> IntruderCapturesSubScreen(
+                captures = intruderCaptures,
+                onBack = { subScreen = SubScreen.SECURITY },
+                onDelete = viewModel::deleteIntruderCapture,
+                onDeleteAll = viewModel::deleteAllIntruderCaptures,
+                onRefresh = viewModel::refreshIntruderCaptures
+            )
             SubScreen.ABOUT     -> AboutSubScreen(
                 onBack          = { subScreen = null },
                 onLicenses      = { subScreen = SubScreen.LICENSES },
@@ -343,6 +436,14 @@ private fun MainSettingsScreen(
                 rawColor  = Color(0xFF673AB7),
                 isDynamic = isDynamic,
                 onClick   = { onNavigate(SubScreen.APPEARANCE) }
+            )
+            SettingsCard(
+                title     = stringResource(R.string.settings_card_files),
+                subtitle  = stringResource(R.string.settings_card_files_desc),
+                icon      = Icons.Outlined.Folder,
+                rawColor  = Color(0xFF00897B),
+                isDynamic = isDynamic,
+                onClick   = { onNavigate(SubScreen.FILES) }
             )
             SettingsCard(
                 title     = stringResource(R.string.settings_card_about),
@@ -550,13 +651,33 @@ private fun SecuritySubScreen(
     autoLockDelayIndex: Int,
     onAutoLockDelayChange: (Int) -> Unit,
     screenCaptureProtection: Boolean,
-    disguiseApplied: Boolean,
+    hideFromRecents: Boolean,
+    onHideFromRecentsChange: (Boolean) -> Unit,
+    biometricUnlockEnabled: Boolean,
+    onBiometricUnlockEnabledChange: (Boolean) -> Unit,
+    intruderDetectionEnabled: Boolean,
+    intruderCaptureCount: Int,
+    onIntruderDetectionChange: (Boolean) -> Unit,
+    onViewIntruderCaptures: () -> Unit,
+    disguiseEnabled: Boolean,
+    onDisguiseEnabledChange: (Boolean) -> Unit,
+    disguiseProfile: DisguiseProfile,
+    onApplyDisguiseProfile: (DisguiseProfile) -> Unit,
     onBack: () -> Unit,
     onChangePin: () -> Unit,
     viewModel: SettingsViewModel
 ) {
-    val context     = LocalContext.current
     var showWarning by remember { mutableStateOf(false) }
+    var localDisguiseEnabled by remember(disguiseEnabled) { mutableStateOf(disguiseEnabled) }
+    var pendingDisguiseProfile by remember(disguiseEnabled, disguiseProfile) {
+        mutableStateOf<DisguiseProfile?>(null)
+    }
+    val context = LocalContext.current
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        onIntruderDetectionChange(granted)
+    }
 
     SubScreenScaffold(title = stringResource(R.string.settings_security_title), onBack = onBack) { innerPadding ->
         Column(
@@ -618,6 +739,39 @@ private fun SecuritySubScreen(
                     }
                 }
                 SettingsSwitch(
+                    title           = stringResource(R.string.settings_security_hide_recents),
+                    subtitle        = stringResource(R.string.settings_security_hide_recents_desc),
+                    checked         = hideFromRecents,
+                    onCheckedChange = onHideFromRecentsChange
+                )
+                SettingsSwitch(
+                    title           = stringResource(R.string.settings_security_biometric_unlock),
+                    subtitle        = stringResource(R.string.settings_security_biometric_unlock_desc),
+                    checked         = biometricUnlockEnabled,
+                    onCheckedChange = onBiometricUnlockEnabledChange
+                )
+                SettingsSwitch(
+                    title           = stringResource(R.string.settings_security_intruder_detection),
+                    subtitle        = stringResource(R.string.settings_security_intruder_detection_desc),
+                    checked         = intruderDetectionEnabled,
+                    onCheckedChange = { enabled ->
+                        if (!enabled) {
+                            onIntruderDetectionChange(false)
+                        } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            onIntruderDetectionChange(true)
+                        } else {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                    }
+                )
+                AnimatedVisibility(visible = intruderCaptureCount > 0) {
+                    SettingsRow(
+                        title = stringResource(R.string.settings_security_intruder_view, intruderCaptureCount),
+                        value = stringResource(R.string.settings_security_intruder_view_action),
+                        onClick = onViewIntruderCaptures
+                    )
+                }
+                SettingsSwitch(
                     title           = stringResource(R.string.settings_security_screen_capture),
                     subtitle        = stringResource(R.string.settings_security_screen_capture_desc),
                     checked         = screenCaptureProtection,
@@ -626,25 +780,40 @@ private fun SecuritySubScreen(
                         else viewModel.setScreenCaptureProtection(true)
                     }
                 )
-                val disguiseToast = stringResource(R.string.settings_security_disguise_toast)
-                Box {
-                    SettingsSwitch(
-                        title           = stringResource(R.string.settings_security_disguise_title),
-                        subtitle        = stringResource(R.string.settings_security_disguise_desc),
-                        checked         = disguiseApplied,
-                        enabled         = !disguiseApplied,
-                        onCheckedChange = { viewModel.requestDisguise() }
-                    )
-                    if (disguiseApplied) {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication        = null
-                                ) {
-                                    Toast.makeText(context, disguiseToast, Toast.LENGTH_SHORT).show()
-                                }
+                SettingsSwitch(
+                    title           = stringResource(R.string.settings_security_disguise_title),
+                    subtitle        = stringResource(R.string.settings_security_disguise_desc),
+                    checked         = localDisguiseEnabled,
+                    onCheckedChange = { enabled ->
+                        localDisguiseEnabled = enabled
+                        pendingDisguiseProfile = null
+                        if (!enabled && disguiseEnabled) {
+                            onDisguiseEnabledChange(false)
+                        }
+                    }
+                )
+                AnimatedVisibility(visible = localDisguiseEnabled) {
+                    Column {
+                        DisguiseProfilePicker(
+                            appliedProfile = if (disguiseEnabled) disguiseProfile else null,
+                            pendingProfile = pendingDisguiseProfile,
+                            onPendingProfileChange = { pendingDisguiseProfile = it },
+                            onApply = { profile ->
+                                onApplyDisguiseProfile(profile)
+                                localDisguiseEnabled = true
+                                pendingDisguiseProfile = null
+                            }
+                        )
+                        val selectedForHint = pendingDisguiseProfile ?: if (disguiseEnabled) disguiseProfile else null
+                        Text(
+                            text = if (selectedForHint == null) {
+                                stringResource(R.string.settings_security_disguise_select_required)
+                            } else {
+                                stringResource(R.string.settings_security_disguise_hint)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
                 }
@@ -658,6 +827,457 @@ private fun SecuritySubScreen(
             onDismiss   = { showWarning = false },
             onConfirmed = { viewModel.setScreenCaptureProtection(false); showWarning = false }
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun IntruderCapturesSubScreen(
+    captures: List<IntruderCapture>,
+    onBack: () -> Unit,
+    onDelete: (IntruderCapture) -> Unit,
+    onDeleteAll: () -> Unit,
+    onRefresh: () -> Unit
+) {
+    var preview by remember { mutableStateOf<IntruderCapture?>(null) }
+    var confirmDeleteAll by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) { onRefresh() }
+
+    SubScreenScaffold(title = stringResource(R.string.settings_intruder_gallery_title), onBack = onBack) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = innerPadding.calculateTopPadding(), bottom = innerPadding.calculateBottomPadding())
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (captures.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.settings_intruder_gallery_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 24.dp)
+                )
+            } else {
+                OutlinedButton(
+                    onClick = { confirmDeleteAll = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.settings_intruder_delete_all))
+                }
+                captures.forEach { capture ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        tonalElevation = 1.dp,
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { preview = capture }
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            AsyncImage(
+                                model = capture.file,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = formatIntruderCaptureTime(capture.timestampMillis),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = capture.file.name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            IconButton(onClick = { onDelete(capture) }) {
+                                Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.common_delete))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    preview?.let { capture ->
+        Dialog(onDismissRequest = { preview = null }) {
+            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    AsyncImage(
+                        model = capture.file,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(420.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(formatIntruderCaptureTime(capture.timestampMillis), style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = { preview = null }) { Text(stringResource(R.string.common_done)) }
+                }
+            }
+        }
+    }
+
+    if (confirmDeleteAll) {
+        AppDialog(
+            onDismissRequest = { confirmDeleteAll = false },
+            title = { Text(stringResource(R.string.settings_intruder_delete_all_title)) },
+            text = { Text(stringResource(R.string.common_this_cannot_be_undone)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDeleteAll = false
+                    onDeleteAll()
+                }) { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteAll = false }) { Text(stringResource(R.string.common_cancel)) }
+            }
+        )
+    }
+}
+
+private fun formatIntruderCaptureTime(timestampMillis: Long): String =
+    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(timestampMillis))
+
+@Composable
+private fun DisguiseProfilePicker(
+    appliedProfile: DisguiseProfile?,
+    pendingProfile: DisguiseProfile?,
+    onPendingProfileChange: (DisguiseProfile) -> Unit,
+    onApply: (DisguiseProfile) -> Unit
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text       = stringResource(R.string.settings_security_disguise_profile),
+            style      = MaterialTheme.typography.labelSmall,
+            color      = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(8.dp))
+        DisguiseProfile.selectableEntries.chunked(2).forEach { rowProfiles ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rowProfiles.forEach { profile ->
+                    val selected = profile == appliedProfile && pendingProfile == null
+                    val pending = profile == pendingProfile
+                    val profileName = stringResource(profile.labelRes)
+                    val profileColor = disguiseProfileColor(profile)
+                    Card(
+                        onClick = { onPendingProfileChange(profile) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                             else if (pending) MaterialTheme.colorScheme.secondaryContainer
+                                             else MaterialTheme.colorScheme.surfaceContainerHigh
+                        ),
+                        border = when {
+                            selected -> BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+                            pending -> BorderStroke(1.dp, MaterialTheme.colorScheme.secondary)
+                            else -> null
+                        },
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                        modifier = Modifier.weight(1f).height(112.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(profileColor),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(profile.previewIconRes),
+                                    contentDescription = null,
+                                    tint = Color.Unspecified,
+                                    modifier = Modifier.size(30.dp)
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = profileName,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else if (pending) MaterialTheme.colorScheme.onSecondaryContainer
+                                        else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+                if (rowProfiles.size == 1) Spacer(Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
+        pendingProfile?.let { profile ->
+            DisguiseProfileInstruction(
+                profile = profile,
+                isCurrent = profile == appliedProfile,
+                onApply = {
+                    if (profile != appliedProfile) onApply(profile)
+                }
+            )
+        }
+    }
+}
+
+private val CUSTOM_DISGUISE_COLORS = listOf(
+    0xFF455A64.toInt(),
+    0xFF1565C0.toInt(),
+    0xFF00695C.toInt(),
+    0xFF2E7D32.toInt(),
+    0xFFF9A825.toInt(),
+    0xFFC62828.toInt(),
+    0xFF6A1B9A.toInt(),
+    0xFF3949AB.toInt(),
+    0xFF546E7A.toInt(),
+    0xFF3E2723.toInt()
+)
+
+@Composable
+private fun CustomDisguiseEditor(
+    name: String,
+    onNameChange: (String) -> Unit,
+    icon: CustomDisguiseIcon,
+    onIconChange: (CustomDisguiseIcon) -> Unit,
+    color: Int,
+    onColorChange: (Int) -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.settings_security_custom_disguise_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedTextField(
+                value = name,
+                onValueChange = { onNameChange(it.take(32)) },
+                label = { Text(stringResource(R.string.settings_security_custom_disguise_name)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Text(
+                text = stringResource(R.string.settings_security_custom_disguise_color),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            CUSTOM_DISGUISE_COLORS.chunked(5).forEach { rowColors ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rowColors.forEach { option ->
+                        val selected = option == color
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(option))
+                                .border(
+                                    width = if (selected) 3.dp else 1.dp,
+                                    color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .clickable { onColorChange(option) }
+                        )
+                    }
+                    repeat(5 - rowColors.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+
+            Text(
+                text = stringResource(R.string.settings_security_custom_disguise_icon),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            CustomDisguiseIcon.entries.chunked(4).forEach { rowIcons ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rowIcons.forEach { option ->
+                        val selected = option == icon
+                        Card(
+                            onClick = { onIconChange(option) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                                 else MaterialTheme.colorScheme.surfaceContainer
+                            ),
+                            border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                            modifier = Modifier.weight(1f).height(54.dp)
+                        ) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = customIconVector(option),
+                                    contentDescription = option.name,
+                                    tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+                    }
+                    repeat(4 - rowIcons.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+private fun customIconVector(icon: CustomDisguiseIcon): ImageVector = when (icon) {
+    CustomDisguiseIcon.APPS -> Icons.Outlined.Apps
+    CustomDisguiseIcon.ACCOUNT -> Icons.Outlined.AccountCircle
+    CustomDisguiseIcon.ALARM -> Icons.Outlined.Alarm
+    CustomDisguiseIcon.BRIEFCASE -> Icons.Outlined.Work
+    CustomDisguiseIcon.BUILD -> Icons.Outlined.BuildIcon
+    CustomDisguiseIcon.BUSINESS -> Icons.Outlined.Business
+    CustomDisguiseIcon.CALENDAR -> Icons.Outlined.CalendarToday
+    CustomDisguiseIcon.CAMERA -> Icons.Outlined.PhotoCamera
+    CustomDisguiseIcon.CAR -> Icons.Outlined.DirectionsCar
+    CustomDisguiseIcon.CLOUD -> Icons.Outlined.Cloud
+    CustomDisguiseIcon.COMPUTER -> Icons.Outlined.Computer
+    CustomDisguiseIcon.EMAIL -> Icons.Outlined.Email
+    CustomDisguiseIcon.FAVORITE -> Icons.Outlined.Favorite
+    CustomDisguiseIcon.FITNESS -> Icons.Outlined.FitnessCenter
+    CustomDisguiseIcon.FLIGHT -> Icons.Outlined.Flight
+    CustomDisguiseIcon.HOME -> Icons.Outlined.Home
+    CustomDisguiseIcon.IMAGE -> Icons.Outlined.Image
+    CustomDisguiseIcon.KEY -> Icons.Outlined.VpnKey
+    CustomDisguiseIcon.MAP -> Icons.Outlined.Map
+    CustomDisguiseIcon.MONEY -> Icons.Outlined.AttachMoney
+    CustomDisguiseIcon.MUSIC -> Icons.Outlined.MusicNote
+    CustomDisguiseIcon.NOTIFICATIONS -> Icons.Outlined.Notifications
+    CustomDisguiseIcon.PHONE -> Icons.Outlined.Phone
+    CustomDisguiseIcon.PUBLIC -> Icons.Outlined.Public
+    CustomDisguiseIcon.SCHOOL -> Icons.Outlined.School
+    CustomDisguiseIcon.SEARCH -> Icons.Outlined.Search
+    CustomDisguiseIcon.SETTINGS -> Icons.Outlined.Settings
+    CustomDisguiseIcon.SHOPPING -> Icons.Outlined.ShoppingCart
+    CustomDisguiseIcon.SPORTS -> Icons.Outlined.SportsSoccer
+    CustomDisguiseIcon.STAR -> Icons.Outlined.Stars
+    CustomDisguiseIcon.TIMER -> Icons.Outlined.Timer
+    CustomDisguiseIcon.WEATHER -> Icons.Outlined.WbSunny
+    CustomDisguiseIcon.BATTERY -> Icons.Outlined.BatteryFull
+    CustomDisguiseIcon.WIFI -> Icons.Outlined.Wifi
+    CustomDisguiseIcon.CREDIT_CARD -> Icons.Outlined.CreditCard
+    CustomDisguiseIcon.RESTAURANT -> Icons.Outlined.Restaurant
+    CustomDisguiseIcon.HEALTH -> Icons.Outlined.LocalHospital
+    CustomDisguiseIcon.BOOK -> Icons.Outlined.MenuBook
+    CustomDisguiseIcon.MOVIE -> Icons.Outlined.Movie
+    CustomDisguiseIcon.GAME -> Icons.Outlined.SportsEsports
+    CustomDisguiseIcon.TRAVEL -> Icons.Outlined.TravelExplore
+    CustomDisguiseIcon.SHIPPING -> Icons.Outlined.LocalShipping
+    CustomDisguiseIcon.LIGHT -> Icons.Outlined.Lightbulb
+    CustomDisguiseIcon.STORAGE -> Icons.Outlined.Storage
+    CustomDisguiseIcon.DASHBOARD -> Icons.Outlined.Dashboard
+    CustomDisguiseIcon.EXPLORE -> Icons.Outlined.Explore
+    CustomDisguiseIcon.NOTE -> Icons.Outlined.Notes
+    CustomDisguiseIcon.CALCULATOR -> Icons.Outlined.Calculate
+    CustomDisguiseIcon.SHIELD -> Icons.Outlined.Shield
+    CustomDisguiseIcon.HEADPHONES -> Icons.Outlined.Headphones
+    CustomDisguiseIcon.NEWS -> Icons.Outlined.Article
+    CustomDisguiseIcon.QR -> Icons.Outlined.QrCode
+}
+
+private fun disguiseProfileColor(profile: DisguiseProfile): Color = when (profile) {
+    DisguiseProfile.CALCULATOR -> Color(0xFF37474F)
+    DisguiseProfile.SYSTEM,
+    DisguiseProfile.MAIL,
+    DisguiseProfile.TOOLS,
+    DisguiseProfile.SYSTEM_TOOLS,
+    DisguiseProfile.TASK_MANAGER -> Color(0xFF315A68)
+    DisguiseProfile.FLASHLIGHT -> Color(0xFF243447)
+    DisguiseProfile.TIMER -> Color(0xFF006D77)
+    DisguiseProfile.STOPWATCH -> Color(0xFF6D4CBE)
+}
+
+@Composable
+private fun DisguiseProfileInstruction(
+    profile: DisguiseProfile,
+    isCurrent: Boolean,
+    onApply: () -> Unit
+) {
+    val profileName = stringResource(profile.labelRes)
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Text(
+                text = stringResource(R.string.settings_security_disguise_instruction_title, profileName),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = stringResource(
+                    when (profile) {
+                        DisguiseProfile.CALCULATOR -> R.string.settings_security_disguise_instruction_calculator
+                        else -> R.string.settings_security_disguise_instruction_generic
+                    },
+                    profileName
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.settings_security_disguise_apply_required),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = onApply,
+                enabled = !isCurrent,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (isCurrent) stringResource(R.string.settings_security_disguise_current)
+                    else stringResource(R.string.settings_security_disguise_apply)
+                )
+            }
+        }
     }
 }
 
@@ -1072,6 +1692,40 @@ private fun VaultPanicRow(
     }
 }
 
+@Composable
+private fun FileSettingsSubScreen(
+    deleteImportedFiles: Boolean,
+    deleteExportedFiles: Boolean,
+    onDeleteImportedChange: (Boolean) -> Unit,
+    onDeleteExportedChange: (Boolean) -> Unit,
+    onBack: () -> Unit
+) {
+    SubScreenScaffold(title = stringResource(R.string.settings_files_title), onBack = onBack) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = innerPadding.calculateTopPadding(), bottom = innerPadding.calculateBottomPadding())
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 8.dp)
+        ) {
+            SettingsGroup {
+                SettingsSwitch(
+                    title           = stringResource(R.string.settings_files_delete_imported),
+                    subtitle        = stringResource(R.string.settings_files_delete_imported_desc),
+                    checked         = deleteImportedFiles,
+                    onCheckedChange = onDeleteImportedChange
+                )
+                SettingsSwitch(
+                    title           = stringResource(R.string.settings_files_delete_exported),
+                    subtitle        = stringResource(R.string.settings_files_delete_exported_desc),
+                    checked         = deleteExportedFiles,
+                    onCheckedChange = onDeleteExportedChange
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppearanceSubScreen(
@@ -1103,8 +1757,8 @@ private fun AppearanceSubScreen(
         if (locales.isEmpty) "" else locales[0]?.toLanguageTag() ?: ""
     }
     val currentLanguageName = remember(currentLocaleTag) {
-        SUPPORTED_LANGUAGES.find { it.tag == currentLocaleTag }?.nativeName ?: ""
-    }.ifEmpty { systemDefault }
+        SUPPORTED_LANGUAGES.find { it.tag == currentLocaleTag }?.nameRes
+    }?.let { stringResource(it) }.orEmpty().ifEmpty { systemDefault }
 
     SubScreenScaffold(title = stringResource(R.string.settings_appearance_title), onBack = onBack) { innerPadding ->
         Column(
@@ -1232,7 +1886,7 @@ private fun LanguagePickerSheet(
         )
         Column(Modifier.verticalScroll(rememberScrollState())) {
             SUPPORTED_LANGUAGES.forEach { lang ->
-                val label = if (lang.tag.isEmpty()) systemLabel else lang.nativeName
+                val label = if (lang.tag.isEmpty()) systemLabel else lang.nameRes?.let { stringResource(it) }.orEmpty()
                 Row(
                     modifier          = Modifier
                         .fillMaxWidth()
@@ -1676,7 +2330,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text       = "Version ${BuildConfig.VERSION_NAME}",
+                        text       = stringResource(R.string.whats_new_version, BuildConfig.VERSION_NAME),
                         style      = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold
                     )
@@ -1698,48 +2352,48 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Stars,
                     color    = Color(0xFFFFC107),
-                    title    = "Password manager autofill",
-                    subtitle = "Password fields now show suggestions from your autofill service (e.g. KeePassDX). Selecting a credential automatically fills the Confirm Password field too."
+                    title    = stringResource(R.string.settings_whats_new_autofill_title),
+                    subtitle = stringResource(R.string.settings_whats_new_autofill_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
                     color    = Color(0xFF22C55E),
-                    title    = "Keyfiles never touch disk",
-                    subtitle = "Keyfiles are now read directly into memory and never written to the app's cache. Previous builds left a temporary plaintext copy on disk during mounting."
+                    title    = stringResource(R.string.settings_whats_new_keyfiles_disk_title),
+                    subtitle = stringResource(R.string.settings_whats_new_keyfiles_disk_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Stars,
                     color    = Color(0xFFFFC107),
-                    title    = "Biometric unlock remembers keyfiles",
-                    subtitle = "Containers protected with a keyfile can now be unlocked with biometrics. If a keyfile is later moved or deleted, a clear error screen guides you back to manual mounting."
+                    title    = stringResource(R.string.settings_whats_new_biometric_keyfiles_title),
+                    subtitle = stringResource(R.string.settings_whats_new_biometric_keyfiles_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Refresh,
                     color    = Color(0xFF3B82F6),
-                    title    = "Biometric credentials auto-update",
-                    subtitle = "Manually mounting a container with the biometric toggle on now refreshes the saved credentials — useful when changing your password or keyfiles."
+                    title    = stringResource(R.string.settings_whats_new_biometric_update_title),
+                    subtitle = stringResource(R.string.settings_whats_new_biometric_update_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Stars,
                     color    = Color(0xFFFFC107),
-                    title    = "Hidden volume protection confirmed",
-                    subtitle = "When mounting an outer volume with hidden volume protection enabled, a confirmation screen now appears to confirm that protection is active."
+                    title    = stringResource(R.string.settings_whats_new_hidden_protection_title),
+                    subtitle = stringResource(R.string.settings_whats_new_hidden_protection_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.BugReport,
                     color    = Color(0xFFEF4444),
-                    title    = "Fix: container creation on 32-bit devices",
-                    subtitle = "Creating containers on arm32 (armeabi-v7a) devices produced a broken, unreadable container. The XTS encryption layer silently operated as 32-bit due to a type definition issue, corrupting the header."
+                    title    = stringResource(R.string.settings_whats_new_arm32_fix_title),
+                    subtitle = stringResource(R.string.settings_whats_new_arm32_fix_desc)
                 )
             }
 
@@ -1752,7 +2406,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                 ) {
                     HorizontalDivider(modifier = Modifier.weight(1f))
                     Text(
-                        text  = "Version 1.1.0",
+                        text  = stringResource(R.string.whats_new_version, "1.1.0"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1764,40 +2418,40 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Stars,
                     color    = Color(0xFFFFC107),
-                    title    = "Live mount log",
-                    subtitle = "Enable in debug settings to watch every cipher and PRF combination tried in real time as your container is being unlocked."
+                    title    = stringResource(R.string.settings_whats_new_live_log_title),
+                    subtitle = stringResource(R.string.settings_whats_new_live_log_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Stars,
                     color    = Color(0xFFFFC107),
-                    title    = "Update notifications",
-                    subtitle = "A banner appears the first time you open the app after an update. Tap it to open the What's New screen."
+                    title    = stringResource(R.string.settings_whats_new_update_notifications_title),
+                    subtitle = stringResource(R.string.settings_whats_new_update_notifications_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Stars,
                     color    = Color(0xFFFFC107),
-                    title    = "Container rename",
-                    subtitle = "Rename your containers directly from the container config sheet."
+                    title    = stringResource(R.string.settings_whats_new_rename_title),
+                    subtitle = stringResource(R.string.settings_whats_new_rename_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Refresh,
                     color    = Color(0xFF3B82F6),
-                    title    = "Smoother UI",
-                    subtitle = "Tab switches are now animated, and password fields no longer show IME suggestions for better privacy."
+                    title    = stringResource(R.string.settings_whats_new_smoother_ui_title),
+                    subtitle = stringResource(R.string.settings_whats_new_smoother_ui_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.BugReport,
                     color    = Color(0xFFEF4444),
-                    title    = "Bug fixes",
-                    subtitle = "• Containers with a custom PIM now open correctly — the iteration formula didn't match the VeraCrypt spec (#48)\n• Keyboard and text cursor now close when tapping the mount button\n• Swipe-dismissing the update banner no longer permanently marks it as seen\n• Biometric prompt now reappears correctly after the app auto-locks in the background"
+                    title    = stringResource(R.string.settings_whats_new_bug_fixes_title),
+                    subtitle = stringResource(R.string.settings_whats_new_bug_fixes_desc)
                 )
             }
 
@@ -1810,7 +2464,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                 ) {
                     HorizontalDivider(modifier = Modifier.weight(1f))
                     Text(
-                        text  = "Version 1.0.0",
+                        text  = stringResource(R.string.whats_new_version, "1.0.0"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1821,96 +2475,96 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
                     color    = Color(0xFF22C55E),
-                    title    = "Full VeraCrypt compatibility",
-                    subtitle = "Open containers created on Windows, macOS, or Linux — no conversion needed. AES, Twofish, Serpent and all cascades supported."
+                    title    = stringResource(R.string.settings_whats_new_veracrypt_title),
+                    subtitle = stringResource(R.string.settings_whats_new_veracrypt_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
                     color    = Color(0xFF22C55E),
-                    title    = "All hash algorithms",
-                    subtitle = "BLAKE2s-256, SHA-512, and Whirlpool — fully compatible with VeraCrypt 1.26+."
+                    title    = stringResource(R.string.settings_whats_new_hashes_title),
+                    subtitle = stringResource(R.string.settings_whats_new_hashes_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
                     color    = Color(0xFF22C55E),
-                    title    = "Hidden volumes",
-                    subtitle = "Two passwords, two independent datasets. Plausible deniability under coercion — mathematically impossible to prove the hidden volume exists."
+                    title    = stringResource(R.string.settings_whats_new_hidden_volumes_title),
+                    subtitle = stringResource(R.string.settings_whats_new_hidden_volumes_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
                     color    = Color(0xFF22C55E),
-                    title    = "Keyfile support",
-                    subtitle = "Add one or more keyfiles as a second authentication factor — required alongside the password to open the vault."
+                    title    = stringResource(R.string.settings_whats_new_keyfiles_title),
+                    subtitle = stringResource(R.string.settings_whats_new_keyfiles_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
                     color    = Color(0xFF22C55E),
-                    title    = "PIM support",
-                    subtitle = "Personal Iterations Multiplier for fine-tuned key derivation strength and unlock time."
+                    title    = stringResource(R.string.settings_whats_new_pim_title),
+                    subtitle = stringResource(R.string.settings_whats_new_pim_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
                     color    = Color(0xFF22C55E),
-                    title    = "Panic mode",
-                    subtitle = "Duress PIN silently wipes vaults, settings, and biometrics — timing-indistinguishable from a normal unlock."
+                    title    = stringResource(R.string.settings_whats_new_panic_title),
+                    subtitle = stringResource(R.string.settings_whats_new_panic_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Security,
                     color    = Color(0xFF22C55E),
-                    title    = "Calculator disguise",
-                    subtitle = "Arcanum looks like a regular calculator app. Your secret PIN is the only way in."
+                    title    = stringResource(R.string.settings_whats_new_calculator_title),
+                    subtitle = stringResource(R.string.settings_whats_new_calculator_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Stars,
                     color    = Color(0xFFFFC107),
-                    title    = "Biometric unlock",
-                    subtitle = "Save vault credentials to the hardware Keystore and unlock with fingerprint."
+                    title    = stringResource(R.string.settings_whats_new_biometric_title),
+                    subtitle = stringResource(R.string.settings_whats_new_biometric_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Stars,
                     color    = Color(0xFFFFC107),
-                    title    = "Encrypted gallery",
-                    subtitle = "Browse photos and videos directly inside mounted vaults without extracting them."
+                    title    = stringResource(R.string.settings_whats_new_gallery_title),
+                    subtitle = stringResource(R.string.settings_whats_new_gallery_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Stars,
                     color    = Color(0xFFFFC107),
-                    title    = "File manager",
-                    subtitle = "Import, export, copy, move, and manage files inside encrypted vaults."
+                    title    = stringResource(R.string.settings_whats_new_file_manager_title),
+                    subtitle = stringResource(R.string.settings_whats_new_file_manager_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Stars,
                     color    = Color(0xFFFFC107),
-                    title    = "Audio player",
-                    subtitle = "Stream audio from encrypted vaults without writing decrypted copies to disk."
+                    title    = stringResource(R.string.settings_whats_new_audio_title),
+                    subtitle = stringResource(R.string.settings_whats_new_audio_desc)
                 )
             }
             item {
                 WhatsNewEntry(
                     icon     = Icons.Outlined.Stars,
                     color    = Color(0xFFFFC107),
-                    title    = "AMOLED glass mode",
-                    subtitle = "Pure-black backgrounds with frosted-glass blur throughout the app."
+                    title    = stringResource(R.string.settings_whats_new_amoled_title),
+                    subtitle = stringResource(R.string.settings_whats_new_amoled_desc)
                 )
             }
         }
@@ -2619,4 +3273,3 @@ private fun AboutLinkCard(
         }
     }
 }
-

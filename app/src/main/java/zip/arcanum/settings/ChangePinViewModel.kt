@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import zip.arcanum.core.security.AppPasswordPolicy
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.security.PinResult
 import javax.inject.Inject
@@ -39,13 +40,17 @@ class ChangePinViewModel @Inject constructor(
         }
     }
 
+    fun setPin(value: String) {
+        _state.update { it.copy(pin = AppPasswordPolicy.sanitize(value), isError = false) }
+    }
+
     fun onBackspace() {
         _state.update { it.copy(pin = it.pin.dropLast(1), isError = false) }
     }
 
     fun advance() {
         val s = _state.value
-        if (s.pin.length < 4) return
+        if (!AppPasswordPolicy.isValid(s.pin)) return
         when (s.step) {
             Step.VERIFY_CURRENT -> {
                 viewModelScope.launch {

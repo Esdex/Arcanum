@@ -14,18 +14,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,6 +32,7 @@ import androidx.compose.material3.TopAppBar
 import zip.arcanum.core.components.AppDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,10 +60,7 @@ import zip.arcanum.arcanum.containers.ui.ContainerScreenViewModel
 import zip.arcanum.arcanum.containers.ui.VaultInfoScreen
 import zip.arcanum.arcanum.files.ui.FileManagerScreen
 import zip.arcanum.arcanum.files.ui.FileManagerViewModel
-import zip.arcanum.arcanum.gallery.ui.GalleryScreen
-import zip.arcanum.arcanum.gallery.ui.GalleryViewModel
 import zip.arcanum.core.components.LocalHazeState
-import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.navigation_components.BottomNavItem
 import zip.arcanum.core.navigation_components.FloatingBottomBar
 import zip.arcanum.core.notifications.InAppNotification
@@ -75,7 +68,6 @@ import zip.arcanum.core.notifications.InAppNotificationBanner
 import zip.arcanum.core.theme.LocalAmoledMode
 
 private val containerTabs = listOf(
-    BottomNavItem.ContainerGallery,
     BottomNavItem.ContainerFiles,
     BottomNavItem.ContainerInfo
 )
@@ -85,34 +77,39 @@ private val containerTabs = listOf(
 fun ContainerScreen(
     onBack: () -> Unit,
     onUnmountStart: (containerId: String) -> Unit = {},
-    onPhotoClick: (fileId: String) -> Unit = {},
-    onVideoClick: (fileId: String) -> Unit = {},
-    onAudioClick: (fileId: String) -> Unit = {},
     onAudioFileClick: (containerId: String, path: String, name: String, size: Long) -> Unit = { _, _, _, _ -> },
-    onMediaFileClick: (containerId: String, path: String, name: String, size: Long) -> Unit = { _, _, _, _ -> },
+    onMediaFileClick: (fileId: String) -> Unit = {},
+    onTextFileClick: (containerId: String, path: String, name: String) -> Unit = { _, _, _ -> },
     viewModel: ContainerScreenViewModel = hiltViewModel(),
-    galleryViewModel: GalleryViewModel = hiltViewModel(),
     fileManagerViewModel: FileManagerViewModel = hiltViewModel()
 ) {
     val container           by viewModel.container.collectAsState()
-    val galleryState        by galleryViewModel.uiState.collectAsState()
     val fileManagerState    by fileManagerViewModel.state.collectAsState()
     val isAmoled            = LocalAmoledMode.current
     val hazeState           = remember { HazeState() }
-    var selectedTab       by rememberSaveable { mutableStateOf(BottomNavItem.ContainerGallery.route) }
+    var selectedTab       by rememberSaveable { mutableStateOf(BottomNavItem.ContainerFiles.route) }
+    val activeTab = if (containerTabs.any { it.route == selectedTab }) {
+        selectedTab
+    } else {
+        BottomNavItem.ContainerFiles.route
+    }
     var notification        by remember { mutableStateOf<InAppNotification?>(null) }
     var showUnmountConfirm  by remember { mutableStateOf(false) }
 
     // Per-tab offset: 0f = center, 1f = off-screen right, -1f = off-screen left.
-    // Initialized so the default tab (Gallery) is at 0 and others wait off to the right.
+    // Initialized so the default tab (Files) is at 0 and others wait off to the right.
     val tabOffsets = remember {
         containerTabs.mapIndexed { i, tab ->
-            Animatable(if (tab.route == selectedTab) 0f else 1f)
+            Animatable(if (tab.route == activeTab) 0f else 1f)
         }
     }
     val tabAnimScope = rememberCoroutineScope()
 
-    val showBottomBar = !(selectedTab == BottomNavItem.ContainerFiles.route && fileManagerState.isSelectionMode)
+    LaunchedEffect(activeTab) {
+        if (selectedTab != activeTab) selectedTab = activeTab
+    }
+
+    val showBottomBar = !(activeTab == BottomNavItem.ContainerFiles.route && fileManagerState.isSelectionMode)
     val navBarPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     BackHandler { onBack() }
@@ -121,16 +118,7 @@ fun ContainerScreen(
         Scaffold(
             contentWindowInsets = WindowInsets(0),
             topBar = {
-                when (selectedTab) {
-                    BottomNavItem.ContainerGallery.route -> GalleryTopBar(
-                        isSearchActive = galleryState.isSearchActive,
-                        searchQuery    = galleryState.searchQuery,
-                        onBack         = onBack,
-                        onSearchToggle = { galleryViewModel.setSearchActive(!galleryState.isSearchActive) },
-                        onSearchChange = { galleryViewModel.setSearchQuery(it) },
-                        onSearchClose  = { galleryViewModel.setSearchActive(false) },
-                        onRescan       = { galleryViewModel.scanContainer(viewModel.containerId) }
-                    )
+                when (activeTab) {
                     BottomNavItem.ContainerFiles.route -> {} // FileManagerScreen owns its top bar
                     else -> TopAppBar(
                         title          = { Text(stringResource(R.string.nav_info)) },
@@ -159,7 +147,7 @@ fun ContainerScreen(
                         .hazeSource(hazeState)
                 ) {
                     containerTabs.forEachIndexed { index, tab ->
-                        val active = selectedTab == tab.route
+                        val active = activeTab == tab.route
                         val offset = tabOffsets[index].value
                         Box(
                             Modifier
@@ -173,19 +161,6 @@ fun ContainerScreen(
                                 }
                         ) {
                             when (tab) {
-                                BottomNavItem.ContainerGallery -> GalleryScreen(
-                                    containerId       = viewModel.containerId,
-                                    showTopBar        = false,
-                                    bottomPadding     = 60.dp + navBarPadding,
-                                    onMediaClick      = { file ->
-                                        when (file.fileType) {
-                                            MediaFileType.IMAGE -> onPhotoClick(file.id)
-                                            MediaFileType.VIDEO -> onVideoClick(file.id)
-                                            MediaFileType.AUDIO -> onAudioClick(file.id)
-                                        }
-                                    },
-                                    viewModel         = galleryViewModel
-                                )
                                 BottomNavItem.ContainerFiles -> FileManagerScreen(
                                     containerId      = viewModel.containerId,
                                     onBack           = onBack,
@@ -194,8 +169,9 @@ fun ContainerScreen(
                                     onAudioFileClick = { path, name, size ->
                                         onAudioFileClick(viewModel.containerId, path, name, size)
                                     },
-                                    onMediaFileClick = { path, name, size ->
-                                        onMediaFileClick(viewModel.containerId, path, name, size)
+                                    onMediaFileClick = onMediaFileClick,
+                                    onTextFileClick = { path, name ->
+                                        onTextFileClick(viewModel.containerId, path, name)
                                     },
                                     viewModel        = fileManagerViewModel
                                 )
@@ -222,12 +198,12 @@ fun ContainerScreen(
                 ) {
                     FloatingBottomBar(
                         items        = containerTabs,
-                        currentRoute = selectedTab,
+                        currentRoute = activeTab,
                         hazeState    = hazeState,
                         isAmoled     = isAmoled,
                         onItemClick = { item ->
                             val newIndex = containerTabs.indexOfFirst { it.route == item.route }
-                            val oldIndex = containerTabs.indexOfFirst { it.route == selectedTab }
+                            val oldIndex = containerTabs.indexOfFirst { it.route == activeTab }
                             if (newIndex != oldIndex) {
                                 val direction = if (newIndex > oldIndex) 1f else -1f
                                 tabAnimScope.launch {
@@ -277,66 +253,6 @@ fun ContainerScreen(
             )
         }
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun GalleryTopBar(
-    isSearchActive: Boolean,
-    searchQuery: String,
-    onBack: () -> Unit,
-    onSearchToggle: () -> Unit,
-    onSearchChange: (String) -> Unit,
-    onSearchClose: () -> Unit,
-    onRescan: () -> Unit
-) {
-    val isAmoled  = LocalAmoledMode.current
-    val hazeState = LocalHazeState.current
-    TopAppBar(
-        modifier       = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier,
-        colors         = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                         else TopAppBarDefaults.topAppBarColors(),
-        navigationIcon = { BackIconButton(onBack) },
-        title = {
-            if (isSearchActive) {
-                BasicTextField(
-                    value         = searchQuery,
-                    onValueChange = onSearchChange,
-                    singleLine    = true,
-                    textStyle     = MaterialTheme.typography.bodyLarge.copy(
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    modifier      = Modifier.fillMaxWidth(),
-                    decorationBox = { inner ->
-                        if (searchQuery.isEmpty()) {
-                            Text(
-                                stringResource(R.string.nav_gallery_search_placeholder),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        inner()
-                    }
-                )
-            } else {
-                Text(stringResource(R.string.nav_gallery))
-            }
-        },
-        actions = {
-            if (isSearchActive) {
-                IconButton(onClick = onSearchClose) {
-                    Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.nav_gallery_cd_close_search))
-                }
-            } else {
-                IconButton(onClick = onSearchToggle) {
-                    Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.nav_gallery_cd_search))
-                }
-                IconButton(onClick = onRescan) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = stringResource(R.string.nav_gallery_cd_rescan))
-                }
-            }
-        }
-    )
 }
 
 @Composable

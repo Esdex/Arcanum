@@ -8,6 +8,7 @@ import androidx.fragment.app.FragmentActivity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import zip.arcanum.R
 
 @Singleton
 class BiometricAuth @Inject constructor(
@@ -39,8 +40,8 @@ class BiometricAuth @Inject constructor(
             override fun onAuthenticationFailed() {}
         }
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Debug Mode")
-            .setSubtitle("Authenticate to access developer tools")
+            .setTitle(activity.getString(R.string.biometric_debug_title))
+            .setSubtitle(activity.getString(R.string.biometric_debug_subtitle))
             .setAllowedAuthenticators(
                 BiometricManager.Authenticators.BIOMETRIC_STRONG or
                 BiometricManager.Authenticators.DEVICE_CREDENTIAL
@@ -51,8 +52,8 @@ class BiometricAuth @Inject constructor(
 
     fun authenticate(
         activity: FragmentActivity,
-        title: String = "Biometric Authentication",
-        subtitle: String = "Confirm your identity to access Arcanum",
+        title: String = activity.getString(R.string.biometric_unlock_title),
+        subtitle: String = activity.getString(R.string.biometric_unlock_subtitle),
         onSuccess: () -> Unit,
         onError: (Int, CharSequence) -> Unit,
         onFailed: () -> Unit
@@ -67,7 +68,7 @@ class BiometricAuth @Inject constructor(
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
             .setSubtitle(subtitle)
-            .setNegativeButtonText("Use PIN")
+            .setNegativeButtonText(activity.getString(R.string.biometric_use_pin))
             .build()
 
         BiometricPrompt(activity, executor, callback).authenticate(promptInfo)

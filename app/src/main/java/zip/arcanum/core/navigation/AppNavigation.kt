@@ -40,6 +40,8 @@ import zip.arcanum.arcanum.containers.ui.UnmountAnimationOverlay
 import zip.arcanum.arcanum.containers.ui.VaultConfigScreen
 import zip.arcanum.arcanum.containers.ui.VaultScreen
 import zip.arcanum.arcanum.containers.ui.VaultViewModel
+import zip.arcanum.arcanum.backup.BackupScreen
+import zip.arcanum.arcanum.files.ui.TextEditorScreen
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerDirectScreen
 import zip.arcanum.arcanum.gallery.ui.MediaViewerDirectScreen
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerScreen
@@ -47,6 +49,7 @@ import zip.arcanum.arcanum.gallery.ui.MediaViewerScreen
 import zip.arcanum.arcanum.gallery.ui.VideoPlayerScreen
 import zip.arcanum.calculator.ui.CalculatorScreen
 import zip.arcanum.core.security.AppPreferences
+import zip.arcanum.core.security.DisguiseProfile
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.settings.SettingsViewModel
 import zip.arcanum.onboarding.OnboardingScreen
@@ -54,9 +57,11 @@ import zip.arcanum.settings.SettingsScreen
 import zip.arcanum.arcanum.containers.ui.ChangeKeyfileScreen
 import zip.arcanum.arcanum.containers.ui.ChangePasswordScreen
 import zip.arcanum.arcanum.containers.ui.CreateContainerScreen
+import zip.arcanum.arcanum.containers.ui.ExpandVolumeScreen
 import zip.arcanum.arcanum.containers.ui.MoveVaultScreen
 import zip.arcanum.setup.PinEntryScreen
 import zip.arcanum.setup.SetupPinScreen
+import zip.arcanum.setup.DisguiseUnlockScreen
 
 // 0=Immediately(1.5s grace) 1=30s 2=1m 3=2m 4=5m 5=10m 6=30m 7=1h
 fun autoLockDelayMillis(index: Int): Long = when (index) {
@@ -76,7 +81,8 @@ fun AppNavigation(pinManager: PinManager) {
     val isPinSet          by pinManager.isPinSetFlow.collectAsState()
     val navController      = rememberNavController()
     val settingsViewModel: SettingsViewModel = hiltViewModel()
-    val calculatorEnabled by settingsViewModel.calculatorEnabled.collectAsState()
+    val disguiseEnabled by settingsViewModel.disguiseEnabled.collectAsState()
+    val disguiseProfile by settingsViewModel.disguiseProfile.collectAsState()
 
     // Gate only on isPinSet — calculatorEnabled null means key absent, handled below.
     if (isPinSet == null) {
@@ -84,9 +90,11 @@ fun AppNavigation(pinManager: PinManager) {
         return
     }
 
-    // null = key absent → default false (PinEntry). Calculator opt-in only via DisguiseOverlay or Settings.
-    val useCalculator = calculatorEnabled ?: false
-    val lockScreenRoute = if (useCalculator) Screen.Calculator.route else Screen.PinEntry.route
+    val lockScreenRoute = when {
+        disguiseEnabled && disguiseProfile == DisguiseProfile.CALCULATOR -> Screen.Calculator.route
+        disguiseEnabled -> Screen.DisguiseUnlock.route
+        else -> Screen.PinEntry.route
+    }
 
     val startDestination = remember {
         if (isPinSet == true) lockScreenRoute else Screen.Onboarding.route
@@ -106,7 +114,7 @@ fun AppNavigation(pinManager: PinManager) {
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val lockedRoutes = remember(lockScreenRoute) {
-        setOf(Screen.Onboarding.route, Screen.SetupPin.route, Screen.Calculator.route, Screen.PinEntry.route)
+        setOf(Screen.Onboarding.route, Screen.SetupPin.route, Screen.Calculator.route, Screen.DisguiseUnlock.route, Screen.PinEntry.route)
     }
     val autoLockScope = rememberCoroutineScope()
     DisposableEffect(lifecycleOwner, autoLockEnabled, autoLockDelayIndex, lockScreenRoute) {
@@ -173,6 +181,22 @@ fun AppNavigation(pinManager: PinManager) {
         }
 
         composable(
+            route           = Screen.DisguiseUnlock.route,
+            enterTransition = { slideInHorizontally(tween(300)) { -it } },
+            exitTransition  = { slideOutHorizontally(tween(300)) { it } }
+        ) {
+            DisguiseUnlockScreen(
+                profile = disguiseProfile,
+                onUnlockRequested = {
+                    navController.navigate(Screen.PinEntry.route) {
+                        popUpTo(Screen.DisguiseUnlock.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+
+        composable(
             route           = Screen.Calculator.route,
             enterTransition = { slideInHorizontally(tween(300)) { -it } },
             exitTransition  = { slideOutHorizontally(tween(300)) { -it } }
@@ -230,6 +254,9 @@ fun AppNavigation(pinManager: PinManager) {
                 onVaultConfig = { containerId ->
                     navController.navigate(Screen.VaultConfig.buildRoute(containerId))
                 },
+                onOpenVault = { containerId ->
+                    navController.navigate(Screen.ContainerScreen.buildRoute(containerId))
+                },
                 onMountContainer = { containerId ->
                     navController.navigate(Screen.MountScreen.buildRoute(containerId))
                 },
@@ -280,7 +307,7 @@ fun AppNavigation(pinManager: PinManager) {
             )
         }
 
-        // ── Container screen (mounted vault with 3-tab bottom bar) ───────
+        // ── Container screen (mounted vault with Files + Info tabs) ──────
         composable(
             route     = Screen.ContainerScreen.route,
             arguments = listOf(navArgument(Screen.ContainerScreen.ARG) { type = NavType.StringType })
@@ -295,14 +322,14 @@ fun AppNavigation(pinManager: PinManager) {
                     unmountIconOffset    = null
                     showUnmountOverlay   = true
                 },
-                onPhotoClick       = { fileId -> navController.navigate(Screen.PhotoViewer.buildRoute(fileId)) },
-                onVideoClick       = { fileId -> navController.navigate(Screen.PhotoViewer.buildRoute(fileId)) },
-                onAudioClick       = { fileId -> navController.navigate(Screen.AudioPlayer.buildRoute(fileId)) },
                 onAudioFileClick   = { containerId, path, name, size ->
                     navController.navigate(Screen.AudioPlayerDirect.buildRoute(containerId, path, name, size))
                 },
-                onMediaFileClick   = { containerId, path, name, size ->
-                    navController.navigate(Screen.MediaViewerDirect.buildRoute(containerId, path, name, size))
+                onMediaFileClick   = { fileId ->
+                    navController.navigate(Screen.PhotoViewer.buildRoute(fileId))
+                },
+                onTextFileClick = { containerId, path, name ->
+                    navController.navigate(Screen.TextEditor.buildRoute(containerId, path, name))
                 }
             )
         }
@@ -368,6 +395,18 @@ fun AppNavigation(pinManager: PinManager) {
             )
         ) {
             MediaViewerDirectScreen(onBack = { navController.popBackStack() })
+        }
+
+        // ── Text editor direct (txt files from Files tab) ──────────────────
+        composable(
+            route     = Screen.TextEditor.route,
+            arguments = listOf(
+                navArgument(Screen.TextEditor.ARG_CONTAINER) { type = NavType.StringType },
+                navArgument(Screen.TextEditor.ARG_PATH)      { type = NavType.StringType },
+                navArgument(Screen.TextEditor.ARG_NAME)      { type = NavType.StringType }
+            )
+        ) {
+            TextEditorScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Move vault ────────────────────────────────────────────────────
@@ -440,29 +479,67 @@ fun AppNavigation(pinManager: PinManager) {
                 containerId      = containerId,
                 viewModel        = vaultViewModel,
                 onBack           = { navController.popBackStack() },
-                onMount          = { id -> navController.navigate(Screen.MountScreen.buildRoute(id)) },
+                onMount          = { id, enableBiometricSetup ->
+                    navController.navigate(Screen.MountScreen.buildRoute(id, enableBiometricSetup))
+                },
                 onOpenVault      = { id -> navController.navigate(Screen.ContainerScreen.buildRoute(id)) },
+                onUnmountVault   = { id ->
+                    navController.popBackStack(Screen.VaultScreen.route, inclusive = false)
+                    unmountedContainerId = id
+                    unmountIconOffset    = null
+                    showUnmountOverlay   = true
+                },
                 onChangePassword = { id -> navController.navigate(Screen.ChangePassword.buildRoute(id)) },
                 onChangeKeyfile  = { id -> navController.navigate(Screen.ChangeKeyfile.buildRoute(id)) },
-                onMoveVault      = { id, toApp -> navController.navigate(Screen.MoveVault.buildRoute(id, toApp)) }
+                onMoveVault      = { id, toApp -> navController.navigate(Screen.MoveVault.buildRoute(id, toApp)) },
+                onBackup         = { id -> navController.navigate(Screen.Backup.buildRoute(id)) },
+                onExpandVolume   = { id -> navController.navigate(Screen.ExpandVolume.buildRoute(id)) }
             )
+        }
+
+        // ── Expand volume ─────────────────────────────────────────────────
+        composable(
+            route             = Screen.ExpandVolume.route,
+            arguments         = listOf(navArgument(Screen.ExpandVolume.ARG) { type = NavType.StringType }),
+            enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
+        ) {
+            ExpandVolumeScreen(onBack = { navController.popBackStack() })
+        }
+
+        // ── Manual encrypted-container backup ───────────────────────────────
+        composable(
+            route             = Screen.Backup.route,
+            arguments         = listOf(navArgument(Screen.Backup.ARG) { type = NavType.StringType }),
+            enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
+        ) {
+            BackupScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Mount screen ──────────────────────────────────────────────────
         composable(
             route             = Screen.MountScreen.route,
-            arguments         = listOf(navArgument(Screen.MountScreen.ARG) { type = NavType.StringType }),
+            arguments         = listOf(
+                navArgument(Screen.MountScreen.ARG) { type = NavType.StringType },
+                navArgument(Screen.MountScreen.ARG_ENABLE_BIO) {
+                    type = NavType.BoolType
+                    defaultValue = false
+                }
+            ),
             enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
             popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
         ) { backStackEntry ->
             val containerId = backStackEntry.arguments?.getString(Screen.MountScreen.ARG) ?: return@composable
+            val enableBiometricSetup = backStackEntry.arguments?.getBoolean(Screen.MountScreen.ARG_ENABLE_BIO) ?: false
             val parentEntry = remember(backStackEntry) { navController.getBackStackEntry(Screen.VaultScreen.route) }
             val mountViewModel: VaultViewModel = hiltViewModel(parentEntry)
             MountScreen(
-                containerId    = containerId,
-                viewModel      = mountViewModel,
-                onBack         = { navController.popBackStack() },
-                onMountSuccess = { id ->
+                containerId           = containerId,
+                viewModel             = mountViewModel,
+                startBiometricSetup   = enableBiometricSetup,
+                onBack                = { navController.popBackStack() },
+                onMountSuccess        = { id ->
                     navController.popBackStack()
                     mountCoordinator.beginUnlocking(id)
                 }

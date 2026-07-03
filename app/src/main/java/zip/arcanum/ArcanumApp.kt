@@ -9,6 +9,7 @@ import androidx.work.WorkManager
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
 import zip.arcanum.R
+import zip.arcanum.arcanum.backup.BackupService
 import zip.arcanum.arcanum.containers.service.ContainerCreationService
 import javax.inject.Inject
 
@@ -39,6 +40,13 @@ class ArcanumApp : Application() {
                 getString(R.string.notif_channel_vault_creation),
                 NotificationManager.IMPORTANCE_LOW
             ).apply { description = getString(R.string.notif_channel_vault_creation_desc) }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(
+                BackupService.CHANNEL_ID,
+                getString(R.string.notif_channel_backup),
+                NotificationManager.IMPORTANCE_LOW
+            ).apply { description = getString(R.string.notif_channel_backup_desc) }
         )
     }
 }
