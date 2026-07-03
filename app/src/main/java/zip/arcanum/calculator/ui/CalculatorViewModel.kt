@@ -3,12 +3,6 @@ package zip.arcanum.calculator.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import android.content.Context
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
-import androidx.work.WorkManager
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -23,8 +17,8 @@ import zip.arcanum.calculator.logic.CalculatorEngine
 import zip.arcanum.calculator.logic.CalculatorState
 import zip.arcanum.core.database.dao.CalculatorHistoryDao
 import zip.arcanum.core.database.entities.CalculationEntity
+import zip.arcanum.core.security.IntruderCaptureManager
 import zip.arcanum.core.security.PanicManager
-import zip.arcanum.core.security.PanicWipeWorker
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.security.PinResult
 import javax.inject.Inject
@@ -46,7 +40,7 @@ class CalculatorViewModel @Inject constructor(
     private val pinManager: PinManager,
     private val historyDao: CalculatorHistoryDao,
     private val panicManager: PanicManager,
-    @ApplicationContext private val context: Context
+    private val intruderCaptureManager: IntruderCaptureManager
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CalculatorState())
@@ -142,28 +136,14 @@ class CalculatorViewModel @Inject constructor(
                     _events.emit(CalculatorEvent.NavigateToArcanum)
                 }
                 PinResult.PANIC  -> {
-                    // Promote panic PIN to main before navigation — synchronous commit()
-                    // guarantees the real PIN is invalidated on disk before we navigate.
                     val panicEnabled = panicManager.prepareForPanic() != null
-                    // Enqueue before emitting NavigateToArcanum: the event triggers navigation
-                    // which pops the collector's coroutine scope — any work enqueued after
-                    // that point may never run.
-                    if (panicEnabled) {
-                        val request = OneTimeWorkRequestBuilder<PanicWipeWorker>()
-                            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-                            .build()
-                        WorkManager.getInstance(context)
-                            .enqueueUniqueWork(
-                                PanicWipeWorker.WORK_NAME,
-                                ExistingWorkPolicy.REPLACE,
-                                request
-                            )
-                    }
+                    if (panicEnabled) panicManager.executeWipe() else pinManager.clearPanicPin()
                     withContext(Dispatchers.Main) { _isVerifying.value = false }
-                    _events.emit(CalculatorEvent.NavigateToArcanum)
+                    _events.emit(CalculatorEvent.TriggerPanic)
                 }
                 PinResult.WRONG  -> {
                     withContext(Dispatchers.Main) { _isVerifying.value = false }
+                    viewModelScope.launch { intruderCaptureManager.captureBurstIfEnabled() }
                 }
                 PinResult.LOCKED -> {
                     val remainingSec = (pinManager.lockoutRemainingMs() / 1000L).coerceAtLeast(1L)

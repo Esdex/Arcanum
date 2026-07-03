@@ -113,31 +113,65 @@ fun AppNavigation(pinManager: PinManager) {
 
     val autoLockEnabled    by settingsViewModel.autoLockEnabled.collectAsState()
     val autoLockDelayIndex by settingsViewModel.autoLockDelayIndex.collectAsState()
+    val autoLockDeadlineMs by settingsViewModel.autoLockDeadlineMs.collectAsState()
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val lockedRoutes = remember(lockScreenRoute) {
         setOf(Screen.Onboarding.route, Screen.SetupPin.route, Screen.Calculator.route, Screen.DisguiseUnlock.route, Screen.PinEntry.route)
     }
     val autoLockScope = rememberCoroutineScope()
-    DisposableEffect(lifecycleOwner, autoLockEnabled, autoLockDelayIndex, lockScreenRoute) {
+    var appInForeground by remember { mutableStateOf(true) }
+
+    fun navigateToLockIfNeeded(): Boolean {
+        val current = navController.currentDestination?.route ?: return false
+        if (current in lockedRoutes) return false
+        navController.navigate(lockScreenRoute) {
+            popUpTo(0) { inclusive = true }
+            launchSingleTop = true
+        }
+        return true
+    }
+
+    LaunchedEffect(appInForeground, autoLockEnabled, autoLockDeadlineMs, lockScreenRoute) {
+        if (!appInForeground) return@LaunchedEffect
+        if (!autoLockEnabled) {
+            if (autoLockDeadlineMs > 0L) settingsViewModel.setAutoLockDeadlineMs(0L)
+            return@LaunchedEffect
+        }
+        if (autoLockDeadlineMs > 0L) {
+            if (System.currentTimeMillis() >= autoLockDeadlineMs) navigateToLockIfNeeded()
+            settingsViewModel.setAutoLockDeadlineMs(0L)
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, autoLockEnabled, autoLockDelayIndex, autoLockDeadlineMs, lockScreenRoute) {
         var lockJob: Job? = null
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
+                    appInForeground = false
                     if (autoLockEnabled) {
                         val current = navController.currentDestination?.route ?: return@LifecycleEventObserver
                         if (current !in lockedRoutes) {
+                            val deadline = System.currentTimeMillis() + autoLockDelayMillis(autoLockDelayIndex)
+                            settingsViewModel.setAutoLockDeadlineMs(deadline)
                             lockJob = autoLockScope.launch {
-                                delay(autoLockDelayMillis(autoLockDelayIndex))
-                                navController.navigate(lockScreenRoute) {
-                                    popUpTo(0) { inclusive = true }
-                                    launchSingleTop = true
-                                }
+                                delay((deadline - System.currentTimeMillis()).coerceAtLeast(0L))
+                                navigateToLockIfNeeded()
                             }
                         }
                     }
                 }
-                Lifecycle.Event.ON_START -> lockJob?.cancel()
+                Lifecycle.Event.ON_START -> {
+                    appInForeground = true
+                    lockJob?.cancel()
+                    if (autoLockDeadlineMs > 0L) {
+                        if (autoLockEnabled && System.currentTimeMillis() >= autoLockDeadlineMs) {
+                            navigateToLockIfNeeded()
+                        }
+                        settingsViewModel.setAutoLockDeadlineMs(0L)
+                    }
+                }
                 else -> Unit
             }
         }

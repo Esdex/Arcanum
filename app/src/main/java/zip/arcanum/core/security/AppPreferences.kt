@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.first
 import androidx.datastore.preferences.preferencesDataStore
@@ -25,6 +26,7 @@ class AppPreferences @Inject constructor(
     private object Keys {
         val AUTO_LOCK             = booleanPreferencesKey("auto_lock")
         val AUTO_LOCK_DELAY_INDEX = intPreferencesKey("auto_lock_delay_index")
+        val AUTO_LOCK_DEADLINE_MS = longPreferencesKey("auto_lock_deadline_ms")
         val DEBUG_MODE            = booleanPreferencesKey("debug_mode")
         val THEME_MODE            = stringPreferencesKey("theme_mode")
         val AMOLED_GLASS          = booleanPreferencesKey("amoled_glass")
@@ -60,6 +62,16 @@ class AppPreferences @Inject constructor(
 
     suspend fun setAutoLockDelayIndex(index: Int) {
         context.appPrefsDataStore.edit { it[Keys.AUTO_LOCK_DELAY_INDEX] = index }
+    }
+
+    val autoLockDeadlineMs: Flow<Long> = context.appPrefsDataStore.data
+        .map { it[Keys.AUTO_LOCK_DEADLINE_MS] ?: 0L }
+
+    suspend fun setAutoLockDeadlineMs(deadlineMs: Long) {
+        context.appPrefsDataStore.edit { prefs ->
+            if (deadlineMs > 0L) prefs[Keys.AUTO_LOCK_DEADLINE_MS] = deadlineMs
+            else prefs.remove(Keys.AUTO_LOCK_DEADLINE_MS)
+        }
     }
 
     val debugMode: Flow<Boolean> = context.appPrefsDataStore.data
@@ -184,7 +196,7 @@ class AppPreferences @Inject constructor(
     }
 
     val biometricUnlockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
-        .map { it[Keys.BIOMETRIC_UNLOCK_ENABLED] ?: true }
+        .map { it[Keys.BIOMETRIC_UNLOCK_ENABLED] ?: false }
 
     suspend fun setBiometricUnlockEnabled(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.BIOMETRIC_UNLOCK_ENABLED] = enabled }
@@ -224,5 +236,9 @@ class AppPreferences @Inject constructor(
 
     suspend fun setDeleteExportedFiles(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.DELETE_EXPORTED_FILES] = enabled }
+    }
+
+    suspend fun clearAll() {
+        context.appPrefsDataStore.edit { it.clear() }
     }
 }

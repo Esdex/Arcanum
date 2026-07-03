@@ -72,7 +72,7 @@ fun CalculatorScreen(
         viewModel.events.collect { event ->
             when (event) {
                 CalculatorEvent.NavigateToArcanum -> onAuthenticated()
-                CalculatorEvent.TriggerPanic      -> onAuthenticated()
+                CalculatorEvent.TriggerPanic      -> Unit
             }
         }
     }

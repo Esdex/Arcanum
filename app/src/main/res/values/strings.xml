@@ -47,33 +47,33 @@
     <string name="onboarding_privacy_desc">Enter your panic PIN to instantly wipe all traces of Arcanum from your device.</string>
 
     <!-- Vault creation foreground service notification -->
-    <string name="notif_channel_vault_creation">Vault Creation</string>
-    <string name="notif_channel_vault_creation_desc">Shows progress while creating an encrypted vault</string>
-    <string name="notif_creating_vault">Creating vault…</string>
+    <string name="notif_channel_vault_creation">Secure operation</string>
+    <string name="notif_channel_vault_creation_desc">Shows private operation progress</string>
+    <string name="notif_creating_vault">Operation in progress…</string>
     <string name="notif_creation_progress">%1$d%% complete</string>
-    <string name="notif_channel_backup">Backup</string>
-    <string name="notif_channel_backup_desc">Shows manual encrypted-container backup progress</string>
-    <string name="notif_backup_title">Backup in progress</string>
-    <string name="backup_preparing">Preparing backup…</string>
-    <string name="backup_unmounting">Unmounting vault before backup…</string>
-    <string name="backup_uploading">Uploading backup…</string>
+    <string name="notif_channel_backup">Secure operation</string>
+    <string name="notif_channel_backup_desc">Shows private operation progress</string>
+    <string name="notif_backup_title">Operation in progress</string>
+    <string name="backup_preparing">Preparing…</string>
+    <string name="backup_unmounting">Preparing private data…</string>
+    <string name="backup_uploading">Uploading…</string>
     <string name="backup_retrying">Retrying, attempt %1$d…</string>
-    <string name="backup_success">Backup completed</string>
-    <string name="backup_failed">Backup failed</string>
+    <string name="backup_success">Operation completed</string>
+    <string name="backup_failed">Operation failed</string>
     <string name="backup_cancel">Stop</string>
-    <string name="backup_cancelled">Backup stopped</string>
-    <string name="backup_paused_background">Backup stopped because the app was moved to background</string>
+    <string name="backup_cancelled">Operation stopped</string>
+    <string name="backup_paused_background">Operation stopped because the app was moved to background</string>
     <string name="backup_error_container_missing">Container not found</string>
     <string name="backup_error_mounted">Unmount the container before backing it up</string>
     <string name="backup_error_settings_missing">Configure and save backup settings first</string>
     <string name="backup_error_unknown">Unknown backup error</string>
-    <string name="notif_channel_change_password">Password Change</string>
-    <string name="notif_channel_change_password_desc">Shows progress while changing a vault password</string>
-    <string name="notif_channel_expand_volume">Volume expansion</string>
-    <string name="notif_channel_expand_volume_desc">Shows progress while expanding a volume</string>
-    <string name="notif_expanding_volume">Expanding volume</string>
-    <string name="notif_expanding_volume_desc">Volume expansion is running</string>
-    <string name="notif_changing_password">Changing password…</string>
+    <string name="notif_channel_change_password">Secure operation</string>
+    <string name="notif_channel_change_password_desc">Shows private operation progress</string>
+    <string name="notif_channel_expand_volume">Secure operation</string>
+    <string name="notif_channel_expand_volume_desc">Shows private operation progress</string>
+    <string name="notif_expanding_volume">Operation in progress</string>
+    <string name="notif_expanding_volume_desc">Private operation is running</string>
+    <string name="notif_changing_password">Operation in progress…</string>
     <string name="notif_changing_password_desc">Do not close the app</string>
 
     <!-- In-app notification banners -->
@@ -882,6 +882,7 @@
     <string name="backup_error_save_new_settings">Check and save the new settings first</string>
     <string name="backup_error_auth_open">Could not open system identity check</string>
     <string name="backup_error_device_lock_required">Set up a screen lock on the device first</string>
+    <string name="backup_error_auth_required">Confirm your identity before using saved backup credentials</string>
     <string name="backup_auth_title">Backup settings access</string>
     <string name="backup_auth_subtitle">Confirm your identity to change saved credentials</string>
     <string name="backup_error_operation_cancelled">Operation stopped</string>
@@ -897,6 +898,7 @@
     <string name="backup_warning_delete_previous_failed_reason">New backup was created, but the old one could not be deleted: %1$s</string>
     <string name="backup_warning_delete_previous_wrong_s3">New backup was created, but the old one could not be deleted: different S3 location</string>
     <string name="backup_warning_delete_previous_wrong_mega">New backup was created, but the old location does not look like MEGA</string>
+    <string name="backup_error_s3_https_required">S3 endpoint must use HTTPS</string>
     <string name="backup_error_s3_validation_failed">S3 settings did not pass validation: %1$s</string>
     <string name="backup_progress_s3_resume">Resuming S3 multipart upload</string>
     <string name="backup_progress_s3_parallel">S3: %1$d threads, uploaded parts: %2$d</string>
@@ -904,6 +906,7 @@
     <string name="backup_error_mega_validation_failed">MEGA settings did not pass validation: %1$s</string>
     <string name="backup_progress_mega_empty_uploaded">MEGA: empty file uploaded</string>
     <string name="backup_progress_mega_parallel">MEGA: %1$d threads, uploaded %2$s of %3$s</string>
+    <string name="backup_error_mega_upload_https_required">MEGA upload URL must use HTTPS on a MEGA host</string>
     <string name="backup_error_mega_email_required">Enter MEGA email</string>
     <string name="backup_error_mega_password_required">Enter MEGA password</string>
     <string name="backup_error_mega_no_salt">MEGA did not return the account salt</string>
@@ -1374,6 +1377,8 @@
     <string name="pin_entry_unlock">Unlock</string>
     <string name="pin_entry_wrong">Incorrect PIN</string>
     <string name="pin_entry_locked">Too many attempts. Try again in %d seconds</string>
+    <string name="pin_entry_panic_wiping">Resetting private data…</string>
+    <string name="pin_entry_panic_complete">Private data reset</string>
     <string name="pin_entry_biometric">Use biometric</string>
     <string name="biometric_enable_title">Enable biometric unlock</string>
     <string name="biometric_enable_subtitle">Confirm your identity to register</string>
@@ -1457,9 +1462,9 @@
     <string name="chkeyfile_error_title">Change Failed</string>
 
     <!-- Change Keyfile notifications -->
-    <string name="notif_channel_change_keyfile">Keyfile Change</string>
-    <string name="notif_channel_change_keyfile_desc">Shows progress while changing vault keyfiles</string>
-    <string name="notif_changing_keyfile">Changing keyfiles…</string>
+    <string name="notif_channel_change_keyfile">Secure operation</string>
+    <string name="notif_channel_change_keyfile_desc">Shows private operation progress</string>
+    <string name="notif_changing_keyfile">Operation in progress…</string>
     <string name="notif_changing_keyfile_desc">Do not close the app</string>
 
     <!-- Backup Header Screen -->

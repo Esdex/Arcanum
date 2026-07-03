@@ -71,8 +71,21 @@ class ChangePinViewModel @Inject constructor(
                 if (s.pin == newPin) {
                     viewModelScope.launch {
                         _state.update { it.copy(isSaving = true) }
-                        pinManager.savePin(s.pin)
-                        _state.update { it.copy(isSaving = false, isSuccess = true) }
+                        if (pinManager.matchesPanicPin(s.pin)) {
+                            newPin = ""
+                            _state.update {
+                                it.copy(
+                                    isSaving   = false,
+                                    step       = Step.ENTER_NEW,
+                                    pin        = "",
+                                    isError    = true,
+                                    errorShake = it.errorShake + 1
+                                )
+                            }
+                        } else {
+                            pinManager.savePin(s.pin)
+                            _state.update { it.copy(isSaving = false, isSuccess = true) }
+                        }
                     }
                 } else {
                     newPin = ""

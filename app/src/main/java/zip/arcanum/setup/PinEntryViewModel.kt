@@ -4,10 +4,6 @@ import android.content.Context
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
-import androidx.work.WorkManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -19,11 +15,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.R
+import zip.arcanum.core.security.AppBiometricUnlockManager
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.IntruderCaptureManager
 import zip.arcanum.core.security.PanicManager
-import zip.arcanum.core.security.PanicWipeWorker
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.security.PinResult
 import javax.inject.Inject
@@ -31,6 +27,8 @@ import javax.inject.Inject
 sealed interface PinEntryState {
     object Idle      : PinEntryState
     object Verifying : PinEntryState
+    object PanicWiping : PinEntryState
+    object PanicComplete : PinEntryState
     object WrongPin  : PinEntryState
     data class Locked(val remainingSec: Long) : PinEntryState
 }
@@ -40,6 +38,7 @@ class PinEntryViewModel @Inject constructor(
     private val pinManager: PinManager,
     private val panicManager: PanicManager,
     private val biometricAuth: BiometricAuth,
+    private val appBiometricUnlockManager: AppBiometricUnlockManager,
     private val prefs: AppPreferences,
     private val intruderCaptureManager: IntruderCaptureManager,
     @ApplicationContext private val context: Context
@@ -53,7 +52,7 @@ class PinEntryViewModel @Inject constructor(
     val biometricUnlockEnabled = prefs.biometricUnlockEnabled.stateIn(
         scope        = viewModelScope,
         started      = SharingStarted.Eagerly,
-        initialValue = true
+        initialValue = false
     )
 
     // One-shot read: returns the persisted value from DataStore at screen entry time.
@@ -76,22 +75,13 @@ class PinEntryViewModel @Inject constructor(
                     }
                 }
                 PinResult.PANIC -> {
-                    val panicEnabled = panicManager.prepareForPanic() != null
-                    // Enqueue before onAuthenticated() so the work is registered before
-                    // navigation tears down this ViewModel's scope and cancels the coroutine.
-                    if (panicEnabled) {
-                        WorkManager.getInstance(context)
-                            .enqueueUniqueWork(
-                                PanicWipeWorker.WORK_NAME,
-                                ExistingWorkPolicy.REPLACE,
-                                OneTimeWorkRequestBuilder<PanicWipeWorker>()
-                                    .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-                                    .build()
-                            )
-                    }
-                    withContext(Dispatchers.Main) {
-                        _state.value = PinEntryState.Idle
-                        onAuthenticated()
+                    if (panicManager.prepareForPanic() == null) {
+                        pinManager.clearPanicPin()
+                        withContext(Dispatchers.Main) { _state.value = PinEntryState.WrongPin }
+                    } else {
+                        withContext(Dispatchers.Main) { _state.value = PinEntryState.PanicWiping }
+                        panicManager.executeWipe()
+                        withContext(Dispatchers.Main) { _state.value = PinEntryState.PanicComplete }
                     }
                 }
                 PinResult.WRONG -> {
@@ -118,13 +108,23 @@ class PinEntryViewModel @Inject constructor(
                     pinManager.dummyPromote()
                     withContext(Dispatchers.Main) {
                         _state.value = PinEntryState.Idle
-                        biometricAuth.authenticate(
-                            activity  = activity,
-                            title     = context.getString(R.string.biometric_enable_title),
-                            subtitle  = context.getString(R.string.biometric_enable_subtitle),
-                            onSuccess = {
+                        val cryptoObject = appBiometricUnlockManager.getCryptoObjectForEnroll()
+                        if (cryptoObject == null) {
+                            viewModelScope.launch { prefs.setBiometricUnlockEnabled(false) }
+                            onAuthenticated()
+                            return@withContext
+                        }
+                        biometricAuth.authenticateWithCrypto(
+                            activity = activity,
+                            cryptoObject = cryptoObject,
+                            title = context.getString(R.string.biometric_enable_title),
+                            subtitle = context.getString(R.string.biometric_enable_subtitle),
+                            negativeButtonText = context.getString(R.string.biometric_use_pin),
+                            onSuccess = { result ->
+                                val cipher = result.cryptoObject?.cipher
                                 viewModelScope.launch {
-                                    prefs.setBiometricUnlockEnabled(true)
+                                    val enrolled = cipher != null && appBiometricUnlockManager.completeEnrollment(cipher)
+                                    prefs.setBiometricUnlockEnabled(enrolled)
                                     onAuthenticated()
                                 }
                             },
@@ -134,20 +134,13 @@ class PinEntryViewModel @Inject constructor(
                     }
                 }
                 PinResult.PANIC -> {
-                    val panicEnabled = panicManager.prepareForPanic() != null
-                    if (panicEnabled) {
-                        WorkManager.getInstance(context)
-                            .enqueueUniqueWork(
-                                PanicWipeWorker.WORK_NAME,
-                                ExistingWorkPolicy.REPLACE,
-                                OneTimeWorkRequestBuilder<PanicWipeWorker>()
-                                    .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-                                    .build()
-                            )
-                    }
-                    withContext(Dispatchers.Main) {
-                        _state.value = PinEntryState.Idle
-                        onAuthenticated()
+                    if (panicManager.prepareForPanic() == null) {
+                        pinManager.clearPanicPin()
+                        withContext(Dispatchers.Main) { _state.value = PinEntryState.WrongPin }
+                    } else {
+                        withContext(Dispatchers.Main) { _state.value = PinEntryState.PanicWiping }
+                        panicManager.executeWipe()
+                        withContext(Dispatchers.Main) { _state.value = PinEntryState.PanicComplete }
                     }
                 }
                 PinResult.WRONG -> {
@@ -163,11 +156,26 @@ class PinEntryViewModel @Inject constructor(
     }
 
     fun authenticate(activity: FragmentActivity, onAuthenticated: () -> Unit) {
-        biometricAuth.authenticate(
+        val cryptoObject = appBiometricUnlockManager.getCryptoObjectForUnlock()
+        if (cryptoObject == null) {
+            viewModelScope.launch { prefs.setBiometricUnlockEnabled(false) }
+            return
+        }
+        biometricAuth.authenticateWithCrypto(
             activity  = activity,
+            cryptoObject = cryptoObject,
             title     = context.getString(R.string.biometric_unlock_title),
             subtitle  = context.getString(R.string.biometric_unlock_subtitle),
-            onSuccess = onAuthenticated,
+            negativeButtonText = context.getString(R.string.biometric_use_pin),
+            onSuccess = { result ->
+                val cipher = result.cryptoObject?.cipher
+                if (cipher != null && appBiometricUnlockManager.verifyUnlock(cipher)) {
+                    onAuthenticated()
+                } else {
+                    appBiometricUnlockManager.clearEnrollment()
+                    viewModelScope.launch { prefs.setBiometricUnlockEnabled(false) }
+                }
+            },
             onError   = { _, _ -> },
             onFailed  = {}
         )

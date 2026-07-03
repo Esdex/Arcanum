@@ -110,15 +110,15 @@ class PinManager @Inject constructor(
         val matchesPanic = panicHash != null && panicOk
 
         when {
-            matchesMain -> {
-                if (pinVer == VERSION_SHA256) migrateToArgon2(pin, prefs, isMain = true)
-                resetFailCount(prefs)
-                PinResult.NORMAL
-            }
             matchesPanic -> {
                 if (panicVer == VERSION_SHA256) migrateToArgon2(pin, prefs, isMain = false)
                 resetFailCount(prefs)
                 PinResult.PANIC
+            }
+            matchesMain -> {
+                if (pinVer == VERSION_SHA256) migrateToArgon2(pin, prefs, isMain = true)
+                resetFailCount(prefs)
+                PinResult.NORMAL
             }
             else -> {
                 val newCount = prefs.getInt(KEY_FAIL_COUNT, 0) + 1
@@ -135,6 +135,20 @@ class PinManager @Inject constructor(
 
     suspend fun isPanicPinSet(): Boolean = withContext(Dispatchers.IO) {
         prefsDeferred.await().getString(KEY_PANIC_PIN_HASH, null) != null
+    }
+
+    suspend fun matchesMainPin(pin: String): Boolean = withContext(Dispatchers.IO) {
+        val prefs = prefsDeferred.await()
+        val hash = prefs.getString(KEY_PIN_HASH, null) ?: return@withContext false
+        val version = prefs.getInt(KEY_PIN_HASH_VERSION, VERSION_SHA256)
+        verifyHash(pin, hash, version)
+    }
+
+    suspend fun matchesPanicPin(pin: String): Boolean = withContext(Dispatchers.IO) {
+        val prefs = prefsDeferred.await()
+        val hash = prefs.getString(KEY_PANIC_PIN_HASH, null) ?: return@withContext false
+        val version = prefs.getInt(KEY_PANIC_HASH_VERSION, VERSION_SHA256)
+        verifyHash(pin, hash, version)
     }
 
     suspend fun promotePanicPinToMain() = withContext(Dispatchers.IO) {

@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.billing.BillingManagerInterface
+import zip.arcanum.core.security.AppBiometricUnlockManager
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.DisguiseProfile
@@ -29,6 +30,7 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val prefs: AppPreferences,
     private val biometricAuth: BiometricAuth,
+    private val appBiometricUnlockManager: AppBiometricUnlockManager,
     private val pinManager: PinManager,
     private val disguiseManager: DisguiseManager,
     private val intruderCaptureManager: IntruderCaptureManager,
@@ -53,6 +55,12 @@ class SettingsViewModel @Inject constructor(
         scope        = viewModelScope,
         started      = SharingStarted.Eagerly,
         initialValue = 0
+    )
+
+    val autoLockDeadlineMs = prefs.autoLockDeadlineMs.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = 0L
     )
 
     val debugMode = prefs.debugMode.stateIn(
@@ -106,7 +114,7 @@ class SettingsViewModel @Inject constructor(
     val biometricUnlockEnabled = prefs.biometricUnlockEnabled.stateIn(
         scope        = viewModelScope,
         started      = SharingStarted.Eagerly,
-        initialValue = true
+        initialValue = false
     )
 
     val intruderDetectionEnabled = prefs.intruderDetectionEnabled.stateIn(
@@ -165,6 +173,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.setAutoLockDelayIndex(index) }
     }
 
+    fun setAutoLockDeadlineMs(deadlineMs: Long) {
+        viewModelScope.launch { prefs.setAutoLockDeadlineMs(deadlineMs) }
+    }
+
     val showMountLog = prefs.showMountLog.stateIn(
         scope        = viewModelScope,
         started      = SharingStarted.Eagerly,
@@ -211,7 +223,14 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setBiometricUnlockEnabled(enabled: Boolean) {
-        viewModelScope.launch { prefs.setBiometricUnlockEnabled(enabled) }
+        viewModelScope.launch {
+            if (!enabled) {
+                appBiometricUnlockManager.clearEnrollment()
+                prefs.setBiometricUnlockEnabled(false)
+            } else {
+                prefs.setBiometricUnlockEnabled(appBiometricUnlockManager.hasEnrollment())
+            }
+        }
     }
 
     fun setIntruderDetectionEnabled(enabled: Boolean) {

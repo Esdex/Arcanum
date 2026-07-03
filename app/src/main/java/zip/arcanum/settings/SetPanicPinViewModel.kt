@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import zip.arcanum.core.security.PinManager
-import zip.arcanum.core.security.PinResult
 import javax.inject.Inject
 
 @HiltViewModel
@@ -53,7 +52,7 @@ class SetPanicPinViewModel @Inject constructor(
             Step.ENTER -> {
                 viewModelScope.launch {
                     _state.update { it.copy(isSaving = true) }
-                    if (pinManager.verifyPin(s.pin) == PinResult.NORMAL) {
+                    if (pinManager.matchesMainPin(s.pin)) {
                         _state.update {
                             it.copy(
                                 isSaving = false, pin = "", isError = true,

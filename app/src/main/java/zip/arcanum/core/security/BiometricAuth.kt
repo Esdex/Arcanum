@@ -68,10 +68,36 @@ class BiometricAuth @Inject constructor(
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
             .setSubtitle(subtitle)
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .setNegativeButtonText(activity.getString(R.string.biometric_use_pin))
             .build()
 
         BiometricPrompt(activity, executor, callback).authenticate(promptInfo)
+    }
+
+    fun authenticateWithCrypto(
+        activity: FragmentActivity,
+        cryptoObject: BiometricPrompt.CryptoObject,
+        title: String,
+        subtitle: String,
+        negativeButtonText: String,
+        onSuccess: (BiometricPrompt.AuthenticationResult) -> Unit,
+        onError: (Int, CharSequence) -> Unit,
+        onFailed: () -> Unit
+    ) {
+        val executor = ContextCompat.getMainExecutor(activity)
+        val callback = object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onSuccess(result)
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) = onError(errorCode, errString)
+            override fun onAuthenticationFailed() = onFailed()
+        }
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(title)
+            .setSubtitle(subtitle)
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+            .setNegativeButtonText(negativeButtonText)
+            .build()
+        BiometricPrompt(activity, executor, callback).authenticate(promptInfo, cryptoObject)
     }
 
     fun authenticateWithDeviceLock(

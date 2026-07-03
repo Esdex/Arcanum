@@ -48,30 +48,30 @@
     <string name="onboarding_privacy_desc">Введите PIN паники, чтобы мгновенно стереть все следы Arcanum с вашего устройства.</string>
 
     <!-- Vault creation foreground service notification -->
-    <string name="notif_channel_vault_creation">Создание хранилища</string>
-    <string name="notif_channel_vault_creation_desc">Показывает прогресс создания зашифрованного хранилища</string>
-    <string name="notif_creating_vault">Создание хранилища…</string>
+    <string name="notif_channel_vault_creation">Безопасная операция</string>
+    <string name="notif_channel_vault_creation_desc">Показывает прогресс приватной операции</string>
+    <string name="notif_creating_vault">Выполняется операция…</string>
     <string name="notif_creation_progress">%1$d%% завершено</string>
-    <string name="notif_channel_backup">Резервное копирование</string>
-    <string name="notif_channel_backup_desc">Показывает прогресс ручной резервной копии зашифрованного контейнера</string>
-    <string name="notif_backup_title">Идёт резервное копирование</string>
-    <string name="backup_preparing">Подготовка резервной копии…</string>
-    <string name="backup_unmounting">Отключение тома перед резервным копированием…</string>
-    <string name="backup_uploading">Загрузка резервной копии…</string>
+    <string name="notif_channel_backup">Безопасная операция</string>
+    <string name="notif_channel_backup_desc">Показывает прогресс приватной операции</string>
+    <string name="notif_backup_title">Выполняется операция</string>
+    <string name="backup_preparing">Подготовка…</string>
+    <string name="backup_unmounting">Подготовка приватных данных…</string>
+    <string name="backup_uploading">Загрузка…</string>
     <string name="backup_retrying">Повторная попытка %1$d…</string>
-    <string name="backup_success">Резервная копия создана</string>
-    <string name="backup_failed">Не удалось создать резервную копию</string>
+    <string name="backup_success">Операция завершена</string>
+    <string name="backup_failed">Операция не удалась</string>
     <string name="backup_cancel">Остановить</string>
-    <string name="backup_cancelled">Резервное копирование остановлено</string>
-    <string name="backup_paused_background">Резервное копирование остановлено: приложение свернуто</string>
+    <string name="backup_cancelled">Операция остановлена</string>
+    <string name="backup_paused_background">Операция остановлена: приложение свернуто</string>
     <string name="backup_error_container_missing">Контейнер не найден</string>
     <string name="backup_error_mounted">Перед резервной копией размонтируйте контейнер</string>
     <string name="backup_error_settings_missing">Сначала настройте и сохраните параметры резервного копирования</string>
     <string name="backup_error_unknown">Неизвестная ошибка резервного копирования</string>
-    <string name="notif_channel_expand_volume">Расширение тома</string>
-    <string name="notif_channel_expand_volume_desc">Показывает прогресс расширения зашифрованного тома</string>
-    <string name="notif_expanding_volume">Расширение тома</string>
-    <string name="notif_expanding_volume_desc">Выполняется расширение тома</string>
+    <string name="notif_channel_expand_volume">Безопасная операция</string>
+    <string name="notif_channel_expand_volume_desc">Показывает прогресс приватной операции</string>
+    <string name="notif_expanding_volume">Выполняется операция</string>
+    <string name="notif_expanding_volume_desc">Приватная операция выполняется</string>
 
     <!-- In-app notification banners -->
     <string name="notif_vault_mounted">Хранилище успешно подключено</string>
@@ -856,6 +856,7 @@
     <string name="backup_error_save_new_settings">Сначала проверьте и сохраните новые настройки</string>
     <string name="backup_error_auth_open">Не удалось открыть системную проверку личности</string>
     <string name="backup_error_device_lock_required">Сначала настройте блокировку экрана на устройстве</string>
+    <string name="backup_error_auth_required">Подтвердите личность перед использованием сохранённых данных доступа для backup</string>
     <string name="backup_auth_title">Доступ к настройкам backup</string>
     <string name="backup_auth_subtitle">Подтвердите личность, чтобы изменить сохранённые данные доступа</string>
     <string name="backup_error_operation_cancelled">Операция остановлена</string>
@@ -871,6 +872,7 @@
     <string name="backup_warning_delete_previous_failed_reason">Новая копия создана, но старую удалить не удалось: %1$s</string>
     <string name="backup_warning_delete_previous_wrong_s3">Новая копия создана, но старую удалить не удалось: другое S3 расположение</string>
     <string name="backup_warning_delete_previous_wrong_mega">Новая копия создана, но старое расположение не похоже на MEGA</string>
+    <string name="backup_error_s3_https_required">S3 endpoint должен использовать HTTPS</string>
     <string name="backup_error_s3_validation_failed">S3 настройки не прошли проверку: %1$s</string>
     <string name="backup_progress_s3_resume">Продолжение S3 multipart upload</string>
     <string name="backup_progress_s3_parallel">S3: %1$d потоков, загружено частей: %2$d</string>
@@ -878,6 +880,7 @@
     <string name="backup_error_mega_validation_failed">MEGA настройки не прошли проверку: %1$s</string>
     <string name="backup_progress_mega_empty_uploaded">MEGA: пустой файл загружен</string>
     <string name="backup_progress_mega_parallel">MEGA: %1$d потоков, загружено %2$s из %3$s</string>
+    <string name="backup_error_mega_upload_https_required">MEGA upload URL должен использовать HTTPS на домене MEGA</string>
     <string name="backup_error_mega_email_required">Укажите email MEGA</string>
     <string name="backup_error_mega_password_required">Укажите пароль MEGA</string>
     <string name="backup_error_mega_no_salt">MEGA не вернула salt для аккаунта</string>
@@ -1324,6 +1327,8 @@
     <string name="pin_entry_unlock">Разблокировать</string>
     <string name="pin_entry_wrong">Неверный PIN</string>
     <string name="pin_entry_locked">Слишком много попыток. Попробуйте через %d сек.</string>
+    <string name="pin_entry_panic_wiping">Сброс приватных данных…</string>
+    <string name="pin_entry_panic_complete">Приватные данные сброшены</string>
     <string name="pin_entry_biometric">Использовать биометрию</string>
     <string name="biometric_enable_title">Включить биометрическую разблокировку</string>
     <string name="biometric_enable_subtitle">Подтвердите личность для регистрации</string>
@@ -1369,13 +1374,13 @@
     <string name="upgrade_dialog_later">Может быть позже</string>
     <string name="upgrade_pro_feature_subtitle">Функция Arcanum Pro</string>
     <string name="upgrade_pro_locked_cd">Функция Pro заблокирована</string>
-    <string name="notif_channel_change_password">Смена пароля</string>
-    <string name="notif_channel_change_password_desc">Показывает прогресс смены пароля хранилища</string>
-    <string name="notif_changing_password">Смена пароля…</string>
+    <string name="notif_channel_change_password">Безопасная операция</string>
+    <string name="notif_channel_change_password_desc">Показывает прогресс приватной операции</string>
+    <string name="notif_changing_password">Выполняется операция…</string>
     <string name="notif_changing_password_desc">Не закрывайте приложение</string>
-    <string name="notif_channel_change_keyfile">Смена ключевых файлов</string>
-    <string name="notif_channel_change_keyfile_desc">Показывает прогресс смены ключевых файлов хранилища</string>
-    <string name="notif_changing_keyfile">Смена ключевых файлов…</string>
+    <string name="notif_channel_change_keyfile">Безопасная операция</string>
+    <string name="notif_channel_change_keyfile_desc">Показывает прогресс приватной операции</string>
+    <string name="notif_changing_keyfile">Выполняется операция…</string>
     <string name="notif_changing_keyfile_desc">Не закрывайте приложение</string>
     <string name="notif_hidden_write_protection">Скрытый том защищён</string>
     <string name="notif_hidden_write_protection_subtitle">Импорт остановлен — файлы могли перезаписать скрытый том</string>

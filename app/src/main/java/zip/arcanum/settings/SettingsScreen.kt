@@ -3,6 +3,7 @@ package zip.arcanum.settings
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -188,6 +189,7 @@ import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -1287,8 +1289,7 @@ private fun ScreenshotWarningOverlay(
     onDismiss: () -> Unit,
     onConfirmed: () -> Unit
 ) {
-    val context         = LocalContext.current
-    val activity        = context as FragmentActivity
+    val activity        = LocalActivity.current as FragmentActivity
     val scope           = rememberCoroutineScope()
     var countdown       by remember { mutableIntStateOf(5) }
     var showPinFallback by remember { mutableStateOf(false) }
@@ -2022,7 +2023,7 @@ private fun AboutSubScreen(
     onDebugUnlocked: () -> Unit
 ) {
     val context   = LocalContext.current
-    val activity  = context as FragmentActivity
+    val activity  = LocalActivity.current as FragmentActivity
     val isAmoled  = LocalAmoledMode.current
     val hazeState = remember { HazeState() }
     val haptic       = LocalHapticFeedback.current
@@ -2032,6 +2033,10 @@ private fun AboutSubScreen(
     var showTapHint  by remember { mutableStateOf(false) }
     var tapTrigger   by remember { mutableIntStateOf(0) }
     val totalTaps    = 6
+    val debugEnabledMessage = stringResource(R.string.settings_about_debug_enabled)
+    val debugTapMessages = (1 until totalTaps).associateWith { remaining ->
+        pluralStringResource(R.plurals.settings_about_debug_taps, remaining, remaining)
+    }
 
     LaunchedEffect(tapTrigger) {
         if (tapTrigger > 0) {
@@ -2092,14 +2097,14 @@ private fun AboutSubScreen(
                                         activity  = activity,
                                         onSuccess = {
                                             viewModel.setDebugMode(true)
-                                            Toast.makeText(context, context.getString(R.string.settings_about_debug_enabled), Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, debugEnabledMessage, Toast.LENGTH_SHORT).show()
                                             onDebugUnlocked()
                                         },
                                         onError   = { _, _ -> }
                                     )
                                 } else {
                                     val remaining = totalTaps - tapCount
-                                    tapMessage = context.resources.getQuantityString(R.plurals.settings_about_debug_taps, remaining, remaining)
+                                    tapMessage = debugTapMessages[remaining].orEmpty()
                                     tapTrigger++
                                 }
                             }
@@ -2638,7 +2643,7 @@ private fun DebugSubScreen(
     val debugMode      = viewModel.debugMode.collectAsState().value
     val state          = debugViewModel.state.collectAsState().value
     val disguiseApplied by viewModel.disguiseApplied.collectAsState()
-    val activity       = LocalContext.current as FragmentActivity
+    val activity       = LocalActivity.current as FragmentActivity
     var showWarningDialog by remember { mutableStateOf(false) }
     val isAmoled       = LocalAmoledMode.current
     val debugHazeState = remember { HazeState() }

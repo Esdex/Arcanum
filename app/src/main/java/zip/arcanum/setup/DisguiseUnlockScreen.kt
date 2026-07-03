@@ -23,8 +23,6 @@ import android.os.Environment
 import android.os.StatFs
 import android.os.SystemClock
 import android.view.WindowManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -140,18 +138,6 @@ private fun DashboardDisguiseScreen(
     }
     val isFlashlight = effectiveProfile == DisguiseProfile.FLASHLIGHT
     val flashlightAvailable = torchCameraId != null
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        hasCameraPermission = granted
-        if (granted && isFlashlight && torchCameraId != null) {
-            runCatching {
-                cameraManager.setTorchMode(torchCameraId, true)
-                torchOn = true
-            }
-        }
-    }
-
     DisposableEffect(torchCameraId) {
         onDispose {
             if (torchCameraId != null) runCatching { cameraManager.setTorchMode(torchCameraId, false) }
@@ -162,8 +148,7 @@ private fun DashboardDisguiseScreen(
         val cameraId = torchCameraId ?: return false
         if (!isFlashlight) return false
         if (!hasCameraPermission) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
-            return true
+            return false
         }
         return runCatching {
             cameraManager.setTorchMode(cameraId, !torchOn)
@@ -210,7 +195,7 @@ private fun DashboardDisguiseScreen(
         stringResource(
             when {
                 !flashlightAvailable -> R.string.fake_flashlight_action_unavailable
-                !hasCameraPermission -> R.string.fake_flashlight_action_permission
+                !hasCameraPermission -> R.string.fake_flashlight_action_unavailable
                 torchOn -> R.string.fake_flashlight_action_off
                 else -> R.string.fake_flashlight_action
             }

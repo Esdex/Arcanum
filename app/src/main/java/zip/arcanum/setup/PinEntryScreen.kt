@@ -61,12 +61,14 @@ fun PinEntryScreen(
     var pin                   by remember { mutableStateOf("") }
     var inputMode             by remember { mutableStateOf(AppPasswordInputMode.Numeric) }
 
-    val isVerifying = state is PinEntryState.Verifying
+    val isVerifying = state is PinEntryState.Verifying || state is PinEntryState.PanicWiping
     val isError     = state is PinEntryState.WrongPin || state is PinEntryState.Locked
 
     val titleText = when (val s = state) {
         is PinEntryState.WrongPin   -> stringResource(R.string.pin_entry_wrong)
         is PinEntryState.Locked     -> stringResource(R.string.pin_entry_locked, s.remainingSec)
+        is PinEntryState.PanicWiping -> stringResource(R.string.pin_entry_panic_wiping)
+        is PinEntryState.PanicComplete -> stringResource(R.string.pin_entry_panic_complete)
         else                        -> stringResource(R.string.pin_entry_title)
     }
     val titleColor by animateColorAsState(
