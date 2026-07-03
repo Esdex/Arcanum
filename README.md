@@ -71,6 +71,7 @@
 
 **Vault maintenance**
 - 💾 Manual backups of the encrypted container file to a local folder, S3-compatible storage, or MEGA
+- 🧾 VeraCrypt volume header backup and restore from embedded or external header backups
 - 📈 Safe volume expansion by rebuilding a larger VeraCrypt container and migrating files
 - 🧹 Optional deletion of original files after successful import/export
 
@@ -89,6 +90,8 @@ Arcanum is built directly on VeraCrypt's cryptographic C sources — the same AE
 The app password is protected with Argon2id (t=2, m=64 MB, p=1) rather than a simple hash. A panic password and disguise profiles are included as first-class features, not afterthoughts. Calculator mode unlocks by entering the password and holding `=` for about seven seconds; other disguise profiles open the real unlock screen by holding the fake screen title.
 
 Manual backup copies the encrypted container file as-is. Vault contents are not decrypted during backup, and backup destination credentials are stored in EncryptedSharedPreferences. Network permission is therefore present only for optional S3-compatible and MEGA backup destinations; the app does not include telemetry.
+
+Volume header backup is separate from full-container backup. Arcanum can save the encrypted VeraCrypt volume header to an external file and restore the primary header from either the embedded backup area or an external header backup.
 
 Volume expansion uses a safe rebuild workflow: Arcanum creates a larger temporary VeraCrypt container, copies the file tree, verifies the migrated data, and then replaces the original. Hidden volumes are preserved only when the hidden credentials are supplied.
 
@@ -132,7 +135,7 @@ The `fdroid` flavor builds with all features unlocked and no billing dependency.
 | Local storage | Room (container metadata), EncryptedSharedPreferences (PIN hashes) |
 | DI | Hilt |
 | Media | ExoPlayer / Media3 |
-| Backup | Foreground service for local folder, S3-compatible, and MEGA encrypted-container backups |
+| Backup | Foreground service for local folder, S3-compatible, and MEGA encrypted-container backups; native volume header backup/restore |
 | Network | No telemetry; `INTERNET` is used only for optional manual S3/MEGA backup |
 
 The app can present itself as a calculator or another utility profile. Entering the correct app password navigates to the authenticated vault home. A panic password triggers `PanicManager`, which executes a background wipe before navigation completes, equalizing the response time between both paths.

@@ -30,9 +30,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.AttachFile
+
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Key
+
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
@@ -90,6 +90,7 @@ import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
+import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.utils.FileUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -288,9 +289,9 @@ private fun ChPwdStep1(
     onAddKeyfile: () -> Unit,
     onRemoveKeyfile: (Int) -> Unit
 ) {
-    var showPassword    by remember { mutableStateOf(false) }
-    var keyfileExpanded by remember { mutableStateOf(state.oldKeyfilePaths.isNotEmpty()) }
-    var pimText         by remember { mutableStateOf(if (state.oldPim > 0) state.oldPim.toString() else "") }
+    var showPassword by remember { mutableStateOf(false) }
+    var showPim      by remember { mutableStateOf(false) }
+    var pimText      by remember { mutableStateOf(if (state.oldPim > 0) state.oldPim.toString() else "") }
 
     StepContent(
         title    = stringResource(R.string.chpwd_step1_title),
@@ -320,13 +321,22 @@ private fun ChPwdStep1(
         OutlinedTextField(
             value         = pimText,
             onValueChange = {
-                if (it.all { c -> c.isDigit() } && it.length <= 4) {
-                    pimText = it
-                    onUpdate { copy(oldPim = it.toIntOrNull() ?: 0) }
+                if (it.all { c -> c.isDigit() } && it.length <= 7) {
+                    val v = it.toLongOrNull() ?: 0L
+                    if (it.isEmpty() || v in 1L..2_147_468L) {
+                        pimText = it
+                        onUpdate { copy(oldPim = v.toInt()) }
+                    }
                 }
             },
-            label           = { Text(stringResource(R.string.create_pim_short_label)) },
-            placeholder     = { Text(stringResource(R.string.create_pim_placeholder)) },
+            label                = { Text(stringResource(R.string.create_pim_short_label)) },
+            placeholder          = { Text(stringResource(R.string.create_pim_placeholder)) },
+            visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon         = {
+                IconButton(onClick = { showPim = !showPim }) {
+                    Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
+                }
+            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             singleLine      = true,
             modifier        = Modifier.fillMaxWidth()
@@ -334,9 +344,7 @@ private fun ChPwdStep1(
         Spacer(Modifier.height(8.dp))
 
         KeyfileSection(
-            expanded     = keyfileExpanded,
             displayNames = state.oldKeyfileDisplayNames,
-            onToggle     = { keyfileExpanded = !keyfileExpanded },
             onAdd        = onAddKeyfile,
             onRemove     = onRemoveKeyfile
         )
@@ -352,10 +360,10 @@ private fun ChPwdStep2(
     onAddKeyfile: () -> Unit,
     onRemoveKeyfile: (Int) -> Unit
 ) {
-    var showPassword    by remember { mutableStateOf(false) }
-    var showConfirm     by remember { mutableStateOf(false) }
-    var keyfileExpanded by remember { mutableStateOf(state.newKeyfilePaths.isNotEmpty()) }
-    var pimText         by remember { mutableStateOf(if (state.newPim > 0) state.newPim.toString() else "") }
+    var showPassword by remember { mutableStateOf(false) }
+    var showConfirm  by remember { mutableStateOf(false) }
+    var showPim      by remember { mutableStateOf(false) }
+    var pimText      by remember { mutableStateOf(if (state.newPim > 0) state.newPim.toString() else "") }
 
     StepContent(
         title    = stringResource(R.string.chpwd_step2_title),
@@ -410,13 +418,22 @@ private fun ChPwdStep2(
         OutlinedTextField(
             value         = pimText,
             onValueChange = {
-                if (it.all { c -> c.isDigit() } && it.length <= 4) {
-                    pimText = it
-                    onUpdate { copy(newPim = it.toIntOrNull() ?: 0) }
+                if (it.all { c -> c.isDigit() } && it.length <= 7) {
+                    val v = it.toLongOrNull() ?: 0L
+                    if (it.isEmpty() || v in 1L..2_147_468L) {
+                        pimText = it
+                        onUpdate { copy(newPim = v.toInt()) }
+                    }
                 }
             },
-            label           = { Text(stringResource(R.string.create_pim_short_label)) },
-            placeholder     = { Text(stringResource(R.string.create_pim_placeholder)) },
+            label                = { Text(stringResource(R.string.create_pim_short_label)) },
+            placeholder          = { Text(stringResource(R.string.create_pim_placeholder)) },
+            visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon         = {
+                IconButton(onClick = { showPim = !showPim }) {
+                    Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
+                }
+            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             singleLine      = true,
             modifier        = Modifier.fillMaxWidth()
@@ -424,9 +441,7 @@ private fun ChPwdStep2(
         Spacer(Modifier.height(16.dp))
 
         KeyfileSection(
-            expanded     = keyfileExpanded,
             displayNames = state.newKeyfileDisplayNames,
-            onToggle     = { keyfileExpanded = !keyfileExpanded },
             onAdd        = onAddKeyfile,
             onRemove     = onRemoveKeyfile
         )
@@ -732,25 +747,11 @@ private fun ChPwdStep4Error(error: String, onBack: () -> Unit) {
 
 @Composable
 internal fun KeyfileSection(
-    expanded: Boolean,
     displayNames: List<String>,
-    onToggle: () -> Unit,
     onAdd: () -> Unit,
     onRemove: (Int) -> Unit
 ) {
-    TextButton(
-        onClick  = onToggle,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Icon(Icons.Outlined.AttachFile, contentDescription = null)
-        Spacer(Modifier.size(6.dp))
-        Text(
-            if (displayNames.isNotEmpty()) "${displayNames.size} keyfile(s) selected"
-            else if (expanded) stringResource(R.string.create_keyfile_hide)
-            else stringResource(R.string.create_keyfile_add)
-        )
-    }
-    if (expanded) {
+    if (displayNames.isNotEmpty()) {
         Card(
             colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
             shape    = RoundedCornerShape(12.dp),
@@ -763,7 +764,7 @@ internal fun KeyfileSection(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Outlined.Key,
+                            ArcanumIcons.Keyfile,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
                             tint     = MaterialTheme.colorScheme.onSurfaceVariant
@@ -779,16 +780,17 @@ internal fun KeyfileSection(
                         }
                     }
                 }
-                TextButton(
-                    onClick  = onAdd,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Outlined.AttachFile, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.create_keyfile_add_item))
-                }
             }
         }
+        Spacer(Modifier.height(4.dp))
+    }
+    TextButton(
+        onClick  = onAdd,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Icon(ArcanumIcons.Keyfile, contentDescription = null)
+        Spacer(Modifier.size(6.dp))
+        Text(stringResource(R.string.create_keyfile_add))
     }
 }
 

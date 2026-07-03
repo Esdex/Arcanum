@@ -20,14 +20,16 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.OpenInFull
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Timer
-import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -65,6 +67,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import zip.arcanum.R
+import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.LocalHazeState
@@ -87,6 +90,8 @@ fun VaultConfigScreen(
     onChangeKeyfile: (containerId: String) -> Unit,
     onMoveVault: (containerId: String, toApp: Boolean) -> Unit,
     onBackup: (containerId: String) -> Unit,
+    onBackupHeader: (containerId: String) -> Unit,
+    onRestoreHeader: (containerId: String) -> Unit,
     onExpandVolume: (containerId: String) -> Unit
 ) {
     val isDynamic    = LocalDynamicColor.current
@@ -202,12 +207,12 @@ fun VaultConfigScreen(
 
                     // ── Operations ───────────────────────────────────────────────
                     VaultOperationItem(
-                        icon      = if (isMounted) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
+                        icon      = if (isMounted) Icons.Outlined.LockOpen else Icons.Outlined.PlayArrow,
                         rawColor  = Color(0xFF16A34A),
                         title     = stringResource(if (isMounted) R.string.vault_config_op_open else R.string.vault_config_op_mount),
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_op_open_desc else R.string.vault_config_op_mount_desc),
                         isDynamic = isDynamic,
-                            onClick   = { if (isMounted) onOpenVault(containerId) else onMount(containerId, false) }
+                        onClick   = { if (isMounted) onOpenVault(containerId) else onMount(containerId, false) }
                     )
                     if (isMounted) {
                         VaultOperationItem(
@@ -258,7 +263,7 @@ fun VaultConfigScreen(
                     }
 
                     VaultOperationItem(
-                        icon      = Icons.Outlined.Lock,
+                        icon      = Icons.Outlined.Key,
                         rawColor  = Color(0xFF1E88E5),
                         title     = stringResource(R.string.vault_config_change_password),
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_auto_unmount_before_action else R.string.chpwd_config_desc),
@@ -266,7 +271,7 @@ fun VaultConfigScreen(
                         onClick   = { runAfterUnmountIfNeeded { onChangePassword(containerId) } }
                     )
                     VaultOperationItem(
-                        icon      = Icons.Outlined.VpnKey,
+                        icon      = ArcanumIcons.Keyfile,
                         rawColor  = Color(0xFF7B1FA2),
                         title     = stringResource(R.string.vault_config_change_keyfile),
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_auto_unmount_before_action else R.string.chkeyfile_config_desc),
@@ -281,6 +286,24 @@ fun VaultConfigScreen(
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_backup_auto_unmount_desc else R.string.vault_config_backup_desc),
                         isDynamic = isDynamic,
                         onClick   = { runAfterUnmountIfNeeded { onBackup(containerId) } }
+                    )
+                    VaultOperationItem(
+                        icon      = Icons.Outlined.SaveAlt,
+                        rawColor  = Color(0xFFE65100),
+                        title     = stringResource(R.string.vault_info_op_backup_header),
+                        subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.vault_card_backup_desc),
+                        isDynamic = isDynamic,
+                        enabled   = !isMounted,
+                        onClick   = { onBackupHeader(containerId) }
+                    )
+                    VaultOperationItem(
+                        icon      = Icons.Outlined.Restore,
+                        rawColor  = Color(0xFF00838F),
+                        title     = stringResource(R.string.vault_info_op_restore_header),
+                        subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.vault_card_restore_desc),
+                        isDynamic = isDynamic,
+                        enabled   = !isMounted,
+                        onClick   = { onRestoreHeader(containerId) }
                     )
                     VaultOperationItem(
                         icon      = Icons.Outlined.OpenInFull,

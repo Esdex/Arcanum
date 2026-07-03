@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Info
@@ -29,6 +28,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Warning
+import zip.arcanum.core.icons.ArcanumIcons
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -139,10 +139,10 @@ fun StepPassword(
         keyboardController?.show()
     }
 
-    var showPassword    by remember { mutableStateOf(false) }
-    var showConfirm     by remember { mutableStateOf(false) }
-    var keyfileExpanded by remember { mutableStateOf(false) }
-    var pimText         by remember { mutableStateOf(if (state.pim > 0) state.pim.toString() else "") }
+    var showPassword by remember { mutableStateOf(false) }
+    var showConfirm  by remember { mutableStateOf(false) }
+    var showPim      by remember { mutableStateOf(false) }
+    var pimText      by remember { mutableStateOf(if (state.pim > 0) state.pim.toString() else "") }
 
     val strength = passwordStrength(state.password)
     val strengthColor by animateColorAsState(
@@ -270,13 +270,22 @@ fun StepPassword(
         OutlinedTextField(
             value         = pimText,
             onValueChange = {
-                if (it.all { c -> c.isDigit() } && it.length <= 4) {
-                    pimText = it
-                    onUpdate { copy(pim = it.toIntOrNull() ?: 0) }
+                if (it.all { c -> c.isDigit() } && it.length <= 7) {
+                    val v = it.toLongOrNull() ?: 0L
+                    if (it.isEmpty() || v in 1L..2_147_468L) {
+                        pimText = it
+                        onUpdate { copy(pim = v.toInt()) }
+                    }
                 }
             },
-            label           = { Text(stringResource(R.string.create_pim_short_label)) },
-            placeholder     = { Text(stringResource(R.string.create_pim_placeholder)) },
+            label                = { Text(stringResource(R.string.create_pim_short_label)) },
+            placeholder          = { Text(stringResource(R.string.create_pim_placeholder)) },
+            visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon         = {
+                IconButton(onClick = { showPim = !showPim }) {
+                    Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
+                }
+            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             singleLine      = true,
             modifier        = Modifier.fillMaxWidth()
@@ -304,19 +313,7 @@ fun StepPassword(
         Spacer(Modifier.height(8.dp))
 
         // Keyfile section
-        TextButton(
-            onClick  = { keyfileExpanded = !keyfileExpanded },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Outlined.AttachFile, contentDescription = null)
-            Spacer(Modifier.size(6.dp))
-            Text(
-                if (state.keyfileDisplayNames.isNotEmpty()) pluralStringResource(R.plurals.create_keyfile_count, state.keyfileDisplayNames.size, state.keyfileDisplayNames.size)
-                else if (keyfileExpanded) stringResource(R.string.create_keyfile_hide)
-                else stringResource(R.string.create_keyfile_add)
-            )
-        }
-        if (keyfileExpanded) {
+        if (state.keyfileDisplayNames.isNotEmpty()) {
             Card(
                 colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                 shape    = RoundedCornerShape(12.dp),
@@ -329,7 +326,7 @@ fun StepPassword(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                Icons.Outlined.AttachFile,
+                                ArcanumIcons.Keyfile,
                                 contentDescription = null,
                                 tint     = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(16.dp)
@@ -345,21 +342,19 @@ fun StepPassword(
                             }
                         }
                     }
-                    if (state.keyfileDisplayNames.isNotEmpty()) {
-                        Text(
-                            stringResource(R.string.create_keyfile_safe_warning),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                    TextButton(onClick = onAddKeyfile) { Text(stringResource(R.string.create_keyfile_add_item)) }
                     Text(
-                        stringResource(R.string.create_keyfile_desc),
+                        stringResource(R.string.create_keyfile_safe_warning),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
             }
+            Spacer(Modifier.height(4.dp))
+        }
+        TextButton(onClick = onAddKeyfile, modifier = Modifier.fillMaxWidth()) {
+            Icon(ArcanumIcons.Keyfile, contentDescription = null)
+            Spacer(Modifier.size(6.dp))
+            Text(stringResource(R.string.create_keyfile_add))
         }
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -373,7 +368,7 @@ fun StepPassword(
     }
 }
 
-private fun passwordStrength(pwd: String): Int {
+internal fun passwordStrength(pwd: String): Int {
     if (pwd.length < 4) return 0
     var score = 0
     if (pwd.length >= 8) score++

@@ -36,9 +36,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Key
+import zip.arcanum.core.icons.ArcanumIcons
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -343,9 +342,9 @@ private fun ChKfStep1(
         delay(200); focusRequester.requestFocus()
     }
 
-    var showPassword    by remember { mutableStateOf(false) }
-    var keyfileExpanded by remember { mutableStateOf(state.oldKeyfilePaths.isNotEmpty()) }
-    var pimText         by remember { mutableStateOf(if (state.pim > 0) state.pim.toString() else "") }
+    var showPassword by remember { mutableStateOf(false) }
+    var showPim      by remember { mutableStateOf(false) }
+    var pimText      by remember { mutableStateOf(if (state.pim > 0) state.pim.toString() else "") }
 
     StepContent(
         title    = stringResource(R.string.chkeyfile_step1_title),
@@ -387,13 +386,22 @@ private fun ChKfStep1(
         OutlinedTextField(
             value         = pimText,
             onValueChange = {
-                if (it.all { c -> c.isDigit() } && it.length <= 4) {
-                    pimText = it
-                    onUpdate { copy(pim = it.toIntOrNull() ?: 0) }
+                if (it.all { c -> c.isDigit() } && it.length <= 7) {
+                    val v = it.toLongOrNull() ?: 0L
+                    if (it.isEmpty() || v in 1L..2_147_468L) {
+                        pimText = it
+                        onUpdate { copy(pim = v.toInt()) }
+                    }
                 }
             },
-            label           = { Text(stringResource(R.string.create_pim_short_label)) },
-            placeholder     = { Text(stringResource(R.string.create_pim_placeholder)) },
+            label                = { Text(stringResource(R.string.create_pim_short_label)) },
+            placeholder          = { Text(stringResource(R.string.create_pim_placeholder)) },
+            visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon         = {
+                IconButton(onClick = { showPim = !showPim }) {
+                    Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
+                }
+            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             singleLine      = true,
             modifier        = Modifier.fillMaxWidth()
@@ -401,9 +409,7 @@ private fun ChKfStep1(
         Spacer(Modifier.height(8.dp))
 
         KeyfileSection(
-            expanded     = keyfileExpanded,
             displayNames = state.oldKeyfileDisplayNames,
-            onToggle     = { keyfileExpanded = !keyfileExpanded },
             onAdd        = onAddKeyfile,
             onRemove     = onRemoveKeyfile
         )
@@ -456,7 +462,7 @@ private fun ChKfStep2(
                                 modifier          = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Outlined.Key, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(ArcanumIcons.Keyfile, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(Modifier.width(8.dp))
                                 Text(name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                                 IconButton(onClick = { onRemoveKeyfile(index) }, modifier = Modifier.size(32.dp)) {
@@ -465,7 +471,7 @@ private fun ChKfStep2(
                             }
                         }
                         TextButton(onClick = onAddKeyfile, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Outlined.AttachFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(ArcanumIcons.Keyfile, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
                             Text(stringResource(R.string.create_keyfile_add_item))
                         }

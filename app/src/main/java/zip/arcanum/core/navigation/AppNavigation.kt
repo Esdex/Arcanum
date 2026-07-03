@@ -54,8 +54,10 @@ import zip.arcanum.core.security.PinManager
 import zip.arcanum.settings.SettingsViewModel
 import zip.arcanum.onboarding.OnboardingScreen
 import zip.arcanum.settings.SettingsScreen
+import zip.arcanum.arcanum.containers.ui.BackupHeaderScreen
 import zip.arcanum.arcanum.containers.ui.ChangeKeyfileScreen
 import zip.arcanum.arcanum.containers.ui.ChangePasswordScreen
+import zip.arcanum.arcanum.containers.ui.RestoreHeaderScreen
 import zip.arcanum.arcanum.containers.ui.CreateContainerScreen
 import zip.arcanum.arcanum.containers.ui.ExpandVolumeScreen
 import zip.arcanum.arcanum.containers.ui.MoveVaultScreen
@@ -493,6 +495,8 @@ fun AppNavigation(pinManager: PinManager) {
                 onChangeKeyfile  = { id -> navController.navigate(Screen.ChangeKeyfile.buildRoute(id)) },
                 onMoveVault      = { id, toApp -> navController.navigate(Screen.MoveVault.buildRoute(id, toApp)) },
                 onBackup         = { id -> navController.navigate(Screen.Backup.buildRoute(id)) },
+                onBackupHeader   = { id -> navController.navigate(Screen.BackupHeader.buildRoute(id)) },
+                onRestoreHeader  = { id -> navController.navigate(Screen.RestoreHeader.buildRoute(id)) },
                 onExpandVolume   = { id -> navController.navigate(Screen.ExpandVolume.buildRoute(id)) }
             )
         }
@@ -515,6 +519,34 @@ fun AppNavigation(pinManager: PinManager) {
             popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
         ) {
             BackupScreen(onBack = { navController.popBackStack() })
+        }
+
+        // ── Backup header ─────────────────────────────────────────────────
+        composable(
+            route             = Screen.BackupHeader.route,
+            arguments         = listOf(navArgument(Screen.BackupHeader.ARG) { type = NavType.StringType }),
+            enterTransition   = { slideInHorizontally(tween(300)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(300)) { it } }
+        ) { backStackEntry ->
+            val containerId = backStackEntry.arguments?.getString(Screen.BackupHeader.ARG) ?: return@composable
+            BackupHeaderScreen(
+                containerId = containerId,
+                onBack      = { navController.popBackStack() }
+            )
+        }
+
+        // ── Restore header ────────────────────────────────────────────────
+        composable(
+            route             = Screen.RestoreHeader.route,
+            arguments         = listOf(navArgument(Screen.RestoreHeader.ARG) { type = NavType.StringType }),
+            enterTransition   = { slideInHorizontally(tween(300)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(300)) { it } }
+        ) { backStackEntry ->
+            val containerId = backStackEntry.arguments?.getString(Screen.RestoreHeader.ARG) ?: return@composable
+            RestoreHeaderScreen(
+                containerId = containerId,
+                onBack      = { navController.popBackStack() }
+            )
         }
 
         // ── Mount screen ──────────────────────────────────────────────────

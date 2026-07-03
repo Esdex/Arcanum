@@ -100,7 +100,7 @@ data class CreateContainerState(
     val isCreated: Boolean = false,
     val error: String? = null,
     // ── Hidden volume fields ──────────────────────────────────────────
-    val hiddenSizeMb: Long = 100L,
+    val hiddenSizeMb: Long = 0L,
     val hiddenPassword: String = "",
     val hiddenConfirmPassword: String = "",
     val hiddenAlgorithm: CipherAlgorithm = CipherAlgorithm.AES,

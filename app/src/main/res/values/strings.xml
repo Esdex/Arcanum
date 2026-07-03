@@ -1462,6 +1462,37 @@
     <string name="notif_changing_keyfile">Changing keyfiles…</string>
     <string name="notif_changing_keyfile_desc">Do not close the app</string>
 
+    <!-- Backup Header Screen -->
+    <string name="backup_header_title">Backup Volume Header</string>
+    <string name="backup_header_desc">Save a backup of the volume header to an external file. Use it to restore access if the header becomes damaged.</string>
+    <string name="backup_header_output_section">Output File</string>
+    <string name="backup_header_choose_output">Choose Output File</string>
+    <string name="backup_header_no_file">No file selected</string>
+    <string name="backup_header_btn">Backup Header</string>
+    <string name="backup_header_running">Saving header backup…</string>
+    <string name="backup_header_success_title">Backup Saved</string>
+    <string name="backup_header_success_body">Store the backup file somewhere safe. Use Restore Header to recover the volume if the header is ever damaged.</string>
+    <string name="backup_header_error_wrong_password">Wrong password or incorrect keyfile.</string>
+    <string name="backup_header_error_generic">Backup failed: %s</string>
+
+    <!-- Restore Header Screen -->
+    <string name="restore_header_title">Restore Volume Header</string>
+    <string name="restore_header_warning">This will overwrite the primary volume header. Make sure you enter the correct password.</string>
+    <string name="restore_header_source_section">Restore From</string>
+    <string name="restore_header_embedded">Embedded backup (inside volume)</string>
+    <string name="restore_header_external">External backup file</string>
+    <string name="restore_header_choose_file">Choose Backup File</string>
+    <string name="restore_header_no_file">No file selected</string>
+    <string name="restore_header_btn">Restore Header</string>
+    <string name="restore_header_running">Restoring header…</string>
+    <string name="restore_header_success_title">Header Restored</string>
+    <string name="restore_header_success_body">The primary volume header has been restored. You can now access the volume with the original credentials.</string>
+    <string name="restore_header_error_wrong_password">Wrong password or incorrect keyfile.</string>
+    <string name="restore_header_error_generic">Restore failed: %s</string>
+    <string name="restore_header_op_desc">Restore from an embedded or external backup</string>
+    <string name="vault_info_op_restore_header">Restore Header</string>
+    <string name="vault_card_restore_desc">Restore the header from a backup copy</string>
+
     <!-- Vault Config Screen -->
     <string name="vault_config_op_mount">Mount</string>
     <string name="vault_config_op_mount_desc">Unlock and access vault contents</string>
