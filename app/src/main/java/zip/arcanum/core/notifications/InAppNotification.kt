@@ -138,6 +138,14 @@ sealed class InAppNotification {
         override val priority = 2
     }
 
+    data object CameraPermissionDenied : InAppNotification() {
+        override val priority = 2
+    }
+
+    data object CameraLaunchFailed : InAppNotification() {
+        override val priority = 2
+    }
+
     data object AppUpdated : InAppNotification() {
         override val priority    = 3
         override val persistent  = true

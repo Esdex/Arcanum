@@ -12,6 +12,9 @@
 # Ensure VeraCryptEngine and its Companion are fully preserved.
 -keep class zip.arcanum.crypto.VeraCryptEngine { *; }
 -keep class zip.arcanum.crypto.VeraCryptEngine$Companion { *; }
+# VolumeGeometry is instantiated from C++ via JNI NewObject. Keeping the outer
+# class is not enough for R8, so preserve the nested data class constructor too.
+-keep class zip.arcanum.crypto.VeraCryptEngine$VolumeGeometry { *; }
 # NativeFileInfo is instantiated by C++ via JNI NewObject — constructor
 # signature (String,String,long,boolean,long) must not be renamed or removed.
 -keep class zip.arcanum.crypto.NativeFileInfo { *; }

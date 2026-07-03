@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterNotNull
@@ -93,6 +94,7 @@ data class CreateContainerState(
     val filesystem: FilesystemType = FilesystemType.FAT32,
     val pim: Int = 0,
     val appStorageFileNameExists: Boolean = false,
+    val orphanInternalVaultCandidate: OrphanInternalVaultCandidate? = null,
     val entropyPoints: Int = 0,
     val creationProgress: Float = 0f,
     val creationSpeed: String = "",
@@ -131,16 +133,20 @@ class CreateContainerViewModel @Inject constructor(
     private val hiddenEntropyBuffer   = mutableListOf<Byte>()
     private var safParcelFd: ParcelFileDescriptor? = null
     private val registrationStarted  = AtomicBoolean(false)
+    private var orphanCandidateJob: Job? = null
 
     val appStoragePath: String = context.noBackupFilesDir.absolutePath
     val appStoragePathWithBackup: String = context.filesDir.absolutePath
 
     init {
         _state.update { validateAppStorageName(it.copy(filePath = context.noBackupFilesDir.absolutePath)) }
+        refreshOrphanInternalVaultCandidate()
     }
 
-    fun update(transform: CreateContainerState.() -> CreateContainerState) =
+    fun update(transform: CreateContainerState.() -> CreateContainerState) {
         _state.update { validateAppStorageName(it.transform()) }
+        refreshOrphanInternalVaultCandidate()
+    }
 
     fun nextStep() = _state.update { it.copy(currentStep = (it.currentStep + 1).coerceAtMost(it.totalSteps)) }
     fun prevStep() = _state.update { it.copy(currentStep = (it.currentStep - 1).coerceAtLeast(1)) }
@@ -157,6 +163,7 @@ class CreateContainerViewModel @Inject constructor(
         } ?: _state.value.fileName
         safParcelFd = context.contentResolver.openFileDescriptor(normalizedUri, "rw")
         _state.update { validateAppStorageName(it.copy(safUri = uriString, fileName = displayName)) }
+        refreshOrphanInternalVaultCandidate()
     }
 
     fun clearSafUri() {
@@ -165,6 +172,7 @@ class CreateContainerViewModel @Inject constructor(
             safUri   = "",
             filePath = if (it.includeInBackup) context.filesDir.absolutePath else context.noBackupFilesDir.absolutePath
         )) }
+        refreshOrphanInternalVaultCandidate()
     }
 
     // Call this BEFORE launching the file creator picker so the old 0-byte file is gone
@@ -180,6 +188,7 @@ class CreateContainerViewModel @Inject constructor(
                 )
             }
             _state.update { validateAppStorageName(it.copy(safUri = "")) }
+            refreshOrphanInternalVaultCandidate()
         }
     }
 
@@ -406,6 +415,34 @@ class CreateContainerViewModel @Inject constructor(
         }
     }
 
+    fun restoreOrphanInternalVault() {
+        val candidate = _state.value.orphanInternalVaultCandidate ?: return
+        viewModelScope.launch {
+            val file = java.io.File(candidate.path)
+            val alreadyKnown = repo.containsPath(candidate.path)
+            if (alreadyKnown || !AppStorageVaultRecovery.isRecoverableVaultFile(file)) {
+                _state.update { validateAppStorageName(it.copy(orphanInternalVaultCandidate = null)) }
+                refreshOrphanInternalVaultCandidate()
+                return@launch
+            }
+
+            val id = repo.addContainerFromPath(
+                path = candidate.path,
+                name = candidate.fileName,
+                size = file.length()
+            )
+            _state.update { it.copy(orphanInternalVaultCandidate = null) }
+            _restoredContainerId.value = id
+        }
+    }
+
+    private val _restoredContainerId = MutableStateFlow<String?>(null)
+    val restoredContainerId = _restoredContainerId.asStateFlow()
+
+    fun clearRestoredContainerId() {
+        _restoredContainerId.value = null
+    }
+
     fun cancelCreation() {
         context.stopService(Intent(context, ContainerCreationService::class.java))
         val s = _state.value
@@ -448,9 +485,57 @@ class CreateContainerViewModel @Inject constructor(
     }
 
     private fun validateAppStorageName(state: CreateContainerState): CreateContainerState {
+        val path = if (state.fileName.isNotBlank()) {
+            AppStorageVaultRecovery.pathFor(state.filePath, state.fileName)
+        } else {
+            ""
+        }
         val exists = state.location == StorageLocation.APP_STORAGE &&
-            state.fileName.isNotBlank() &&
-            java.io.File(state.filePath, state.fileName).exists()
-        return state.copy(appStorageFileNameExists = exists)
+            path.isNotBlank() &&
+            java.io.File(path).exists()
+        val candidate = state.orphanInternalVaultCandidate?.takeIf {
+            exists && it.path == path
+        }
+        return state.copy(
+            appStorageFileNameExists = exists,
+            orphanInternalVaultCandidate = candidate
+        )
+    }
+
+    private fun refreshOrphanInternalVaultCandidate() {
+        orphanCandidateJob?.cancel()
+        val snapshot = _state.value
+        if (snapshot.location != StorageLocation.APP_STORAGE ||
+            snapshot.fileName.isBlank() ||
+            !snapshot.appStorageFileNameExists
+        ) {
+            _state.update {
+                if (it.orphanInternalVaultCandidate == null) it
+                else it.copy(orphanInternalVaultCandidate = null)
+            }
+            return
+        }
+
+        val path = AppStorageVaultRecovery.pathFor(snapshot.filePath, snapshot.fileName)
+        val file = java.io.File(path)
+        orphanCandidateJob = viewModelScope.launch {
+            val isKnownPath = repo.containsPath(path)
+            val candidate = AppStorageVaultRecovery.candidateForFile(file, isKnownPath)
+            _state.update { current ->
+                val currentPath = if (current.fileName.isNotBlank()) {
+                    AppStorageVaultRecovery.pathFor(current.filePath, current.fileName)
+                } else {
+                    ""
+                }
+                if (current.location == StorageLocation.APP_STORAGE &&
+                    current.appStorageFileNameExists &&
+                    currentPath == path
+                ) {
+                    current.copy(orphanInternalVaultCandidate = candidate)
+                } else {
+                    current
+                }
+            }
+        }
     }
 }

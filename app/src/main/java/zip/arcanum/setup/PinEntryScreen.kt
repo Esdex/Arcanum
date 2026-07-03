@@ -1,5 +1,7 @@
 package zip.arcanum.setup
 
+import android.app.Activity
+import android.os.Process
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -64,6 +66,13 @@ fun PinEntryScreen(
     val isVerifying = state is PinEntryState.Verifying || state is PinEntryState.PanicWiping
     val isError     = state is PinEntryState.WrongPin || state is PinEntryState.Locked
 
+    LaunchedEffect(state) {
+        if (state is PinEntryState.PanicComplete) {
+            (context as? Activity)?.finishAffinity()
+            Process.killProcess(Process.myPid())
+        }
+    }
+
     val titleText = when (val s = state) {
         is PinEntryState.WrongPin   -> stringResource(R.string.pin_entry_wrong)
         is PinEntryState.Locked     -> stringResource(R.string.pin_entry_locked, s.remainingSec)
@@ -86,7 +95,7 @@ fun PinEntryScreen(
     // ensuring BiometricPrompt is only shown while the app is visible.
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
-        if (!viewModel.loadInitialBiometricEnabled() || !viewModel.isBiometricAvailable) return@LaunchedEffect
+        if (!viewModel.loadInitialBiometricReady() || !viewModel.isBiometricAvailable) return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             (context as? FragmentActivity)?.let { activity ->
                 viewModel.authenticate(activity) { onAuthenticated() }
@@ -152,7 +161,8 @@ fun PinEntryScreen(
             }
         }
 
-        val showBiometric = viewModel.isBiometricAvailable && biometricUnlockEnabled
+        val showBiometric = viewModel.isBiometricAvailable &&
+            (biometricUnlockEnabled || viewModel.hasBiometricEnrollment())
 
         if (inputMode == AppPasswordInputMode.Numeric) {
             NumPad(
@@ -179,7 +189,7 @@ fun PinEntryScreen(
                                         viewModel.registerBiometricWithPin(pin, activity) {
                                             onAuthenticated()
                                         }
-                                    } else if (biometricUnlockEnabled) {
+                                    } else if (viewModel.hasBiometricEnrollment()) {
                                         // No PIN → just unlock via biometric (already registered)
                                         viewModel.authenticate(activity) { onAuthenticated() }
                                     }
@@ -203,7 +213,18 @@ fun PinEntryScreen(
 
         Button(
             onClick  = {
-                if (AppPasswordPolicy.isValid(pin) && !isVerifying) viewModel.submitPin(pin) { onAuthenticated() }
+                if (AppPasswordPolicy.isValid(pin) && !isVerifying) {
+                    val activity = context as? FragmentActivity
+                    if (biometricUnlockEnabled &&
+                        viewModel.isBiometricAvailable &&
+                        !viewModel.hasBiometricEnrollment() &&
+                        activity != null
+                    ) {
+                        viewModel.registerBiometricWithPin(pin, activity) { onAuthenticated() }
+                    } else {
+                        viewModel.submitPin(pin) { onAuthenticated() }
+                    }
+                }
             },
             enabled  = AppPasswordPolicy.isValid(pin) && !isVerifying,
             modifier = Modifier.fillMaxWidth().height(52.dp),

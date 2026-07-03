@@ -320,6 +320,18 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         title           = ctx.getString(R.string.notif_import_failed),
         subtitle        = ctx.getString(R.string.notif_import_failed_subtitle)
     )
+    InAppNotification.CameraPermissionDenied -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFD97706),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_camera_permission_denied),
+        subtitle        = ctx.getString(R.string.notif_camera_permission_denied_subtitle)
+    )
+    InAppNotification.CameraLaunchFailed -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFDC2626),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_camera_launch_failed),
+        subtitle        = ctx.getString(R.string.notif_camera_launch_failed_subtitle)
+    )
     InAppNotification.AppUpdated -> NotificationDisplayConfig(
         backgroundColor = Color(0xFF7C3AED),
         icon            = Icons.Outlined.NewReleases,

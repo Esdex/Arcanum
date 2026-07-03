@@ -246,6 +246,6 @@ class S3BackupUploader @Inject constructor(
     companion object {
         private const val PART_SIZE_BYTES = 8L * 1024L * 1024L
         private const val S3_PARALLEL_PARTS = 4
-        private const val S3_PARALLEL_PARTS_FOR_SAF = 2
+        private const val S3_PARALLEL_PARTS_FOR_SAF = 4
     }
 }

@@ -528,7 +528,7 @@ internal class MegaAccountClient(private val context: Context? = null) {
     private fun chunkUrl(uploadUrl: String, total: Long, offset: Long, size: Long): String =
         if (offset + size == total) "$uploadUrl/$offset" else "$uploadUrl/$offset-${offset + size - 1}"
 
-    private fun validateMegaUploadUrl(value: String): String {
+    internal fun validateMegaUploadUrl(value: String): String {
         val url = runCatching { URL(value.trim()) }.getOrNull()
             ?: throw BackupValidationException(R.string.backup_error_mega_upload_https_required)
         val host = url.host.lowercase(Locale.US)
@@ -536,7 +536,13 @@ internal class MegaAccountClient(private val context: Context? = null) {
             host.endsWith(".mega.nz") ||
             host == "mega.co.nz" ||
             host.endsWith(".mega.co.nz")
-        if (url.protocol.lowercase(Locale.US) != "https" || !isMegaHost) {
+        val isMegaStorageHost = host == "userstorage.mega.nz" ||
+            host.endsWith(".userstorage.mega.nz") ||
+            host == "userstorage.mega.co.nz" ||
+            host.endsWith(".userstorage.mega.co.nz")
+        val protocol = url.protocol.lowercase(Locale.US)
+        val isAllowedProtocol = protocol == "https" || (protocol == "http" && isMegaStorageHost)
+        if (!isAllowedProtocol || !isMegaHost) {
             throw BackupValidationException(R.string.backup_error_mega_upload_https_required)
         }
         return url.toString().trimEnd('/')
@@ -623,7 +629,7 @@ internal class MegaAccountClient(private val context: Context? = null) {
         private const val APP_KEY = "BdARkQSQ"
         private const val USER_AGENT = "Arcanum Android"
         private const val MEGA_PARALLEL_CHUNKS = 6
-        private const val MEGA_PARALLEL_CHUNKS_FOR_SAF = 2
+        private const val MEGA_PARALLEL_CHUNKS_FOR_SAF = 6
         private const val HTTP_CONNECT_TIMEOUT_MS = 30_000
         private const val HTTP_READ_TIMEOUT_MS = 90_000
         private const val HTTP_HASHCASH_REQUIRED = 402

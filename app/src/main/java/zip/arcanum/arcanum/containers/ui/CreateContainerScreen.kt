@@ -70,6 +70,7 @@ fun CreateContainerScreen(
 
     val state              by viewModel.state.collectAsState()
     val createdContainerId by viewModel.createdContainerId.collectAsState()
+    val restoredContainerId by viewModel.restoredContainerId.collectAsState()
     var prevStep           by remember { mutableIntStateOf(1) }
     var showCancelDialog   by remember { mutableStateOf(false) }
 
@@ -121,6 +122,13 @@ fun CreateContainerScreen(
     // Register container in the repo once hidden creation is done (hidden volume)
     LaunchedEffect(state.isHiddenCreated) {
         if (state.isHiddenCreated) viewModel.registerCreatedContainer()
+    }
+
+    LaunchedEffect(restoredContainerId) {
+        restoredContainerId?.let { id ->
+            viewModel.clearRestoredContainerId()
+            onOpenVault(id)
+        }
     }
 
     LaunchedEffect(state.currentStep) {
@@ -221,7 +229,8 @@ fun CreateContainerScreen(
                                     appStoragePathWithBackup = viewModel.appStoragePathWithBackup,
                                     onUpdate                 = viewModel::update,
                                     onBrowse                 = { viewModel.deletePendingSafFile(); fileCreatorLauncher.launch(state.fileName) },
-                                    onClearSaf               = viewModel::clearSafUri
+                                    onClearSaf               = viewModel::clearSafUri,
+                                    onRestoreOrphanVault     = viewModel::restoreOrphanInternalVault
                                 )
                         3    -> StepEncryptionAlgorithm(state, viewModel::update)
                         4    -> StepVolumeSize(state, viewModel::update)

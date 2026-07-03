@@ -311,15 +311,6 @@ class FileManagerViewModel @Inject constructor(
         return true
     }
 
-    fun clearSensitiveStateBeforeStopIfNeeded(isLocked: Boolean, containers: List<Container>) {
-        val containerId = _state.value.containerId
-        val container = containers.firstOrNull { it.id == containerId } ?: return
-        if (!isLocked && externalActivityGuard.isActive && !container.unmountOnBackground) return
-        if (container.unmountOnBackground || (isLocked && container.unmountOnLock)) {
-            lockSensitiveState()
-        }
-    }
-
     fun requestThumbnail(file: NativeFileInfo) {
         if (!isVisualMedia(file)) return
         val key = file.path

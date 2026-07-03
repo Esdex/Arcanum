@@ -228,7 +228,7 @@ class SettingsViewModel @Inject constructor(
                 appBiometricUnlockManager.clearEnrollment()
                 prefs.setBiometricUnlockEnabled(false)
             } else {
-                prefs.setBiometricUnlockEnabled(appBiometricUnlockManager.hasEnrollment())
+                prefs.setBiometricUnlockEnabled(biometricAuth.isAvailable())
             }
         }
     }

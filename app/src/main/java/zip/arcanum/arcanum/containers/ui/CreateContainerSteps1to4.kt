@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Card
@@ -84,7 +85,8 @@ fun StepVolumeLocation(
     appStoragePathWithBackup: String,
     onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit,
     onBrowse: () -> Unit,
-    onClearSaf: () -> Unit = {}
+    onClearSaf: () -> Unit = {},
+    onRestoreOrphanVault: () -> Unit = {}
 ) {
     StepContent(title = stringResource(R.string.create_step2_title)) {
 
@@ -171,13 +173,60 @@ fun StepVolumeLocation(
                     placeholder   = { Text(stringResource(R.string.create_filename_placeholder)) },
                     isError       = state.appStorageFileNameExists,
                     supportingText = if (state.appStorageFileNameExists) {
-                        { Text(stringResource(R.string.create_filename_exists)) }
+                        {
+                            Text(
+                                if (state.orphanInternalVaultCandidate != null) {
+                                    stringResource(R.string.create_filename_orphan_found)
+                                } else {
+                                    stringResource(R.string.create_filename_exists)
+                                }
+                            )
+                        }
                     } else {
                         null
                     },
                     singleLine    = true,
                     modifier      = Modifier.fillMaxWidth()
                 )
+                state.orphanInternalVaultCandidate?.let { candidate ->
+                    Spacer(Modifier.height(8.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Restore,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.create_restore_orphan_title),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Text(
+                                    text = stringResource(R.string.create_restore_orphan_desc, candidate.fileName),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                            TextButton(onClick = onRestoreOrphanVault) {
+                                Text(stringResource(R.string.create_restore_orphan_action))
+                            }
+                        }
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
                 Row(
                     modifier          = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),

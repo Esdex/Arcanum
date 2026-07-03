@@ -8,12 +8,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import zip.arcanum.core.security.AppPasswordPolicy
+import zip.arcanum.core.security.AppPreferences
+import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.PinManager
 import javax.inject.Inject
 
 @HiltViewModel
 class SetupPinViewModel @Inject constructor(
-    private val pinManager: PinManager
+    private val pinManager: PinManager,
+    private val prefs: AppPreferences,
+    biometricAuth: BiometricAuth
 ) : ViewModel() {
 
     enum class Step { ENTER, CONFIRM }
@@ -23,10 +27,11 @@ class SetupPinViewModel @Inject constructor(
         val pin: String = "",
         val isError: Boolean = false,
         val isSuccess: Boolean = false,
-        val isSaving: Boolean = false
+        val isSaving: Boolean = false,
+        val biometricAvailable: Boolean = false
     )
 
-    private val _state = MutableStateFlow(State())
+    private val _state = MutableStateFlow(State(biometricAvailable = biometricAuth.isAvailable()))
     val state = _state.asStateFlow()
 
     private var firstPin = ""
@@ -64,6 +69,13 @@ class SetupPinViewModel @Inject constructor(
                     _state.update { it.copy(pin = "", isError = true) }
                 }
             }
+        }
+    }
+
+    fun requestBiometricSetup(onDone: () -> Unit) {
+        viewModelScope.launch {
+            prefs.setBiometricUnlockEnabled(true)
+            onDone()
         }
     }
 }

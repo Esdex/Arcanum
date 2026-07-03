@@ -113,6 +113,10 @@
     <string name="notif_hidden_write_protection_subtitle">Import stopped — files would overwrite the hidden volume</string>
     <string name="notif_import_failed">Import Failed</string>
     <string name="notif_import_failed_subtitle">Not enough space in the vault</string>
+    <string name="notif_camera_permission_denied">Camera permission denied</string>
+    <string name="notif_camera_permission_denied_subtitle">Allow camera access to take photos into the vault.</string>
+    <string name="notif_camera_launch_failed">Could not open camera</string>
+    <string name="notif_camera_launch_failed_subtitle">No compatible camera app accepted the capture request.</string>
     <string name="notif_support_developer">Enjoying Arcanum?</string>
     <string name="notif_support_developer_subtitle">Consider supporting development</string>
 
@@ -185,6 +189,8 @@
     <string name="setup_pin_success_title">Password Created!</string>
     <string name="setup_pin_success_desc">Your app password is set. Enter it on the lock screen to access Arcanum.</string>
     <string name="setup_pin_success_understood">I understand</string>
+    <string name="setup_pin_enable_biometric">Enable fingerprint unlock</string>
+    <string name="setup_pin_skip_biometric">Not now</string>
 
     <!-- Change PIN -->
     <string name="change_pin_wrong">Wrong PIN</string>
@@ -906,7 +912,7 @@
     <string name="backup_error_mega_validation_failed">MEGA settings did not pass validation: %1$s</string>
     <string name="backup_progress_mega_empty_uploaded">MEGA: empty file uploaded</string>
     <string name="backup_progress_mega_parallel">MEGA: %1$d threads, uploaded %2$s of %3$s</string>
-    <string name="backup_error_mega_upload_https_required">MEGA upload URL must use HTTPS on a MEGA host</string>
+    <string name="backup_error_mega_upload_https_required">MEGA upload URL must use HTTPS or a MEGA storage host</string>
     <string name="backup_error_mega_email_required">Enter MEGA email</string>
     <string name="backup_error_mega_password_required">Enter MEGA password</string>
     <string name="backup_error_mega_no_salt">MEGA did not return the account salt</string>
@@ -1102,6 +1108,10 @@
     <string name="create_filename_label">File name</string>
     <string name="create_filename_placeholder">vault.hc</string>
     <string name="create_filename_exists">A vault with this file name already exists in app storage.</string>
+    <string name="create_filename_orphan_found">A private vault file with this name is still stored by the app.</string>
+    <string name="create_restore_orphan_title">Restore hidden vault?</string>
+    <string name="create_restore_orphan_desc">%1$s was removed from the list, but the encrypted file is still in app storage.</string>
+    <string name="create_restore_orphan_action">Restore</string>
     <string name="create_step3_title">Encryption Algorithm</string>
     <string name="create_step3_subtitle">All algorithms are fully compatible with desktop VeraCrypt</string>
     <string name="create_step3_cipher">Cipher</string>
@@ -1512,6 +1522,7 @@
     <string name="vault_config_biometric_enable_desc">Enable it on the next manual unlock by entering the vault password.</string>
     <string name="vault_config_biometric_saved_global_disabled">Saved for this vault, but app-wide biometric unlock is off.</string>
     <string name="vault_config_biometric_global_disabled">Enable fingerprint or face unlock in app security settings first.</string>
+    <string name="vault_config_biometric_unavailable">Fingerprint or face unlock is unavailable on this device.</string>
     <string name="vault_config_backup_desc">Create a manual backup of the encrypted container file</string>
     <string name="vault_config_backup_auto_unmount_desc">The vault will be unmounted automatically before backup</string>
     <string name="vault_config_auto_unmount_before_action">The vault will be unmounted automatically before this action</string>

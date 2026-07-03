@@ -43,6 +43,7 @@ import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.BuildConfig
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.lifecycle.ExternalActivityGuard
+import zip.arcanum.core.lifecycle.VaultLifecyclePolicy
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.BiometricCryptoManager
@@ -207,6 +208,12 @@ class VaultViewModel @Inject constructor(
         data class Error(val message: String) : MountState
     }
 
+    data class MountedVolumeDetails(
+        val containerId: String,
+        val algorithmId: Int,
+        val hashId: Int
+    )
+
     private val _mountState = MutableStateFlow<MountState>(MountState.Idle)
     val mountState = _mountState.asStateFlow()
 
@@ -217,7 +224,6 @@ class VaultViewModel @Inject constructor(
         }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private var mountJob: Job? = null
-    private var lastMountTimeMillis = 0L
 
     fun cancelMount() {
         mountJob?.cancel()
@@ -235,7 +241,8 @@ class VaultViewModel @Inject constructor(
         protectHiddenPassword: String? = null,
         protectHiddenPim: Int = 0,
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
-        onSuccess: (containerId: String) -> Unit
+        onSuccess: (containerId: String) -> Unit,
+        onMountedDetails: (MountedVolumeDetails) -> Unit = {}
     ) {
         if (!VaultPasswordPolicy.isWithinVeraCryptLimit(password) ||
             (!protectHiddenPassword.isNullOrBlank() && !VaultPasswordPolicy.isWithinVeraCryptLimit(protectHiddenPassword))
@@ -323,8 +330,14 @@ class VaultViewModel @Inject constructor(
                         if (keySize    >  0) repo.updateKeySize(container.id, keySize)
                         if (iterations >  0) repo.updatePkcs5Iterations(container.id, iterations)
                         mountLogger.log("Mount successful.")
-                        lastMountTimeMillis = System.currentTimeMillis()
                         _mountState.value = MountState.Idle
+                        onMountedDetails(
+                            MountedVolumeDetails(
+                                containerId = container.id,
+                                algorithmId = if (algId >= 0) algId else algorithm,
+                                hashId = if (hashId >= 0) hashId else hashAlgorithm
+                            )
+                        )
                         onSuccess(container.id)
                     }
                     is CryptoResult.Failure -> {
@@ -469,16 +482,26 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch { repo.updateUnmountOnBackground(id, value) }
     }
 
+    fun beginTrustedLifecycleOperation() {
+        externalActivityGuard.begin()
+    }
+
+    fun finishTrustedLifecycleOperation() {
+        externalActivityGuard.end()
+    }
+
     fun unmountContainersOnStop(isLocked: Boolean) {
         viewModelScope.launch {
             val mounted = repo.getAllContainersRaw().first().filter { it.isMounted }
-            val hasExplicitBackgroundUnmount = mounted.any { it.unmountOnBackground }
-            if (!isLocked && externalActivityGuard.isActive && !hasExplicitBackgroundUnmount) return@launch
-            // Skip incidental stop events immediately after mount only when no mounted vault
-            // explicitly requests background unmounting.
-            if (!isLocked && !hasExplicitBackgroundUnmount && System.currentTimeMillis() - lastMountTimeMillis < 3_000L) return@launch
+            val trustedOperationActive = externalActivityGuard.isActive
             mounted.forEach { c ->
-                if (c.unmountOnBackground || (isLocked && c.unmountOnLock)) {
+                if (VaultLifecyclePolicy.shouldUnmountOnProcessStop(
+                        isLocked = isLocked,
+                        trustedOperationActive = trustedOperationActive,
+                        unmountOnBackground = c.unmountOnBackground,
+                        unmountOnLock = c.unmountOnLock
+                    )
+                ) {
                     val handle = repo.getContainerHandle(c.id)
                     if (handle != null) cryptoEngine.unmountContainer(handle)
                     repo.unmountContainer(c.id)

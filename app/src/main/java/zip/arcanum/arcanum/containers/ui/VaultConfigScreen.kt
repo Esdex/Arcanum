@@ -98,9 +98,9 @@ fun VaultConfigScreen(
     val isAmoled     = LocalAmoledMode.current
     val containers   by viewModel.containers.collectAsState()
     val renameResult by viewModel.renameResult.collectAsState()
-    val biometricUnlockEnabled by viewModel.biometricUnlockEnabled.collectAsState()
     val container    = containers.firstOrNull { it.id == containerId }
     val isMounted    = container?.isMounted ?: false
+    val biometricAvailable = remember(containerId) { viewModel.isBiometricAvailable() }
 
     val hazeState = remember { HazeState() }
 
@@ -240,10 +240,8 @@ fun VaultConfigScreen(
                             title           = stringResource(R.string.vault_config_biometric_unlock),
                             subtitle        = stringResource(
                                 when {
-                                    !biometricUnlockEnabled && container.hasBiometric ->
-                                        R.string.vault_config_biometric_saved_global_disabled
-                                    !biometricUnlockEnabled && !container.hasBiometric ->
-                                        R.string.vault_config_biometric_global_disabled
+                                    !biometricAvailable && !container.hasBiometric ->
+                                        R.string.vault_config_biometric_unavailable
                                     container.hasBiometric ->
                                         R.string.vault_config_biometric_enabled_desc
                                     else ->
@@ -251,11 +249,11 @@ fun VaultConfigScreen(
                                 }
                             ),
                             checked         = container.hasBiometric,
-                            enabled         = biometricUnlockEnabled || container.hasBiometric,
+                            enabled         = biometricAvailable || container.hasBiometric,
                             onCheckedChange = { enabled ->
                                 if (!enabled && container.hasBiometric) {
                                     showRemoveBioDialog = true
-                                } else if (enabled && biometricUnlockEnabled && !container.hasBiometric) {
+                                } else if (enabled && biometricAvailable && !container.hasBiometric) {
                                     runAfterUnmountIfNeeded { onMount(containerId, true) }
                                 }
                             }

@@ -75,7 +75,11 @@ fun SetupPinScreen(
         label = "pinSetupContent"
     ) { isSuccess ->
         if (isSuccess) {
-            PinSuccessContent(onGetStarted = onPinSet)
+            PinSuccessContent(
+                biometricAvailable = state.biometricAvailable,
+                onEnableBiometric = { viewModel.requestBiometricSetup(onPinSet) },
+                onGetStarted = onPinSet
+            )
         } else {
             PinEntryContent(state = state, viewModel = viewModel)
         }
@@ -83,7 +87,11 @@ fun SetupPinScreen(
 }
 
 @Composable
-private fun PinSuccessContent(onGetStarted: () -> Unit) {
+private fun PinSuccessContent(
+    biometricAvailable: Boolean,
+    onEnableBiometric: () -> Unit,
+    onGetStarted: () -> Unit
+) {
     BackHandler(enabled = true) { /* block back — user must tap I understand */ }
 
     val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_check))
@@ -127,21 +135,45 @@ private fun PinSuccessContent(onGetStarted: () -> Unit) {
             )
         }
 
-        Button(
-            onClick  = onGetStarted,
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 40.dp, vertical = 24.dp)
-                .height(52.dp),
-            shape    = CircleShape
+                .padding(horizontal = 40.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text       = stringResource(R.string.setup_pin_success_understood),
-                style      = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold
-            )
+            if (biometricAvailable) {
+                Button(
+                    onClick  = onEnableBiometric,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape    = CircleShape
+                ) {
+                    Text(
+                        text       = stringResource(R.string.setup_pin_enable_biometric),
+                        style      = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                TextButton(
+                    onClick  = onGetStarted,
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Text(stringResource(R.string.setup_pin_skip_biometric))
+                }
+            } else {
+                Button(
+                    onClick  = onGetStarted,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape    = CircleShape
+                ) {
+                    Text(
+                        text       = stringResource(R.string.setup_pin_success_understood),
+                        style      = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
         }
     }
 }

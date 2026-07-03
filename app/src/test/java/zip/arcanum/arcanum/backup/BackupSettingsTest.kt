@@ -33,4 +33,38 @@ class BackupSettingsTest {
         assertEquals("https://s3.example.com", S3BackupClientFactory.normalizeEndpoint("s3.example.com/"))
         assertEquals("https://s3.example.com", S3BackupClientFactory.normalizeEndpoint("https://s3.example.com/"))
     }
+
+    @Test
+    fun megaUploadUrlAllowsCleartextOnlyForMegaStorageHosts() {
+        val client = MegaAccountClient()
+
+        assertEquals(
+            "http://gfs270n001.userstorage.mega.co.nz/ul/abc",
+            client.validateMegaUploadUrl("http://gfs270n001.userstorage.mega.co.nz/ul/abc/")
+        )
+        assertEquals(
+            "http://gfs270n001.userstorage.mega.nz/ul/abc",
+            client.validateMegaUploadUrl("http://gfs270n001.userstorage.mega.nz/ul/abc/")
+        )
+        assertThrows(BackupValidationException::class.java) {
+            client.validateMegaUploadUrl("http://mega.nz/ul/abc")
+        }
+        assertThrows(BackupValidationException::class.java) {
+            client.validateMegaUploadUrl("http://userstorage.mega.nz.evil.example/ul/abc")
+        }
+    }
+
+    @Test
+    fun megaUploadUrlAllowsHttpsMegaHosts() {
+        val client = MegaAccountClient()
+
+        assertEquals(
+            "https://g.api.mega.co.nz/ul/abc",
+            client.validateMegaUploadUrl("https://g.api.mega.co.nz/ul/abc/")
+        )
+        assertEquals(
+            "https://mega.nz/ul/abc",
+            client.validateMegaUploadUrl("https://mega.nz/ul/abc/")
+        )
+    }
 }

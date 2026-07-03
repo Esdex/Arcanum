@@ -1,10 +1,13 @@
 package zip.arcanum.arcanum.files.ui
 
+import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.ClipData
 import android.content.Intent
-import android.app.KeyguardManager
+import android.content.pm.PackageManager
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,8 +46,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
@@ -115,7 +120,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -143,6 +147,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -200,8 +205,6 @@ fun FileManagerScreen(
     val thumbnails       by viewModel.mediaThumbnails.collectAsState()
     val mountedContainers by viewModel.mountedContainers.collectAsState()
     val lifecycleOwner   = LocalLifecycleOwner.current
-    val latestMountedContainers by rememberUpdatedState(mountedContainers)
-    val keyguardManager  = remember(context) { context.getSystemService(KeyguardManager::class.java) }
 
     var showFabMenu by remember { mutableStateOf(false) }
     val fabRotation by animateFloatAsState(
@@ -223,16 +226,11 @@ fun FileManagerScreen(
         }
     }
 
-    // Delete temp files when user returns to app and blank sensitive UI before/after auto-unmount.
+    // Returning from media/text viewers is in-app navigation; only process-level
+    // lifecycle should auto-unmount. Here we only react to already-lost handles.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> {
-                    viewModel.clearSensitiveStateBeforeStopIfNeeded(
-                        isLocked = keyguardManager?.isKeyguardLocked == true,
-                        containers = latestMountedContainers
-                    )
-                }
                 Lifecycle.Event.ON_START -> {
                     viewModel.clearSensitiveStateIfUnmounted()
                 }
@@ -307,16 +305,57 @@ fun FileManagerScreen(
     }
 
     var pendingCapturePath by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingCaptureUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val takePhotoLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.TakePicture()
-    ) { success ->
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
         viewModel.finishExternalActivity()
         val photoFile = pendingCapturePath?.let { File(it) }
+        val photoUri = pendingCaptureUri
         pendingCapturePath = null
-        if (success && photoFile != null && photoFile.exists()) {
+        pendingCaptureUri = null
+        photoUri?.let { revokeCameraOutputUri(context, it) }
+        val hasImage = photoFile != null && photoFile.exists() && photoFile.length() > 0L
+        if ((result.resultCode == Activity.RESULT_OK || hasImage) && hasImage) {
             viewModel.importCapturedPhoto(photoFile)
         } else {
             photoFile?.delete()
+        }
+    }
+
+    fun launchGuardedExternalActivity(block: () -> Unit): Boolean {
+        viewModel.beginExternalActivity()
+        return runCatching(block).onFailure { viewModel.finishExternalActivity() }.isSuccess
+    }
+
+    fun launchCameraCapture() {
+        val photoFile = createCapturePhotoFile(context)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", photoFile)
+        val intent = createCameraCaptureIntent(context, uri)
+        if (intent.resolveActivity(context.packageManager) == null) {
+            photoFile.delete()
+            onNotification?.invoke(InAppNotification.CameraLaunchFailed)
+            return
+        }
+        pendingCapturePath = photoFile.absolutePath
+        pendingCaptureUri = uri
+        val launched = launchGuardedExternalActivity { takePhotoLauncher.launch(intent) }
+        if (!launched) {
+            pendingCapturePath = null
+            pendingCaptureUri = null
+            revokeCameraOutputUri(context, uri)
+            photoFile.delete()
+            onNotification?.invoke(InAppNotification.CameraLaunchFailed)
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            launchCameraCapture()
+        } else {
+            onNotification?.invoke(InAppNotification.CameraPermissionDenied)
         }
     }
 
@@ -337,11 +376,6 @@ fun FileManagerScreen(
         uri?.let { treeUri ->
             if (target != null) viewModel.exportSingle(context, target, treeUri)
         }
-    }
-
-    fun launchGuardedExternalActivity(block: () -> Unit) {
-        viewModel.beginExternalActivity()
-        runCatching(block).onFailure { viewModel.finishExternalActivity() }
     }
 
     // Dialog/sheet visibility
@@ -393,6 +427,20 @@ fun FileManagerScreen(
     val localHazeState    = remember { HazeState() }
     var headerHeight      by remember { mutableStateOf(0) }
     val density           = LocalDensity.current
+    val listState = rememberSaveable(
+        state.containerId,
+        state.currentPath,
+        saver = LazyListState.Saver
+    ) { LazyListState() }
+    val gridState = rememberSaveable(
+        state.containerId,
+        state.currentPath,
+        saver = LazyGridState.Saver
+    ) { LazyGridState() }
+    val contentScrolled = when (state.viewMode) {
+        ViewMode.LIST -> listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
+        ViewMode.GRID -> gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0
+    }
 
     Box(Modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalHazeState provides localHazeState) {
@@ -405,9 +453,6 @@ fun FileManagerScreen(
                     .hazeSource(localHazeState)
             ) {
                 when {
-                    state.isLoading -> Box(Modifier.fillMaxSize().padding(top = topPadding)) {
-                        CircularProgressIndicator(Modifier.align(Alignment.Center))
-                    }
                     state.error != null -> Box(Modifier.fillMaxSize().padding(top = topPadding)) {
                         EmptyStateView(
                             lottieRes = R.raw.ghost,
@@ -415,6 +460,9 @@ fun FileManagerScreen(
                             subtitle  = state.error,
                             modifier  = Modifier.fillMaxSize()
                         )
+                    }
+                    state.files.isEmpty() && state.isLoading -> Box(Modifier.fillMaxSize().padding(top = topPadding)) {
+                        CircularProgressIndicator(Modifier.align(Alignment.Center))
                     }
                     state.files.isEmpty() -> Box(Modifier.fillMaxSize().padding(top = topPadding)) {
                         EmptyStateView(
@@ -443,6 +491,7 @@ fun FileManagerScreen(
                         ) { target ->
                             FileListContent(
                                 files           = target.files,
+                                listState       = listState,
                                 selectedItems   = state.selectedItems,
                                 isSelectionMode = state.isSelectionMode,
                                 searchQuery     = state.searchQuery,
@@ -464,6 +513,7 @@ fun FileManagerScreen(
                     else -> {
                         FileGridContent(
                             files           = state.files,
+                            gridState       = gridState,
                             selectedItems   = state.selectedItems,
                             isSelectionMode = state.isSelectionMode,
                             showFileNames   = state.showGridFileNames,
@@ -525,7 +575,7 @@ fun FileManagerScreen(
                 }
 
                 AnimatedVisibility(
-                    visible = !state.isSelectionMode && !state.isSearchActive,
+                    visible = !state.isSelectionMode && !state.isSearchActive && !contentScrolled,
                     enter = fadeIn(tween(200)),
                     exit = fadeOut(tween(150))
                 ) {
@@ -624,10 +674,11 @@ fun FileManagerScreen(
                 exit    = slideOutVertically(tween(180), targetOffsetY = { it / 2 }) + fadeOut(tween(150))
             ) {
                 FabMenuItem(stringResource(R.string.files_action_take_photo), Icons.Outlined.Image) {
-                    val photoFile = createCapturePhotoFile(context)
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", photoFile)
-                    pendingCapturePath = photoFile.absolutePath
-                    launchGuardedExternalActivity { takePhotoLauncher.launch(uri) }
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                        launchCameraCapture()
+                    } else {
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
                     showFabMenu = false
                 }
             }
@@ -1143,6 +1194,7 @@ private fun BreadcrumbRow(
 @Composable
 private fun FileListContent(
     files: List<NativeFileInfo>,
+    listState: LazyListState,
     selectedItems: Set<String>,
     isSelectionMode: Boolean,
     searchQuery: String,
@@ -1157,6 +1209,7 @@ private fun FileListContent(
     formatSize: (Long) -> String
 ) {
     LazyColumn(
+        state = listState,
         contentPadding = PaddingValues(top = topPadding, bottom = bottomPadding),
         modifier = Modifier.fillMaxSize()
     ) {
@@ -1300,6 +1353,7 @@ private fun FileListItem(
 @Composable
 private fun FileGridContent(
     files: List<NativeFileInfo>,
+    gridState: LazyGridState,
     selectedItems: Set<String>,
     isSelectionMode: Boolean,
     showFileNames: Boolean,
@@ -1313,6 +1367,7 @@ private fun FileGridContent(
     onFolderCountRequest: (NativeFileInfo) -> Unit
 ) {
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Fixed(3),
         contentPadding = PaddingValues(start = 0.dp, top = topPadding + 1.dp, end = 0.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(0.dp),
@@ -2103,6 +2158,27 @@ private fun createCapturePhotoFile(context: Context): File {
     val stamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
     val suffix = UUID.randomUUID().toString().take(8)
     return File(dir, "IMG_${stamp}_$suffix.jpg")
+}
+
+private fun createCameraCaptureIntent(context: Context, uri: android.net.Uri): Intent {
+    val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+    return Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+        putExtra(MediaStore.EXTRA_OUTPUT, uri)
+        clipData = ClipData.newUri(context.contentResolver, "arcanum_camera_output", uri)
+        addFlags(flags)
+        context.packageManager.queryIntentActivities(this, PackageManager.MATCH_DEFAULT_ONLY).forEach { info ->
+            context.grantUriPermission(info.activityInfo.packageName, uri, flags)
+        }
+    }
+}
+
+private fun revokeCameraOutputUri(context: Context, uri: android.net.Uri) {
+    runCatching {
+        context.revokeUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+    }
 }
 
 private fun launchShareIntent(context: Context, files: List<File>, mimeType: String) {

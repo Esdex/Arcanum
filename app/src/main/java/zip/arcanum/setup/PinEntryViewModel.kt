@@ -59,7 +59,10 @@ class PinEntryViewModel @Inject constructor(
     // Using this instead of observing the StateFlow in LaunchedEffect prevents a second
     // biometric prompt when registration happens in the same session (setBiometricUnlockEnabled
     // fires → StateFlow changes → LaunchedEffect would re-trigger while still in composition).
-    suspend fun loadInitialBiometricEnabled(): Boolean = prefs.biometricUnlockEnabled.first()
+    suspend fun loadInitialBiometricReady(): Boolean =
+        prefs.biometricUnlockEnabled.first() && appBiometricUnlockManager.hasEnrollment()
+
+    fun hasBiometricEnrollment(): Boolean = appBiometricUnlockManager.hasEnrollment()
 
     fun submitPin(pin: String, onAuthenticated: () -> Unit) {
         if (_state.value is PinEntryState.Verifying) return
@@ -128,7 +131,10 @@ class PinEntryViewModel @Inject constructor(
                                     onAuthenticated()
                                 }
                             },
-                            onError  = { _, _ -> },
+                            onError  = { _, _ ->
+                                viewModelScope.launch { prefs.setBiometricUnlockEnabled(false) }
+                                onAuthenticated()
+                            },
                             onFailed = {}
                         )
                     }
