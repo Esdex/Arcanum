@@ -103,4 +103,7 @@ interface ContainerDao {
 
     @Query("UPDATE containers SET headerModifiedAt = :time WHERE id = :id")
     suspend fun updateHeaderModifiedAt(id: String, time: Long)
+
+    @Query("UPDATE containers SET size = :size WHERE id = :id")
+    suspend fun updateSize(id: String, size: Long)
 }

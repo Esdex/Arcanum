@@ -3265,3 +3265,195 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfileFd(
     close(fd);
     return r2 == 0 ? ERR_OK : ERR_FILE;
 }
+
+/* ─── Expand volume helpers ──────────────────────────────────────────── */
+
+/* Fill [startByte, endByte) on fd with AES-256-XTS encrypted zeros.
+   Uses a one-shot temp 64-byte random key — produces plausible ciphertext
+   that no one can decrypt. Reports progress every chunk. */
+static int fill_range_xts(int fd, uint64_t startByte, uint64_t endByte,
+                           JNIEnv *env, jobject listener, jmethodID progressMid,
+                           float progressBase, float progressRange, uint64_t totalFillBytes) {
+    if (startByte >= endByte) return ERR_OK;
+
+    uint8_t tempKey[64] = {};
+    if (!read_urandom(tempKey, sizeof(tempKey))) return ERR_RAND;
+
+    aes_encrypt_ctx k1enc, k2enc;
+    aes_encrypt_key256(tempKey,      &k1enc);
+    aes_encrypt_key256(tempKey + 32, &k2enc);
+    secure_memset(tempKey, 0, sizeof(tempKey));
+
+    const size_t SECTOR = 512;
+    const size_t CHUNK  = 256 * SECTOR; /* 128 KiB */
+    auto *buf = static_cast<uint8_t*>(malloc(CHUNK));
+    if (!buf) {
+        memset(&k1enc, 0, sizeof(k1enc));
+        memset(&k2enc, 0, sizeof(k2enc));
+        return ERR_NO_SPACE;
+    }
+
+    uint64_t remaining = endByte - startByte;
+    uint64_t offset    = startByte;
+    auto t0 = (uint64_t)time(nullptr);
+
+    while (remaining > 0) {
+        size_t sz = (remaining > CHUNK) ? CHUNK : (size_t)remaining;
+        memset(buf, 0, sz);
+
+        uint64_t firstSector = offset / SECTOR;
+        size_t   nSectors    = sz / SECTOR;
+        for (size_t i = 0; i < nSectors; i++) {
+            UINT64_STRUCT dataUnit;
+            dataUnit.Value = (TC_LARGEST_COMPILER_UINT)(firstSector + i);
+            EncryptBufferXTS(buf + i * SECTOR, (TC_LARGEST_COMPILER_UINT)SECTOR,
+                             &dataUnit, 0,
+                             (uint8_t*)&k1enc, (uint8_t*)&k2enc, CIPHER_AES);
+        }
+
+        ssize_t wr = pwrite(fd, buf, sz, (off_t)offset);
+        if (wr != (ssize_t)sz) {
+            free(buf);
+            memset(&k1enc, 0, sizeof(k1enc));
+            memset(&k2enc, 0, sizeof(k2enc));
+            return ERR_NO_SPACE;
+        }
+        remaining -= sz;
+        offset    += sz;
+
+        uint64_t done    = offset - startByte;
+        uint64_t elapsed = (uint64_t)time(nullptr) - t0;
+        float    speed   = elapsed > 0 ? (float)(done >> 20) / (float)elapsed : 50.f;
+        float    lFrac   = totalFillBytes > 0 ? (float)done / (float)totalFillBytes : 1.f;
+        float    frac    = progressBase + lFrac * progressRange;
+        report_progress(env, listener, progressMid, frac, speed, (jlong)done);
+    }
+
+    free(buf);
+    memset(&k1enc, 0, sizeof(k1enc));
+    memset(&k2enc, 0, sizeof(k2enc));
+    return ERR_OK;
+}
+
+static int do_expand_volume(int fd, const uint8_t *effPwd, int effPwdLen, int pim,
+                             uint64_t newFileSize,
+                             JNIEnv *env, jobject progressListener) {
+    off_t oldSzOff = lseek(fd, 0, SEEK_END);
+    if (oldSzOff < 0) return ERR_FILE;
+    uint64_t oldFileSize = (uint64_t)oldSzOff;
+
+    if (newFileSize < oldFileSize + 65536ULL) return ERR_NO_SPACE;
+    if (newFileSize % 512 != 0)               return ERR_UNSUPPORTED;
+
+    uint8_t masterKey[192] = {};
+    int mkLen = 0, algId = 0, hashId = 0;
+    uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
+    int rc = read_vc_header(fd, 0, (const char*)effPwd, effPwdLen,
+                            masterKey, &mkLen, &dataSz, &dataOff,
+                            &algId, &hashId, pim, &hiddenVolSize);
+    if (rc != ERR_OK) {
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        return ERR_WRONG_PASSWORD;
+    }
+    /* Outer volume containing a hidden volume — cannot expand safely */
+    if (hiddenVolSize != 0) {
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        return ERR_UNSUPPORTED;
+    }
+
+    if (ftruncate(fd, (off_t)newFileSize) != 0) {
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        return ERR_NO_SPACE;
+    }
+
+    uint64_t oldBackupOff = oldFileSize - VC_BACKUP_AREA_SIZE;
+    uint64_t newBackupOff = newFileSize - VC_BACKUP_AREA_SIZE;
+    uint64_t fillSize     = newBackupOff - oldBackupOff;
+
+    jmethodID progressMid = resolve_progress_mid(env, progressListener);
+
+    rc = fill_range_xts(fd, oldBackupOff, newBackupOff,
+                        env, progressListener, progressMid,
+                        0.0f, 0.9f, fillSize);
+    if (rc != ERR_OK) {
+        ftruncate(fd, (off_t)oldFileSize);
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        return rc;
+    }
+
+    uint64_t newDataSz = newFileSize - VC_DATA_OFFSET - VC_BACKUP_AREA_SIZE;
+
+    int r1 = wipe_and_rewrite_header(fd, newBackupOff,
+                                     newDataSz, dataOff, masterKey, algId, hashId,
+                                     (const char*)effPwd, effPwdLen,
+                                     pim, hiddenVolSize, /*wipePassCount=*/1);
+    int r2 = wipe_and_rewrite_header(fd, 0,
+                                     newDataSz, dataOff, masterKey, algId, hashId,
+                                     (const char*)effPwd, effPwdLen,
+                                     pim, hiddenVolSize, /*wipePassCount=*/1);
+
+    secure_memset(masterKey, 0, sizeof(masterKey));
+    if (r1 != 0 || r2 != 0) return ERR_FILE;
+
+    fdatasync(fd);
+    report_progress(env, progressListener, progressMid, 1.0f, 0.f, (jlong)fillSize);
+    return ERR_OK;
+}
+
+/* ─── JNI: nativeExpandVolume ────────────────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeExpandVolume(
+        JNIEnv *env, jobject /*thiz*/,
+        jstring jPath, jstring jPassword,
+        jobjectArray jKeyfilePaths, jint pim,
+        jlong newSizeBytes, jobject progressListener)
+{
+    std::string path     = jstring_to_string(env, jPath);
+    std::string password = jstring_to_string(env, jPassword);
+    auto keyfilePaths    = jstringArray_to_vector(env, jKeyfilePaths);
+    if (path.empty()) return ERR_FILE;
+
+    uint8_t effPwd[VC_MAX_PWD_LEN] = {};
+    int effPwdLen = (int)password.size();
+    if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
+    memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
+    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
+    if (!password.empty()) secure_memset(reinterpret_cast<volatile uint8_t*>(&password[0]), 0, password.size());
+
+    int fd = open(path.c_str(), O_RDWR | O_CLOEXEC);
+    if (fd < 0) { secure_memset(effPwd, 0, sizeof(effPwd)); return ERR_FILE; }
+
+    int rc = do_expand_volume(fd, effPwd, effPwdLen, (int)pim, (uint64_t)newSizeBytes, env, progressListener);
+    secure_memset(effPwd, 0, sizeof(effPwd));
+    close(fd);
+    return rc;
+}
+
+/* ─── JNI: nativeExpandVolumeFd ─────────────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeExpandVolumeFd(
+        JNIEnv *env, jobject /*thiz*/,
+        jint safFd, jstring jPassword,
+        jobjectArray jKeyfilePaths, jint pim,
+        jlong newSizeBytes, jobject progressListener)
+{
+    std::string password = jstring_to_string(env, jPassword);
+    auto keyfilePaths    = jstringArray_to_vector(env, jKeyfilePaths);
+
+    uint8_t effPwd[VC_MAX_PWD_LEN] = {};
+    int effPwdLen = (int)password.size();
+    if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
+    memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
+    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
+    if (!password.empty()) secure_memset(reinterpret_cast<volatile uint8_t*>(&password[0]), 0, password.size());
+
+    int fd = dup((int)safFd);
+    if (fd < 0) { secure_memset(effPwd, 0, sizeof(effPwd)); return ERR_FILE; }
+
+    int rc = do_expand_volume(fd, effPwd, effPwdLen, (int)pim, (uint64_t)newSizeBytes, env, progressListener);
+    secure_memset(effPwd, 0, sizeof(effPwd));
+    close(fd);
+    return rc;
+}

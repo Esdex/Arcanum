@@ -158,6 +158,9 @@ class ContainerRepository @Inject constructor(
     suspend fun updateHeaderModifiedAt(id: String, time: Long) =
         dao.updateHeaderModifiedAt(id, time)
 
+    suspend fun updateSize(id: String, size: Long) =
+        dao.updateSize(id, size)
+
     suspend fun deleteContainersById(ids: Set<String>) {
         ids.forEach { id ->
             mountedHandles.remove(id)

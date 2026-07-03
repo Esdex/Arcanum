@@ -309,6 +309,36 @@ class VeraCryptEngine @Inject constructor() {
         ).toResult()
     }
 
+    suspend fun expandVolume(
+        path: String,
+        password: String,
+        keyfilePaths: List<String> = emptyList(),
+        pim: Int = 0,
+        newSizeBytes: Long,
+        progressListener: CreationProgressListener? = null
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        nativeExpandVolume(
+            path, password,
+            keyfilePaths.toTypedArray().ifEmpty { null }, pim,
+            newSizeBytes, progressListener
+        ).toResult()
+    }
+
+    suspend fun expandVolumeFd(
+        fd: Int,
+        password: String,
+        keyfilePaths: List<String> = emptyList(),
+        pim: Int = 0,
+        newSizeBytes: Long,
+        progressListener: CreationProgressListener? = null
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        nativeExpandVolumeFd(
+            fd, password,
+            keyfilePaths.toTypedArray().ifEmpty { null }, pim,
+            newSizeBytes, progressListener
+        ).toResult()
+    }
+
     fun getVolumeType(handle: Long): Int = nativeGetVolumeType(handle)
     fun hasHiddenVolume(handle: Long): Boolean = nativeHasHiddenVolume(handle)
 
@@ -507,6 +537,24 @@ class VeraCryptEngine @Inject constructor() {
         pim: Int,
         fromExternal: Boolean,
         backupFd: Int
+    ): Int
+
+    external fun nativeExpandVolume(
+        path: String,
+        password: String,
+        keyfilePaths: Array<String>?,
+        pim: Int,
+        newSizeBytes: Long,
+        progressListener: CreationProgressListener?
+    ): Int
+
+    external fun nativeExpandVolumeFd(
+        fd: Int,
+        password: String,
+        keyfilePaths: Array<String>?,
+        pim: Int,
+        newSizeBytes: Long,
+        progressListener: CreationProgressListener?
     ): Int
 
     external fun nativeGetVolumeType(handle: Long): Int

@@ -103,4 +103,9 @@ sealed class Screen(val route: String) {
         const val ARG = "containerId"
         fun buildRoute(containerId: String) = "restore_header/$containerId"
     }
+
+    object ExpandVolume : Screen("expand_volume/{containerId}") {
+        const val ARG = "containerId"
+        fun buildRoute(containerId: String) = "expand_volume/$containerId"
+    }
 }

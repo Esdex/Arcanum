@@ -66,7 +66,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -80,21 +79,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.platform.LocalAutofill
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import androidx.compose.ui.autofill.AutofillNode
-import androidx.compose.ui.autofill.AutofillType
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -107,6 +97,7 @@ import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
+import zip.arcanum.core.utils.DotVisualTransformation
 import zip.arcanum.R
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.components.AppDialog
@@ -147,7 +138,7 @@ fun MountScreen(
     MountScreenContent(container, viewModel, onBack, onMountSuccess)
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MountScreenContent(
     container: ContainerEntity,
@@ -197,44 +188,14 @@ private fun MountScreenContent(
     var password            by passwordState
     val hiddenPasswordState = remember { mutableStateOf("") }
 
-    val autofill               = LocalAutofill.current
-    val autofillManager        = remember { context.getSystemService(android.view.autofill.AutofillManager::class.java) }
-    val lifecycleOwner         = LocalLifecycleOwner.current
-    val autofillScope          = rememberCoroutineScope()
+    val lifecycleOwner               = LocalLifecycleOwner.current
     val passwordFocusRequester       = remember { FocusRequester() }
     val hiddenPasswordFocusRequester = remember { FocusRequester() }
-    val passwordAutofillNode = remember {
-        AutofillNode(listOf(AutofillType.Password)) { passwordState.value = it }
-    }
-    val hiddenPasswordAutofillNode = remember {
-        AutofillNode(listOf(AutofillType.Password)) { hiddenPasswordState.value = it }
-    }
-    val autofillTree = LocalAutofillTree.current
-
-    // Only the currently focused field's node lives in the tree at any time.
-    // This prevents KeePassDX from caching a mapping to the wrong node after auth.
-    var focusedField by remember { mutableStateOf("password") }
-    if (focusedField == "hidden") {
-        autofillTree.children.remove(passwordAutofillNode.id)
-        autofillTree += hiddenPasswordAutofillNode
-    } else {
-        autofillTree.children.remove(hiddenPasswordAutofillNode.id)
-        autofillTree += passwordAutofillNode
-    }
-    DisposableEffect(Unit) {
-        onDispose {
-            autofillTree.children.remove(passwordAutofillNode.id)
-            autofillTree.children.remove(hiddenPasswordAutofillNode.id)
-        }
-    }
 
     var refocusCount by remember { mutableIntStateOf(0) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                autofillManager?.cancel()
-                refocusCount++
-            }
+            if (event == Lifecycle.Event.ON_RESUME) refocusCount++
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -244,8 +205,7 @@ private fun MountScreenContent(
         delay(200)
         focusManager.clearFocus()
         delay(50)
-        if (focusedField == "hidden") hiddenPasswordFocusRequester.requestFocus()
-        else passwordFocusRequester.requestFocus()
+        passwordFocusRequester.requestFocus()
         keyboardController?.show()
     }
     var showPassword   by remember { mutableStateOf(false) }
@@ -630,19 +590,6 @@ private fun MountScreenContent(
                                     .fillMaxWidth()
                                     .offset { IntOffset(shakeAnim.value.roundToInt(), 0) }
                                     .focusRequester(passwordFocusRequester)
-                                    .onGloballyPositioned { passwordAutofillNode.boundingBox = it.boundsInRoot() }
-                                    .onFocusChanged { focusState ->
-                                        if (focusState.isFocused) {
-                                            focusedField = "password"
-                                            autofillScope.launch {
-                                                delay(150)
-                                                autofillManager?.cancel()
-                                                autofill?.requestAutofillForNode(passwordAutofillNode)
-                                            }
-                                        } else {
-                                            autofill?.cancelAutofillForNode(passwordAutofillNode)
-                                        }
-                                    }
                             )
 
                             OutlinedTextField(
@@ -655,7 +602,7 @@ private fun MountScreenContent(
                                 },
                                 label                = { Text(stringResource(R.string.vault_mount_pim_label)) },
                                 placeholder          = { Text(stringResource(R.string.vault_mount_pim_placeholder)) },
-                                visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+                                visualTransformation = if (showPim) VisualTransformation.None else DotVisualTransformation(),
                                 trailingIcon         = {
                                     IconButton(onClick = { showPim = !showPim }) {
                                         Icon(
@@ -665,7 +612,7 @@ private fun MountScreenContent(
                                     }
                                 },
                                 keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.NumberPassword,
+                                    keyboardType = KeyboardType.Number,
                                     imeAction    = ImeAction.Done
                                 ),
                                 keyboardActions = KeyboardActions(
@@ -861,19 +808,6 @@ private fun MountScreenContent(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .focusRequester(hiddenPasswordFocusRequester)
-                                                    .onGloballyPositioned { hiddenPasswordAutofillNode.boundingBox = it.boundsInRoot() }
-                                                    .onFocusChanged { focusState ->
-                                                        if (focusState.isFocused) {
-                                                            focusedField = "hidden"
-                                                            autofillScope.launch {
-                                                                delay(150)
-                                                                autofillManager?.cancel()
-                                                                autofill?.requestAutofillForNode(hiddenPasswordAutofillNode)
-                                                            }
-                                                        } else {
-                                                            autofill?.cancelAutofillForNode(hiddenPasswordAutofillNode)
-                                                        }
-                                                    }
                                             )
                                             OutlinedTextField(
                                                 value         = hiddenPimValue,
@@ -885,14 +819,14 @@ private fun MountScreenContent(
                                                 },
                                                 label                = { Text(stringResource(R.string.vault_mount_pim_label)) },
                                                 placeholder          = { Text(stringResource(R.string.vault_mount_pim_placeholder)) },
-                                                visualTransformation = if (showHiddenPim) VisualTransformation.None else PasswordVisualTransformation(),
+                                                visualTransformation = if (showHiddenPim) VisualTransformation.None else DotVisualTransformation(),
                                                 trailingIcon         = {
                                                     IconButton(onClick = { showHiddenPim = !showHiddenPim }) {
                                                         Icon(if (showHiddenPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
                                                     }
                                                 },
                                                 keyboardOptions      = KeyboardOptions(
-                                                    keyboardType = KeyboardType.NumberPassword,
+                                                    keyboardType = KeyboardType.Number,
                                                     imeAction    = ImeAction.Done
                                                 ),
                                                 singleLine = true,

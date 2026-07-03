@@ -1,6 +1,5 @@
 package zip.arcanum.arcanum.containers.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -20,7 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
@@ -90,6 +89,7 @@ fun VaultConfigScreen(
     onChangeKeyfile: (containerId: String) -> Unit,
     onBackupHeader: (containerId: String) -> Unit,
     onRestoreHeader: (containerId: String) -> Unit,
+    onExpandVolume: (containerId: String) -> Unit,
     onMoveVault: (containerId: String, toApp: Boolean) -> Unit
 ) {
     val context      = LocalContext.current
@@ -115,7 +115,6 @@ fun VaultConfigScreen(
         }
     }
 
-    val comingSoon = stringResource(R.string.common_coming_soon)
 
     val topBarColors  = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                         else TopAppBarDefaults.topAppBarColors()
@@ -249,7 +248,8 @@ fun VaultConfigScreen(
                         title     = stringResource(R.string.vault_info_op_expand_volume),
                         subtitle  = stringResource(R.string.vault_card_expand_desc),
                         isDynamic = isDynamic,
-                        onClick   = { Toast.makeText(context, comingSoon, Toast.LENGTH_SHORT).show() }
+                        enabled   = !isMounted,
+                        onClick   = { onExpandVolume(containerId) }
                     )
 
                     Spacer(Modifier.navigationBarsPadding())
@@ -309,7 +309,7 @@ fun VaultConfigScreen(
                         androidx.compose.material3.ListItem(
                             headlineContent   = { Text(stringResource(R.string.vault_config_move_to_app)) },
                             supportingContent = { Text(stringResource(R.string.vault_config_move_to_app_desc), style = MaterialTheme.typography.bodySmall) },
-                            trailingContent   = { Icon(Icons.Outlined.KeyboardArrowRight, contentDescription = null) },
+                            trailingContent   = { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null) },
                             modifier          = Modifier.clickable {
                                 showMoveSheet = false
                                 onMoveVault(containerId, true)
@@ -319,7 +319,7 @@ fun VaultConfigScreen(
                     androidx.compose.material3.ListItem(
                         headlineContent   = { Text(stringResource(R.string.vault_config_move_to_internal)) },
                         supportingContent = { Text(stringResource(R.string.vault_config_move_to_internal_desc), style = MaterialTheme.typography.bodySmall) },
-                        trailingContent   = { Icon(Icons.Outlined.KeyboardArrowRight, contentDescription = null) },
+                        trailingContent   = { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null) },
                         modifier          = Modifier.clickable {
                             showMoveSheet = false
                             onMoveVault(containerId, false)

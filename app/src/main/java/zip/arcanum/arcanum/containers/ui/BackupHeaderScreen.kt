@@ -45,24 +45,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.autofill.AutofillNode
-import androidx.compose.ui.autofill.AutofillType
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalAutofill
-import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import zip.arcanum.core.utils.DotVisualTransformation
 import zip.arcanum.R
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.utils.FileUtils
@@ -185,7 +176,6 @@ fun BackupHeaderScreen(
     }
 }
 
-@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun BackupFormContent(
     state: BackupHeaderState,
@@ -194,22 +184,7 @@ private fun BackupFormContent(
     onRemoveKeyfile: (Int) -> Unit,
     onChooseOutput: () -> Unit
 ) {
-    val context         = LocalContext.current
-    val autofill        = LocalAutofill.current
-    val autofillManager = remember { context.getSystemService(android.view.autofill.AutofillManager::class.java) }
-    val autofillScope   = rememberCoroutineScope()
-    val latestOnUpdate  = rememberUpdatedState(onUpdate)
-
-    val passwordAutofillNode = remember {
-        AutofillNode(listOf(AutofillType.Password)) { filled ->
-            latestOnUpdate.value { copy(password = filled) }
-        }
-    }
-    val autofillTree = LocalAutofillTree.current
-    DisposableEffect(Unit) {
-        autofillTree += passwordAutofillNode
-        onDispose { autofillTree.children.remove(passwordAutofillNode.id) }
-    }
+    val context = LocalContext.current
 
     var showPim by remember { mutableStateOf(false) }
     var pimText by remember { mutableStateOf(if (state.pim > 0) state.pim.toString() else "") }
@@ -256,18 +231,6 @@ private fun BackupFormContent(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .onGloballyPositioned { passwordAutofillNode.boundingBox = it.boundsInRoot() }
-                .onFocusChanged { fs ->
-                    if (fs.isFocused) {
-                        autofillScope.launch {
-                            delay(150)
-                            autofillManager?.cancel()
-                            autofill?.requestAutofillForNode(passwordAutofillNode)
-                        }
-                    } else {
-                        autofill?.cancelAutofillForNode(passwordAutofillNode)
-                    }
-                }
         )
 
         Spacer(Modifier.height(12.dp))
@@ -286,13 +249,13 @@ private fun BackupFormContent(
             },
             label                = { Text(stringResource(R.string.vault_mount_pim_label)) },
             placeholder          = { Text(stringResource(R.string.vault_mount_pim_placeholder)) },
-            visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+            visualTransformation = if (showPim) VisualTransformation.None else DotVisualTransformation(),
             trailingIcon         = {
                 IconButton(onClick = { showPim = !showPim }) {
                     Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
                 }
             },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine      = true,
             modifier        = Modifier.fillMaxWidth()
         )
