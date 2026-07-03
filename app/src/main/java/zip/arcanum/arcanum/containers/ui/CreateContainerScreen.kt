@@ -2,6 +2,8 @@ package zip.arcanum.arcanum.containers.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
+import android.os.StatFs
 import zip.arcanum.core.utils.FileUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -72,6 +74,18 @@ fun CreateContainerScreen(
     val createdContainerId by viewModel.createdContainerId.collectAsState()
     var prevStep           by remember { mutableIntStateOf(1) }
     var showCancelDialog   by remember { mutableStateOf(false) }
+
+    val availableSpaceMb = remember(state.filePath, state.location) {
+        try {
+            val path = when (state.location) {
+                StorageLocation.APP_STORAGE      -> state.filePath
+                StorageLocation.INTERNAL_STORAGE -> Environment.getExternalStorageDirectory().absolutePath
+            }
+            StatFs(path).availableBytes / (1024L * 1024L)
+        } catch (_: Exception) {
+            Long.MAX_VALUE
+        }
+    }
 
     val fileCreatorLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
@@ -224,7 +238,7 @@ fun CreateContainerScreen(
                                     onClearSaf               = viewModel::clearSafUri
                                 )
                         3    -> StepEncryptionAlgorithm(state, viewModel::update)
-                        4    -> StepVolumeSize(state, viewModel::update)
+                        4    -> StepVolumeSize(state, viewModel::update, availableSpaceMb)
                         5    -> StepPassword(
                                     state           = state,
                                     onUpdate        = viewModel::update,
@@ -282,7 +296,7 @@ fun CreateContainerScreen(
                         }
                         Button(
                             onClick  = viewModel::nextStep,
-                            enabled  = isStepValid(state),
+                            enabled  = isStepValid(state, availableSpaceMb),
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape    = CircleShape
                         ) {
@@ -333,14 +347,14 @@ fun CreateContainerScreen(
     } // CompositionLocalProvider
 }
 
-private fun isStepValid(state: CreateContainerState): Boolean = when (state.currentStep) {
+private fun isStepValid(state: CreateContainerState, availableSpaceMb: Long = Long.MAX_VALUE): Boolean = when (state.currentStep) {
     1    -> true
     2    -> state.fileName.isNotBlank() && when (state.location) {
                 StorageLocation.APP_STORAGE      -> true
                 StorageLocation.INTERNAL_STORAGE -> state.safUri.isNotBlank()
             }
     3    -> true
-    4    -> state.sizeMb > 0L
+    4    -> state.sizeMb > 0L && state.sizeMb <= availableSpaceMb
     5    -> state.password.length >= 4 && state.password == state.confirmPassword &&
             !(state.pim in 1..484 && state.password.length < 20)
     6    -> true
