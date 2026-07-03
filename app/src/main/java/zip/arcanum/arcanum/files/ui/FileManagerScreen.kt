@@ -1,7 +1,9 @@
 package zip.arcanum.arcanum.files.ui
 
 import android.content.Context
+import android.content.ClipData
 import android.content.Intent
+import android.app.KeyguardManager
 import android.provider.DocumentsContract
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,12 +22,15 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -33,6 +38,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -48,6 +54,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.outlined.Archive
@@ -72,14 +79,17 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -105,6 +115,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -119,7 +130,9 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -151,15 +164,18 @@ import zip.arcanum.core.theme.ArcanumHazeStyle
 import zip.arcanum.core.theme.LocalAmoledMode
 import zip.arcanum.crypto.NativeFileInfo
 import androidx.compose.material3.TopAppBarDefaults
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
+import zip.arcanum.arcanum.files.domain.VaultFileTransfer
 
 private val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "aac", "ogg", "flac", "wav", "opus")
+private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp")
 private val MEDIA_EXTENSIONS = setOf(
     "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif",
-    "mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp"
-)
+) + VIDEO_EXTENSIONS
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -169,13 +185,17 @@ fun FileManagerScreen(
     onNotification: ((InAppNotification) -> Unit)? = null,
     bottomPadding: Dp = 0.dp,
     onAudioFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
-    onMediaFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
+    onMediaFileClick: ((fileId: String) -> Unit)? = null,
+    onTextFileClick: ((path: String, name: String) -> Unit)? = null,
     viewModel: FileManagerViewModel = hiltViewModel()
 ) {
     val context          = LocalContext.current
     val state            by viewModel.state.collectAsState()
+    val thumbnails       by viewModel.mediaThumbnails.collectAsState()
     val mountedContainers by viewModel.mountedContainers.collectAsState()
     val lifecycleOwner   = LocalLifecycleOwner.current
+    val latestMountedContainers by rememberUpdatedState(mountedContainers)
+    val keyguardManager  = remember(context) { context.getSystemService(KeyguardManager::class.java) }
 
     var showFabMenu by remember { mutableStateOf(false) }
     val fabRotation by animateFloatAsState(
@@ -191,10 +211,33 @@ fun FileManagerScreen(
 
     LaunchedEffect(containerId) { viewModel.initialize(containerId) }
 
-    // Delete temp files when user returns to app
+    LaunchedEffect(mountedContainers, state.containerId) {
+        if (state.containerId.isNotBlank() && mountedContainers.none { it.id == state.containerId }) {
+            viewModel.clearSensitiveStateIfUnmounted()
+        }
+    }
+
+    // Delete temp files when user returns to app and blank sensitive UI before/after auto-unmount.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) viewModel.clearTempFiles(context)
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    viewModel.clearSensitiveStateBeforeStopIfNeeded(
+                        isLocked = keyguardManager?.isKeyguardLocked == true,
+                        containers = latestMountedContainers
+                    )
+                }
+                Lifecycle.Event.ON_START -> {
+                    viewModel.clearSensitiveStateIfUnmounted()
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    viewModel.clearTempFiles(context)
+                    if (!viewModel.clearSensitiveStateIfUnmounted()) {
+                        viewModel.refreshCurrentDirectory()
+                    }
+                }
+                else -> Unit
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -223,6 +266,13 @@ fun FileManagerScreen(
         }
     }
 
+    LaunchedEffect(state.sharePayload) {
+        state.sharePayload?.let { payload ->
+            launchShareIntent(context, payload.files, payload.mimeType)
+            viewModel.clearSharePayload()
+        }
+    }
+
     // Close FAB when selection mode activates
     LaunchedEffect(state.isSelectionMode) { if (state.isSelectionMode) showFabMenu = false }
 
@@ -234,15 +284,60 @@ fun FileManagerScreen(
     // Activity result launchers
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents()
-    ) { uris -> if (uris.isNotEmpty()) viewModel.importFiles(context, uris) }
+    ) { uris ->
+        viewModel.finishExternalActivity()
+        if (uris.isNotEmpty()) viewModel.importFiles(context, uris)
+    }
+
+    val importFolderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        viewModel.finishExternalActivity()
+        uri?.let { viewModel.importFolder(context, it) }
+    }
+
+    var pendingCapturePath by rememberSaveable { mutableStateOf<String?>(null) }
+    val takePhotoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        viewModel.finishExternalActivity()
+        val photoFile = pendingCapturePath?.let { File(it) }
+        pendingCapturePath = null
+        if (success && photoFile != null && photoFile.exists()) {
+            viewModel.importCapturedPhoto(photoFile)
+        } else {
+            photoFile?.delete()
+        }
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
-    ) { uri -> uri?.let { viewModel.exportSelected(context, it) } }
+    ) { uri ->
+        viewModel.finishExternalActivity()
+        uri?.let { viewModel.exportSelected(context, it) }
+    }
+
+    var decryptTarget by remember { mutableStateOf<NativeFileInfo?>(null) }
+    val singleExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        viewModel.finishExternalActivity()
+        val target = decryptTarget
+        decryptTarget = null
+        uri?.let { treeUri ->
+            if (target != null) viewModel.exportSingle(context, target, treeUri)
+        }
+    }
+
+    fun launchGuardedExternalActivity(block: () -> Unit) {
+        viewModel.beginExternalActivity()
+        runCatching(block).onFailure { viewModel.finishExternalActivity() }
+    }
 
     // Dialog/sheet visibility
     var showNewFolderDialog    by rememberSaveable { mutableStateOf(false) }
     var showDeleteConfirm      by rememberSaveable { mutableStateOf(false) }
+    var showDecryptConfirm     by rememberSaveable { mutableStateOf(false) }
     var showSortSheet          by remember { mutableStateOf(false) }
     var showMoveSheet          by remember { mutableStateOf(false) }
     var showCopySheet          by remember { mutableStateOf(false) }
@@ -251,6 +346,30 @@ fun FileManagerScreen(
     var propertiesTarget       by remember { mutableStateOf<NativeFileInfo?>(null) }
     var openWithTarget         by remember { mutableStateOf<NativeFileInfo?>(null) }
     var showOpenWithWarning    by remember { mutableStateOf(false) }
+    var showNewTextFileDialog  by rememberSaveable { mutableStateOf(false) }
+    var showSingleDecryptConfirm by rememberSaveable { mutableStateOf(false) }
+
+    fun openFile(file: NativeFileInfo) {
+        when {
+            state.isSelectionMode -> viewModel.toggleSelection(file.path)
+            file.isDirectory -> viewModel.navigateTo(file.path)
+            onTextFileClick != null && file.isEditableTextFile() -> onTextFileClick(file.path, file.name)
+            onAudioFileClick != null && file.isAudioFile() -> {
+                viewModel.setAudioQueue(file)
+                onAudioFileClick(file.path, file.name, file.size)
+            }
+            onMediaFileClick != null && file.isVisualMediaFile() -> {
+                viewModel.openVisualFile(file) { fileId ->
+                    if (fileId != null) onMediaFileClick(fileId)
+                    else { openWithTarget = file; showOpenWithWarning = true }
+                }
+            }
+            else -> {
+                openWithTarget = file
+                showOpenWithWarning = true
+            }
+        }
+    }
 
     // Hoist sheet states unconditionally (Compose rule: no hooks inside conditions)
     val propertiesSheetState   = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -316,27 +435,17 @@ fun FileManagerScreen(
                                 selectedItems   = state.selectedItems,
                                 isSelectionMode = state.isSelectionMode,
                                 searchQuery     = state.searchQuery,
+                                thumbnails      = thumbnails,
                                 topPadding      = topPadding,
                                 bottomPadding   = bottomPadding + if (state.isSelectionMode) 72.dp else 80.dp,
-                                onFileClick     = { file ->
-                                    if (state.isSelectionMode) viewModel.toggleSelection(file.path)
-                                    else if (file.isDirectory) viewModel.navigateTo(file.path)
-                                    else if (onAudioFileClick != null &&
-                                             file.name.substringAfterLast('.', "").lowercase() in AUDIO_EXTENSIONS) {
-                                        viewModel.setAudioQueue(file)
-                                        onAudioFileClick(file.path, file.name, file.size)
-                                    } else if (onMediaFileClick != null &&
-                                               file.name.substringAfterLast('.', "").lowercase() in MEDIA_EXTENSIONS) {
-                                        viewModel.setMediaQueue(file)
-                                        onMediaFileClick(file.path, file.name, file.size)
-                                    } else { openWithTarget = file; showOpenWithWarning = true }
-                                },
+                                onFileClick     = { file -> openFile(file) },
                                 onFileLongClick = { file ->
                                     if (!state.isSelectionMode) viewModel.enterSelectionMode(file.path)
                                     else viewModel.toggleSelection(file.path)
                                 },
                                 onRename        = { renameTarget = it },
                                 onProperties    = { propertiesTarget = it },
+                                onThumbnailRequest = viewModel::requestThumbnail,
                                 formatSize      = viewModel::formatFileSize
                             )
                         }
@@ -346,21 +455,18 @@ fun FileManagerScreen(
                             files           = state.files,
                             selectedItems   = state.selectedItems,
                             isSelectionMode = state.isSelectionMode,
+                            showFileNames   = state.showGridFileNames,
+                            thumbnails      = thumbnails,
+                            folderItemCounts = state.folderItemCounts,
                             topPadding      = topPadding,
                             bottomPadding   = bottomPadding + if (state.isSelectionMode) 72.dp else 80.dp,
-                            onFileClick     = { file ->
-                                if (state.isSelectionMode) viewModel.toggleSelection(file.path)
-                                else if (file.isDirectory) viewModel.navigateTo(file.path)
-                                else if (onAudioFileClick != null &&
-                                         file.name.substringAfterLast('.', "").lowercase() in AUDIO_EXTENSIONS) {
-                                    viewModel.setAudioQueue(file)
-                                    onAudioFileClick(file.path, file.name, file.size)
-                                } else { openWithTarget = file; showOpenWithWarning = true }
-                            },
+                            onFileClick     = { file -> openFile(file) },
                             onFileLongClick = { file ->
                                 if (!state.isSelectionMode) viewModel.enterSelectionMode(file.path)
                                 else viewModel.toggleSelection(file.path)
-                            }
+                            },
+                            onThumbnailRequest = viewModel::requestThumbnail,
+                            onFolderCountRequest = viewModel::requestFolderItemCount
                         )
                     }
                 }
@@ -397,6 +503,7 @@ fun FileManagerScreen(
                             onMoreClick      = { showMoreMenu = true },
                             moreMenuExpanded = showMoreMenu,
                             onMoreDismiss    = { showMoreMenu = false },
+                            storageUsage     = state.storageUsage,
                             onSort           = { showSortSheet = true; showMoreMenu = false },
                             onToggleHidden   = { viewModel.toggleShowHidden(); showMoreMenu = false },
                             showHidden       = state.showHidden,
@@ -446,7 +553,8 @@ fun FileManagerScreen(
                     if (mountedContainers.size <= 1) viewModel.cutSelected()
                     else showMoveSheet = true
                 },
-                onExport = { exportLauncher.launch(null) },
+                onShare  = { viewModel.prepareShareSelected(context) },
+                onDecrypt = { showDecryptConfirm = true },
                 onDelete = { showDeleteConfirm = true }
             )
         }
@@ -481,7 +589,47 @@ fun FileManagerScreen(
                 exit    = slideOutVertically(tween(180), targetOffsetY = { it / 2 }) + fadeOut(tween(150))
             ) {
                 FabMenuItem(stringResource(R.string.files_action_import), Icons.Outlined.FileUpload) {
-                    importLauncher.launch("*/*"); showFabMenu = false
+                    launchGuardedExternalActivity { importLauncher.launch("*/*") }; showFabMenu = false
+                }
+            }
+            AnimatedVisibility(
+                visible = showFabMenu,
+                enter   = slideInVertically(
+                    animationSpec  = tween(300, delayMillis = 40),
+                    initialOffsetY = { it / 2 }
+                ) + fadeIn(tween(200, delayMillis = 40)),
+                exit    = slideOutVertically(tween(180), targetOffsetY = { it / 2 }) + fadeOut(tween(150))
+            ) {
+                FabMenuItem(stringResource(R.string.files_action_import_folder), Icons.Outlined.Folder) {
+                    launchGuardedExternalActivity { importFolderLauncher.launch(null) }; showFabMenu = false
+                }
+            }
+            AnimatedVisibility(
+                visible = showFabMenu,
+                enter   = slideInVertically(
+                    animationSpec  = tween(300, delayMillis = 30),
+                    initialOffsetY = { it / 2 }
+                ) + fadeIn(tween(200, delayMillis = 30)),
+                exit    = slideOutVertically(tween(180), targetOffsetY = { it / 2 }) + fadeOut(tween(150))
+            ) {
+                FabMenuItem(stringResource(R.string.files_action_take_photo), Icons.Outlined.Image) {
+                    val photoFile = createCapturePhotoFile(context)
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", photoFile)
+                    pendingCapturePath = photoFile.absolutePath
+                    launchGuardedExternalActivity { takePhotoLauncher.launch(uri) }
+                    showFabMenu = false
+                }
+            }
+            AnimatedVisibility(
+                visible = showFabMenu,
+                enter   = slideInVertically(
+                    animationSpec  = tween(300, delayMillis = 20),
+                    initialOffsetY = { it / 2 }
+                ) + fadeIn(tween(200, delayMillis = 20)),
+                exit    = slideOutVertically(tween(180), targetOffsetY = { it / 2 }) + fadeOut(tween(150))
+            ) {
+                FabMenuItem(stringResource(R.string.files_action_new_text_file), Icons.Outlined.Description) {
+                    showNewTextFileDialog = true; showFabMenu = false
                 }
             }
             AnimatedVisibility(
@@ -536,6 +684,18 @@ fun FileManagerScreen(
         )
     }
 
+    if (showNewTextFileDialog) {
+        NewTextFileDialog(
+            onDismiss = { showNewTextFileDialog = false },
+            onCreate  = { name ->
+                viewModel.createTextFile(name) { path, finalName ->
+                    showNewTextFileDialog = false
+                    if (path != null && finalName != null) onTextFileClick?.invoke(path, finalName)
+                }
+            }
+        )
+    }
+
     if (showDeleteConfirm) {
         val count = state.selectedItems.size
         AppDialog(
@@ -550,6 +710,75 @@ fun FileManagerScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
+            }
+        )
+    }
+
+    state.pendingImportedSourceDeletion?.let { pending ->
+        AppDialog(
+            onDismissRequest = viewModel::dismissPendingImportedSourceDeletion,
+            title = { Text(stringResource(R.string.files_import_partial_delete_title)) },
+            text = { Text(stringResource(R.string.files_import_partial_delete_body, pending.count)) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.deletePendingImportedSources(context) }) {
+                    Text(stringResource(R.string.files_import_partial_delete_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissPendingImportedSourceDeletion) {
+                    Text(stringResource(R.string.files_import_partial_delete_keep))
+                }
+            }
+        )
+    }
+
+    if (showDecryptConfirm) {
+        val count = state.selectedItems.size
+        AppDialog(
+            onDismissRequest = { showDecryptConfirm = false },
+            title = { Text(pluralStringResource(R.plurals.files_decrypt_count, count, count)) },
+            text = { DecryptDialogBody() },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = {
+                        showDecryptConfirm = false
+                        launchGuardedExternalActivity { exportLauncher.launch(null) }
+                    }) { Text(stringResource(R.string.files_decrypt_choose_folder)) }
+                    TextButton(onClick = {
+                        showDecryptConfirm = false
+                        viewModel.exportSelectedToDefault(context)
+                    }) { Text(stringResource(R.string.common_ok)) }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDecryptConfirm = false }) { Text(stringResource(R.string.common_cancel)) }
+            }
+        )
+    }
+
+    if (showSingleDecryptConfirm && decryptTarget != null) {
+        val file = decryptTarget!!
+        AppDialog(
+            onDismissRequest = { showSingleDecryptConfirm = false; decryptTarget = null },
+            title = { Text(stringResource(R.string.files_decrypt_single_title, file.name)) },
+            text = { DecryptDialogBody() },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = {
+                        showSingleDecryptConfirm = false
+                        launchGuardedExternalActivity { singleExportLauncher.launch(null) }
+                    }) { Text(stringResource(R.string.files_decrypt_choose_folder)) }
+                    TextButton(onClick = {
+                        showSingleDecryptConfirm = false
+                        decryptTarget = null
+                        viewModel.exportSingleToDefault(context, file)
+                    }) { Text(stringResource(R.string.common_ok)) }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSingleDecryptConfirm = false; decryptTarget = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
             }
         )
     }
@@ -584,6 +813,17 @@ fun FileManagerScreen(
             OpenWithWarningContent(
                 fileName  = file.name,
                 onCancel  = { showOpenWithWarning = false; openWithTarget = null },
+                onShare = {
+                    showOpenWithWarning = false
+                    viewModel.prepareShareFile(context, file)
+                    openWithTarget = null
+                },
+                onDecrypt = {
+                    showOpenWithWarning = false
+                    decryptTarget = file
+                    showSingleDecryptConfirm = true
+                    openWithTarget = null
+                },
                 onConfirm = {
                     showOpenWithWarning = false
                     viewModel.prepareOpenWithExternalApp(context, file)
@@ -602,9 +842,12 @@ fun FileManagerScreen(
                 sortBy        = state.sortBy,
                 ascending     = state.sortAscending,
                 foldersFirst  = state.foldersFirst,
+                showGridNameToggle = state.viewMode == ViewMode.GRID,
+                showGridFileNames = state.showGridFileNames,
                 onSortBy      = { viewModel.setSortBy(it); showSortSheet = false },
                 onToggleDir   = viewModel::toggleSortDirection,
-                onToggleFoldersFirst = viewModel::toggleFoldersFirst
+                onToggleFoldersFirst = viewModel::toggleFoldersFirst,
+                onToggleGridFileNames = viewModel::toggleShowGridFileNames
             )
         }
     }
@@ -665,6 +908,7 @@ private fun FileManagerTopBar(
     onMoreClick: () -> Unit,
     moreMenuExpanded: Boolean,
     onMoreDismiss: () -> Unit,
+    storageUsage: FileManagerViewModel.VaultStorageUsage?,
     onSort: () -> Unit,
     onToggleHidden: () -> Unit,
     showHidden: Boolean,
@@ -724,6 +968,41 @@ private fun FileManagerTopBar(
                         Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.files_cd_more))
                     }
                     DropdownMenu(expanded = moreMenuExpanded, onDismissRequest = onMoreDismiss) {
+                        storageUsage?.let { usage ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Column(Modifier.weight(1f, fill = false)) {
+                                            Text(stringResource(R.string.files_storage_usage))
+                                            Text(
+                                                "${formatStorageBytes(usage.usedBytes)} / ${formatStorageBytes(usage.totalBytes)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.primaryContainer
+                                        ) {
+                                            Text(
+                                                "${usage.percent}%",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+                                },
+                                leadingIcon = { Icon(Icons.Outlined.Info, null) },
+                                onClick = { }
+                            )
+                            HorizontalDivider()
+                        }
                         if (clipboardCount > 0) {
                             DropdownMenuItem(
                                 text = { Text(pluralStringResource(R.plurals.files_paste_clipboard, clipboardCount, clipboardCount)) },
@@ -856,12 +1135,14 @@ private fun FileListContent(
     selectedItems: Set<String>,
     isSelectionMode: Boolean,
     searchQuery: String,
+    thumbnails: Map<String, android.graphics.Bitmap>,
     topPadding: Dp = 0.dp,
     bottomPadding: Dp,
     onFileClick: (NativeFileInfo) -> Unit,
     onFileLongClick: (NativeFileInfo) -> Unit,
     onRename: (NativeFileInfo) -> Unit,
     onProperties: (NativeFileInfo) -> Unit,
+    onThumbnailRequest: (NativeFileInfo) -> Unit,
     formatSize: (Long) -> String
 ) {
     LazyColumn(
@@ -874,10 +1155,12 @@ private fun FileListContent(
                 isSelected      = file.path in selectedItems,
                 isSelectionMode = isSelectionMode,
                 searchQuery     = searchQuery,
+                thumbnail       = thumbnails[file.path],
                 onFileClick     = { onFileClick(file) },
                 onFileLongClick = { onFileLongClick(file) },
                 onRename        = { onRename(file) },
                 onProperties    = { onProperties(file) },
+                onThumbnailRequest = { onThumbnailRequest(file) },
                 formatSize      = formatSize
             )
         }
@@ -891,10 +1174,12 @@ private fun FileListItem(
     isSelected: Boolean,
     isSelectionMode: Boolean,
     searchQuery: String,
+    thumbnail: android.graphics.Bitmap?,
     onFileClick: () -> Unit,
     onFileLongClick: () -> Unit,
     onRename: () -> Unit,
     onProperties: () -> Unit,
+    onThumbnailRequest: () -> Unit,
     formatSize: (Long) -> String
 ) {
     val isHidden = file.name.startsWith(".")
@@ -905,6 +1190,10 @@ private fun FileListItem(
         label = "item_bg"
     )
     var showItemMenu by remember { mutableStateOf(false) }
+
+    LaunchedEffect(file.path) {
+        if (file.isVisualMediaFile()) onThumbnailRequest()
+    }
 
     Row(
         modifier = Modifier
@@ -918,9 +1207,9 @@ private fun FileListItem(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Selection indicator or icon
+        // Selection indicator or preview/icon
         AnimatedContent(targetState = isSelectionMode, label = "icon_mode") { selMode ->
-            if (selMode) {
+            if (selMode && isSelected) {
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
@@ -928,22 +1217,18 @@ private fun FileListItem(
                         .clip(RoundedCornerShape(12.dp))
                         .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
                 ) {
-                    if (isSelected) {
-                        Icon(Icons.Outlined.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
-                    } else {
-                        Icon(icon, null, tint = iconColor, modifier = Modifier.size(22.dp))
-                    }
+                    Icon(Icons.Outlined.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
                 }
             } else {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(iconColor.copy(alpha = 0.12f))
-                ) {
-                    Icon(icon, null, tint = iconColor, modifier = Modifier.size(22.dp))
-                }
+                FilePreviewOrIcon(
+                    file       = file,
+                    thumbnail  = thumbnail,
+                    icon       = icon,
+                    iconColor  = iconColor,
+                    modifier   = Modifier.size(42.dp),
+                    iconSize   = 22.dp,
+                    shapeSize  = 12.dp
+                )
             }
         }
 
@@ -1006,73 +1291,224 @@ private fun FileGridContent(
     files: List<NativeFileInfo>,
     selectedItems: Set<String>,
     isSelectionMode: Boolean,
+    showFileNames: Boolean,
+    thumbnails: Map<String, android.graphics.Bitmap>,
+    folderItemCounts: Map<String, Int>,
     topPadding: Dp = 0.dp,
     bottomPadding: Dp,
     onFileClick: (NativeFileInfo) -> Unit,
-    onFileLongClick: (NativeFileInfo) -> Unit
+    onFileLongClick: (NativeFileInfo) -> Unit,
+    onThumbnailRequest: (NativeFileInfo) -> Unit,
+    onFolderCountRequest: (NativeFileInfo) -> Unit
 ) {
-    val folders = files.filter { it.isDirectory }
-    val nonFolders = files.filter { !it.isDirectory }
-
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
-        contentPadding = PaddingValues(start = 8.dp, top = topPadding + 8.dp, end = 8.dp, bottom = bottomPadding),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(start = 0.dp, top = topPadding + 1.dp, end = 0.dp, bottom = bottomPadding),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        // Folders span 2 columns (using 1 column here since we can't span in LazyVerticalGrid without custom)
-        items(folders + nonFolders, key = { it.path }) { file ->
+        items(files, key = { it.path }) { file ->
             val isSelected = file.path in selectedItems
             val (icon, iconColor) = fileTypeIconAndColor(file.name, file.isDirectory)
-            val bgColor by animateColorAsState(
-                targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                              else MaterialTheme.colorScheme.surfaceVariant,
-                label = "grid_bg"
+            val isVisual = file.isVisualMediaFile()
+            val shouldShowName = isVisual && showFileNames
+            val selectionOverlayColor by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                              else Color.Transparent,
+                label = "grid_selection"
             )
-            Box(
+
+            LaunchedEffect(file.path) {
+                if (isVisual) onThumbnailRequest(file)
+                if (file.isDirectory) onFolderCountRequest(file)
+            }
+
+            Column(
                 modifier = Modifier
                     .alpha(if (file.name.startsWith(".")) 0.6f else 1f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(bgColor)
+                    .fillMaxWidth()
                     .combinedClickable(
                         onClick     = { onFileClick(file) },
                         onLongClick = { onFileLongClick(file) }
-                    )
-                    .padding(8.dp),
-                contentAlignment = Alignment.Center
+                    ),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(contentAlignment = Alignment.TopEnd) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(iconColor.copy(alpha = 0.15f))
-                        ) {
-                            Icon(icon, null, tint = iconColor, modifier = Modifier.size(28.dp))
-                        }
-                        if (isSelected) {
-                            Icon(
-                                Icons.Outlined.CheckCircle,
-                                null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                    .padding(1.dp),
+                    contentAlignment = Alignment.TopEnd
+                ) {
+                    if (isVisual) {
+                        FilePreviewOrIcon(
+                            file       = file,
+                            thumbnail  = thumbnails[file.path],
+                            icon       = icon,
+                            iconColor  = iconColor,
+                            modifier   = Modifier.fillMaxSize(),
+                            iconSize   = 32.dp,
+                            shapeSize  = 0.dp
+                        )
+                    } else {
+                        GridDocumentTile(
+                            file      = file,
+                            icon      = icon,
+                            iconColor = iconColor,
+                            folderItemCount = folderItemCounts[file.path],
+                            modifier  = Modifier.fillMaxSize()
+                        )
                     }
-                    Spacer(Modifier.height(6.dp))
+                    if (isSelected) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(selectionOverlayColor)
+                        )
+                    }
+                    if (isSelected) {
+                        Icon(
+                            Icons.Outlined.CheckCircle,
+                            null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .padding(6.dp)
+                                .size(20.dp)
+                        )
+                    }
+                }
+                if (shouldShowName) {
+                    Spacer(Modifier.height(3.dp))
                     Text(
-                        text      = file.name,
+                        text      = compactGridFileName(file.name, file.isDirectory),
                         style     = MaterialTheme.typography.labelSmall,
                         maxLines  = 2,
                         overflow  = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        modifier  = Modifier.padding(horizontal = 4.dp).height(30.dp)
                     )
+                    Spacer(Modifier.height(4.dp))
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun GridDocumentTile(
+    file: NativeFileInfo,
+    icon: ImageVector,
+    iconColor: Color,
+    folderItemCount: Int?,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .clip(RoundedCornerShape(0.dp))
+            .background(iconColor.copy(alpha = 0.12f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 7.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = iconColor,
+                modifier = Modifier.size(if (file.isDirectory) 38.dp else 32.dp)
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = compactGridFileName(file.name, file.isDirectory),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().height(30.dp)
+            )
+        }
+        if (file.isDirectory && folderItemCount != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 12.dp, y = 8.dp)
+                    .rotate(36f)
+                    .width(58.dp)
+                    .height(17.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(iconColor),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = folderCountBadgeText(folderItemCount),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilePreviewOrIcon(
+    file: NativeFileInfo,
+    thumbnail: android.graphics.Bitmap?,
+    icon: ImageVector,
+    iconColor: Color,
+    modifier: Modifier = Modifier,
+    iconSize: Dp,
+    shapeSize: Dp
+) {
+    val isVideo = file.isVideoFile()
+    val playIconSize = if (iconSize <= 22.dp) 22.dp else 32.dp
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .clip(RoundedCornerShape(shapeSize))
+            .background(iconColor.copy(alpha = 0.12f))
+    ) {
+        if (thumbnail != null && file.isVisualMediaFile()) {
+            ComposeImage(
+                bitmap = thumbnail.asImageBitmap(),
+                contentDescription = file.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Icon(icon, null, tint = iconColor, modifier = Modifier.size(iconSize))
+        }
+
+        if (isVideo) {
+            Icon(
+                imageVector = Icons.Filled.PlayCircle,
+                contentDescription = stringResource(R.string.gallery_cd_video),
+                tint = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.size(playIconSize)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DecryptDialogBody() {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.files_decrypt_body, VaultFileTransfer.DEFAULT_UNLOCKED_FOLDER_LABEL))
+        Text(
+            text = VaultFileTransfer.DEFAULT_UNLOCKED_FOLDER_LABEL,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
+        )
     }
 }
 
@@ -1082,7 +1518,8 @@ private fun FileGridContent(
 private fun SelectionBottomBar(
     onCopy: () -> Unit,
     onMove: () -> Unit,
-    onExport: () -> Unit,
+    onShare: () -> Unit,
+    onDecrypt: () -> Unit,
     onDelete: () -> Unit
 ) {
     Surface(
@@ -1090,18 +1527,22 @@ private fun SelectionBottomBar(
         shadowElevation = 8.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SelectionAction(stringResource(R.string.files_action_copy),   Icons.Outlined.ContentCopy,                onCopy)
-            SelectionAction(stringResource(R.string.files_action_move),   Icons.AutoMirrored.Outlined.DriveFileMove, onMove)
-            SelectionAction(stringResource(R.string.files_action_export), Icons.Outlined.FileUpload,                 onExport)
-            SelectionAction(stringResource(R.string.files_action_delete), Icons.Outlined.Delete,                     onDelete,
-                            tint = MaterialTheme.colorScheme.error)
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val iconOnly = maxWidth < 520.dp
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = if (iconOnly) 2.dp else 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (iconOnly) 0.dp else 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SelectionAction(stringResource(R.string.files_action_copy),   Icons.Outlined.ContentCopy,                onCopy, iconOnly = iconOnly, modifier = Modifier.weight(1f))
+                SelectionAction(stringResource(R.string.files_action_move),   Icons.AutoMirrored.Outlined.DriveFileMove, onMove, iconOnly = iconOnly, modifier = Modifier.weight(1f))
+                SelectionAction(stringResource(R.string.files_action_share),  Icons.Outlined.Share,                      onShare, iconOnly = iconOnly, modifier = Modifier.weight(1f))
+                SelectionAction(stringResource(R.string.files_action_decrypt), Icons.Outlined.LockOpen,                  onDecrypt, iconOnly = iconOnly, modifier = Modifier.weight(1f))
+                SelectionAction(stringResource(R.string.files_action_delete), Icons.Outlined.Delete,                     onDelete,
+                                tint = MaterialTheme.colorScheme.error, iconOnly = iconOnly, modifier = Modifier.weight(1f))
+            }
         }
     }
 }
@@ -1111,15 +1552,19 @@ private fun SelectionAction(
     label: String,
     icon: ImageVector,
     onClick: () -> Unit,
-    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    iconOnly: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(onClick = onClick).padding(12.dp)
+        modifier = modifier.clickable(onClick = onClick).padding(horizontal = if (iconOnly) 2.dp else 4.dp, vertical = if (iconOnly) 12.dp else 8.dp)
     ) {
-        Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.height(2.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = tint)
+        Icon(icon, label, tint = tint, modifier = Modifier.size(22.dp))
+        if (!iconOnly) {
+            Spacer(Modifier.height(2.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
@@ -1176,6 +1621,31 @@ private fun NewFolderDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
                 onClick  = { if (folderName.isNotBlank()) onCreate(folderName.trim()) },
                 enabled  = folderName.isNotBlank()
             ) { Text(stringResource(R.string.files_new_folder_create)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } }
+    )
+}
+
+@Composable
+private fun NewTextFileDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
+    var fileName by rememberSaveable { mutableStateOf("") }
+    AppDialog(
+        onDismissRequest = onDismiss,
+        title            = { Text(stringResource(R.string.files_new_text_file_title)) },
+        text = {
+            OutlinedTextField(
+                value         = fileName,
+                onValueChange = { fileName = it },
+                label         = { Text(stringResource(R.string.files_new_text_file_label)) },
+                singleLine    = true,
+                modifier      = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick  = { if (fileName.isNotBlank()) onCreate(fileName.trim()) },
+                enabled  = fileName.isNotBlank()
+            ) { Text(stringResource(R.string.files_new_text_file_create)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } }
     )
@@ -1256,7 +1726,13 @@ private fun PropertiesRow(label: String, value: String) {
 }
 
 @Composable
-private fun OpenWithWarningContent(fileName: String, onCancel: () -> Unit, onConfirm: () -> Unit) {
+private fun OpenWithWarningContent(
+    fileName: String,
+    onCancel: () -> Unit,
+    onShare: () -> Unit,
+    onDecrypt: () -> Unit,
+    onConfirm: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1282,9 +1758,23 @@ private fun OpenWithWarningContent(fileName: String, onCancel: () -> Unit, onCon
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            TextButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.files_open_with_cancel)) }
+            TextButton(onClick = onCancel, modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.files_open_with_cancel), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            androidx.compose.material3.Button(onClick = onShare, modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.files_action_share), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            androidx.compose.material3.OutlinedButton(onClick = onDecrypt, modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.files_action_decrypt), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             androidx.compose.material3.Button(onClick = onConfirm, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.files_open_with_confirm))
+                Text(stringResource(R.string.files_open_with_confirm), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -1295,9 +1785,12 @@ private fun SortSheetContent(
     sortBy: SortBy,
     ascending: Boolean,
     foldersFirst: Boolean,
+    showGridNameToggle: Boolean,
+    showGridFileNames: Boolean,
     onSortBy: (SortBy) -> Unit,
     onToggleDir: () -> Unit,
-    onToggleFoldersFirst: () -> Unit
+    onToggleFoldersFirst: () -> Unit,
+    onToggleGridFileNames: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -1341,6 +1834,18 @@ private fun SortSheetContent(
         ) {
             Text(stringResource(R.string.files_sort_folders_first), modifier = Modifier.weight(1f))
             Switch(checked = foldersFirst, onCheckedChange = { onToggleFoldersFirst() })
+        }
+        if (showGridNameToggle) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggleGridFileNames() }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(checked = showGridFileNames, onCheckedChange = { onToggleGridFileNames() })
+                Text(stringResource(R.string.files_sort_show_grid_names), modifier = Modifier.weight(1f))
+            }
         }
     }
 }
@@ -1535,6 +2040,84 @@ private fun DestinationPickerSheetContent(
 }
 
 // ── Helper utilities ──────────────────────────────────────────────────────────
+
+private fun NativeFileInfo.isAudioFile(): Boolean =
+    !isDirectory && name.substringAfterLast('.', "").lowercase() in AUDIO_EXTENSIONS
+
+private fun NativeFileInfo.isVisualMediaFile(): Boolean =
+    !isDirectory && name.substringAfterLast('.', "").lowercase() in MEDIA_EXTENSIONS
+
+private fun NativeFileInfo.isEditableTextFile(): Boolean =
+    !isDirectory && name.substringAfterLast('.', "").lowercase() == "txt"
+
+private fun NativeFileInfo.isVideoFile(): Boolean =
+    !isDirectory && name.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
+
+private fun compactGridFileName(name: String, isDirectory: Boolean): String {
+    val cleanName = name.trim().ifEmpty { name }
+    val maxPlainLength = 24
+    if (cleanName.length <= maxPlainLength) return cleanName
+
+    if (isDirectory) return cleanName.take(maxPlainLength) + "…"
+
+    val dotIndex = cleanName.lastIndexOf('.')
+    if (dotIndex <= 0 || dotIndex == cleanName.lastIndex) {
+        return cleanName.take(maxPlainLength) + "…"
+    }
+
+    val extension = cleanName.substring(dotIndex).let { ext ->
+        if (ext.length <= 10) ext else "…" + ext.takeLast(9)
+    }
+    val base = cleanName.substring(0, dotIndex)
+    val baseLimit = (maxPlainLength - extension.length - 1).coerceAtLeast(8)
+    return "${base.take(baseLimit)}…\n$extension"
+}
+
+private fun folderCountBadgeText(count: Int): String =
+    if (count > 999) "999+" else count.coerceAtLeast(0).toString()
+
+private fun formatStorageBytes(bytes: Long): String {
+    val safe = bytes.coerceAtLeast(0L).toDouble()
+    val gib = 1024.0 * 1024.0 * 1024.0
+    val mib = 1024.0 * 1024.0
+    return if (safe >= gib) {
+        String.format(java.util.Locale.US, "%.1f GB", safe / gib)
+    } else {
+        String.format(java.util.Locale.US, "%.1f MB", safe / mib)
+    }
+}
+
+private fun createCapturePhotoFile(context: Context): File {
+    val dir = File(context.cacheDir, "arcanum_camera").also { it.mkdirs() }
+    val stamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
+    val suffix = UUID.randomUUID().toString().take(8)
+    return File(dir, "IMG_${stamp}_$suffix.jpg")
+}
+
+private fun launchShareIntent(context: Context, files: List<File>, mimeType: String) {
+    if (files.isEmpty()) return
+    val uris = files.map { FileProvider.getUriForFile(context, "${context.packageName}.provider", it) }
+    val intent = if (uris.size == 1) {
+        Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uris.first())
+            clipData = ClipData.newUri(context.contentResolver, files.first().name, uris.first())
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    } else {
+        Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = mimeType
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+            clipData = ClipData.newUri(context.contentResolver, files.first().name, uris.first()).apply {
+                uris.drop(1).forEach { uri -> addItem(ClipData.Item(uri)) }
+            }
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+    runCatching {
+        context.startActivity(Intent.createChooser(intent, context.getString(R.string.files_share_chooser_title)))
+    }
+}
 
 private fun fileTypeIconAndColor(name: String, isDirectory: Boolean): Pair<ImageVector, Color> {
     if (isDirectory) return Icons.Outlined.Folder to Color(0xFFF59E0B)

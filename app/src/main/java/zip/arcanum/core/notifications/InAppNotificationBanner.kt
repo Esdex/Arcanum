@@ -242,6 +242,30 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         title           = ctx.getString(R.string.notif_folder_created),
         subtitle        = this.name
     )
+    is InAppNotification.FolderImported -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFF16A34A),
+        icon            = Icons.Outlined.CheckCircle,
+        title           = ctx.getString(R.string.notif_folder_imported),
+        subtitle        = this.name
+    )
+    is InAppNotification.TextFileCreated -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFF16A34A),
+        icon            = Icons.Outlined.CheckCircle,
+        title           = ctx.getString(R.string.notif_text_file_created),
+        subtitle        = this.name
+    )
+    is InAppNotification.FileAlreadyExists -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFD97706),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_file_already_exists),
+        subtitle        = this.name
+    )
+    InAppNotification.FileCreateFailed -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFDC2626),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_file_create_failed),
+        subtitle        = ctx.getString(R.string.notif_file_create_failed_subtitle)
+    )
     is InAppNotification.FilesImported -> NotificationDisplayConfig(
         backgroundColor = Color(0xFF16A34A),
         icon            = Icons.Outlined.CheckCircle,
@@ -253,6 +277,36 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         icon            = Icons.Outlined.CheckCircle,
         title           = ctx.resources.getQuantityString(R.plurals.notif_files_exported, this.count, this.count),
         subtitle        = ctx.getString(R.string.notif_files_exported_subtitle)
+    )
+    InAppNotification.ExportFailed -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFDC2626),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_export_failed),
+        subtitle        = ctx.getString(R.string.notif_export_failed_subtitle)
+    )
+    InAppNotification.ShareFailed -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFDC2626),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_share_failed),
+        subtitle        = ctx.getString(R.string.notif_share_failed_subtitle)
+    )
+    InAppNotification.ShareFoldersUnsupported -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFD97706),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_share_folder_unsupported),
+        subtitle        = ctx.getString(R.string.notif_share_folder_unsupported_subtitle)
+    )
+    is InAppNotification.ImportedSourceDeleteSkipped -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFD97706),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.resources.getQuantityString(R.plurals.notif_source_files_not_deleted, this.count, this.count),
+        subtitle        = ctx.getString(R.string.notif_import_source_delete_skipped_subtitle)
+    )
+    is InAppNotification.ExportedSourceDeleteSkipped -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFD97706),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.resources.getQuantityString(R.plurals.notif_source_files_not_deleted, this.count, this.count),
+        subtitle        = ctx.getString(R.string.notif_export_source_delete_skipped_subtitle)
     )
     InAppNotification.HiddenVolumeWriteProtection -> NotificationDisplayConfig(
         backgroundColor = Color(0xFFD97706),

@@ -24,6 +24,12 @@ interface MediaFileDao {
     @Query("SELECT * FROM media_files WHERE id = :id")
     suspend fun getMediaById(id: String): MediaFileEntity?
 
+    @Query("SELECT * FROM media_files WHERE id IN (:ids)")
+    suspend fun getMediaByIds(ids: List<String>): List<MediaFileEntity>
+
+    @Query("SELECT * FROM media_files WHERE containerId = :containerId AND relativePath = :relativePath LIMIT 1")
+    suspend fun getMediaByContainerPath(containerId: String, relativePath: String): MediaFileEntity?
+
     @Query("SELECT * FROM media_files WHERE containerId = :containerId AND fileType = :type ORDER BY dateCreated DESC")
     suspend fun getMediaByTypeOnce(containerId: String, type: MediaFileType): List<MediaFileEntity>
 
@@ -50,4 +56,7 @@ interface MediaFileDao {
 
     @Query("DELETE FROM media_files WHERE containerId = :containerId")
     suspend fun deleteAllForContainer(containerId: String)
+
+    @Query("DELETE FROM media_files WHERE containerId = :containerId AND relativePath = :relativePath")
+    suspend fun deleteMediaByContainerPath(containerId: String, relativePath: String)
 }

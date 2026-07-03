@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.flow
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
+import zip.arcanum.crypto.NativeFileInfo
 import zip.arcanum.crypto.VeraCryptEngine
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -30,7 +31,7 @@ class MediaScanner @Inject constructor(
 
     companion object {
         val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp")
-        val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "mov", "3gp", "webm")
+        val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "mov", "m4v", "3gp", "webm")
         val AUDIO_EXTENSIONS = setOf("mp3", "flac", "aac", "ogg", "wav", "m4a")
 
         // Formats returned by MediaMetadataRetriever.METADATA_KEY_DATE
@@ -64,32 +65,18 @@ class MediaScanner @Inject constructor(
                     scanDir(entry.path)
                 } else {
                     scanned++
-                    val ext = entry.name.substringAfterLast('.', "").lowercase()
-                    val type = when (ext) {
-                        in IMAGE_EXTENSIONS -> MediaFileType.IMAGE
-                        in VIDEO_EXTENSIONS -> MediaFileType.VIDEO
-                        else -> null
-                    } ?: continue
+                    val type = visualTypeForName(entry.name) ?: continue
 
                     foundPaths += entry.path
                     val prev = existing[entry.path]
 
-                    // Preserve dateCreated if it was previously indexed (may have been manually edited).
-                    // Only read EXIF for new files we haven't seen before.
-                    val date = prev?.dateCreated
-                        ?: extractDate(handle, entry.path, entry.size, type, entry.lastModified)
-
-                    val entity = MediaFileEntity(
-                        id           = prev?.id ?: UUID.randomUUID().toString(),
-                        containerId  = containerId,
-                        relativePath = entry.path,
-                        fileName     = entry.name,
-                        fileType     = type,
-                        size         = entry.size,
-                        dateCreated  = date,
-                        dateModified = prev?.dateModified ?: date,
-                        isFavorite   = prev?.isFavorite ?: false,
-                        description  = prev?.description ?: ""
+                    val entity = buildEntity(
+                        handle          = handle,
+                        containerId     = containerId,
+                        entry           = entry,
+                        type            = type,
+                        previous        = prev,
+                        readEmbeddedDate = true
                     )
                     found.add(entity)
                     dao.insertMediaFile(entity)
@@ -106,6 +93,88 @@ class MediaScanner @Inject constructor(
             .forEach { dao.deleteMediaFile(it) }
 
         emit(ScanProgress(scanned, found.size, "", true, found.toList()))
+    }
+
+    suspend fun indexVisualFile(
+        handle: Long,
+        containerId: String,
+        entry: NativeFileInfo
+    ): MediaFileEntity? {
+        if (entry.isDirectory) return null
+        val type = visualTypeForName(entry.name) ?: return null
+        val previous = dao.getMediaByContainerPath(containerId, entry.path)
+        val entity = buildEntity(
+            handle           = handle,
+            containerId      = containerId,
+            entry            = entry,
+            type             = type,
+            previous         = previous,
+            readEmbeddedDate = false
+        )
+        dao.insertMediaFile(entity)
+        return entity
+    }
+
+    suspend fun indexVisualFiles(
+        handle: Long,
+        containerId: String,
+        entries: List<NativeFileInfo>
+    ): List<MediaFileEntity> {
+        if (entries.isEmpty()) return emptyList()
+        val visualEntries = entries.filter { !it.isDirectory && visualTypeForName(it.name) != null }
+        if (visualEntries.isEmpty()) return emptyList()
+
+        val existing = dao.getAllForContainerOnce(containerId).associateBy { it.relativePath }
+        val entities = visualEntries.mapNotNull { entry ->
+            val type = visualTypeForName(entry.name) ?: return@mapNotNull null
+            buildEntity(
+                handle           = handle,
+                containerId      = containerId,
+                entry            = entry,
+                type             = type,
+                previous         = existing[entry.path],
+                readEmbeddedDate = false
+            )
+        }
+        if (entities.isNotEmpty()) dao.insertMediaFiles(entities)
+        return entities
+    }
+
+    private fun visualTypeForName(name: String): MediaFileType? {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            in IMAGE_EXTENSIONS -> MediaFileType.IMAGE
+            in VIDEO_EXTENSIONS -> MediaFileType.VIDEO
+            else -> null
+        }
+    }
+
+    private fun buildEntity(
+        handle: Long,
+        containerId: String,
+        entry: NativeFileInfo,
+        type: MediaFileType,
+        previous: MediaFileEntity?,
+        readEmbeddedDate: Boolean
+    ): MediaFileEntity {
+        // Preserve user-edited metadata for known files. Single-file indexing from Files
+        // avoids embedded-date reads so large folders stay responsive while scrolling.
+        val fallback = entry.lastModified.takeIf { it > 0L } ?: System.currentTimeMillis()
+        val date = previous?.dateCreated
+            ?: if (readEmbeddedDate) extractDate(handle, entry.path, entry.size, type, fallback) else fallback
+
+        return MediaFileEntity(
+            id           = previous?.id ?: UUID.randomUUID().toString(),
+            containerId  = containerId,
+            relativePath = entry.path,
+            fileName     = entry.name,
+            fileType     = type,
+            size         = entry.size,
+            dateCreated  = date,
+            dateModified = fallback,
+            isFavorite   = previous?.isFavorite ?: false,
+            description  = previous?.description ?: ""
+        )
     }
 
     private fun extractDate(

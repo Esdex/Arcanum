@@ -86,12 +86,48 @@ sealed class InAppNotification {
         override val priority = 1
     }
 
+    data class FolderImported(val name: String) : InAppNotification() {
+        override val priority = 1
+    }
+
+    data class TextFileCreated(val name: String) : InAppNotification() {
+        override val priority = 1
+    }
+
+    data class FileAlreadyExists(val name: String) : InAppNotification() {
+        override val priority = 2
+    }
+
+    data object FileCreateFailed : InAppNotification() {
+        override val priority = 2
+    }
+
     data class FilesImported(val count: Int) : InAppNotification() {
         override val priority = 1
     }
 
     data class FilesExported(val count: Int) : InAppNotification() {
         override val priority = 1
+    }
+
+    data object ExportFailed : InAppNotification() {
+        override val priority = 2
+    }
+
+    data object ShareFailed : InAppNotification() {
+        override val priority = 2
+    }
+
+    data object ShareFoldersUnsupported : InAppNotification() {
+        override val priority = 2
+    }
+
+    data class ImportedSourceDeleteSkipped(val count: Int) : InAppNotification() {
+        override val priority = 2
+    }
+
+    data class ExportedSourceDeleteSkipped(val count: Int) : InAppNotification() {
+        override val priority = 2
     }
 
     data object HiddenVolumeWriteProtection : InAppNotification() {

@@ -3,4 +3,10 @@
     <cache-path
         name="arcanum_temp"
         path="arcanum_temp/" />
+    <cache-path
+        name="arcanum_camera"
+        path="arcanum_camera/" />
+    <cache-path
+        name="arcanum_share"
+        path="arcanum_share/" />
 </paths>

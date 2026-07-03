@@ -95,7 +95,7 @@ fun MediaViewerDirectScreen(
         val wic = WindowCompat.getInsetsController(window, view)
         if (state.showBars) {
             wic.show(WindowInsetsCompat.Type.systemBars())
-            delay(3_000); viewModel.toggleBars()
+            delay(3_000); viewModel.setBarsVisible(false)
         } else {
             wic.hide(WindowInsetsCompat.Type.systemBars())
             wic.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE

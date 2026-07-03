@@ -70,6 +70,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -130,6 +131,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import android.app.Activity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -148,6 +150,7 @@ import zip.arcanum.core.components.LocalHazeState
 import zip.arcanum.core.components.WheelDateTimePicker
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.notifications.InAppNotification
+import java.io.File
 import java.text.DecimalFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -211,13 +214,31 @@ fun MediaViewerScreen(
     }
 
     val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("*/*")
-    ) { uri -> if (uri != null) viewModel.exportToUri(uri) }
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        viewModel.finishExternalActivity()
+        if (uri != null) viewModel.decryptCurrentToTree(uri)
+    }
+
+    fun launchDecryptPicker() {
+        viewModel.beginExternalActivity()
+        runCatching { exportLauncher.launch(null) }
+            .onFailure { viewModel.finishExternalActivity() }
+    }
+
+    LaunchedEffect(uiState.sharePayload) {
+        uiState.sharePayload?.let { payload ->
+            launchShareIntent(context, payload.files, payload.mimeType)
+            viewModel.clearSharePayload()
+        }
+    }
 
     LaunchedEffect(uiState.exportDone) {
         if (uiState.exportDone) {
             onNotification(InAppNotification.ExportSuccess(uiState.currentFile?.fileName ?: ""))
+            val closeAfterExport = uiState.exportDeleted
             viewModel.clearExportDone()
+            if (closeAfterExport) onBack()
         }
     }
 
@@ -275,10 +296,9 @@ fun MediaViewerScreen(
     // True once the user has deliberately tapped the video — enables the center play button
     var userInteracted by remember { mutableStateOf(false) }
 
-    // Reset bars and configure the shared ExoPlayer when the active file changes
+    // Configure the shared ExoPlayer when the active file changes
     LaunchedEffect(uiState.currentFile?.id) {
         userInteracted = false
-        showBars = true
         val file = uiState.currentFile ?: return@LaunchedEffect
         if (file.fileType == MediaFileType.VIDEO && videoFactory != null && exoPlayer != null) {
             videoFactory.configure(file.relativePath, file.size)
@@ -468,8 +488,13 @@ fun MediaViewerScreen(
                                     )
                                     DropdownMenuItem(
                                         leadingIcon = { Icon(Icons.Filled.Share, null) },
-                                        text        = { Text(stringResource(R.string.viewer_action_export)) },
-                                        onClick     = { exportLauncher.launch(uiState.currentFile?.fileName ?: "export"); videoMenuExpanded = false }
+                                        text        = { Text(stringResource(R.string.viewer_action_share)) },
+                                        onClick     = { viewModel.prepareShareCurrent(); videoMenuExpanded = false }
+                                    )
+                                    DropdownMenuItem(
+                                        leadingIcon = { Icon(Icons.Filled.LockOpen, null) },
+                                        text        = { Text(stringResource(R.string.viewer_action_decrypt)) },
+                                        onClick     = { launchDecryptPicker(); videoMenuExpanded = false }
                                     )
                                     DropdownMenuItem(
                                         leadingIcon = { Icon(Icons.Filled.Delete, null) },
@@ -523,8 +548,11 @@ fun MediaViewerScreen(
                                     stringResource(R.string.viewer_action_favorite), tint = if (isFav) Color.Red else Color.White)
                             }
                             IconButton(onClick = {
-                                exportLauncher.launch(uiState.currentFile?.fileName ?: "export")
-                            }) { Icon(Icons.Filled.Share, stringResource(R.string.viewer_action_export), tint = Color.White) }
+                                viewModel.prepareShareCurrent()
+                            }) { Icon(Icons.Filled.Share, stringResource(R.string.viewer_action_share), tint = Color.White) }
+                            IconButton(onClick = { launchDecryptPicker() }) {
+                                Icon(Icons.Filled.LockOpen, stringResource(R.string.viewer_action_decrypt), tint = Color.White)
+                            }
                             IconButton(onClick = { showDeleteDialog = true }) {
                                 Icon(Icons.Filled.Delete, stringResource(R.string.viewer_action_delete), tint = Color.White)
                             }
@@ -1230,6 +1258,31 @@ private fun FullExifSheetContent(allTags: List<ExifTag>, isLoading: Boolean) {
     }
 }
 
+private fun launchShareIntent(context: Context, files: List<File>, mimeType: String) {
+    if (files.isEmpty()) return
+    val uris = files.map { FileProvider.getUriForFile(context, "${context.packageName}.provider", it) }
+    val intent = if (uris.size == 1) {
+        Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uris.first())
+            clipData = ClipData.newUri(context.contentResolver, files.first().name, uris.first())
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    } else {
+        Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = mimeType
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+            clipData = ClipData.newUri(context.contentResolver, files.first().name, uris.first()).apply {
+                uris.drop(1).forEach { uri -> addItem(ClipData.Item(uri)) }
+            }
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+    runCatching {
+        context.startActivity(Intent.createChooser(intent, context.getString(R.string.files_share_chooser_title)))
+    }
+}
+
 // ── Formatters ────────────────────────────────────────────────────────────
 
 private fun Long.formatFileSize(): String {
@@ -1257,4 +1310,3 @@ private fun Double.formatCoord(isLat: Boolean): String {
     val dir = if (isLat) (if (this >= 0) "N" else "S") else (if (this >= 0) "E" else "W")
     return "%.4f° %s".format(abs(this), dir)
 }
-

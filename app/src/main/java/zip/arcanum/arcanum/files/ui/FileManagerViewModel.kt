@@ -1,7 +1,11 @@
 package zip.arcanum.arcanum.files.ui
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -9,11 +13,16 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,20 +31,31 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.arcanum.files.domain.ClipboardItem
 import zip.arcanum.arcanum.files.domain.FileClipboard
+import zip.arcanum.arcanum.files.domain.PreparedShareFiles
+import zip.arcanum.arcanum.files.domain.VaultFileTransfer
+import zip.arcanum.arcanum.files.domain.VaultTransferItem
 import zip.arcanum.arcanum.gallery.AudioPlayerQueue
+import zip.arcanum.arcanum.gallery.MediaScanner
 import zip.arcanum.arcanum.gallery.MediaViewerQueue
+import zip.arcanum.arcanum.gallery.ThumbnailManager
+import zip.arcanum.core.database.dao.MediaFileDao
+import zip.arcanum.core.lifecycle.ExternalActivityGuard
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.utils.FileUtils
-import zip.arcanum.crypto.VeraCryptEngine
 import zip.arcanum.crypto.NativeFileInfo
-import java.io.ByteArrayOutputStream
+import zip.arcanum.crypto.VeraCryptEngine
 import java.io.File
+import java.io.InputStream
 import javax.inject.Inject
+import kotlin.coroutines.coroutineContext
 
 private val Context.fileManagerPrefs: DataStore<Preferences> by preferencesDataStore("file_manager_prefs")
 
@@ -44,6 +64,8 @@ private val MEDIA_EXTENSIONS_VM = setOf(
     "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif",
     "mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp"
 )
+private const val MEDIASTORE_DATE_TAKEN_COLUMN = "datetaken"
+private const val TIMESTAMP_SECONDS_THRESHOLD = 10_000_000_000L
 
 @HiltViewModel
 class FileManagerViewModel @Inject constructor(
@@ -52,11 +74,38 @@ class FileManagerViewModel @Inject constructor(
     private val clipboard: FileClipboard,
     private val repo: ContainerRepository,
     private val audioQueue: AudioPlayerQueue,
-    private val mediaQueue: MediaViewerQueue
+    private val mediaQueue: MediaViewerQueue,
+    private val appPrefs: AppPreferences,
+    private val mediaScanner: MediaScanner,
+    private val thumbnailManager: ThumbnailManager,
+    private val mediaFileDao: MediaFileDao,
+    private val externalActivityGuard: ExternalActivityGuard
 ) : ViewModel() {
 
     enum class ViewMode { LIST, GRID }
     enum class SortBy { NAME, DATE, SIZE, TYPE }
+
+    private enum class ImportWriteResult { IMPORTED, HIDDEN_PROTECTED, FAILED }
+
+    private data class ImportStats(
+        var count: Int = 0,
+        var deleteSkipped: Int = 0,
+        var hiddenProtected: Boolean = false,
+        var importFailed: Boolean = false
+    )
+
+    data class VaultStorageUsage(
+        val usedBytes: Long,
+        val totalBytes: Long
+    ) {
+        val percent: Int
+            get() = if (totalBytes <= 0L) 0 else ((usedBytes * 100.0) / totalBytes).toInt().coerceIn(0, 100)
+    }
+
+    data class PendingImportedSourceDeletion(
+        val uriStrings: List<String>,
+        val count: Int
+    )
 
     data class FileManagerState(
         val containerId: String = "",
@@ -70,6 +119,7 @@ class FileManagerViewModel @Inject constructor(
         val sortAscending: Boolean = false,
         val showHidden: Boolean = false,
         val foldersFirst: Boolean = true,
+        val showGridFileNames: Boolean = false,
         val selectedItems: Set<String> = emptySet(),
         val isSelectionMode: Boolean = false,
         val searchQuery: String = "",
@@ -79,19 +129,36 @@ class FileManagerViewModel @Inject constructor(
         val error: String? = null,
         val pendingNotification: InAppNotification? = null,
         val tempFileToOpen: Pair<File, String>? = null,
+        val sharePayload: PreparedShareFiles? = null,
         val isOperationInProgress: Boolean = false,
-        val operationMessage: String? = null
+        val operationMessage: String? = null,
+        val folderItemCounts: Map<String, Int> = emptyMap(),
+        val storageUsage: VaultStorageUsage? = null,
+        val pendingImportedSourceDeletion: PendingImportedSourceDeletion? = null
     )
 
     private val _state = MutableStateFlow(FileManagerState())
     val state = _state.asStateFlow()
+
+    private val _mediaThumbnails = MutableStateFlow<Map<String, Bitmap>>(emptyMap())
+    val mediaThumbnails = _mediaThumbnails.asStateFlow()
 
     val mountedContainers: kotlinx.coroutines.flow.StateFlow<List<Container>> = repo.getAllContainers()
         .map { list -> list.filter { it.isMounted } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _tempFiles = mutableListOf<File>()
+    private val thumbnailSemaphore = Semaphore(THUMBNAIL_PARALLELISM)
+    private val thumbnailMap = LinkedHashMap<String, Bitmap>(MAX_FILE_THUMBNAILS + 1, 0.75f, true)
+    private val loadingThumbnails = mutableSetOf<String>()
+    private val failedThumbnails = mutableSetOf<String>()
+    private val loadingFolderCounts = mutableSetOf<String>()
+    private val folderCountCache = mutableMapOf<String, Int>()
+    private var storageUsageJob: Job? = null
+    private var lastStorageUsageContainerId: String? = null
+    private var lastStorageUsageAtMs = 0L
     private var initialized = false
+    private var sensitiveStateRevision = 0L
 
     private val prefs = context.fileManagerPrefs
 
@@ -101,10 +168,19 @@ class FileManagerViewModel @Inject constructor(
         private val SHOW_HIDDEN_KEY  = booleanPreferencesKey("show_hidden")
         private val FOLDERS_FIRST_KEY = booleanPreferencesKey("folders_first")
         private val VIEW_MODE_KEY    = stringPreferencesKey("view_mode")
+        private val SHOW_GRID_FILE_NAMES_KEY = booleanPreferencesKey("show_grid_file_names")
+        private const val THUMBNAIL_PARALLELISM = 2
+        private const val MAX_FILE_THUMBNAILS = 96
+        private const val MAX_FAILED_THUMBNAILS = 256
+        private const val STORAGE_USAGE_REFRESH_MS = 30_000L
     }
 
     fun initialize(containerId: String) {
         if (initialized && _state.value.containerId == containerId) return
+        if (_state.value.containerId != containerId) {
+            clearThumbnailState()
+            invalidateFolderCounts()
+        }
         initialized = true
         _state.update { it.copy(containerId = containerId) }
         viewModelScope.launch {
@@ -115,7 +191,8 @@ class FileManagerViewModel @Inject constructor(
                     sortAscending = p[SORT_ASC_KEY] ?: false,
                     showHidden   = p[SHOW_HIDDEN_KEY] ?: false,
                     foldersFirst = p[FOLDERS_FIRST_KEY] ?: true,
-                    viewMode     = runCatching { ViewMode.valueOf(p[VIEW_MODE_KEY] ?: "LIST") }.getOrDefault(ViewMode.LIST)
+                    viewMode     = runCatching { ViewMode.valueOf(p[VIEW_MODE_KEY] ?: "LIST") }.getOrDefault(ViewMode.LIST),
+                    showGridFileNames = p[SHOW_GRID_FILE_NAMES_KEY] ?: false
                 ) }
             }
             loadDirectory("/")
@@ -141,6 +218,7 @@ class FileManagerViewModel @Inject constructor(
     // ── Navigation ────────────────────────────────────────────────────────
 
     fun navigateTo(path: String) {
+        if (clearSensitiveStateIfUnmounted()) return
         _state.update { it.copy(
             selectedItems   = emptySet(),
             isSelectionMode = false,
@@ -210,6 +288,123 @@ class FileManagerViewModel @Inject constructor(
             s.copy(showHidden = sh, files = files)
         }
         savePrefs()
+    }
+
+    fun toggleShowGridFileNames() {
+        _state.update { it.copy(showGridFileNames = !it.showGridFileNames) }
+        savePrefs()
+    }
+
+    fun beginExternalActivity() {
+        externalActivityGuard.begin()
+    }
+
+    fun finishExternalActivity() {
+        externalActivityGuard.end()
+    }
+
+    fun clearSensitiveStateIfUnmounted(): Boolean {
+        val containerId = _state.value.containerId
+        if (containerId.isBlank() || repo.getContainerHandle(containerId) != null) return false
+        lockSensitiveState()
+        return true
+    }
+
+    fun clearSensitiveStateBeforeStopIfNeeded(isLocked: Boolean, containers: List<Container>) {
+        if (!isLocked && externalActivityGuard.isActive) return
+        val containerId = _state.value.containerId
+        val container = containers.firstOrNull { it.id == containerId } ?: return
+        if (container.unmountOnBackground || (isLocked && container.unmountOnLock)) {
+            lockSensitiveState()
+        }
+    }
+
+    fun requestThumbnail(file: NativeFileInfo) {
+        if (!isVisualMedia(file)) return
+        val key = file.path
+        if (key in _mediaThumbnails.value) {
+            thumbnailMap[key]
+            return
+        }
+        if (key in loadingThumbnails || key in failedThumbnails) return
+        val s = _state.value
+        val handle = repo.getContainerHandle(s.containerId) ?: return
+        loadingThumbnails += key
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val bitmap = thumbnailSemaphore.withPermit {
+                runCatching {
+                    val media = mediaScanner.indexVisualFile(handle, s.containerId, file) ?: return@runCatching null
+                    thumbnailManager.getThumbnail(engine, handle, media)
+                }.getOrNull()
+            }
+            withContext(Dispatchers.Main) {
+                loadingThumbnails -= key
+                val stillMounted = repo.getContainerHandle(s.containerId) == handle &&
+                    _state.value.containerId == s.containerId &&
+                    _state.value.error == null
+                if (!stillMounted) {
+                    return@withContext
+                }
+                if (bitmap != null) putThumbnail(key, bitmap) else markThumbnailFailed(key)
+            }
+        }
+    }
+
+    fun requestFolderItemCount(file: NativeFileInfo) {
+        if (!file.isDirectory) return
+        val key = file.path
+        if (key in _state.value.folderItemCounts || key in loadingFolderCounts) return
+        folderCountCache[key]?.let { cached ->
+            _state.update { it.copy(folderItemCounts = it.folderItemCounts + (key to cached)) }
+            return
+        }
+        val s = _state.value
+        val handle = repo.getContainerHandle(s.containerId) ?: return
+        loadingFolderCounts += key
+        viewModelScope.launch(Dispatchers.IO) {
+            val count = runCatching { engine.nativeListFiles(handle, file.path).size }.getOrNull()
+            withContext(Dispatchers.Main) {
+                loadingFolderCounts -= key
+                val stillMounted = repo.getContainerHandle(s.containerId) == handle &&
+                    _state.value.containerId == s.containerId &&
+                    _state.value.error == null
+                if (!stillMounted || count == null) return@withContext
+                folderCountCache[key] = count
+                _state.update { it.copy(folderItemCounts = it.folderItemCounts + (key to count)) }
+            }
+        }
+    }
+
+    fun openVisualFile(file: NativeFileInfo, onResult: (String?) -> Unit) {
+        if (!isVisualMedia(file)) {
+            onResult(null)
+            return
+        }
+        val s = _state.value
+        val handle = repo.getContainerHandle(s.containerId) ?: run {
+            onResult(null)
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val visualFiles = s.files
+                .filter { isVisualMedia(it) }
+                .ifEmpty { listOf(file) }
+
+            val orderedMedia = runCatching {
+                mediaScanner.indexVisualFiles(handle, s.containerId, visualFiles)
+            }.getOrDefault(emptyList())
+            val media = orderedMedia.firstOrNull { it.relativePath == file.path }
+                ?: runCatching { mediaScanner.indexVisualFile(handle, s.containerId, file) }.getOrNull()
+
+            if (media != null) {
+                val orderedIds = orderedMedia.map { it.id }.let { ids ->
+                    if (media.id in ids) ids else ids + media.id
+                }
+                mediaQueue.setMediaOrder(s.containerId, orderedIds)
+            }
+            withContext(Dispatchers.Main) { onResult(media?.id) }
+        }
     }
 
     // ── Search ────────────────────────────────────────────────────────────
@@ -335,8 +530,15 @@ class FileManagerViewModel @Inject constructor(
                 try {
                     val destPath = if (currentPath == "/") "/${item.fileName}" else "$currentPath/${item.fileName}"
                     _state.update { it.copy(operationMessage = "${if (isCut) "Moving" else "Copying"} ${item.fileName}…") }
+                    val sourceInfo = getContainerFileInfo(item.sourceHandle, item.sourcePath)
                     if (item.isDirectory) {
-                        val ok = copyDirectoryRecursive(item.sourceHandle, item.sourcePath, destHandle, destPath)
+                        val ok = copyDirectoryRecursive(
+                            item.sourceHandle,
+                            item.sourcePath,
+                            destHandle,
+                            destPath,
+                            sourceInfo?.lastModified ?: 0L
+                        )
                         if (ok && isCut) runCatching { engine.nativeDeleteDirectory(item.sourceHandle, item.sourcePath) }
                         if (ok) count++
                     } else {
@@ -351,6 +553,7 @@ class FileManagerViewModel @Inject constructor(
                         }
                         if (!writeOk) runCatching { engine.nativeDeleteFile(destHandle, destPath) }
                         if (writeOk) {
+                            setContainerModifiedTime(destHandle, destPath, sourceInfo?.lastModified ?: System.currentTimeMillis())
                             if (isCut) runCatching { engine.nativeDeleteFile(item.sourceHandle, item.sourcePath) }
                             count++
                         }
@@ -395,7 +598,7 @@ class FileManagerViewModel @Inject constructor(
                     val destItemPath = if (destinationPath == "/") "/${item.name}" else "$destinationPath/${item.name}"
                     _state.update { it.copy(operationMessage = "Copying ${item.name}…") }
                     if (item.isDirectory) {
-                        val ok = copyDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath)
+                        val ok = copyDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath, item.lastModified)
                         if (ok) count++
                     } else {
                         var offset = 0L
@@ -408,7 +611,10 @@ class FileManagerViewModel @Inject constructor(
                             if (chunk.size < chunkSize) break
                         }
                         if (!writeOk) runCatching { engine.nativeDeleteFile(destHandle, destItemPath) }
-                        if (writeOk) count++
+                        if (writeOk) {
+                            setContainerModifiedTime(destHandle, destItemPath, item.lastModified)
+                            count++
+                        }
                     }
                 } catch (_: Exception) { }
             }
@@ -450,8 +656,8 @@ class FileManagerViewModel @Inject constructor(
                         }.getOrDefault(VeraCryptEngine.ERR_FS)
                         result == VeraCryptEngine.ERR_OK
                     }
-                    item.isDirectory -> moveDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath)
-                    else -> moveFile(sourceHandle, item.path, destHandle, destItemPath, item.size)
+                    item.isDirectory -> moveDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath, item.lastModified)
+                    else -> moveFile(sourceHandle, item.path, destHandle, destItemPath, item.size, item.lastModified)
                 }
                 if (moved) count++
             }
@@ -486,15 +692,21 @@ class FileManagerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isOperationInProgress = true) }
             var count = 0
+            val deletedMediaPaths = mutableListOf<String>()
             for (file in toDelete) {
                 runCatching {
                     if (file.isDirectory) engine.nativeDeleteDirectory(handle, file.path)
                     else engine.nativeDeleteFile(handle, file.path)
                     count++
+                    if (isVisualMedia(file)) {
+                        mediaFileDao.deleteMediaByContainerPath(s.containerId, file.path)
+                        deletedMediaPaths += file.path
+                    }
                 }
             }
             exitSelectionMode()
             refreshNow()
+            withContext(Dispatchers.Main) { removeThumbnails(deletedMediaPaths) }
             _state.update { it.copy(
                 isOperationInProgress = false,
                 pendingNotification   = if (count > 0) InAppNotification.FilesDeleted(count) else null
@@ -514,6 +726,53 @@ class FileManagerViewModel @Inject constructor(
         }
     }
 
+    fun createTextFile(rawName: String, onCreated: (path: String?, name: String?) -> Unit) {
+        val s = _state.value
+        val handle = repo.getContainerHandle(s.containerId) ?: run {
+            onCreated(null, null)
+            return
+        }
+        val safeName = normalizeTextFileName(rawName)
+        if (safeName.isBlank()) {
+            _state.update { it.copy(pendingNotification = InAppNotification.FileCreateFailed) }
+            onCreated(null, null)
+            return
+        }
+        val filePath = buildDestinationPath(s.currentPath, safeName)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val exists = runCatching {
+                engine.nativeListFiles(handle, s.currentPath).any { it.name == safeName }
+            }.getOrDefault(false)
+            if (exists) {
+                _state.update { it.copy(pendingNotification = InAppNotification.FileAlreadyExists(safeName)) }
+                withContext(Dispatchers.Main) { onCreated(null, null) }
+                return@launch
+            }
+
+            val rc = runCatching {
+                engine.nativeWriteFile(handle, filePath, ByteArray(0), 0L)
+            }.getOrDefault(VeraCryptEngine.ERR_FS)
+            val created = rc == VeraCryptEngine.ERR_OK
+            if (created) {
+                setContainerModifiedTime(handle, filePath, System.currentTimeMillis())
+                refreshNow()
+                _state.update { it.copy(pendingNotification = InAppNotification.TextFileCreated(safeName)) }
+            } else {
+                _state.update { it.copy(
+                    pendingNotification = if (rc == VeraCryptEngine.ERR_HIDDEN_BOUNDARY) {
+                        InAppNotification.HiddenVolumeWriteProtection
+                    } else {
+                        InAppNotification.FileCreateFailed
+                    }
+                ) }
+            }
+            withContext(Dispatchers.Main) {
+                if (created) onCreated(filePath, safeName) else onCreated(null, null)
+            }
+        }
+    }
+
     fun renameFile(file: NativeFileInfo, newName: String, onResult: (Boolean) -> Unit) {
         val s = _state.value
         val handle = repo.getContainerHandle(s.containerId) ?: return
@@ -530,7 +789,20 @@ class FileManagerViewModel @Inject constructor(
             val result = runCatching { engine.nativeRenameFile(handle, file.path, newPath) }.getOrDefault(VeraCryptEngine.ERR_FS)
             val success = result == VeraCryptEngine.ERR_OK
             if (success) {
+                if (isVisualMedia(file)) {
+                    mediaFileDao.getMediaByContainerPath(s.containerId, file.path)?.let { media ->
+                        mediaFileDao.updateMediaFile(
+                            media.copy(
+                                relativePath = newPath,
+                                fileName = finalName,
+                                size = file.size,
+                                dateModified = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                }
                 refreshNow()
+                withContext(Dispatchers.Main) { moveThumbnail(file.path, newPath) }
                 _state.update { it.copy(pendingNotification = InAppNotification.FileRenamed(finalName)) }
             }
             withContext(Dispatchers.Main) { onResult(success) }
@@ -542,53 +814,178 @@ class FileManagerViewModel @Inject constructor(
         val handle = repo.getContainerHandle(s.containerId) ?: return
 
         viewModelScope.launch(Dispatchers.IO) {
+            val deleteAfterImport = appPrefs.deleteImportedFiles.first()
             _state.update { it.copy(isOperationInProgress = true) }
-            var count = 0
-            var hiddenProtected = false
-            var importFailed = false
-            val chunkSize = 1 * 1024 * 1024
+            val stats = ImportStats()
+            val successfulSourceUris = mutableListOf<Uri>()
             for (uri in uris) {
-                if (hiddenProtected || importFailed) break
+                if (stats.hiddenProtected || stats.importFailed) break
                 try {
                     val rawName = getFileNameFromUri(context, uri) ?: continue
                     val name = File(rawName).name.ifEmpty { continue }
                     val destPath = buildDestinationPath(s.currentPath, name)
+                    val sourceModifiedAt = getSourceModifiedTime(context, uri)
                     _state.update { it.copy(operationMessage = "Importing $name…") }
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        var offset = 0L
-                        val buffer = ByteArray(chunkSize)
-                        var read: Int = 0
-                        var done = false
-                        while (!done && input.read(buffer).also { read = it } != -1) {
-                            val rc = engine.nativeWriteFile(handle, destPath, buffer.copyOf(read), offset)
-                            when {
-                                rc == VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> {
-                                    hiddenProtected = true
-                                    runCatching { engine.nativeDeleteFile(handle, destPath) }
-                                    done = true
-                                }
-                                rc != VeraCryptEngine.ERR_OK -> {
-                                    importFailed = true
-                                    runCatching { engine.nativeDeleteFile(handle, destPath) }
-                                    done = true
-                                }
-                                else -> offset += read
-                            }
+                    val inputStream = context.contentResolver.openInputStream(uri) ?: continue
+                    when (writeStreamToContainer(handle, destPath, inputStream)) {
+                        ImportWriteResult.IMPORTED -> {
+                            setContainerModifiedTime(handle, destPath, sourceModifiedAt)
+                            stats.count++
+                            if (deleteAfterImport) successfulSourceUris += uri
                         }
+                        ImportWriteResult.HIDDEN_PROTECTED -> stats.hiddenProtected = true
+                        ImportWriteResult.FAILED -> stats.importFailed = true
                     }
-                    if (!hiddenProtected && !importFailed) count++
-                } catch (_: Exception) { }
+                } catch (_: Exception) {
+                    stats.importFailed = true
+                }
+            }
+            val partialFailure = stats.hiddenProtected || stats.importFailed
+            if (deleteAfterImport && successfulSourceUris.isNotEmpty() && !partialFailure) {
+                stats.deleteSkipped += deleteSourceUris(context, successfulSourceUris)
             }
             refreshNow()
             _state.update { it.copy(
                 isOperationInProgress = false,
                 operationMessage      = null,
+                pendingImportedSourceDeletion = if (deleteAfterImport && partialFailure && successfulSourceUris.isNotEmpty()) {
+                    PendingImportedSourceDeletion(successfulSourceUris.map { uri -> uri.toString() }, successfulSourceUris.size)
+                } else null,
                 pendingNotification   = when {
-                    hiddenProtected -> InAppNotification.HiddenVolumeWriteProtection
-                    importFailed    -> InAppNotification.ImportFailed
-                    count > 0       -> InAppNotification.FilesImported(count)
+                    stats.hiddenProtected -> InAppNotification.HiddenVolumeWriteProtection
+                    stats.importFailed    -> InAppNotification.ImportFailed
+                    stats.deleteSkipped > 0 -> InAppNotification.ImportedSourceDeleteSkipped(stats.deleteSkipped)
+                    stats.count > 0       -> InAppNotification.FilesImported(stats.count)
                     else            -> null
                 }
+            ) }
+        }
+    }
+
+    fun importFolder(context: Context, treeUri: Uri) {
+        val s = _state.value
+        val handle = repo.getContainerHandle(s.containerId) ?: return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val root = DocumentFile.fromTreeUri(context, treeUri) ?: run {
+                _state.update { it.copy(pendingNotification = InAppNotification.ImportFailed) }
+                return@launch
+            }
+            val rootName = sanitizePathName(root.name).ifEmpty { "Imported folder" }
+            val destRoot = buildDestinationPath(s.currentPath, rootName)
+            val deleteAfterImport = appPrefs.deleteImportedFiles.first()
+            val stats = ImportStats()
+            val successfulSourceUris = mutableListOf<Uri>()
+
+            _state.update {
+                it.copy(isOperationInProgress = true, operationMessage = "Importing $rootName…")
+            }
+            runCatching { engine.nativeCreateDirectory(handle, destRoot) }
+            importDocumentDirectoryRecursive(
+                context = context,
+                handle = handle,
+                sourceDir = root,
+                destDirPath = destRoot,
+                successfulSourceUris = successfulSourceUris,
+                stats = stats
+            )
+            setContainerModifiedTime(handle, destRoot, root.lastModified())
+
+            val partialFailure = stats.hiddenProtected || stats.importFailed
+            if (deleteAfterImport && successfulSourceUris.isNotEmpty() && !partialFailure) {
+                stats.deleteSkipped += deleteSourceUris(context, successfulSourceUris)
+            }
+            refreshNow()
+            _state.update { it.copy(
+                isOperationInProgress = false,
+                operationMessage      = null,
+                pendingImportedSourceDeletion = if (deleteAfterImport && partialFailure && successfulSourceUris.isNotEmpty()) {
+                    PendingImportedSourceDeletion(successfulSourceUris.map { uri -> uri.toString() }, successfulSourceUris.size)
+                } else null,
+                pendingNotification   = when {
+                    stats.hiddenProtected -> InAppNotification.HiddenVolumeWriteProtection
+                    stats.importFailed    -> InAppNotification.ImportFailed
+                    stats.deleteSkipped > 0 -> InAppNotification.ImportedSourceDeleteSkipped(stats.deleteSkipped)
+                    stats.count > 0       -> InAppNotification.FilesImported(stats.count)
+                    else                  -> InAppNotification.FolderImported(rootName)
+                }
+            ) }
+        }
+    }
+
+    fun importCapturedPhoto(photoFile: File) {
+        val s = _state.value
+        val handle = repo.getContainerHandle(s.containerId) ?: return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _state.update { it.copy(isOperationInProgress = true, operationMessage = "Importing ${photoFile.name}…") }
+            if (!waitForStableImageFile(photoFile)) {
+                runCatching { FileUtils.secureZeroAndDelete(photoFile) }.onFailure { photoFile.delete() }
+                _state.update { it.copy(
+                    isOperationInProgress = false,
+                    operationMessage      = null,
+                    pendingNotification   = InAppNotification.ImportFailed
+                ) }
+                return@launch
+            }
+            val destPath = buildDestinationPath(s.currentPath, photoFile.name)
+            val result = runCatching {
+                writeStreamToContainer(handle, destPath, photoFile.inputStream())
+            }.getOrDefault(ImportWriteResult.FAILED)
+            if (result == ImportWriteResult.IMPORTED) {
+                setContainerModifiedTime(handle, destPath, System.currentTimeMillis())
+            }
+            runCatching { FileUtils.secureZeroAndDelete(photoFile) }.onFailure { photoFile.delete() }
+            refreshNow()
+            _state.update { it.copy(
+                isOperationInProgress = false,
+                operationMessage      = null,
+                pendingNotification   = when (result) {
+                    ImportWriteResult.IMPORTED -> InAppNotification.FilesImported(1)
+                    ImportWriteResult.HIDDEN_PROTECTED -> InAppNotification.HiddenVolumeWriteProtection
+                    ImportWriteResult.FAILED -> InAppNotification.ImportFailed
+                }
+            ) }
+        }
+    }
+
+    fun prepareShareSelected(context: Context) {
+        val s = _state.value
+        val handle = repo.getContainerHandle(s.containerId) ?: return
+        val selected = s.selectedItems.mapNotNull { path -> s.files.find { it.path == path } }
+        prepareShareItems(context, handle, selected, exitSelection = true)
+    }
+
+    fun prepareShareFile(context: Context, file: NativeFileInfo) {
+        val handle = repo.getContainerHandle(_state.value.containerId) ?: return
+        prepareShareItems(context, handle, listOf(file), exitSelection = false)
+    }
+
+    private fun prepareShareItems(
+        context: Context,
+        handle: Long,
+        files: List<NativeFileInfo>,
+        exitSelection: Boolean
+    ) {
+        if (files.isEmpty()) return
+        if (files.any { it.isDirectory }) {
+            _state.update { it.copy(pendingNotification = InAppNotification.ShareFoldersUnsupported) }
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            _state.update { it.copy(isOperationInProgress = true, operationMessage = "Preparing share…") }
+            val payload = VaultFileTransfer.prepareShareFiles(
+                context = context,
+                engine = engine,
+                handle = handle,
+                items = files.map(VaultFileTransfer::fromNative)
+            )
+            if (exitSelection) exitSelectionMode()
+            _state.update { it.copy(
+                isOperationInProgress = false,
+                operationMessage      = null,
+                sharePayload          = payload,
+                pendingNotification   = if (payload == null) InAppNotification.ShareFailed else null
             ) }
         }
     }
@@ -597,42 +994,143 @@ class FileManagerViewModel @Inject constructor(
         val s = _state.value
         val handle = repo.getContainerHandle(s.containerId) ?: return
         val toExport = s.selectedItems.mapNotNull { path -> s.files.find { it.path == path } }
+        exportItems(context, treeUri, handle, toExport, exitSelectionAfter = true)
+    }
 
-        viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isOperationInProgress = true) }
+    fun exportSingle(context: Context, file: NativeFileInfo, treeUri: android.net.Uri) {
+        val handle = repo.getContainerHandle(_state.value.containerId) ?: return
+        exportItems(context, treeUri, handle, listOf(file), exitSelectionAfter = false)
+    }
+
+    fun exportSelectedToDefault(context: Context) {
+        val s = _state.value
+        val handle = repo.getContainerHandle(s.containerId) ?: return
+        val toExport = s.selectedItems.mapNotNull { path -> s.files.find { it.path == path } }
+        exportItemsToDefault(context, handle, toExport, exitSelectionAfter = true)
+    }
+
+    fun exportSingleToDefault(context: Context, file: NativeFileInfo) {
+        val handle = repo.getContainerHandle(_state.value.containerId) ?: return
+        exportItemsToDefault(context, handle, listOf(file), exitSelectionAfter = false)
+    }
+
+    private fun exportItems(
+        context: Context,
+        treeUri: android.net.Uri,
+        handle: Long,
+        toExport: List<NativeFileInfo>,
+        exitSelectionAfter: Boolean
+	    ) {
+	        viewModelScope.launch(Dispatchers.IO) {
+	            val exportContainerId = _state.value.containerId
+	            val deleteAfterExport = appPrefs.deleteExportedFiles.first()
+	            _state.update { it.copy(isOperationInProgress = true) }
             var count = 0
-            val chunkSize = 1 * 1024 * 1024
-            val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
-            val treeDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, treeDocId)
+            var deleteSkipped = 0
+            val rootDir = VaultFileTransfer.documentTreeRoot(context, treeUri)
+            if (rootDir == null) {
+                _state.update { it.copy(
+                    isOperationInProgress = false,
+                    operationMessage      = null,
+                    pendingNotification   = InAppNotification.ExportFailed
+                ) }
+                return@launch
+            }
             for (file in toExport) {
                 try {
                     _state.update { it.copy(operationMessage = "Exporting ${file.name}…") }
-                    if (file.isDirectory) {
-                        val ok = exportDirectoryRecursive(context, handle, file.path, treeDocUri, file.name)
-                        if (ok) count++
-                    } else {
-                        val docUri = DocumentsContract.createDocument(
-                            context.contentResolver, treeDocUri,
-                            getMimeType(file.name), file.name
-                        ) ?: continue
-                        context.contentResolver.openOutputStream(docUri)?.use { out ->
-                            var offset = 0L
-                            while (offset < file.size) {
-                                val chunk = engine.nativeReadFile(handle, file.path, offset, chunkSize) ?: break
-                                out.write(chunk)
-                                offset += chunk.size
-                                if (chunk.size < chunkSize) break
-                            }
-                        }
+                    val exported = VaultFileTransfer.exportItemToDirectory(
+                        context = context,
+                        engine = engine,
+                        handle = handle,
+                        item = VaultFileTransfer.fromNative(file),
+                        parent = rootDir
+                    )
+                    if (exported) {
                         count++
+	                        if (deleteAfterExport) {
+	                            val deleted = deleteContainerItemRecursive(handle, file.path, file.isDirectory)
+	                            if (deleted) {
+	                                if (isVisualMedia(file)) mediaFileDao.deleteMediaByContainerPath(exportContainerId, file.path)
+	                            } else {
+	                                deleteSkipped++
+	                            }
+                        }
                     }
                 } catch (_: Exception) { }
             }
-            exitSelectionMode()
+            if (exitSelectionAfter) exitSelectionMode()
+            if (deleteAfterExport && count > 0) refreshNow()
+	            if (deleteAfterExport) {
+	                val deletedPaths = toExport
+	                    .filter { isVisualMedia(it) }
+	                    .filter { mediaFileDao.getMediaByContainerPath(exportContainerId, it.path) == null }
+	                    .map { it.path }
+                withContext(Dispatchers.Main) { removeThumbnails(deletedPaths) }
+            }
             _state.update { it.copy(
                 isOperationInProgress = false,
                 operationMessage      = null,
-                pendingNotification   = if (count > 0) InAppNotification.FilesExported(count) else null
+                pendingNotification   = when {
+                    deleteSkipped > 0 -> InAppNotification.ExportedSourceDeleteSkipped(deleteSkipped)
+                    count > 0 -> InAppNotification.FilesExported(count)
+                    else -> InAppNotification.ExportFailed
+                }
+            ) }
+        }
+    }
+
+    private fun exportItemsToDefault(
+        context: Context,
+        handle: Long,
+        toExport: List<NativeFileInfo>,
+        exitSelectionAfter: Boolean
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val exportContainerId = _state.value.containerId
+            val deleteAfterExport = appPrefs.deleteExportedFiles.first()
+            _state.update { it.copy(isOperationInProgress = true) }
+            var count = 0
+            var deleteSkipped = 0
+            for (file in toExport) {
+                try {
+                    _state.update { it.copy(operationMessage = "Exporting ${file.name}…") }
+                    val exported = VaultFileTransfer.exportItemToDefaultFolder(
+                        context = context,
+                        engine = engine,
+                        handle = handle,
+                        item = VaultFileTransfer.fromNative(file)
+                    )
+                    if (exported) {
+                        count++
+                        if (deleteAfterExport) {
+                            val deleted = deleteContainerItemRecursive(handle, file.path, file.isDirectory)
+                            if (deleted) {
+                                if (isVisualMedia(file)) mediaFileDao.deleteMediaByContainerPath(exportContainerId, file.path)
+                            } else {
+                                deleteSkipped++
+                            }
+                        }
+                    }
+                } catch (_: Exception) { }
+            }
+            if (exitSelectionAfter) exitSelectionMode()
+            if (deleteAfterExport && count > 0) refreshNow()
+            if (deleteAfterExport) {
+                val deletedPaths = toExport
+                    .filter { isVisualMedia(it) }
+                    .filter { mediaFileDao.getMediaByContainerPath(exportContainerId, it.path) == null }
+                    .map { it.path }
+                withContext(Dispatchers.Main) { removeThumbnails(deletedPaths) }
+            }
+            _state.update { it.copy(
+                isOperationInProgress = false,
+                operationMessage      = null,
+                pendingNotification   = when {
+                    deleteSkipped > 0 -> InAppNotification.ExportedSourceDeleteSkipped(deleteSkipped)
+                    count > 0 -> InAppNotification.FilesExported(count)
+                    else -> InAppNotification.ExportFailed
+                }
             ) }
         }
     }
@@ -647,21 +1145,16 @@ class FileManagerViewModel @Inject constructor(
                 val tempDir = File(context.cacheDir, "arcanum_temp").also { it.mkdirs() }
                 val safeName = File(file.name).name.ifEmpty { "file" }
                 val tempFile = File(tempDir, safeName)
-                val baos = ByteArrayOutputStream()
-                val chunkSize = 1 * 1024 * 1024
-                var offset = 0L
-                while (offset < file.size) {
-                    val chunk = engine.nativeReadFile(handle, file.path, offset, chunkSize) ?: break
-                    baos.write(chunk)
-                    offset += chunk.size
-                    if (chunk.size < chunkSize) break
+                if (!VaultFileTransfer.copyVaultFileToFile(engine, handle, file.path, file.size, tempFile)) {
+                    tempFile.delete()
+                    _state.update { it.copy(isOperationInProgress = false, operationMessage = null) }
+                    return@launch
                 }
-                tempFile.writeBytes(baos.toByteArray())
                 _tempFiles.add(tempFile)
                 _state.update { it.copy(
                     isOperationInProgress = false,
                     operationMessage      = null,
-                    tempFileToOpen        = Pair(tempFile, getMimeType(file.name))
+                    tempFileToOpen        = Pair(tempFile, VaultFileTransfer.mimeType(file.name))
                 ) }
             } catch (_: Exception) {
                 _state.update { it.copy(isOperationInProgress = false, operationMessage = null) }
@@ -671,6 +1164,31 @@ class FileManagerViewModel @Inject constructor(
 
     fun clearTempFileToOpen() {
         _state.update { it.copy(tempFileToOpen = null) }
+    }
+
+    fun clearSharePayload() {
+        _state.update { it.copy(sharePayload = null) }
+    }
+
+    fun dismissPendingImportedSourceDeletion() {
+        _state.update { it.copy(pendingImportedSourceDeletion = null) }
+    }
+
+    fun deletePendingImportedSources(context: Context) {
+        val pending = _state.value.pendingImportedSourceDeletion ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val skipped = deleteSourceUris(context, pending.uriStrings.map(Uri::parse))
+            _state.update {
+                it.copy(
+                    pendingImportedSourceDeletion = null,
+                    pendingNotification = if (skipped > 0) {
+                        InAppNotification.ImportedSourceDeleteSkipped(skipped)
+                    } else {
+                        InAppNotification.FilesImported(pending.count)
+                    }
+                )
+            }
+        }
     }
 
     fun clearTempFiles(context: Context) {
@@ -687,6 +1205,7 @@ class FileManagerViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        storageUsageJob?.cancel()
         runCatching {
             File(context.cacheDir, "arcanum_temp").listFiles()
                 ?.forEach { FileUtils.secureZeroAndDelete(it) }
@@ -701,10 +1220,107 @@ class FileManagerViewModel @Inject constructor(
 
     // ── Private helpers ───────────────────────────────────────────────────
 
+    private fun importDocumentDirectoryRecursive(
+        context: Context,
+        handle: Long,
+        sourceDir: DocumentFile,
+        destDirPath: String,
+        successfulSourceUris: MutableList<Uri>,
+        stats: ImportStats
+    ) {
+        val children = runCatching {
+            sourceDir.listFiles().sortedBy { it.name?.lowercase() ?: "" }
+        }.getOrDefault(emptyList())
+
+        for (child in children) {
+            if (stats.hiddenProtected || stats.importFailed) return
+            val name = sanitizePathName(child.name)
+            if (name.isBlank()) continue
+            val destPath = joinContainerPath(destDirPath, name)
+
+            if (child.isDirectory) {
+                _state.update { it.copy(operationMessage = "Importing $name…") }
+                runCatching { engine.nativeCreateDirectory(handle, destPath) }
+                importDocumentDirectoryRecursive(
+                    context = context,
+                    handle = handle,
+                    sourceDir = child,
+                    destDirPath = destPath,
+                    successfulSourceUris = successfulSourceUris,
+                    stats = stats
+                )
+                setContainerModifiedTime(handle, destPath, child.lastModified())
+            } else if (child.isFile) {
+                _state.update { it.copy(operationMessage = "Importing $name…") }
+                val result = runCatching {
+                    context.contentResolver.openInputStream(child.uri)?.use { input ->
+                        writeStreamToContainer(handle, destPath, input)
+                    } ?: ImportWriteResult.FAILED
+                }.getOrDefault(ImportWriteResult.FAILED)
+
+                when (result) {
+                    ImportWriteResult.IMPORTED -> {
+                        setContainerModifiedTime(handle, destPath, child.lastModified())
+                        stats.count++
+                        successfulSourceUris += child.uri
+                    }
+                    ImportWriteResult.HIDDEN_PROTECTED -> stats.hiddenProtected = true
+                    ImportWriteResult.FAILED -> stats.importFailed = true
+                }
+            }
+        }
+    }
+
+    private fun writeStreamToContainer(
+        handle: Long,
+        destPath: String,
+        inputStream: InputStream
+    ): ImportWriteResult {
+        val chunkSize = 1 * 1024 * 1024
+        return try {
+            inputStream.use { input ->
+                var offset = 0L
+                val buffer = ByteArray(chunkSize)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read == -1) break
+                    val rc = engine.nativeWriteFile(handle, destPath, buffer.copyOf(read), offset)
+                    when (rc) {
+                        VeraCryptEngine.ERR_OK -> offset += read
+                        VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> {
+                            runCatching { engine.nativeDeleteFile(handle, destPath) }
+                            return ImportWriteResult.HIDDEN_PROTECTED
+                        }
+                        else -> {
+                            runCatching { engine.nativeDeleteFile(handle, destPath) }
+                            return ImportWriteResult.FAILED
+                        }
+                    }
+                }
+                if (offset == 0L) {
+                    val rc = engine.nativeWriteFile(handle, destPath, ByteArray(0), 0L)
+                    if (rc != VeraCryptEngine.ERR_OK) {
+                        runCatching { engine.nativeDeleteFile(handle, destPath) }
+                        return if (rc == VeraCryptEngine.ERR_HIDDEN_BOUNDARY) {
+                            ImportWriteResult.HIDDEN_PROTECTED
+                        } else {
+                            ImportWriteResult.FAILED
+                        }
+                    }
+                }
+            }
+            ImportWriteResult.IMPORTED
+        } catch (_: Exception) {
+            runCatching { engine.nativeDeleteFile(handle, destPath) }
+            ImportWriteResult.FAILED
+        }
+    }
+
     private suspend fun moveFile(
         srcHandle: Long, srcPath: String,
         destHandle: Long, destPath: String,
-        fileSize: Long
+        fileSize: Long,
+        modifiedAt: Long
     ): Boolean {
         val chunkSize = 1 * 1024 * 1024
         return try {
@@ -719,6 +1335,7 @@ class FileManagerViewModel @Inject constructor(
                 offset += chunk.size
                 if (chunk.size < chunkSize) break
             }
+            setContainerModifiedTime(destHandle, destPath, modifiedAt)
             runCatching { engine.nativeDeleteFile(srcHandle, srcPath) }
             true
         } catch (_: Exception) { false }
@@ -749,14 +1366,10 @@ class FileManagerViewModel @Inject constructor(
                         context.contentResolver, dirUri,
                         getMimeType(entry.name), entry.name
                     ) ?: run { allOk = false; continue }
-                    context.contentResolver.openOutputStream(docUri)?.use { out ->
-                        var offset = 0L
-                        while (offset < entry.size) {
-                            val chunk = engine.nativeReadFile(handle, entryPath, offset, chunkSize) ?: break
-                            out.write(chunk)
-                            offset += chunk.size
-                            if (chunk.size < chunkSize) break
-                        }
+                    val ok = exportFileToUri(context, handle, entryPath, entry.size, docUri, chunkSize)
+                    if (!ok) {
+                        runCatching { DocumentsContract.deleteDocument(context.contentResolver, docUri) }
+                        allOk = false
                     }
                 }
             } catch (_: Exception) { allOk = false }
@@ -764,9 +1377,63 @@ class FileManagerViewModel @Inject constructor(
         return allOk
     }
 
+    private fun exportFileToUri(
+        context: Context,
+        handle: Long,
+        srcPath: String,
+        fileSize: Long,
+        docUri: Uri,
+        chunkSize: Int
+    ): Boolean {
+        return try {
+            var offset = 0L
+            val output = context.contentResolver.openOutputStream(docUri) ?: return false
+            output.use { out ->
+                while (offset < fileSize) {
+                    val chunk = engine.nativeReadFile(handle, srcPath, offset, chunkSize) ?: return false
+                    if (chunk.isEmpty()) return false
+                    out.write(chunk)
+                    offset += chunk.size
+                }
+            }
+            offset == fileSize
+        } catch (_: Exception) { false }
+    }
+
+    private fun deleteSourceUri(context: Context, uri: Uri): Boolean =
+        runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }.getOrDefault(false) ||
+            runCatching { context.contentResolver.delete(uri, null, null) > 0 }.getOrDefault(false)
+
+    private fun deleteSourceUris(context: Context, uris: List<Uri>): Int =
+        uris.count { uri -> !deleteSourceUri(context, uri) }
+
+    private fun deleteContainerItemRecursive(
+        handle: Long,
+        path: String,
+        isDirectory: Boolean
+    ): Boolean {
+        if (!isDirectory) {
+            return runCatching { engine.nativeDeleteFile(handle, path) == VeraCryptEngine.ERR_OK }
+                .getOrDefault(false)
+        }
+
+        val entries = runCatching { engine.nativeListFiles(handle, path).toList() }.getOrNull()
+            ?: return false
+        var allDeleted = true
+        for (entry in entries) {
+            val childPath = if (path == "/") "/${entry.name}" else "$path/${entry.name}"
+            val deleted = deleteContainerItemRecursive(handle, childPath, entry.isDirectory)
+            if (!deleted) allDeleted = false
+        }
+        return allDeleted &&
+            runCatching { engine.nativeDeleteDirectory(handle, path) == VeraCryptEngine.ERR_OK }
+                .getOrDefault(false)
+    }
+
     private suspend fun copyDirectoryRecursive(
         srcHandle: Long, srcPath: String,
-        destHandle: Long, destPath: String
+        destHandle: Long, destPath: String,
+        modifiedAt: Long = 0L
     ): Boolean {
         return try {
             runCatching { engine.nativeCreateDirectory(destHandle, destPath) }
@@ -777,7 +1444,7 @@ class FileManagerViewModel @Inject constructor(
                 val srcEntry  = if (srcPath  == "/") "/${entry.name}" else "$srcPath/${entry.name}"
                 val destEntry = if (destPath == "/") "/${entry.name}" else "$destPath/${entry.name}"
                 val copied = if (entry.isDirectory) {
-                    copyDirectoryRecursive(srcHandle, srcEntry, destHandle, destEntry)
+                    copyDirectoryRecursive(srcHandle, srcEntry, destHandle, destEntry, entry.lastModified)
                 } else {
                     var offset = 0L
                     var ok = true
@@ -790,17 +1457,20 @@ class FileManagerViewModel @Inject constructor(
                         if (chunk.size < chunkSize) break
                     }
                     if (!ok) runCatching { engine.nativeDeleteFile(destHandle, destEntry) }
+                    if (ok) setContainerModifiedTime(destHandle, destEntry, entry.lastModified)
                     ok
                 }
                 if (!copied) allCopied = false
             }
+            if (allCopied) setContainerModifiedTime(destHandle, destPath, modifiedAt)
             allCopied
         } catch (_: Exception) { false }
     }
 
     private suspend fun moveDirectoryRecursive(
         srcHandle: Long, srcPath: String,
-        destHandle: Long, destPath: String
+        destHandle: Long, destPath: String,
+        modifiedAt: Long = 0L
     ): Boolean {
         return try {
             runCatching { engine.nativeCreateDirectory(destHandle, destPath) }
@@ -810,13 +1480,16 @@ class FileManagerViewModel @Inject constructor(
                 val srcEntry  = if (srcPath  == "/") "/${entry.name}" else "$srcPath/${entry.name}"
                 val destEntry = if (destPath == "/") "/${entry.name}" else "$destPath/${entry.name}"
                 val moved = if (entry.isDirectory) {
-                    moveDirectoryRecursive(srcHandle, srcEntry, destHandle, destEntry)
+                    moveDirectoryRecursive(srcHandle, srcEntry, destHandle, destEntry, entry.lastModified)
                 } else {
-                    moveFile(srcHandle, srcEntry, destHandle, destEntry, entry.size)
+                    moveFile(srcHandle, srcEntry, destHandle, destEntry, entry.size, entry.lastModified)
                 }
                 if (!moved) allMoved = false
             }
-            if (allMoved) runCatching { engine.nativeDeleteDirectory(srcHandle, srcPath) }
+            if (allMoved) {
+                setContainerModifiedTime(destHandle, destPath, modifiedAt)
+                runCatching { engine.nativeDeleteDirectory(srcHandle, srcPath) }
+            }
             allMoved
         } catch (_: Exception) { false }
     }
@@ -828,28 +1501,41 @@ class FileManagerViewModel @Inject constructor(
     // Inline (suspending) refresh — use this inside operation coroutines so
     // the listing completes before the notification is set.
     private suspend fun refreshNow() {
+        invalidateFolderCounts()
         val s = _state.value
-        val handle = repo.getContainerHandle(s.containerId) ?: return
+        val handle = repo.getContainerHandle(s.containerId) ?: run {
+            lockSensitiveState()
+            return
+        }
+        val revision = sensitiveStateRevision
         runCatching {
             val rawFiles = engine.nativeListFiles(handle, s.currentPath).toList()
             _state.update { st ->
+                if (revision != sensitiveStateRevision || repo.getContainerHandle(s.containerId) != handle) {
+                    return@update st
+                }
                 val files = applyFiltersAndSort(rawFiles, st.sortBy, st.sortAscending, st.showHidden, st.foldersFirst, st.searchQuery)
                 st.copy(rawFiles = rawFiles, files = files)
             }
         }
+        refreshStorageUsageAsync(force = true)
     }
 
     private fun loadDirectory(path: String) {
         val containerId = _state.value.containerId
         val handle = repo.getContainerHandle(containerId) ?: run {
-            _state.update { it.copy(isLoading = false, error = "Vault not mounted") }
+            lockSensitiveState()
             return
         }
+        val revision = sensitiveStateRevision
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val rawFiles = engine.nativeListFiles(handle, path).toList()
                 _state.update { s ->
+                    if (revision != sensitiveStateRevision || repo.getContainerHandle(containerId) != handle) {
+                        return@update s
+                    }
                     val files = applyFiltersAndSort(rawFiles, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, s.searchQuery)
                     s.copy(
                         rawFiles        = rawFiles,
@@ -859,9 +1545,101 @@ class FileManagerViewModel @Inject constructor(
                         pathSegments    = buildPathSegments(path)
                     )
                 }
+                refreshStorageUsageAsync(force = false)
             } catch (_: Exception) {
-                _state.update { it.copy(isLoading = false, error = "Failed to list directory") }
+                lockSensitiveState(error = "Failed to list directory")
             }
+        }
+    }
+
+    private fun refreshStorageUsageAsync(force: Boolean = false) {
+        val s = _state.value
+        val containerId = s.containerId
+        val handle = repo.getContainerHandle(s.containerId) ?: return
+        val now = System.currentTimeMillis()
+        val hasFreshCachedValue = _state.value.storageUsage != null &&
+            lastStorageUsageContainerId == containerId &&
+            now - lastStorageUsageAtMs < STORAGE_USAGE_REFRESH_MS
+        if (!force && hasFreshCachedValue) return
+        val activeJob = storageUsageJob
+        if (activeJob?.isActive == true) {
+            if (!force) return
+            activeJob.cancel()
+        }
+        val revision = sensitiveStateRevision
+        storageUsageJob = viewModelScope.launch(Dispatchers.IO) {
+            val totalBytes = mountedContainers.value.firstOrNull { it.id == s.containerId }?.size
+                ?: runCatching { engine.nativeGetDataSize(handle) }.getOrDefault(0L)
+            val usedBytes = try {
+                calculateDirectorySize(handle, "/")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                return@launch
+            }
+            withContext(Dispatchers.Main) {
+                if (revision != sensitiveStateRevision || repo.getContainerHandle(s.containerId) != handle) {
+                    return@withContext
+                }
+                lastStorageUsageContainerId = containerId
+                lastStorageUsageAtMs = System.currentTimeMillis()
+                _state.update {
+                    it.copy(storageUsage = VaultStorageUsage(usedBytes = usedBytes, totalBytes = totalBytes.coerceAtLeast(0L)))
+                }
+            }
+        }
+    }
+
+    private suspend fun calculateDirectorySize(handle: Long, path: String, depth: Int = 0): Long {
+        coroutineContext.ensureActive()
+        if (depth > 64) return 0L
+        val entries = runCatching { engine.nativeListFiles(handle, path).toList() }.getOrDefault(emptyList())
+        var total = 0L
+        entries.forEach { entry ->
+            coroutineContext.ensureActive()
+            total += if (entry.isDirectory) {
+                calculateDirectorySize(handle, entry.path, depth + 1)
+            } else {
+                entry.size.coerceAtLeast(0L)
+            }
+        }
+        return total
+    }
+
+    private fun invalidateFolderCounts() {
+        folderCountCache.clear()
+        loadingFolderCounts.clear()
+        _state.update { it.copy(folderItemCounts = emptyMap()) }
+    }
+
+    private fun lockSensitiveState(error: String = "Vault not mounted") {
+        sensitiveStateRevision++
+        storageUsageJob?.cancel()
+        lastStorageUsageContainerId = null
+        lastStorageUsageAtMs = 0L
+        clearThumbnailState()
+        folderCountCache.clear()
+        loadingFolderCounts.clear()
+        _state.update {
+            it.copy(
+                currentPath           = "/",
+                pathSegments          = listOf("/"),
+                files                 = emptyList(),
+                rawFiles              = emptyList(),
+                selectedItems         = emptySet(),
+                isSelectionMode       = false,
+                isSearchActive        = false,
+                searchQuery           = "",
+                sharePayload          = null,
+                tempFileToOpen        = null,
+                isLoading             = false,
+                isOperationInProgress = false,
+                operationMessage      = null,
+                folderItemCounts      = emptyMap(),
+                storageUsage          = null,
+                pendingImportedSourceDeletion = null,
+                error                 = error
+            )
         }
     }
 
@@ -886,19 +1664,176 @@ class FileManagerViewModel @Inject constructor(
         return if (foldersFirst) result.sortedWith(compareByDescending { it.isDirectory }) else result
     }
 
+    private fun isVisualMedia(file: NativeFileInfo): Boolean =
+        !file.isDirectory && file.name.substringAfterLast('.', "").lowercase() in MEDIA_EXTENSIONS_VM
+
+    private suspend fun waitForStableImageFile(file: File): Boolean {
+        var lastLength = -1L
+        var stableReads = 0
+        repeat(12) {
+            val length = file.length()
+            if (length > 0L && length == lastLength) stableReads++ else stableReads = 0
+            lastLength = length
+            if (stableReads >= 2 && canDecodeImageBounds(file)) return true
+            delay(120L)
+        }
+        return canDecodeImageBounds(file)
+    }
+
+    private fun canDecodeImageBounds(file: File): Boolean {
+        if (!file.exists() || file.length() <= 0L) return false
+        return runCatching {
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, opts)
+            opts.outWidth > 0 && opts.outHeight > 0
+        }.getOrDefault(false)
+    }
+
+    private fun setContainerModifiedTime(handle: Long, path: String, modifiedAt: Long) {
+        if (modifiedAt <= 0L) return
+        runCatching { engine.nativeSetModifiedTime(handle, path, modifiedAt) }
+    }
+
+    private fun getContainerFileInfo(handle: Long, path: String): NativeFileInfo? {
+        val parent = parentPathOf(path)
+        val name = path.substringAfterLast("/")
+        return runCatching {
+            engine.nativeListFiles(handle, parent).firstOrNull { it.path == path || it.name == name }
+        }.getOrNull()
+    }
+
+    private fun parentPathOf(path: String): String {
+        val parent = path.substringBeforeLast("/", "")
+        return if (parent.isBlank()) "/" else parent
+    }
+
+    private fun putThumbnail(path: String, bitmap: Bitmap) {
+        val evicted = mutableListOf<String>()
+        while (thumbnailMap.size >= MAX_FILE_THUMBNAILS) {
+            val oldest = thumbnailMap.keys.iterator().next()
+            thumbnailMap.remove(oldest)
+            loadingThumbnails.remove(oldest)
+            failedThumbnails.remove(oldest)
+            evicted += oldest
+        }
+        thumbnailMap[path] = bitmap
+        val updated = _mediaThumbnails.value.toMutableMap()
+        evicted.forEach { updated.remove(it) }
+        updated[path] = bitmap
+        _mediaThumbnails.value = updated
+    }
+
+    private fun markThumbnailFailed(path: String) {
+        failedThumbnails += path
+        while (failedThumbnails.size > MAX_FAILED_THUMBNAILS) {
+            val oldest = failedThumbnails.iterator().next()
+            failedThumbnails.remove(oldest)
+        }
+    }
+
+    private fun removeThumbnails(paths: Collection<String>) {
+        if (paths.isEmpty()) return
+        paths.forEach {
+            thumbnailMap.remove(it)
+            loadingThumbnails.remove(it)
+            failedThumbnails.remove(it)
+        }
+        _mediaThumbnails.value = _mediaThumbnails.value - paths.toSet()
+    }
+
+    private fun moveThumbnail(oldPath: String, newPath: String) {
+        val bitmap = thumbnailMap.remove(oldPath)
+        loadingThumbnails.remove(oldPath)
+        failedThumbnails.remove(oldPath)
+        val updated = _mediaThumbnails.value.toMutableMap()
+        updated.remove(oldPath)
+        if (bitmap != null) {
+            thumbnailMap[newPath] = bitmap
+            updated[newPath] = bitmap
+        }
+        _mediaThumbnails.value = updated
+    }
+
+    private fun clearThumbnailState() {
+        thumbnailMap.clear()
+        loadingThumbnails.clear()
+        failedThumbnails.clear()
+        _mediaThumbnails.value = emptyMap()
+    }
+
     private fun buildPathSegments(path: String): List<String> {
         if (path == "/") return listOf("/")
         return listOf("/") + path.split("/").filter { it.isNotEmpty() }
     }
 
     private fun buildDestinationPath(currentPath: String, fileName: String): String =
-        if (currentPath == "/") "/$fileName" else "$currentPath/$fileName"
+        joinContainerPath(currentPath, fileName)
+
+    private fun joinContainerPath(parentPath: String, childName: String): String =
+        if (parentPath == "/") "/$childName" else "$parentPath/$childName"
+
+    private fun sanitizePathName(name: String?): String =
+        File(name.orEmpty()).name.trim().takeUnless { it == "." || it == ".." }.orEmpty()
+
+    private fun normalizeTextFileName(rawName: String): String {
+        val safe = sanitizePathName(rawName)
+        if (safe.isBlank()) return ""
+        return if (safe.substringAfterLast('.', "").equals("txt", ignoreCase = true)) {
+            safe
+        } else {
+            "$safe.txt"
+        }
+    }
 
     private fun getFileNameFromUri(context: Context, uri: android.net.Uri): String? =
         context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
             val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
             if (cursor.moveToFirst() && idx >= 0) cursor.getString(idx) else null
         } ?: uri.lastPathSegment
+
+    private fun getSourceModifiedTime(context: Context, uri: Uri): Long {
+        if (uri.scheme == "file") {
+            val localTime = uri.path?.let { File(it).lastModified() } ?: 0L
+            if (localTime > 0L) return localTime
+        }
+
+        val documentTime = runCatching {
+            DocumentFile.fromSingleUri(context, uri)?.lastModified() ?: 0L
+        }.getOrDefault(0L)
+        if (documentTime > 0L) return normalizeTimestamp(documentTime, storedAsSeconds = false)
+
+        return listOfNotNull(
+            queryUriTimestamp(context, uri, DocumentsContract.Document.COLUMN_LAST_MODIFIED, storedAsSeconds = false),
+            queryUriTimestamp(context, uri, MediaStore.MediaColumns.DATE_MODIFIED, storedAsSeconds = true),
+            queryUriTimestamp(context, uri, MEDIASTORE_DATE_TAKEN_COLUMN, storedAsSeconds = false)
+        ).firstOrNull { it > 0L } ?: System.currentTimeMillis()
+    }
+
+    private fun queryUriTimestamp(
+        context: Context,
+        uri: Uri,
+        column: String,
+        storedAsSeconds: Boolean
+    ): Long? =
+        runCatching {
+            context.contentResolver.query(uri, arrayOf(column), null, null, null)?.use { cursor ->
+                val idx = cursor.getColumnIndex(column)
+                if (!cursor.moveToFirst() || idx < 0 || cursor.isNull(idx)) {
+                    null
+                } else {
+                    normalizeTimestamp(cursor.getLong(idx), storedAsSeconds).takeIf { it > 0L }
+                }
+            }
+        }.getOrNull()
+
+    private fun normalizeTimestamp(value: Long, storedAsSeconds: Boolean): Long {
+        if (value <= 0L) return 0L
+        return if (storedAsSeconds || value < TIMESTAMP_SECONDS_THRESHOLD) {
+            if (value <= Long.MAX_VALUE / 1000L) value * 1000L else 0L
+        } else {
+            value
+        }
+    }
 
     fun getMimeType(fileName: String): String {
         val ext = fileName.substringAfterLast('.', "").lowercase()
@@ -949,6 +1884,7 @@ class FileManagerViewModel @Inject constructor(
                 p[SHOW_HIDDEN_KEY]   = s.showHidden
                 p[FOLDERS_FIRST_KEY] = s.foldersFirst
                 p[VIEW_MODE_KEY]     = s.viewMode.name
+                p[SHOW_GRID_FILE_NAMES_KEY] = s.showGridFileNames
             }
         }
     }

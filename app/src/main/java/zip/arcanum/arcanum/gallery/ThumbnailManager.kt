@@ -33,9 +33,9 @@ class ThumbnailManager @Inject constructor(
             .build()
     }
 
-    private fun cacheFile(containerId: String, filePath: String): File {
-        val key = md5("$containerId:$filePath:v3")
-        return File(cacheRoot, "$containerId/$key.enc")
+    private fun cacheFile(file: MediaFileEntity): File {
+        val key = md5("${file.containerId}:${file.relativePath}:${file.size}:${file.dateModified}:v4")
+        return File(cacheRoot, "${file.containerId}/$key.enc")
     }
 
     suspend fun getThumbnail(
@@ -43,7 +43,7 @@ class ThumbnailManager @Inject constructor(
         handle: Long,
         file: MediaFileEntity
     ): Bitmap? {
-        val cached = cacheFile(file.containerId, file.relativePath)
+        val cached = cacheFile(file)
         if (cached.exists() && cached.length() > 0L) {
             val bmp = readCacheFile(cached)
             if (bmp != null) return bmp
@@ -62,23 +62,30 @@ class ThumbnailManager @Inject constructor(
         file: MediaFileEntity,
         cacheFile: File
     ): Bitmap? {
-        // Pass 1: read first 512 KB to detect format and get dimensions from header only
-        val headerBytes = engine.nativeReadFile(handle, file.relativePath, 0L, 512 * 1024) ?: return null
-        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(headerBytes, 0, headerBytes.size, opts)
-        if (opts.outWidth <= 0) return null
+        val readLimit = if (ImageBitmapDecoder.isHeif(file.fileName)) {
+            50L * 1024 * 1024
+        } else {
+            20L * 1024 * 1024
+        }
+        val bytes = engine.nativeReadFile(
+            handle,
+            file.relativePath,
+            0L,
+            minOf(file.size, readLimit).toInt()
+        ) ?: return null
 
-        // Pass 2: read the COMPLETE file so BitmapFactory gets a full stream.
-        // Truncated JPEG data causes BitmapFactory to return a non-null but partially black bitmap.
-        val fileCap = minOf(file.size, 20L * 1024 * 1024).toInt()
-        val bytes = if (file.size <= headerBytes.size.toLong()) headerBytes
-                    else engine.nativeReadFile(handle, file.relativePath, 0L, fileCap) ?: return null
-
-        opts.inSampleSize = calculateInSampleSize(opts, 256, 256)
-        opts.inJustDecodeBounds = false
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
-        val oriented = applyExifOrientation(bitmap, exifReader.readOrientation(bytes))
-        val thumb = centerCrop(oriented, 256)
+        val decoded = ImageBitmapDecoder.decode(
+            bytes = bytes,
+            maxWidth = 256,
+            maxHeight = 256,
+            preferImageDecoder = ImageBitmapDecoder.isHeif(file.fileName)
+        ) ?: return null
+        val oriented = if (decoded.orientationAppliedByDecoder) {
+            decoded.bitmap
+        } else {
+            applyExifOrientation(decoded.bitmap, exifReader.readOrientation(bytes))
+        }
+        val thumb = normalizeArgb(centerCrop(oriented, 256))
         saveToCacheFile(thumb, cacheFile)
         return thumb
     }
@@ -96,7 +103,7 @@ class ThumbnailManager @Inject constructor(
         val frame = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
         retriever.release()
         frame?.let {
-            val thumb = centerCrop(it, 256)
+            val thumb = normalizeArgb(centerCrop(it, 256))
             saveToCacheFile(thumb, cacheFile)
             thumb
         }
@@ -117,7 +124,7 @@ class ThumbnailManager @Inject constructor(
         // Returns null if no embedded art → UI will show the music note icon instead
         artBytes?.let { bytes ->
             val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-            val thumb = centerCrop(bitmap, 256)
+            val thumb = normalizeArgb(centerCrop(bitmap, 256))
             saveToCacheFile(thumb, cacheFile)
             thumb
         }
@@ -152,6 +159,10 @@ class ThumbnailManager @Inject constructor(
                else Bitmap.createScaledBitmap(cropped, size, size, true)
     }
 
+    private fun normalizeArgb(bitmap: Bitmap): Bitmap =
+        if (bitmap.config == Bitmap.Config.ARGB_8888) bitmap
+        else bitmap.copy(Bitmap.Config.ARGB_8888, false)
+
     private fun saveToCacheFile(bitmap: Bitmap, file: File) {
         try {
             file.parentFile?.mkdirs()
@@ -178,16 +189,6 @@ class ThumbnailManager @Inject constructor(
         }
     } catch (_: Exception) {
         null  // Decryption failure (wrong key, corrupt) → caller deletes and regenerates
-    }
-
-    private fun calculateInSampleSize(opts: BitmapFactory.Options, reqW: Int, reqH: Int): Int {
-        var size = 1
-        if (opts.outHeight > reqH || opts.outWidth > reqW) {
-            val halfH = opts.outHeight / 2
-            val halfW = opts.outWidth / 2
-            while (halfH / size >= reqH && halfW / size >= reqW) size *= 2
-        }
-        return size
     }
 
     fun clearCache(containerId: String) {

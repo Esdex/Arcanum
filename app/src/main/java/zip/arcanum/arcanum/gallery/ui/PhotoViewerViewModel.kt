@@ -2,8 +2,8 @@ package zip.arcanum.arcanum.gallery.ui
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.provider.DocumentsContract
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -14,18 +14,26 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.gallery.ExifJpegPatcher
+import zip.arcanum.arcanum.gallery.ImageBitmapDecoder
 import zip.arcanum.arcanum.gallery.ExifReader
+import zip.arcanum.arcanum.gallery.MediaViewerQueue
 import zip.arcanum.arcanum.gallery.MediaExifData
+import zip.arcanum.arcanum.files.domain.PreparedShareFiles
+import zip.arcanum.arcanum.files.domain.VaultFileTransfer
+import zip.arcanum.arcanum.files.domain.VaultTransferItem
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
+import zip.arcanum.core.lifecycle.ExternalActivityGuard
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
 
@@ -36,7 +44,10 @@ class PhotoViewerViewModel @Inject constructor(
     private val mediaFileDao: MediaFileDao,
     private val repo: ContainerRepository,
     val engine: VeraCryptEngine,
-    private val exifReader: ExifReader
+    private val exifReader: ExifReader,
+    private val appPrefs: AppPreferences,
+    private val mediaViewerQueue: MediaViewerQueue,
+    private val externalActivityGuard: ExternalActivityGuard
 ) : ViewModel() {
 
     private val fileId: String = savedStateHandle[Screen.PhotoViewer.ARG] ?: ""
@@ -51,8 +62,10 @@ class PhotoViewerViewModel @Inject constructor(
         val showBars: Boolean = true,
         val showInfoSheet: Boolean = false,
         val exportDone: Boolean = false,
+        val exportDeleted: Boolean = false,
         val exifData: MediaExifData? = null,
         val isExifLoading: Boolean = false,
+        val sharePayload: PreparedShareFiles? = null,
         val pendingNotification: InAppNotification? = null
     )
 
@@ -60,6 +73,7 @@ class PhotoViewerViewModel @Inject constructor(
     val uiState = _uiState.asStateFlow()
 
     private var loadingJob: Job? = null
+    private var usesFilesOrder: Boolean = false
 
     init {
         viewModelScope.launch {
@@ -67,24 +81,45 @@ class PhotoViewerViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, error = "File not found") }
                 return@launch
             }
-            val siblings = mediaFileDao.getVisualMediaOnce(file.containerId)
+            val siblings = loadSiblings(file)
             val idx = siblings.indexOfFirst { it.id == fileId }.coerceAtLeast(0)
             _uiState.update { it.copy(currentFile = file, siblings = siblings, currentIndex = idx) }
             loadBitmapRange(idx)
         }
     }
 
+    private suspend fun loadSiblings(file: MediaFileEntity): List<MediaFileEntity> {
+        val orderedIds = mediaViewerQueue.mediaOrderFor(file.containerId, file.id)
+        if (orderedIds != null) {
+            val byId = mediaFileDao.getMediaByIds(orderedIds).associateBy { it.id }
+            val ordered = orderedIds.mapNotNull { id ->
+                if (id == file.id) file else byId[id]
+            }
+            if (ordered.isNotEmpty()) {
+                usesFilesOrder = true
+                return ordered
+            }
+        }
+
+        usesFilesOrder = false
+        return mediaFileDao.getVisualMediaOnce(file.containerId)
+    }
+
     // Loads the bitmap for a single image file. Returns null on error. Must be called on IO dispatcher.
     private fun loadBitmapForFile(file: MediaFileEntity, handle: Long): Bitmap? {
         val readSize = minOf(file.size, 50L * 1024 * 1024).toInt()
         val bytes = engine.nativeReadFile(handle, file.relativePath, 0L, readSize) ?: return null
-        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-        opts.inSampleSize      = calculateInSampleSize(opts, 4096, 4096)
-        opts.inJustDecodeBounds = false
-        opts.inPreferredConfig  = Bitmap.Config.ARGB_8888
-        val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
-        return applyExifOrientation(decoded, exifReader.readOrientation(bytes))
+        val decoded = ImageBitmapDecoder.decode(
+            bytes = bytes,
+            maxWidth = 4096,
+            maxHeight = 4096,
+            preferImageDecoder = ImageBitmapDecoder.isHeif(file.fileName)
+        ) ?: return null
+        return if (decoded.orientationAppliedByDecoder) {
+            decoded.bitmap
+        } else {
+            applyExifOrientation(decoded.bitmap, exifReader.readOrientation(bytes))
+        }
     }
 
     // Loads current page first, then ±1 neighbors. Cancels any prior load.
@@ -133,12 +168,6 @@ class PhotoViewerViewModel @Inject constructor(
                 else state.copy(bitmapCache = evicted)
             }
         }
-    }
-
-    private fun calculateInSampleSize(opts: BitmapFactory.Options, reqW: Int, reqH: Int): Int {
-        var size = 1
-        while (opts.outWidth / size > reqW || opts.outHeight / size > reqH) size *= 2
-        return size
     }
 
     private fun applyExifOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
@@ -204,7 +233,11 @@ class PhotoViewerViewModel @Inject constructor(
             }
             val updated = file.copy(dateCreated = newDateMillis, dateModified = newDateMillis)
             mediaFileDao.updateMediaFile(updated)
-            val siblings = mediaFileDao.getVisualMediaOnce(file.containerId)
+            val siblings = if (usesFilesOrder) {
+                _uiState.value.siblings.map { if (it.id == file.id) updated else it }
+            } else {
+                mediaFileDao.getVisualMediaOnce(file.containerId)
+            }
             val idx = siblings.indexOfFirst { it.id == file.id }.coerceAtLeast(0)
             _uiState.update { it.copy(
                 currentFile = updated,
@@ -287,28 +320,120 @@ class PhotoViewerViewModel @Inject constructor(
         }
     }
 
+    fun beginExternalActivity() {
+        externalActivityGuard.begin()
+    }
+
+    fun finishExternalActivity() {
+        externalActivityGuard.end()
+    }
+
+    fun prepareShareCurrent() {
+        val file = _uiState.value.currentFile ?: return
+        val handle = repo.getContainerHandle(file.containerId) ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isLoading = true) }
+            val payload = VaultFileTransfer.prepareShareFiles(
+                context = context,
+                engine = engine,
+                handle = handle,
+                items = listOf(file.toTransferItem())
+            )
+            _uiState.update { it.copy(
+                isLoading = false,
+                sharePayload = payload,
+                pendingNotification = if (payload == null) InAppNotification.ShareFailed else null
+            ) }
+        }
+    }
+
+    fun clearSharePayload() {
+        _uiState.update { it.copy(sharePayload = null) }
+    }
+
+    fun decryptCurrentToTree(treeUri: android.net.Uri) {
+        val file = _uiState.value.currentFile ?: return
+        val handle = repo.getContainerHandle(file.containerId) ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val rootDir = VaultFileTransfer.documentTreeRoot(context, treeUri)
+            if (rootDir == null) {
+                _uiState.update { it.copy(pendingNotification = InAppNotification.ExportFailed) }
+                return@launch
+            }
+            val exported = VaultFileTransfer.exportItemToDirectory(
+                context = context,
+                engine = engine,
+                handle = handle,
+                item = file.toTransferItem(),
+                parent = rootDir
+            )
+            if (!exported) {
+                _uiState.update { it.copy(pendingNotification = InAppNotification.ExportFailed) }
+                return@launch
+            }
+
+            val deleteAfterExport = appPrefs.deleteExportedFiles.first()
+            if (deleteAfterExport) {
+                val deleted = runCatching {
+                    engine.nativeDeleteFile(handle, file.relativePath) == VeraCryptEngine.ERR_OK
+                }.getOrDefault(false)
+                if (deleted) {
+                    mediaFileDao.deleteMediaFile(file)
+                    _uiState.update { it.copy(exportDone = true, exportDeleted = true) }
+                } else {
+                    _uiState.update { it.copy(pendingNotification = InAppNotification.ExportedSourceDeleteSkipped(1)) }
+                }
+            } else {
+                _uiState.update { it.copy(exportDone = true, exportDeleted = false) }
+            }
+        }
+    }
+
     fun exportToUri(uri: android.net.Uri) {
         val file = _uiState.value.currentFile ?: return
         val handle = repo.getContainerHandle(file.containerId) ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                val deleteAfterExport = appPrefs.deleteExportedFiles.first()
                 var offset = 0L
                 val chunkSize = 1024 * 1024
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    while (true) {
-                        val chunk = engine.nativeReadFile(handle, file.relativePath, offset, chunkSize)
-                            ?: break
-                        out.write(chunk)
-                        offset += chunk.size
-                        if (chunk.size < chunkSize) break
+                var exported = false
+                val output = context.contentResolver.openOutputStream(uri)
+                if (output != null) {
+                    output.use { out ->
+                        while (offset < file.size) {
+                            val chunk = engine.nativeReadFile(handle, file.relativePath, offset, chunkSize)
+                                ?: break
+                            if (chunk.isEmpty()) break
+                            out.write(chunk)
+                            offset += chunk.size
+                        }
                     }
+                    exported = offset == file.size
                 }
-                _uiState.update { it.copy(exportDone = true) }
+                if (!exported) {
+                    runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }
+                    return@launch
+                }
+
+                if (deleteAfterExport) {
+                    val deleted = runCatching {
+                        engine.nativeDeleteFile(handle, file.relativePath) == VeraCryptEngine.ERR_OK
+                    }.getOrDefault(false)
+                    if (deleted) {
+                        mediaFileDao.deleteMediaFile(file)
+                        _uiState.update { it.copy(exportDone = true, exportDeleted = true) }
+                    } else {
+                        _uiState.update { it.copy(pendingNotification = InAppNotification.ExportedSourceDeleteSkipped(1)) }
+                    }
+                } else {
+                    _uiState.update { it.copy(exportDone = true, exportDeleted = false) }
+                }
             } catch (_: Exception) {}
         }
     }
 
-    fun clearExportDone() { _uiState.update { it.copy(exportDone = false) } }
+    fun clearExportDone() { _uiState.update { it.copy(exportDone = false, exportDeleted = false) } }
 
     fun clearPendingNotification() { _uiState.update { it.copy(pendingNotification = null) } }
 
@@ -318,4 +443,12 @@ class PhotoViewerViewModel @Inject constructor(
     }
 
     fun getHandleForContainer(id: String): Long? = repo.getContainerHandle(id)
+
+    private fun MediaFileEntity.toTransferItem() = VaultTransferItem(
+        path = relativePath,
+        name = fileName,
+        size = size,
+        isDirectory = false,
+        lastModified = dateModified
+    )
 }

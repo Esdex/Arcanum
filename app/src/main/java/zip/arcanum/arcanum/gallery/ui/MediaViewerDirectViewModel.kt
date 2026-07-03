@@ -2,7 +2,6 @@ package zip.arcanum.arcanum.gallery.ui
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -21,8 +20,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.gallery.EncryptedDataSource
+import zip.arcanum.arcanum.gallery.ImageBitmapDecoder
 import zip.arcanum.arcanum.gallery.MediaViewerQueue
 import zip.arcanum.arcanum.gallery.MutableEncryptedDataSourceFactory
 import zip.arcanum.core.navigation.Screen
@@ -84,6 +85,7 @@ class MediaViewerDirectViewModel @Inject constructor(
     }
 
     private var progressJob: Job? = null
+    private val bitmapLoadJobs = mutableMapOf<Int, Job>()
 
     init {
         mutableFactory = MutableEncryptedDataSourceFactory(engine, handle)
@@ -97,11 +99,19 @@ class MediaViewerDirectViewModel @Inject constructor(
 
     fun navigateTo(index: Int) {
         val idx = index.coerceIn(0, queue.files.size - 1)
-        _state.update { it.copy(currentIndex = idx, showBars = true) }
+        val file = queue.files.getOrNull(idx)
+        _state.update {
+            it.copy(
+                currentIndex = idx,
+                isLoadingCurrent = file?.isImage() == true && !it.bitmapCache.containsKey(idx)
+            )
+        }
         activatePage(idx)
     }
 
     fun toggleBars() = _state.update { it.copy(showBars = !it.showBars) }
+
+    fun setBarsVisible(visible: Boolean) = _state.update { it.copy(showBars = visible) }
 
     fun togglePlayPause() {
         if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
@@ -140,28 +150,71 @@ class MediaViewerDirectViewModel @Inject constructor(
     }
 
     private fun preloadBitmaps(center: Int) {
-        for (i in (center - 1)..(center + 1)) {
+        val keep = ((center - 1)..(center + 1))
+            .filter { it in queue.files.indices }
+            .toSet()
+
+        bitmapLoadJobs
+            .filterKeys { it !in keep }
+            .values
+            .forEach { it.cancel() }
+        bitmapLoadJobs.keys.removeAll { it !in keep }
+        _state.update { state ->
+            val trimmed = state.bitmapCache.filterKeys { it in keep }
+            val currentIsReady = center in trimmed || queue.files.getOrNull(center)?.isImage() != true
+            state.copy(
+                bitmapCache = trimmed,
+                isLoadingCurrent = if (currentIsReady) false else state.isLoadingCurrent
+            )
+        }
+
+        for (i in keep) {
             val f = queue.files.getOrNull(i) ?: continue
-            if (f.isImage() && !_state.value.bitmapCache.containsKey(i)) {
+            if (f.isImage() && !_state.value.bitmapCache.containsKey(i) && bitmapLoadJobs[i]?.isActive != true) {
                 loadBitmap(i, f)
             }
         }
     }
 
     private fun loadBitmap(index: Int, file: NativeFileInfo) {
-        viewModelScope.launch(Dispatchers.IO) {
+        bitmapLoadJobs[index] = viewModelScope.launch(Dispatchers.IO) {
             val h = handle
             val path = "/" + file.path.trimStart('/')
             val bytes = runCatching {
                 engine.nativeReadFile(h, path, 0L, minOf(file.size, 30 * 1024 * 1024L).toInt())
-            }.getOrNull() ?: return@launch
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@launch
-            _state.update { s ->
-                val isCurrent = index == s.currentIndex
-                s.copy(
-                    bitmapCache      = s.bitmapCache + (index to bitmap),
-                    isLoadingCurrent = if (isCurrent) false else s.isLoadingCurrent
-                )
+            }.getOrNull() ?: run {
+                withContext(Dispatchers.Main) {
+                    bitmapLoadJobs.remove(index)
+                    if (index == _state.value.currentIndex) {
+                        _state.update { it.copy(isLoadingCurrent = false) }
+                    }
+                }
+                return@launch
+            }
+            val bitmap = ImageBitmapDecoder.decode(
+                bytes = bytes,
+                maxWidth = 4096,
+                maxHeight = 4096,
+                preferImageDecoder = ImageBitmapDecoder.isHeif(file.name)
+            )?.bitmap
+            withContext(Dispatchers.Main) {
+                bitmapLoadJobs.remove(index)
+                val currentIndex = _state.value.currentIndex
+                val keep = ((currentIndex - 1)..(currentIndex + 1))
+                    .filter { it in queue.files.indices }
+                    .toSet()
+                _state.update { s ->
+                    val isCurrent = index == s.currentIndex
+                    val updatedCache = if (bitmap != null && index in keep) {
+                        (s.bitmapCache + (index to bitmap)).filterKeys { it in keep }
+                    } else {
+                        s.bitmapCache.filterKeys { it in keep }
+                    }
+                    s.copy(
+                        bitmapCache      = updatedCache,
+                        isLoadingCurrent = if (isCurrent) false else s.isLoadingCurrent
+                    )
+                }
             }
         }
     }
@@ -185,6 +238,8 @@ class MediaViewerDirectViewModel @Inject constructor(
 
     override fun onCleared() {
         progressJob?.cancel()
+        bitmapLoadJobs.values.forEach { it.cancel() }
+        bitmapLoadJobs.clear()
         exoPlayer.removeListener(playerListener)
         exoPlayer.stop()
         exoPlayer.release()
