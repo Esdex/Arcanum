@@ -88,6 +88,16 @@ fun ExpandVolumeScreen(
     var step             by remember { mutableIntStateOf(1) }
     var sizeError        by remember { mutableStateOf<String?>(null) }
 
+    val newSizeMb = remember(state.newSizeInput, state.sizeUnit) {
+        val v = state.newSizeInput.toLongOrNull() ?: 0L
+        when (state.sizeUnit) {
+            SizeUnit.MB -> v
+            SizeUnit.GB -> v * 1024L
+        }
+    }
+    val additionalMb = (newSizeMb - currentSizeBytes / (1024L * 1024L)).coerceAtLeast(0L)
+    val notEnoughSpace = state.availableSpaceMb != Long.MAX_VALUE && newSizeMb > 0L && additionalMb > state.availableSpaceMb
+
     LaunchedEffect(containerId) { viewModel.init(containerId) }
     LaunchedEffect(state.isRunning) { if (state.isRunning) step = 3 }
     LaunchedEffect(state.isSuccess, state.error) { if (state.isSuccess || state.error != null) step = 3 }
@@ -144,7 +154,7 @@ fun ExpandVolumeScreen(
 
                 if (showTopBar && step < 3) {
                     LinearProgressIndicator(
-                        progress   = { step / 2f },
+                        progress   = { (step - 1) / 2f },
                         modifier   = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
@@ -183,7 +193,9 @@ fun ExpandVolumeScreen(
                             viewModel         = viewModel,
                             currentSizeBytes  = currentSizeBytes,
                             sizeError         = sizeError,
-                            onSizeErrorChange = { sizeError = it }
+                            onSizeErrorChange = { sizeError = it },
+                            availableSpaceMb  = state.availableSpaceMb,
+                            notEnoughSpace    = notEnoughSpace
                         )
                         else -> ExpandStep3(
                             state   = state,
@@ -202,7 +214,7 @@ fun ExpandVolumeScreen(
                 if (step < 3) {
                     val canProceed = when (step) {
                         1    -> state.password.isNotEmpty()
-                        else -> state.newSizeInput.isNotEmpty() && state.isReady  // M3: block until init loaded
+                        else -> state.newSizeInput.isNotEmpty() && state.isReady && !notEnoughSpace
                     }
                     Button(
                         onClick  = {
@@ -311,37 +323,58 @@ private fun ExpandStep2(
     viewModel: ExpandVolumeViewModel,
     currentSizeBytes: Long,
     sizeError: String?,
-    onSizeErrorChange: (String?) -> Unit
+    onSizeErrorChange: (String?) -> Unit,
+    availableSpaceMb: Long = Long.MAX_VALUE,
+    notEnoughSpace: Boolean = false
 ) {
     StepContent(title = stringResource(R.string.expand_new_size_label)) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (currentSizeBytes > 0L) {
+            if (currentSizeBytes > 0L || availableSpaceMb != Long.MAX_VALUE) {
                 Card(
                     colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                     shape    = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier              = Modifier.padding(16.dp),
-                        verticalAlignment     = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        modifier          = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Outlined.Info, contentDescription = null,
-                            tint     = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Column {
-                            Text(
-                                stringResource(R.string.expand_current_size),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        if (currentSizeBytes > 0L) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.expand_current_size),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    currentSizeBytes.fmtFileSize(),
+                                    style      = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                        if (currentSizeBytes > 0L && availableSpaceMb != Long.MAX_VALUE) {
+                            androidx.compose.material3.VerticalDivider(
+                                modifier = Modifier.height(40.dp).padding(horizontal = 16.dp)
                             )
-                            Text(
-                                currentSizeBytes.fmtFileSize(),
-                                style      = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                        }
+                        if (availableSpaceMb != Long.MAX_VALUE) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.expand_available_space),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    (availableSpaceMb * 1024L * 1024L).fmtFileSize(),
+                                    style      = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color      = if (notEnoughSpace) MaterialTheme.colorScheme.error
+                                                 else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     }
                 }
@@ -385,6 +418,14 @@ private fun ExpandStep2(
                         "expand_not_aligned" -> stringResource(R.string.expand_error_not_aligned)
                         else                 -> stringResource(R.string.expand_error_generic, sizeError)
                     },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            if (notEnoughSpace) {
+                Text(
+                    stringResource(R.string.create_size_not_enough_space),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
