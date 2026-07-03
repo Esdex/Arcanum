@@ -261,15 +261,16 @@ class BackupService : Service(), DefaultLifecycleObserver {
                     CHANNEL_ID,
                     getString(R.string.notif_channel_backup),
                     NotificationManager.IMPORTANCE_LOW
-                ).apply { description = getString(R.string.notif_channel_backup_desc) }
+                ).apply {
+                    description = getString(R.string.notif_channel_backup_desc)
+                    lockscreenVisibility = Notification.VISIBILITY_SECRET
+                }
             )
         }
     }
 
     private fun updateProgress(state: BackupProgressState) {
         _progress.value = state
-        getSystemService(NotificationManager::class.java)
-            .notify(NOTIFICATION_ID, buildNotification(state))
     }
 
     private fun buildNotification(state: BackupProgressState): Notification {
@@ -282,6 +283,7 @@ class BackupService : Service(), DefaultLifecycleObserver {
             .setProgress(100, pct, running && pct == 0)
             .setOngoing(running)
             .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .addAction(
                 0,
                 getString(R.string.backup_cancel),

@@ -44,6 +44,9 @@ data class BackupSettings(
         BackupProvider.MEGA  -> megaEmail.isNotBlank() ||
             megaPassword.isNotBlank()
     }
+
+    fun hasAnySensitiveCredentials(): Boolean =
+        BackupProvider.values().any { hasSensitiveCredentials(it) }
 }
 
 @Serializable
@@ -62,6 +65,8 @@ data class S3MultipartResumeState(
     val key: String,
     val uploadId: String,
     val partSize: Long,
+    val sourceSizeBytes: Long = -1L,
+    val sourceFingerprint: String = "",
     val completedParts: List<S3CompletedPart> = emptyList()
 )
 

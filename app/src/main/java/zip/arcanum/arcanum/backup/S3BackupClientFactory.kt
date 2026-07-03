@@ -8,6 +8,7 @@ import com.amazonaws.regions.Region
 import com.amazonaws.regions.Regions
 import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.S3ClientOptions
+import zip.arcanum.R
 
 internal object S3BackupClientFactory {
     fun client(settings: BackupSettings): AmazonS3Client {
@@ -46,9 +47,12 @@ internal object S3BackupClientFactory {
         return if (cleanPrefix.isBlank()) fileName else "$cleanPrefix/$fileName"
     }
 
-    private fun normalizeEndpoint(value: String): String {
+    fun normalizeEndpoint(value: String): String {
         val trimmed = value.trim().trimEnd('/')
-        return if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        if (trimmed.startsWith("http://", ignoreCase = true)) {
+            throw BackupValidationException(R.string.backup_error_s3_https_required)
+        }
+        return if (trimmed.startsWith("https://", ignoreCase = true)) {
             trimmed
         } else {
             "https://$trimmed"

@@ -23,6 +23,7 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 import java.util.UUID
 import java.util.zip.GZIPInputStream
 import kotlin.coroutines.coroutineContext
@@ -165,9 +166,14 @@ internal class MegaAccountClient(private val context: Context? = null) {
             coroutineContext.ensureActive()
             val result = inFlight.remove(nextToCommit)?.await()
                 ?: throw BackupValidationException(R.string.backup_error_mega_lost_chunk, nextToCommit)
-            mac.updateChunk(result.plain)
+            val plainSize = result.plain.size.toLong()
+            try {
+                mac.updateChunk(result.plain)
+            } finally {
+                result.plain.fill(0)
+            }
             if (result.response.isNotBlank()) completionHandle = result.response
-            uploaded += result.plain.size.toLong()
+            uploaded += plainSize
             onProgress.onProgress(
                 uploaded,
                 total,
@@ -287,8 +293,9 @@ internal class MegaAccountClient(private val context: Context? = null) {
                 put("s", sizeBytes)
             }
         )[0].jsonObject
-        return response["p"]?.jsonPrimitive?.contentOrNull()
+        val uploadUrl = response["p"]?.jsonPrimitive?.contentOrNull()
             ?: throw BackupValidationException(R.string.backup_error_mega_no_upload_url)
+        return validateMegaUploadUrl(uploadUrl)
     }
 
     private fun finishUpload(
@@ -397,7 +404,8 @@ internal class MegaAccountClient(private val context: Context? = null) {
     }
 
     private fun postUploadChunk(uploadUrl: String, total: Long, offset: Long, encrypted: ByteArray): String {
-        val connection = (URL(chunkUrl(uploadUrl, total, offset, encrypted.size.toLong())).openConnection() as HttpURLConnection).apply {
+        val targetUrl = validateMegaUploadUrl(chunkUrl(uploadUrl, total, offset, encrypted.size.toLong()))
+        val connection = (URL(targetUrl).openConnection() as HttpURLConnection).apply {
             connectTimeout = HTTP_CONNECT_TIMEOUT_MS
             readTimeout = HTTP_READ_TIMEOUT_MS
             requestMethod = "POST"
@@ -519,6 +527,20 @@ internal class MegaAccountClient(private val context: Context? = null) {
 
     private fun chunkUrl(uploadUrl: String, total: Long, offset: Long, size: Long): String =
         if (offset + size == total) "$uploadUrl/$offset" else "$uploadUrl/$offset-${offset + size - 1}"
+
+    private fun validateMegaUploadUrl(value: String): String {
+        val url = runCatching { URL(value.trim()) }.getOrNull()
+            ?: throw BackupValidationException(R.string.backup_error_mega_upload_https_required)
+        val host = url.host.lowercase(Locale.US)
+        val isMegaHost = host == "mega.nz" ||
+            host.endsWith(".mega.nz") ||
+            host == "mega.co.nz" ||
+            host.endsWith(".mega.co.nz")
+        if (url.protocol.lowercase(Locale.US) != "https" || !isMegaHost) {
+            throw BackupValidationException(R.string.backup_error_mega_upload_https_required)
+        }
+        return url.toString().trimEnd('/')
+    }
 
     private fun chunkOffset(chunkId: Long): Long {
         val offsets = longArrayOf(0, 128, 384, 768, 1280, 1920, 2688)

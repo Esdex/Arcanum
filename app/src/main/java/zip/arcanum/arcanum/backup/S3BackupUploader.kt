@@ -16,6 +16,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
+import java.io.EOFException
 import java.io.FilterInputStream
 import java.io.InputStream
 import java.util.UUID
@@ -54,8 +55,16 @@ class S3BackupUploader @Inject constructor(
     ): BackupUploadResult = withContext(Dispatchers.IO) {
         val client = S3BackupClientFactory.client(settings)
         val bucket = settings.s3Bucket.trim()
-        val existing = settingsRepository.loadS3ResumeState(containerId)
-            ?.takeIf { it.bucket == bucket }
+        val loadedResume = settingsRepository.loadS3ResumeState(containerId)
+        val existing = loadedResume?.takeIf {
+            source.supportsStableResume &&
+                it.bucket == bucket &&
+                it.sourceSizeBytes == source.sizeBytes &&
+                it.sourceFingerprint == source.resumeFingerprint
+        }
+        if (loadedResume != null && existing == null) {
+            settingsRepository.clearS3ResumeState(containerId)
+        }
         val key = existing?.key ?: S3BackupClientFactory.key(settings, fileName)
         val uploadId = existing?.uploadId ?: client.initiateMultipartUpload(
             InitiateMultipartUploadRequest(bucket, key).apply {
@@ -79,6 +88,8 @@ class S3BackupUploader @Inject constructor(
                 key = key,
                 uploadId = uploadId,
                 partSize = partSize,
+                sourceSizeBytes = source.sizeBytes,
+                sourceFingerprint = source.resumeFingerprint,
                 completedParts = completed.values.sortedBy { it.partNumber }
             )
         )
@@ -128,6 +139,8 @@ class S3BackupUploader @Inject constructor(
                         key = key,
                         uploadId = uploadId,
                         partSize = partSize,
+                        sourceSizeBytes = source.sizeBytes,
+                        sourceFingerprint = source.resumeFingerprint,
                         completedParts = completed.values.sortedBy { it.partNumber }
                     )
                 )
@@ -193,6 +206,9 @@ class S3BackupUploader @Inject constructor(
                     .withPartSize(length)
                     .withInputStream(limited)
             )
+            if (!limited.isFullyRead) {
+                throw EOFException("Backup source ended before the requested part was read")
+            }
             return S3CompletedPart(partNumber, response.partETag.eTag)
         }
     }
@@ -206,9 +222,13 @@ class S3BackupUploader @Inject constructor(
     }
 
     private class LimitedInputStream(input: InputStream, private var remaining: Long) : FilterInputStream(input) {
+        val isFullyRead: Boolean
+            get() = remaining == 0L
+
         override fun read(): Int {
             if (remaining <= 0L) return -1
             val value = super.read()
+            if (value < 0) throw EOFException("Backup source ended before the requested part was read")
             if (value >= 0) remaining--
             return value
         }
@@ -217,6 +237,7 @@ class S3BackupUploader @Inject constructor(
             if (remaining <= 0L) return -1
             val toRead = min(length.toLong(), remaining).toInt()
             val read = super.read(buffer, offset, toRead)
+            if (read < 0) throw EOFException("Backup source ended before the requested part was read")
             if (read > 0) remaining -= read.toLong()
             return read
         }

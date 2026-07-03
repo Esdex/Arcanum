@@ -42,8 +42,7 @@ class LocalFolderBackupUploader @Inject constructor(
         onProgress: BackupProgressCallback
     ): BackupUploadResult = withContext(Dispatchers.IO) {
         val folder = settings.localFolder()
-        val tempName = "$fileName.part"
-        folder.findFile(tempName)?.delete()
+        val tempName = ".arcanum_backup_${UUID.randomUUID()}_$fileName.part"
         val tempFile = folder.createFile("application/octet-stream", tempName)
             ?: throw BackupValidationException(R.string.backup_error_local_create_backup_file)
 
@@ -62,6 +61,10 @@ class LocalFolderBackupUploader @Inject constructor(
                     }
                     output.flush()
                 } ?: throw BackupValidationException(R.string.backup_error_local_no_write_access)
+            }
+
+            if (written != source.sizeBytes) {
+                throw BackupValidationException(R.string.backup_error_local_finish_write)
             }
 
             if (!tempFile.renameTo(fileName)) {

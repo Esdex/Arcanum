@@ -13,6 +13,15 @@ class BackupSource(
 ) {
     val sizeBytes: Long = container.size
 
+    val supportsStableResume: Boolean = container.safUri.isBlank()
+
+    val resumeFingerprint: String = if (supportsStableResume) {
+        val file = File(container.path)
+        "file:${file.absolutePath}:${sizeBytes}:${file.lastModified()}"
+    } else {
+        "saf:${container.safUri}:${sizeBytes}"
+    }
+
     val baseFileName: String = sanitizeFileName(
         when {
             container.name.isNotBlank() -> container.name
@@ -55,4 +64,3 @@ private fun InputStream.skipFully(bytes: Long) {
         }
     }
 }
-

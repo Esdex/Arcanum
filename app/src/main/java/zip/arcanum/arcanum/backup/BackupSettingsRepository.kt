@@ -65,6 +65,10 @@ class BackupSettingsRepository @Inject constructor(
         prefs.edit().remove(s3ResumeKey(containerId)).apply()
     }
 
+    suspend fun clearAll() = withContext(Dispatchers.IO) {
+        prefs.edit().clear().apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "backup_secure_prefs"
 
@@ -73,4 +77,3 @@ class BackupSettingsRepository @Inject constructor(
         private fun s3ResumeKey(containerId: String) = "s3_resume_$containerId"
     }
 }
-

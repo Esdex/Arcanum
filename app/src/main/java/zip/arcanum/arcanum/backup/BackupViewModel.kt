@@ -35,7 +35,10 @@ data class BackupUiState(
     val error: String? = null
 ) {
     val canStart: Boolean
-        get() = container != null && settings.hasUsableDestination() && !hasUnsavedChanges
+        get() = container != null &&
+            settings.hasUsableDestination() &&
+            !hasUnsavedChanges &&
+            (!settings.hasSensitiveCredentials(settings.provider) || secretsUnlocked)
 }
 
 @HiltViewModel
@@ -79,9 +82,17 @@ class BackupViewModel @Inject constructor(
     }
 
     fun updateSettings(transform: (BackupSettings) -> BackupSettings) {
+        val previous = _state.value
+        val updated = transform(previous.settings)
+        val providerChanged = updated.provider != previous.settings.provider
         _state.value = _state.value.copy(
-            settings = transform(_state.value.settings),
+            settings = updated,
             hasUnsavedChanges = true,
+            secretsUnlocked = if (providerChanged && updated.hasSensitiveCredentials(updated.provider)) {
+                false
+            } else {
+                previous.secretsUnlocked
+            },
             message = null,
             error = null
         )
@@ -134,6 +145,10 @@ class BackupViewModel @Inject constructor(
         }
         if (current.hasUnsavedChanges) {
             _state.value = current.copy(error = context.getString(R.string.backup_error_save_new_settings))
+            return
+        }
+        if (current.settings.hasSensitiveCredentials(current.settings.provider) && !current.secretsUnlocked) {
+            _state.value = current.copy(error = context.getString(R.string.backup_error_auth_required))
             return
         }
         BackupService.start(context, containerId)
