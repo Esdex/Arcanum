@@ -1,5 +1,7 @@
 package zip.arcanum.arcanum.containers.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -17,14 +19,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Eject
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.Restore
@@ -32,6 +37,7 @@ import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -106,6 +112,8 @@ fun VaultConfigScreen(
     var showRenameDialog     by remember { mutableStateOf(false) }
     var showMoveSheet        by remember { mutableStateOf(false) }
     var showAutoUnmountSheet by remember { mutableStateOf(false) }
+    var showDeleteDialog     by remember { mutableStateOf(false) }
+    var showUnmountDialog    by remember { mutableStateOf(false) }
     var renameText           by remember { mutableStateOf("") }
 
     LaunchedEffect(renameResult) {
@@ -167,6 +175,22 @@ fun VaultConfigScreen(
                                         showMoveSheet = true
                                     }
                                 )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text        = { Text(stringResource(R.string.vault_delete_confirm), color = MaterialTheme.colorScheme.error) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector        = Icons.Outlined.DeleteForever,
+                                            contentDescription = null,
+                                            tint               = MaterialTheme.colorScheme.error
+                                        )
+                                    },
+                                    enabled     = !isMounted,
+                                    onClick     = {
+                                        showMoreMenu   = false
+                                        showDeleteDialog = true
+                                    }
+                                )
                             }
                         }
                     }
@@ -185,17 +209,27 @@ fun VaultConfigScreen(
                         .padding(innerPadding)
                 ) {
                     // ── Hero ──────────────────────────────────────────────────────
-                    VaultConfigHero(container = container, isDynamic = isDynamic)
+                    VaultConfigHero(container = container, isDynamic = isDynamic, isMounted = isMounted)
 
                     // ── Operations ───────────────────────────────────────────────
                     VaultOperationItem(
-                        icon      = if (isMounted) Icons.Outlined.LockOpen else Icons.Outlined.PlayArrow,
+                        icon      = if (isMounted) Icons.Outlined.FolderOpen else Icons.Outlined.PlayArrow,
                         rawColor  = Color(0xFF16A34A),
                         title     = stringResource(if (isMounted) R.string.vault_config_op_open else R.string.vault_config_op_mount),
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_op_open_desc else R.string.vault_config_op_mount_desc),
                         isDynamic = isDynamic,
                         onClick   = { if (isMounted) onOpenVault(containerId) else onMount(containerId) }
                     )
+                    if (isMounted) {
+                        VaultOperationItem(
+                            icon      = Icons.Outlined.Eject,
+                            rawColor  = Color(0xFF546E7A),
+                            title     = stringResource(R.string.vault_unmount_confirm),
+                            subtitle  = stringResource(R.string.vault_card_unmount_desc),
+                            isDynamic = isDynamic,
+                            onClick   = { showUnmountDialog = true }
+                        )
+                    }
                     VaultOperationItem(
                         icon      = Icons.Outlined.Timer,
                         rawColor  = Color(0xFFD97706),
@@ -246,7 +280,7 @@ fun VaultConfigScreen(
                         icon      = Icons.Outlined.OpenInFull,
                         rawColor  = Color(0xFF8E24AA),
                         title     = stringResource(R.string.vault_info_op_expand_volume),
-                        subtitle  = stringResource(R.string.vault_card_expand_desc),
+                        subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.vault_card_expand_desc),
                         isDynamic = isDynamic,
                         enabled   = !isMounted,
                         onClick   = { onExpandVolume(containerId) }
@@ -280,6 +314,47 @@ fun VaultConfigScreen(
                 },
                 dismissButton    = {
                     TextButton(onClick = { showRenameDialog = false }) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                }
+            )
+        }
+
+        // ── Unmount confirm dialog ────────────────────────────────────────────────
+        if (showUnmountDialog && container != null) {
+            AppDialog(
+                onDismissRequest = { showUnmountDialog = false },
+                title            = { Text(stringResource(R.string.vault_unmount_title, container.name)) },
+                text             = { Text(stringResource(R.string.vault_unmount_body)) },
+                confirmButton    = {
+                    TextButton(onClick = {
+                        showUnmountDialog = false
+                        viewModel.unmountContainer(containerId) {}
+                    }) { Text(stringResource(R.string.vault_unmount_confirm)) }
+                },
+                dismissButton    = {
+                    TextButton(onClick = { showUnmountDialog = false }) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                }
+            )
+        }
+
+        // ── Delete confirm dialog ─────────────────────────────────────────────────
+        if (showDeleteDialog && container != null) {
+            AppDialog(
+                onDismissRequest = { showDeleteDialog = false },
+                title            = { Text(stringResource(R.string.vault_delete_title, container.name)) },
+                text             = { Text(stringResource(R.string.vault_delete_body)) },
+                confirmButton    = {
+                    TextButton(onClick = {
+                        showDeleteDialog = false
+                        viewModel.deleteVaultFile(containerId)
+                        onBack()
+                    }) { Text(stringResource(R.string.vault_delete_confirm), color = MaterialTheme.colorScheme.error) }
+                },
+                dismissButton    = {
+                    TextButton(onClick = { showDeleteDialog = false }) {
                         Text(stringResource(R.string.common_cancel))
                     }
                 }
@@ -366,20 +441,56 @@ fun VaultConfigScreen(
 @Composable
 private fun VaultConfigHero(
     container: ContainerEntity?,
-    isDynamic: Boolean
+    isDynamic: Boolean,
+    isMounted: Boolean = false
 ) {
-    val heroIcon = Icons.Outlined.Storage
+    val context = LocalContext.current
+    val isInAppStorage = remember(container?.path, container?.safUri) {
+        container != null &&
+        container.safUri.isEmpty() &&
+        (container.path.startsWith(context.filesDir.absolutePath) ||
+         container.path.startsWith(context.noBackupFilesDir.absolutePath))
+    }
+    val heroIcon = if (isInAppStorage) Icons.Outlined.PhoneAndroid else Icons.Outlined.Storage
+
+    val iconBg by animateColorAsState(
+        targetValue   = if (isMounted) Color(0xFF16A34A) else MaterialTheme.colorScheme.primaryContainer,
+        animationSpec = tween(300),
+        label         = "hero_bg"
+    )
+    val iconTint by animateColorAsState(
+        targetValue   = if (isMounted) Color.White else MaterialTheme.colorScheme.primary,
+        animationSpec = tween(300),
+        label         = "hero_tint"
+    )
 
     val displayPath = remember(container?.path, container?.safUri) {
         when {
             container == null -> ""
-            container.path.isNotBlank() -> container.path
+            container.path.isNotBlank() -> {
+                val path = container.path
+                val appDataDir = context.filesDir.parentFile?.absolutePath ?: ""
+                when {
+                    path.startsWith(context.filesDir.absolutePath) ||
+                    path.startsWith(context.noBackupFilesDir.absolutePath) -> {
+                        val relative = if (appDataDir.isNotEmpty())
+                            path.removePrefix(appDataDir).trimStart('/')
+                        else path
+                        "App Storage/$relative"
+                    }
+                    path.startsWith("/storage/emulated/0/") ->
+                        "Internal/" + path.removePrefix("/storage/emulated/0/")
+                    path.startsWith("/sdcard/") ->
+                        "Internal/" + path.removePrefix("/sdcard/")
+                    else -> path
+                }
+            }
             container.safUri.isNotBlank() -> {
                 val seg = android.net.Uri.decode(
                     android.net.Uri.parse(container.safUri).lastPathSegment ?: ""
                 )
                 val after = seg.substringAfter(':')
-                if (after.isNotEmpty()) "/$after" else seg
+                if (after.isNotEmpty()) "Internal/$after" else seg
             }
             else -> ""
         }
@@ -395,13 +506,13 @@ private fun VaultConfigHero(
             modifier         = Modifier
                 .size(96.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
+                .background(iconBg),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector        = heroIcon,
                 contentDescription = null,
-                tint               = MaterialTheme.colorScheme.primary,
+                tint               = iconTint,
                 modifier           = Modifier.size(48.dp)
             )
         }

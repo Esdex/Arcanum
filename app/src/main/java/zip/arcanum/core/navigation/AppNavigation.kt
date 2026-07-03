@@ -104,15 +104,16 @@ fun AppNavigation(pinManager: PinManager) {
     val mountCoordinator: MountCoordinator = hiltViewModel()
     val mountPhase by mountCoordinator.phase.collectAsState()
 
-    val autoLockEnabled    by settingsViewModel.autoLockEnabled.collectAsState()
-    val autoLockDelayIndex by settingsViewModel.autoLockDelayIndex.collectAsState()
+    val autoLockEnabled      by settingsViewModel.autoLockEnabled.collectAsState()
+    val autoLockDelayIndex   by settingsViewModel.autoLockDelayIndex.collectAsState()
+    val unmountOnAutoLock    by settingsViewModel.unmountOnAutoLock.collectAsState()
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val lockedRoutes = remember(lockScreenRoute) {
         setOf(Screen.Onboarding.route, Screen.SetupPin.route, Screen.Calculator.route, Screen.PinEntry.route)
     }
     val autoLockScope = rememberCoroutineScope()
-    DisposableEffect(lifecycleOwner, autoLockEnabled, autoLockDelayIndex, lockScreenRoute) {
+    DisposableEffect(lifecycleOwner, autoLockEnabled, autoLockDelayIndex, unmountOnAutoLock, lockScreenRoute) {
         var lockJob: Job? = null
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -122,6 +123,7 @@ fun AppNavigation(pinManager: PinManager) {
                         if (current !in lockedRoutes) {
                             lockJob = autoLockScope.launch {
                                 delay(autoLockDelayMillis(autoLockDelayIndex))
+                                if (unmountOnAutoLock) mountCoordinator.unmountAll()
                                 navController.navigate(lockScreenRoute) {
                                     popUpTo(0) { inclusive = true }
                                     launchSingleTop = true

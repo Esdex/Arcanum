@@ -195,6 +195,7 @@ fun SettingsScreen(
     LaunchedEffect(openWhatsNew) { if (openWhatsNew) subScreen = SubScreen.WHATS_NEW }
     val autoLockEnabled         by viewModel.autoLockEnabled.collectAsState()
     val autoLockDelayIndex      by viewModel.autoLockDelayIndex.collectAsState()
+    val unmountOnAutoLock       by viewModel.unmountOnAutoLock.collectAsState()
     val themeMode               by viewModel.themeMode.collectAsState()
     val isAmoledGlass           by viewModel.isAmoledGlass.collectAsState()
     val isDynamicColor          by viewModel.isDynamicColor.collectAsState()
@@ -228,15 +229,17 @@ fun SettingsScreen(
     ) { screen ->
         when (screen) {
             SubScreen.SECURITY -> SecuritySubScreen(
-                autoLockEnabled       = autoLockEnabled,
-                onAutoLockChange      = { viewModel.setAutoLock(it) },
-                autoLockDelayIndex    = autoLockDelayIndex,
-                onAutoLockDelayChange = { viewModel.setAutoLockDelayIndex(it) },
-                screenCaptureProtection = screenCaptureProtection,
-                disguiseApplied       = disguiseApplied,
-                onBack                = { subScreen = null },
-                onChangePin           = { subScreen = SubScreen.CHANGE_PIN },
-                viewModel             = viewModel
+                autoLockEnabled          = autoLockEnabled,
+                onAutoLockChange         = { viewModel.setAutoLock(it) },
+                autoLockDelayIndex       = autoLockDelayIndex,
+                onAutoLockDelayChange    = { viewModel.setAutoLockDelayIndex(it) },
+                unmountOnAutoLock        = unmountOnAutoLock,
+                onUnmountOnAutoLockChange = { viewModel.setUnmountOnAutoLock(it) },
+                screenCaptureProtection  = screenCaptureProtection,
+                disguiseApplied          = disguiseApplied,
+                onBack                   = { subScreen = null },
+                onChangePin              = { subScreen = SubScreen.CHANGE_PIN },
+                viewModel                = viewModel
             )
             SubScreen.PANIC_MODE -> PanicModeSubScreen(
                 onBack        = { subScreen = null },
@@ -549,6 +552,8 @@ private fun SecuritySubScreen(
     onAutoLockChange: (Boolean) -> Unit,
     autoLockDelayIndex: Int,
     onAutoLockDelayChange: (Int) -> Unit,
+    unmountOnAutoLock: Boolean,
+    onUnmountOnAutoLockChange: (Boolean) -> Unit,
     screenCaptureProtection: Boolean,
     disguiseApplied: Boolean,
     onBack: () -> Unit,
@@ -616,6 +621,14 @@ private fun SecuritySubScreen(
                             modifier      = Modifier.fillMaxWidth()
                         )
                     }
+                }
+                AnimatedVisibility(visible = autoLockEnabled) {
+                    SettingsSwitch(
+                        title           = stringResource(R.string.settings_security_unmount_on_auto_lock),
+                        subtitle        = stringResource(R.string.settings_security_unmount_on_auto_lock_desc),
+                        checked         = unmountOnAutoLock,
+                        onCheckedChange = onUnmountOnAutoLockChange
+                    )
                 }
                 SettingsSwitch(
                     title           = stringResource(R.string.settings_security_screen_capture),
