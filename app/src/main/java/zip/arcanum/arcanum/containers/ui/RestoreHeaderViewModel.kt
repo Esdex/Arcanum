@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.core.security.VaultPasswordPolicy
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
@@ -84,6 +85,10 @@ class RestoreHeaderViewModel @Inject constructor(
             return
         }
         val s = _state.value
+        if (!VaultPasswordPolicy.isWithinVeraCryptLimit(s.password)) {
+            _state.update { it.copy(error = VaultPasswordPolicy.violationMessage()) }
+            return
+        }
         _state.update { it.copy(isRunning = true, error = null) }
 
         viewModelScope.launch {

@@ -2,6 +2,7 @@ package zip.arcanum.arcanum.containers.ui
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -16,6 +17,7 @@ import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.core.navigation.Screen
 import java.io.File
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
@@ -81,11 +83,13 @@ class MoveVaultViewModel @Inject constructor(
                 val sourceIsSaf = container.safUri.isNotEmpty()
 
                 if (sourceIsSaf) {
-                    val pfd = context.contentResolver.openFileDescriptor(
-                        Uri.parse(container.safUri), "r"
-                    ) ?: throw Exception("Cannot open source file")
-                    total = pfd.statSize
-                    pfd.close()
+                    val statSize = context.contentResolver.openFileDescriptor(
+                        Uri.parse(container.safUri),
+                        "r"
+                    )?.use { it.statSize } ?: -1L
+                    total = statSize.takeIf { it >= 0L }
+                        ?: container.size.takeIf { it > 0L }
+                        ?: throw Exception("Cannot determine source file size")
                 } else {
                     val sourceFile = File(container.path)
                     if (!sourceFile.exists()) throw Exception("Source file not found:\n${container.path}")
@@ -98,6 +102,7 @@ class MoveVaultViewModel @Inject constructor(
                         val base = if (includeInBackup) context.filesDir else context.noBackupFilesDir
                         val destDir = File(base, "vaults").also { it.mkdirs() }
                         val destFile = resolveUniqueFile(destDir, container.name)
+                        val tempFile = resolveUniqueFile(destDir, ".${destFile.name}.move.${UUID.randomUUID()}.tmp")
 
                         val input = if (sourceIsSaf) {
                             context.contentResolver.openInputStream(Uri.parse(container.safUri))
@@ -105,22 +110,27 @@ class MoveVaultViewModel @Inject constructor(
                         } else {
                             File(container.path).inputStream()
                         }
-                        input.use { ins ->
-                            destFile.outputStream().use { out ->
-                                copyStreamWithProgress(ins, out, total)
+                        try {
+                            input.use { ins ->
+                                tempFile.outputStream().use { out ->
+                                    copyStreamWithProgress(ins, out, total)
+                                }
                             }
+                            if (tempFile.length() != total) {
+                                throw Exception("Destination size verification failed")
+                            }
+                            if (!tempFile.renameTo(destFile)) {
+                                throw Exception("Cannot publish destination file")
+                            }
+                        } catch (t: Throwable) {
+                            tempFile.delete()
+                            throw t
                         }
 
                         repo.updateContainerPath(containerId, destFile.absolutePath)
                         repo.updateSafUri(containerId, "")
-                        if (sourceIsSaf) {
-                            runCatching {
-                                android.provider.DocumentsContract.deleteDocument(
-                                    context.contentResolver, Uri.parse(container.safUri)
-                                )
-                            }
-                        } else {
-                            File(container.path).delete()
+                        if (!deleteSource(container.path, container.safUri, sourceIsSaf)) {
+                            throw Exception("Vault moved, but old source could not be deleted")
                         }
                     } else {
                         // Moving TO external storage via SAF tree
@@ -128,22 +138,35 @@ class MoveVaultViewModel @Inject constructor(
                             ?: DocumentFile.fromFile(
                                 (context.getExternalFilesDir(null) ?: context.filesDir).also { it.mkdirs() }
                             )
-                        val destFile = destDir.createFile("application/octet-stream", container.name)
+                        val finalName = resolveUniqueDocumentName(destDir, container.name)
+                        val tempName = ".${finalName}.move.${UUID.randomUUID()}.tmp"
+                        val tempDoc = destDir.createFile("application/octet-stream", tempName)
                             ?: throw Exception("Cannot create destination file")
 
-                        val output = context.contentResolver.openOutputStream(destFile.uri)
+                        val output = context.contentResolver.openOutputStream(tempDoc.uri)
                             ?: throw Exception("Cannot open destination stream")
 
-                        output.use { out ->
-                            val input = if (sourceIsSaf) {
-                                context.contentResolver.openInputStream(Uri.parse(container.safUri))
-                                ?: throw Exception("Cannot open source file")
-                            } else {
-                                File(container.path).inputStream()
+                        try {
+                            output.use { out ->
+                                val input = if (sourceIsSaf) {
+                                    context.contentResolver.openInputStream(Uri.parse(container.safUri))
+                                    ?: throw Exception("Cannot open source file")
+                                } else {
+                                    File(container.path).inputStream()
+                                }
+                                input.use { ins ->
+                                    copyStreamWithProgress(ins, out, total)
+                                }
                             }
-                            input.use { ins ->
-                                copyStreamWithProgress(ins, out, total)
+                            if (documentLength(tempDoc.uri) != total) {
+                                throw Exception("Destination size verification failed")
                             }
+                            if (!tempDoc.renameTo(finalName)) {
+                                throw Exception("Cannot publish destination file")
+                            }
+                        } catch (t: Throwable) {
+                            runCatching { tempDoc.delete() }
+                            throw t
                         }
 
                         if (destTreeUri != null) {
@@ -155,13 +178,11 @@ class MoveVaultViewModel @Inject constructor(
                                 )
                             }
                         }
+                        val finalDoc = destDir.findFile(finalName) ?: tempDoc
                         repo.updateContainerPath(containerId, "")
-                        repo.updateSafUri(containerId, destFile.uri.toString())
-                        if (!sourceIsSaf) File(container.path).delete()
-                        else runCatching {
-                            android.provider.DocumentsContract.deleteDocument(
-                                context.contentResolver, Uri.parse(container.safUri)
-                            )
+                        repo.updateSafUri(containerId, finalDoc.uri.toString())
+                        if (!deleteSource(container.path, container.safUri, sourceIsSaf)) {
+                            throw Exception("Vault moved, but old source could not be deleted")
                         }
                     }
                 }
@@ -196,6 +217,31 @@ class MoveVaultViewModel @Inject constructor(
         return candidate
     }
 
+    private fun resolveUniqueDocumentName(dir: DocumentFile, name: String): String {
+        if (dir.findFile(name) == null) return name
+        val dot = name.lastIndexOf('.')
+        val base = if (dot >= 0) name.substring(0, dot) else name
+        val ext = if (dot >= 0) name.substring(dot) else ""
+        var n = 1
+        while (true) {
+            val candidate = "$base($n)$ext"
+            if (dir.findFile(candidate) == null) return candidate
+            n++
+        }
+    }
+
+    private fun documentLength(uri: Uri): Long =
+        context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
+
+    private fun deleteSource(path: String, safUri: String, sourceIsSaf: Boolean): Boolean =
+        if (sourceIsSaf) {
+            runCatching {
+                DocumentsContract.deleteDocument(context.contentResolver, Uri.parse(safUri))
+            }.getOrDefault(false)
+        } else {
+            File(path).delete()
+        }
+
     private fun copyStreamWithProgress(
         input: java.io.InputStream,
         output: java.io.OutputStream,
@@ -207,11 +253,14 @@ class MoveVaultViewModel @Inject constructor(
         while (input.read(buf).also { read = it } != -1) {
             output.write(buf, 0, read)
             done += read
+            if (total >= 0L && done > total) throw Exception("Source size changed during copy")
             _state.value = State.Moving(
                 progress   = if (total > 0) done.toFloat() / total else 0f,
                 bytesDone  = done,
                 totalBytes = total
             )
         }
+        output.flush()
+        if (done != total) throw Exception("Source copy ended before expected size")
     }
 }

@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import zip.arcanum.R
+import zip.arcanum.core.security.VaultPasswordPolicy
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
@@ -61,39 +62,44 @@ class ChangePasswordService : Service() {
 
         serviceScope.launch {
             try {
-                val result = try {
-                    if (p.safFd >= 0) {
-                        cryptoEngine.changePasswordFd(
-                            fd               = p.safFd,
-                            oldPassword      = p.oldPassword,
-                            oldKeyfilePaths  = p.oldKeyfilePaths,
-                            oldPim           = p.oldPim,
-                            newPassword      = p.newPassword,
-                            newKeyfilePaths  = p.newKeyfilePaths,
-                            newHashAlgorithm = p.newHashAlgorithm,
-                            newPim           = p.newPim,
-                            wipePassCount    = p.wipePassCount,
-                            extraEntropy     = p.extraEntropy
-                        )
-                    } else {
-                        cryptoEngine.changePassword(
-                            path             = p.path,
-                            oldPassword      = p.oldPassword,
-                            oldKeyfilePaths  = p.oldKeyfilePaths,
-                            oldPim           = p.oldPim,
-                            newPassword      = p.newPassword,
-                            newKeyfilePaths  = p.newKeyfilePaths,
-                            newHashAlgorithm = p.newHashAlgorithm,
-                            newPim           = p.newPim,
-                            wipePassCount    = p.wipePassCount,
-                            extraEntropy     = p.extraEntropy
-                        )
-                    }
-                } finally {
-                    p.safPfd?.close()
-                    p.oldKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-                    p.newKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-                    p.extraEntropy.fill(0)
+                if (!VaultPasswordPolicy.isWithinVeraCryptLimit(p.oldPassword) ||
+                    !VaultPasswordPolicy.isWithinVeraCryptLimit(p.newPassword)
+                ) {
+                    _state.value = State.Failure(VaultPasswordPolicy.violationMessage())
+                    stopSelf()
+                    return@launch
+                }
+                if (VaultPasswordPolicy.hasUnsafeLowPim(p.newPassword, p.newPim)) {
+                    _state.value = State.Failure(VaultPasswordPolicy.lowPimViolationMessage())
+                    stopSelf()
+                    return@launch
+                }
+                val result = if (p.safFd >= 0) {
+                    cryptoEngine.changePasswordFd(
+                        fd               = p.safFd,
+                        oldPassword      = p.oldPassword,
+                        oldKeyfilePaths  = p.oldKeyfilePaths,
+                        oldPim           = p.oldPim,
+                        newPassword      = p.newPassword,
+                        newKeyfilePaths  = p.newKeyfilePaths,
+                        newHashAlgorithm = p.newHashAlgorithm,
+                        newPim           = p.newPim,
+                        wipePassCount    = p.wipePassCount,
+                        extraEntropy     = p.extraEntropy
+                    )
+                } else {
+                    cryptoEngine.changePassword(
+                        path             = p.path,
+                        oldPassword      = p.oldPassword,
+                        oldKeyfilePaths  = p.oldKeyfilePaths,
+                        oldPim           = p.oldPim,
+                        newPassword      = p.newPassword,
+                        newKeyfilePaths  = p.newKeyfilePaths,
+                        newHashAlgorithm = p.newHashAlgorithm,
+                        newPim           = p.newPim,
+                        wipePassCount    = p.wipePassCount,
+                        extraEntropy     = p.extraEntropy
+                    )
                 }
 
                 _state.value = when (result) {
@@ -106,6 +112,11 @@ class ChangePasswordService : Service() {
                 // get stuck in Running state, then re-throw so the coroutine actually cancels.
                 _state.value = State.Failure("CANCELLED")
                 throw e
+            } finally {
+                p.safPfd?.close()
+                p.oldKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+                p.newKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+                p.extraEntropy.fill(0)
             }
         }
 
@@ -126,7 +137,10 @@ class ChangePasswordService : Service() {
                 CHANNEL_ID,
                 getString(R.string.notif_channel_change_password),
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { description = getString(R.string.notif_channel_change_password_desc) }
+            ).apply {
+                description = getString(R.string.notif_channel_change_password_desc)
+                lockscreenVisibility = Notification.VISIBILITY_SECRET
+            }
             nm.createNotificationChannel(ch)
         }
     }
@@ -139,5 +153,6 @@ class ChangePasswordService : Service() {
             .setProgress(0, 0, true)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .build()
 }

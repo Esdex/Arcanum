@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.service.ContainerCreationParams
 import zip.arcanum.arcanum.containers.service.ContainerCreationService
+import zip.arcanum.core.security.VaultPasswordPolicy
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
@@ -244,6 +245,16 @@ class CreateContainerViewModel @Inject constructor(
 
     fun startHiddenCreation() {
         val s = _state.value
+        if (!VaultPasswordPolicy.isWithinVeraCryptLimit(s.password) ||
+            !VaultPasswordPolicy.isWithinVeraCryptLimit(s.hiddenPassword)
+        ) {
+            _state.update { it.copy(error = VaultPasswordPolicy.violationMessage()) }
+            return
+        }
+        if (VaultPasswordPolicy.hasUnsafeLowPim(s.hiddenPassword, s.hiddenPim)) {
+            _state.update { it.copy(error = VaultPasswordPolicy.lowPimViolationMessage()) }
+            return
+        }
         _state.update { it.copy(isCreating = true, creationProgress = 0f, error = null) }
         val fullPath = if (s.safUri.isEmpty()) "${s.filePath.trimEnd('/')}/${s.fileName}" else ""
         viewModelScope.launch {

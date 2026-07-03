@@ -7,18 +7,21 @@ import android.app.Service
 import android.content.Intent
 import android.net.Uri
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import zip.arcanum.R
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.core.security.VaultPasswordPolicy
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.CryptoError
 import zip.arcanum.crypto.CryptoResult
@@ -28,6 +31,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import javax.inject.Inject
+import kotlin.coroutines.coroutineContext
 import kotlin.math.roundToInt
 
 @AndroidEntryPoint
@@ -52,9 +56,18 @@ class ExpandVolumeService : Service() {
         val isDirectory: Boolean
     )
 
+    private data class TraversalBudget(
+        val startedAtMs: Long = SystemClock.elapsedRealtime(),
+        var items: Int = 0
+    )
+
     companion object {
         const val CHANNEL_ID = "expand_volume"
         const val NOTIFICATION_ID = 1005
+        private const val MAX_REBUILD_TREE_DEPTH = 64
+        private const val MAX_REBUILD_ITEMS = 100_000
+        private const val MAX_REBUILD_DURATION_MS = 24L * 60L * 60L * 1000L
+        private const val COPY_CHUNK_BYTES = 8L * 1024L * 1024L
 
         private val _progress = MutableStateFlow<Progress?>(null)
         val progress: StateFlow<Progress?> = _progress.asStateFlow()
@@ -123,6 +136,7 @@ class ExpandVolumeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private suspend fun expandInPlace(p: ExpandVolumeParams.Params): CryptoResult<Unit> {
+        validatePasswords(p)
         updateProgress(Progress(0.1f, getString(R.string.expand_progress_inspecting)))
         val keyData = readKeyfiles(p.keyfilePaths)
         val result = if (p.safFd >= 0) {
@@ -149,6 +163,7 @@ class ExpandVolumeService : Service() {
     }
 
     private suspend fun safeRebuild(p: ExpandVolumeParams.Params): CryptoResult<Unit> {
+        validatePasswords(p)
         updateProgress(Progress(0.05f, getString(R.string.expand_progress_inspecting)))
         val keyData = readKeyfiles(p.keyfilePaths)
         val hiddenKeyData = readKeyfiles(p.hiddenKeyfilePaths)
@@ -261,7 +276,14 @@ class ExpandVolumeService : Service() {
     }
 
     private fun preflightFreeSpace(p: ExpandVolumeParams.Params, originalFileSizeBytes: Long): String? {
-        val requiredScratch = ExpandVolumeSpaceGuard.requiredScratchBytes(p.targetDataSizeBytes)
+        val requiredScratch = if (p.path.isBlank()) {
+            ExpandVolumeSpaceGuard.addSaturating(
+                ExpandVolumeSpaceGuard.requiredScratchBytes(p.targetDataSizeBytes),
+                originalFileSizeBytes
+            )
+        } else {
+            ExpandVolumeSpaceGuard.requiredScratchBytes(p.targetDataSizeBytes)
+        }
         if (p.path.isNotBlank()) {
             val free = ExpandVolumeSpaceGuard.usableSpaceForFileTarget(p.path, filesDir)
             return if (free < requiredScratch) formatSpaceError(requiredScratch, free) else null
@@ -286,6 +308,14 @@ class ExpandVolumeService : Service() {
             FileUtils.getHumanReadableSize(required),
             FileUtils.getHumanReadableSize(available)
         )
+
+    private fun validatePasswords(p: ExpandVolumeParams.Params) {
+        val outerOk = VaultPasswordPolicy.isWithinVeraCryptLimit(p.password)
+        val hiddenOk = !p.includeHidden || VaultPasswordPolicy.isWithinVeraCryptLimit(p.hiddenPassword)
+        if (!outerOk || !hiddenOk) {
+            throw IllegalStateException(VaultPasswordPolicy.violationMessage())
+        }
+    }
 
     private suspend fun inspectOriginal(
         p: ExpandVolumeParams.Params,
@@ -356,16 +386,16 @@ class ExpandVolumeService : Service() {
         val src = (sourceHandle as CryptoResult.Success).value
         val dst = (targetHandle as CryptoResult.Success).value
         return try {
-            val expected = snapshot(src)
+            val expected = snapshot(src, budget = TraversalBudget())
             val total = expected.filter { !it.isDirectory }.sumOf { it.size }.coerceAtLeast(1L)
             var copied = 0L
-            val rc = copyDirectory(src, dst, "/", total) { bytes ->
+            val rc = copyDirectory(src, dst, "/", total, budget = TraversalBudget()) { bytes ->
                 copied += bytes
                 val fraction = startFraction + ((endFraction - startFraction) * (copied.toDouble() / total.toDouble())).toFloat()
                 updateProgress(Progress(fraction.coerceIn(startFraction, endFraction), getString(R.string.expand_progress_copying_files)))
             }
             if (rc != VeraCryptEngine.ERR_OK) return CryptoResult.Failure(rc.toCryptoError())
-            val actual = snapshot(dst)
+            val actual = snapshot(dst, budget = TraversalBudget())
             if (expected != actual) return CryptoResult.Failure(CryptoError.FILESYSTEM_ERROR)
             CryptoResult.Success(Unit)
         } finally {
@@ -404,21 +434,27 @@ class ExpandVolumeService : Service() {
         )
     }
 
-    private fun copyDirectory(
+    private suspend fun copyDirectory(
         sourceHandle: Long,
         targetHandle: Long,
         path: String,
         totalBytes: Long,
+        depth: Int = 0,
+        budget: TraversalBudget,
         onCopied: (Long) -> Unit
     ): Int {
+        coroutineContext.ensureActive()
+        checkTraversalBudget(depth, budget)
         val entries = cryptoEngine.nativeListFiles(sourceHandle, path).sortedWith(
             compareByDescending<NativeFileInfo> { it.isDirectory }.thenBy { it.name.lowercase() }
         )
         for (entry in entries) {
+            coroutineContext.ensureActive()
+            checkTraversalBudget(depth + 1, budget)
             if (entry.isDirectory) {
                 val mkdir = cryptoEngine.nativeCreateDirectory(targetHandle, entry.path)
                 if (mkdir != VeraCryptEngine.ERR_OK && mkdir != VeraCryptEngine.ERR_FILE) return mkdir
-                val nested = copyDirectory(sourceHandle, targetHandle, entry.path, totalBytes, onCopied)
+                val nested = copyDirectory(sourceHandle, targetHandle, entry.path, totalBytes, depth + 1, budget, onCopied)
                 if (nested != VeraCryptEngine.ERR_OK) return nested
                 cryptoEngine.nativeSetModifiedTime(targetHandle, entry.path, entry.lastModified)
             } else {
@@ -441,12 +477,12 @@ class ExpandVolumeService : Service() {
             val length = minOf(chunkSize.toLong(), file.size - offset).toInt()
             val chunk = cryptoEngine.nativeReadFile(sourceHandle, file.path, offset, length)
                 ?: return VeraCryptEngine.ERR_READ
-            if (chunk.isEmpty() && length > 0) return VeraCryptEngine.ERR_READ
+            if (chunk.size != length) return VeraCryptEngine.ERR_READ
             val rc = cryptoEngine.nativeWriteFile(targetHandle, file.path, chunk, offset)
             chunk.fill(0)
             if (rc != VeraCryptEngine.ERR_OK) return rc
-            offset += length
-            onCopied(length.toLong())
+            offset += chunk.size
+            onCopied(chunk.size.toLong())
         }
         if (file.size == 0L) {
             val rc = cryptoEngine.nativeWriteFile(targetHandle, file.path, ByteArray(0), 0)
@@ -456,16 +492,34 @@ class ExpandVolumeService : Service() {
         return VeraCryptEngine.ERR_OK
     }
 
-    private fun snapshot(handle: Long, path: String = "/"): List<SnapshotEntry> {
+    private suspend fun snapshot(
+        handle: Long,
+        path: String = "/",
+        depth: Int = 0,
+        budget: TraversalBudget
+    ): List<SnapshotEntry> {
+        coroutineContext.ensureActive()
+        checkTraversalBudget(depth, budget)
         val out = mutableListOf<SnapshotEntry>()
         cryptoEngine.nativeListFiles(handle, path).sortedBy { it.path }.forEach { entry ->
+            checkTraversalBudget(depth + 1, budget)
             out += SnapshotEntry(entry.path, entry.size, entry.isDirectory)
-            if (entry.isDirectory) out += snapshot(handle, entry.path)
+            if (entry.isDirectory) out += snapshot(handle, entry.path, depth + 1, budget)
         }
         return out
     }
 
+    private fun checkTraversalBudget(depth: Int, budget: TraversalBudget) {
+        if (depth > MAX_REBUILD_TREE_DEPTH) throw IllegalStateException(getString(R.string.expand_error_filesystem))
+        budget.items++
+        if (budget.items > MAX_REBUILD_ITEMS) throw IllegalStateException(getString(R.string.expand_error_filesystem))
+        if (SystemClock.elapsedRealtime() - budget.startedAtMs > MAX_REBUILD_DURATION_MS) {
+            throw IllegalStateException(getString(R.string.expand_error_filesystem))
+        }
+    }
+
     private fun replaceOriginal(p: ExpandVolumeParams.Params, temp: File) {
+        val expectedSize = temp.length()
         if (p.path.isNotBlank()) {
             val original = File(p.path)
             val backup = File(original.parentFile, "${original.name}.expand.bak")
@@ -475,28 +529,74 @@ class ExpandVolumeService : Service() {
                 backup.renameTo(original)
                 throw IllegalStateException(getString(R.string.expand_error_replace_failed))
             }
+            if (original.length() != expectedSize) {
+                original.delete()
+                backup.renameTo(original)
+                throw IllegalStateException(getString(R.string.expand_error_replace_failed))
+            }
             backup.delete()
             return
         }
 
         val uri = Uri.parse(p.safUri)
-        val pfd = contentResolver.openFileDescriptor(uri, "rwt")
+        val backup = File(cacheDir, "arcanum_expand_backup_${p.containerId}_${System.currentTimeMillis()}.hc")
+        try {
+            copySafToFile(uri, backup)
+            try {
+                copyFileToSaf(temp, uri)
+                if (safLength(uri) != expectedSize) throw IllegalStateException(getString(R.string.expand_error_replace_failed))
+            } catch (t: Throwable) {
+                runCatching { copyFileToSaf(backup, uri) }
+                throw t
+            }
+        } finally {
+            FileUtils.secureZeroAndDelete(backup)
+        }
+    }
+
+    private fun copySafToFile(uri: Uri, target: File) {
+        val pfd = contentResolver.openFileDescriptor(uri, "r")
+            ?: throw IllegalStateException(getString(R.string.expand_error_saf_resize_unsupported))
+        pfd.use { inPfd ->
+            val expected = inPfd.statSize
+            if (expected < 0L) throw IllegalStateException(getString(R.string.expand_error_saf_resize_unsupported))
+            FileInputStream(inPfd.fileDescriptor).channel.use { input ->
+                FileOutputStream(target).channel.use { output ->
+                    var position = 0L
+                    while (position < expected) {
+                        val copied = input.transferTo(position, COPY_CHUNK_BYTES, output)
+                        if (copied <= 0L) throw IllegalStateException(getString(R.string.expand_error_replace_failed))
+                        position += copied
+                    }
+                    output.force(true)
+                }
+            }
+            if (target.length() != expected) throw IllegalStateException(getString(R.string.expand_error_replace_failed))
+        }
+    }
+
+    private fun copyFileToSaf(source: File, uri: Uri) {
+        val expected = source.length()
+        val pfd = contentResolver.openFileDescriptor(uri, "rw")
             ?: throw IllegalStateException(getString(R.string.expand_error_saf_resize_unsupported))
         pfd.use { outPfd ->
-            FileInputStream(temp).channel.use { input ->
+            FileInputStream(source).channel.use { input ->
                 FileOutputStream(outPfd.fileDescriptor).channel.use { output ->
-                    output.truncate(0)
                     var position = 0L
-                    while (position < temp.length()) {
-                        val written = input.transferTo(position, 8L * 1024L * 1024L, output)
+                    while (position < expected) {
+                        val written = input.transferTo(position, COPY_CHUNK_BYTES, output)
                         if (written <= 0L) throw IllegalStateException(getString(R.string.expand_error_replace_failed))
                         position += written
                     }
+                    output.truncate(expected)
                     output.force(true)
                 }
             }
         }
     }
+
+    private fun safLength(uri: Uri): Long =
+        contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
 
     private suspend fun updateRepositoryAfterSuccess(p: ExpandVolumeParams.Params) {
         val size = if (p.path.isNotBlank()) {
@@ -509,12 +609,13 @@ class ExpandVolumeService : Service() {
     }
 
     private fun readKeyfiles(paths: List<String>): List<ByteArray> =
-        paths.mapNotNull { path -> runCatching { File(path).readBytes() }.getOrNull() }
+        paths.map { path ->
+            FileUtils.readKeyfileFileBytes(File(path))
+                ?: throw IllegalStateException(getString(R.string.expand_error_io))
+        }
 
     private fun updateProgress(progress: Progress) {
         _progress.value = progress
-        getSystemService(NotificationManager::class.java)
-            .notify(NOTIFICATION_ID, buildNotification(progress.fraction, progress.message))
     }
 
     private fun createNotificationChannel() {
@@ -525,7 +626,10 @@ class ExpandVolumeService : Service() {
                     CHANNEL_ID,
                     getString(R.string.notif_channel_expand_volume),
                     NotificationManager.IMPORTANCE_LOW
-                ).apply { description = getString(R.string.notif_channel_expand_volume_desc) }
+                ).apply {
+                    description = getString(R.string.notif_channel_expand_volume_desc)
+                    lockscreenVisibility = Notification.VISIBILITY_SECRET
+                }
             )
         }
     }
@@ -539,6 +643,7 @@ class ExpandVolumeService : Service() {
             .setProgress(100, pct, pct == 0)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .build()
     }
 

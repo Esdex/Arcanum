@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import zip.arcanum.R
+import zip.arcanum.core.security.VaultPasswordPolicy
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
@@ -61,33 +62,31 @@ class ChangeKeyfileService : Service() {
 
         serviceScope.launch {
             try {
-                val result = try {
-                    if (p.safFd >= 0) {
-                        cryptoEngine.changeKeyfileFd(
-                            fd               = p.safFd,
-                            password         = p.password,
-                            oldKeyfilePaths  = p.oldKeyfilePaths,
-                            pim              = p.pim,
-                            newKeyfilePaths  = p.newKeyfilePaths,
-                            newHashAlgorithm = p.newHashAlgorithm,
-                            extraEntropy     = p.extraEntropy
-                        )
-                    } else {
-                        cryptoEngine.changeKeyfile(
-                            path             = p.path,
-                            password         = p.password,
-                            oldKeyfilePaths  = p.oldKeyfilePaths,
-                            pim              = p.pim,
-                            newKeyfilePaths  = p.newKeyfilePaths,
-                            newHashAlgorithm = p.newHashAlgorithm,
-                            extraEntropy     = p.extraEntropy
-                        )
-                    }
-                } finally {
-                    p.safPfd?.close()
-                    p.oldKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-                    p.newKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-                    p.extraEntropy.fill(0)
+                if (!VaultPasswordPolicy.isWithinVeraCryptLimit(p.password)) {
+                    _state.value = State.Failure(VaultPasswordPolicy.violationMessage())
+                    stopSelf()
+                    return@launch
+                }
+                val result = if (p.safFd >= 0) {
+                    cryptoEngine.changeKeyfileFd(
+                        fd               = p.safFd,
+                        password         = p.password,
+                        oldKeyfilePaths  = p.oldKeyfilePaths,
+                        pim              = p.pim,
+                        newKeyfilePaths  = p.newKeyfilePaths,
+                        newHashAlgorithm = p.newHashAlgorithm,
+                        extraEntropy     = p.extraEntropy
+                    )
+                } else {
+                    cryptoEngine.changeKeyfile(
+                        path             = p.path,
+                        password         = p.password,
+                        oldKeyfilePaths  = p.oldKeyfilePaths,
+                        pim              = p.pim,
+                        newKeyfilePaths  = p.newKeyfilePaths,
+                        newHashAlgorithm = p.newHashAlgorithm,
+                        extraEntropy     = p.extraEntropy
+                    )
                 }
 
                 _state.value = when (result) {
@@ -98,6 +97,11 @@ class ChangeKeyfileService : Service() {
             } catch (e: CancellationException) {
                 _state.value = State.Failure("CANCELLED")
                 throw e
+            } finally {
+                p.safPfd?.close()
+                p.oldKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+                p.newKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+                p.extraEntropy.fill(0)
             }
         }
 
@@ -118,7 +122,10 @@ class ChangeKeyfileService : Service() {
                 CHANNEL_ID,
                 getString(R.string.notif_channel_change_keyfile),
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { description = getString(R.string.notif_channel_change_keyfile_desc) }
+            ).apply {
+                description = getString(R.string.notif_channel_change_keyfile_desc)
+                lockscreenVisibility = Notification.VISIBILITY_SECRET
+            }
             nm.createNotificationChannel(ch)
         }
     }
@@ -131,5 +138,6 @@ class ChangeKeyfileService : Service() {
             .setProgress(0, 0, true)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .build()
 }

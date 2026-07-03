@@ -66,6 +66,8 @@ class ContainerRepository @Inject constructor(
 
     fun getPimForContainer(id: String): Int = mountedPims[id] ?: 0
 
+    fun getMountedHandlesSnapshot(): Map<String, Long> = mountedHandles.toMap()
+
     suspend fun unmountContainer(id: String) {
         mountedHandles.remove(id)
         mountedPims.remove(id)

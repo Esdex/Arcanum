@@ -5,9 +5,11 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import java.io.File
+import java.io.InputStream
 import java.io.RandomAccessFile
 
 object FileUtils {
+    const val MAX_KEYFILE_BYTES = 1024L * 1024L
 
     /**
      * Reads a SAF URI into a ByteArray without writing anything to disk.
@@ -20,7 +22,7 @@ object FileUtils {
         )?.use { cursor ->
             if (cursor.moveToFirst()) cursor.getString(0) else null
         } ?: uri.lastPathSegment ?: "keyfile"
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+        val bytes = context.contentResolver.openInputStream(uri)?.use { readKeyfileBounded(it) } ?: return null
         bytes to displayName
     } catch (_: Exception) { null }
 
@@ -38,11 +40,36 @@ object FileUtils {
 
         val cacheFile = File(context.cacheDir, "arcanum_keyfile_${System.currentTimeMillis()}")
         context.contentResolver.openInputStream(uri)?.use { input ->
-            cacheFile.outputStream().use { output -> input.copyTo(output) }
+            cacheFile.outputStream().use { output ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var total = 0L
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    total += read
+                    if (total > MAX_KEYFILE_BYTES) {
+                        cacheFile.delete()
+                        return null
+                    }
+                    output.write(buffer, 0, read)
+                }
+                if (total == 0L) {
+                    cacheFile.delete()
+                    return null
+                }
+            }
         }
         cacheFile.absolutePath to displayName
     } catch (_: Exception) { null }
 
+    fun readKeyfileFileBytes(file: File): ByteArray? {
+        return try {
+            if (!file.isFile || file.length() <= 0L || file.length() > MAX_KEYFILE_BYTES) null
+            else file.inputStream().use { readKeyfileBounded(it) }
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     fun secureZeroAndDelete(file: File) {
         try {
@@ -80,6 +107,16 @@ object FileUtils {
     fun getExtension(fileName: String): String =
         fileName.substringAfterLast('.', "").lowercase()
 
+    fun sanitizeFatFileName(value: String?, fallback: String = "file"): String {
+        val sanitized = value.orEmpty()
+            .replace(Regex("[\\\\/\\p{Cntrl}]"), "_")
+            .trim()
+            .trim('.')
+            .takeUnless { it == "." || it == ".." }
+            .orEmpty()
+        return sanitized.ifBlank { fallback }
+    }
+
     fun isImageFile(fileName: String): Boolean =
         getExtension(fileName) in setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "heif")
 
@@ -104,4 +141,19 @@ object FileUtils {
     fun safUriDocumentId(uri: Uri): String? = try {
         DocumentsContract.getDocumentId(uri)
     } catch (_: Exception) { null }
+
+    private fun readKeyfileBounded(input: InputStream): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            total += read
+            if (total > MAX_KEYFILE_BYTES) error("Keyfile exceeds VeraCrypt limit")
+            out.write(buffer, 0, read)
+        }
+        if (total == 0L) error("Empty keyfile")
+        return out.toByteArray()
+    }
 }

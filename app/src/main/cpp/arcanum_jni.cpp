@@ -1334,6 +1334,18 @@ static jobject make_volume_geometry(JNIEnv *env,
     return obj;
 }
 
+static bool vc_geometry_valid(uint64_t fileSize, uint64_t dataSize, uint64_t dataOffset) {
+    if (dataSize == 0) return false;
+    if ((dataSize % VC_SECTOR_SIZE) != 0 || (dataOffset % VC_SECTOR_SIZE) != 0) return false;
+    if (dataOffset > fileSize) return false;
+    if (dataSize > fileSize - dataOffset) return false;
+    return true;
+}
+
+static bool vc_hidden_size_valid(uint64_t dataSize, uint64_t hiddenSize) {
+    return hiddenSize == 0 || hiddenSize < dataSize;
+}
+
 static int detect_filesystem_type(int fd,
                                   uint64_t dataOff,
                                   uint64_t dataSize,
@@ -1414,6 +1426,11 @@ static jobject inspect_volume_fd_common(JNIEnv *env,
     secure_memset((volatile uint8_t *)effPwd, 0, sizeof(effPwd));
 
     if (rc != ERR_OK) {
+        secure_memset((volatile uint8_t *)masterKey, 0, sizeof(masterKey));
+        return nullptr;
+    }
+    if (!vc_geometry_valid(fileSize, dataSz, dataOff) ||
+        !vc_hidden_size_valid(dataSz, hiddenVolSize)) {
         secure_memset((volatile uint8_t *)masterKey, 0, sizeof(masterKey));
         return nullptr;
     }
@@ -1952,6 +1969,13 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
 
     secure_memset(effPwd, 0, sizeof(effPwd));
     if (rc != ERR_OK) { secure_memset(masterKey, 0, sizeof(masterKey)); secure_memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)rc; }
+    if (!vc_geometry_valid(fileSize, dataSz, dataOff) ||
+        !vc_hidden_size_valid(dataSz, hiddenVolSize)) {
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        secure_memset(hidEffPwd, 0, sizeof(hidEffPwd));
+        close(fd);
+        return (jlong)ERR_WRONG_PASSWORD;
+    }
 
     uint64_t hiddenBoundary = 0;
     if (!authIsHidden && hiddenVolSize > 0)
@@ -2081,6 +2105,13 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
         secure_memset(masterKey, 0, sizeof(masterKey));
         secure_memset(hidEffPwd, 0, sizeof(hidEffPwd));
         close(fd); return (jlong)rc;
+    }
+    if (!vc_geometry_valid(fileSize, dataSz, dataOff) ||
+        !vc_hidden_size_valid(dataSz, hiddenVolSize)) {
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        secure_memset(hidEffPwd, 0, sizeof(hidEffPwd));
+        close(fd);
+        return (jlong)ERR_WRONG_PASSWORD;
     }
 
     uint64_t hiddenBoundary = 0;
@@ -2302,42 +2333,57 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
     if (f_opendir(&dir, fullPath) != FR_OK)
         return env->NewObjectArray(0, infoCls, nullptr);
 
-    int count = 0;
-    while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0])
-        count++;
-    f_closedir(&dir);
+    struct ValidEntry {
+        std::string name;
+        std::string path;
+        uint64_t size;
+        bool isDir;
+        jlong modifiedAt;
+    };
+    std::vector<ValidEntry> entries;
 
-    jobjectArray result = env->NewObjectArray(count, infoCls, nullptr);
-    if (f_opendir(&dir, fullPath) != FR_OK) return result;
-
-    int idx = 0;
-    while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0] && idx < count) {
+    while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0]) {
         bool isDir = (fno.fattrib & AM_DIR) != 0;
 
         char ep[512];
-        snprintf(ep, sizeof(ep), "%s/%s",
-                 dirPath.empty() ? "/" : dirPath.c_str(), fno.fname);
+        if (dirPath.empty() || dirPath == "/") {
+            snprintf(ep, sizeof(ep), "/%s", fno.fname);
+        } else {
+            snprintf(ep, sizeof(ep), "%s/%s", dirPath.c_str(), fno.fname);
+        }
 
         // Skip entries whose names are not valid UTF-8 — NewStringUTF aborts on invalid bytes.
         // FF_LFN_UNICODE 2 makes FatFs produce UTF-8; this guard catches any residual garbage.
         if (!is_valid_utf8(fno.fname) || !is_valid_utf8(ep)) {
             LOGE("nativeListFiles: skipping entry with non-UTF-8 name (binary bytes in fname)");
-            continue;  // don't advance idx — next valid entry fills this slot
+            continue;
         }
+        entries.push_back(ValidEntry{
+            fno.fname,
+            ep,
+            (uint64_t)fno.fsize,
+            isDir,
+            fatfs_to_epoch_ms(fno.fdate, fno.ftime)
+        });
+    }
+    f_closedir(&dir);
 
-        jstring jName = env->NewStringUTF(fno.fname);
-        jstring jPath = env->NewStringUTF(ep);
+    jobjectArray result = env->NewObjectArray((jsize)entries.size(), infoCls, nullptr);
+    for (jsize idx = 0; idx < (jsize)entries.size(); idx++) {
+        const ValidEntry &entry = entries[(size_t)idx];
+
+        jstring jName = env->NewStringUTF(entry.name.c_str());
+        jstring jPath = env->NewStringUTF(entry.path.c_str());
         jobject fi    = env->NewObject(infoCls, ctor,
                                        jName, jPath,
-                                       (jlong)fno.fsize,
-                                       (jboolean)(isDir ? 1 : 0),
-                                       fatfs_to_epoch_ms(fno.fdate, fno.ftime));
-        env->SetObjectArrayElement(result, idx++, fi);
+                                       (jlong)entry.size,
+                                       (jboolean)(entry.isDir ? 1 : 0),
+                                       entry.modifiedAt);
+        env->SetObjectArrayElement(result, idx, fi);
         env->DeleteLocalRef(jName);
         env->DeleteLocalRef(jPath);
         env->DeleteLocalRef(fi);
     }
-    f_closedir(&dir);
     return result;
 }
 
@@ -2372,23 +2418,13 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
     if (!buf) { f_close(&fil); return env->NewByteArray(0); }
 
     UINT br = 0;
-    f_read(&fil, buf, (UINT)length, &br);
+    FRESULT fr = f_read(&fil, buf, (UINT)length, &br);
     env->ReleaseByteArrayElements(result, buf, 0);
     f_close(&fil);
 
-    if ((jint)br < length) {
-        // Return a trimmed array sized to actual bytes read.
-        // Re-pin result to copy, then release and delete the original local ref.
-        jbyteArray trimmed = env->NewByteArray((jsize)br);
-        if (trimmed && br > 0) {
-            jbyte *src = env->GetByteArrayElements(result, nullptr);
-            if (src) {
-                env->SetByteArrayRegion(trimmed, 0, (jsize)br, src);
-                env->ReleaseByteArrayElements(result, src, JNI_ABORT);
-            }
-        }
+    if (fr != FR_OK || (jint)br != length) {
         env->DeleteLocalRef(result);
-        return trimmed;
+        return nullptr;
     }
     return result;
 }
@@ -2681,8 +2717,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeDeleteDirectory(
 /* Adds a hidden volume inside an existing outer VeraCrypt container.
    Steps:
    1. Authenticates outer volume with outer password.
-   2. Re-writes both outer headers embedding the hidden size in field28 so
-      that outer-volume writes are blocked from reaching the hidden area.
+   2. Re-writes both outer headers without recording hidden size; hidden
+      protection is enabled only when hidden credentials are supplied at mount.
    3. Writes hidden primary + backup headers.
    4. Formats the hidden area as FAT32.                                   */
 
@@ -2779,12 +2815,12 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
         return ERR_READ;
     }
 
-    /* ── Re-write outer headers with field28 = hiddenVolSize ── */
+    /* ── Re-write outer headers without hidden-size disclosure ── */
     if (write_vc_header(fd, 0,
                         outerDataSz, outerDataOff,
                         outerMasterKey, outerAlgId, outerHashId,
                         (const char*)outerEffPwd, outerEffPwdLen,
-                        (int)outerPim, hidSz, outerPrimSalt) != 0) {
+                        (int)outerPim, 0, outerPrimSalt) != 0) {
         secure_memset(outerMasterKey, 0, sizeof(outerMasterKey));
         secure_memset(outerEffPwd, 0, sizeof(outerEffPwd));
         secure_memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
@@ -2795,7 +2831,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
                     outerDataSz, outerDataOff,
                     outerMasterKey, outerAlgId, outerHashId,
                     (const char*)outerEffPwd, outerEffPwdLen,
-                    (int)outerPim, hidSz, outerBackSalt);
+                    (int)outerPim, 0, outerBackSalt);
     secure_memset(outerMasterKey, 0, sizeof(outerMasterKey));
     secure_memset(outerEffPwd, 0, sizeof(outerEffPwd));
 
@@ -2966,7 +3002,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeFd(
                         outerDataSz, outerDataOff,
                         outerMasterKey, outerAlgId, outerHashId,
                         (const char*)outerEffPwd, outerEffPwdLen,
-                        (int)outerPim, hidSz, outerPrimSalt) != 0) {
+                        (int)outerPim, 0, outerPrimSalt) != 0) {
         secure_memset(outerMasterKey, 0, sizeof(outerMasterKey));
         secure_memset(outerEffPwd, 0, sizeof(outerEffPwd));
         secure_memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
@@ -2976,7 +3012,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeFd(
                     outerDataSz, outerDataOff,
                     outerMasterKey, outerAlgId, outerHashId,
                     (const char*)outerEffPwd, outerEffPwdLen,
-                    (int)outerPim, hidSz, outerBackSalt);
+                    (int)outerPim, 0, outerBackSalt);
     secure_memset(outerMasterKey, 0, sizeof(outerMasterKey));
     secure_memset(outerEffPwd, 0, sizeof(outerEffPwd));
 

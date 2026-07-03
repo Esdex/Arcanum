@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.service.ChangePasswordParams
 import zip.arcanum.arcanum.containers.service.ChangePasswordService
+import zip.arcanum.core.security.VaultPasswordPolicy
 import zip.arcanum.core.utils.FileUtils
 import javax.inject.Inject
 
@@ -135,6 +136,16 @@ class ChangePasswordViewModel @Inject constructor(
             return
         }
         val s = _state.value
+        if (!VaultPasswordPolicy.isWithinVeraCryptLimit(s.oldPassword) ||
+            !VaultPasswordPolicy.isWithinVeraCryptLimit(s.newPassword)
+        ) {
+            _state.update { it.copy(error = VaultPasswordPolicy.violationMessage()) }
+            return
+        }
+        if (VaultPasswordPolicy.hasUnsafeLowPim(s.newPassword, s.newPim)) {
+            _state.update { it.copy(error = VaultPasswordPolicy.lowPimViolationMessage()) }
+            return
+        }
         _state.update { it.copy(isRunning = true, error = null, currentStep = 5) }
 
         // Build SAF fd if needed

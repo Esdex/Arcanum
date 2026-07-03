@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
-import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import dagger.hilt.android.AndroidEntryPoint
@@ -18,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import zip.arcanum.R
+import zip.arcanum.core.security.VaultPasswordPolicy
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
@@ -62,20 +62,29 @@ class ContainerCreationService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification(0f))
 
         serviceScope.launch {
-            val listener = object : VeraCryptEngine.CreationProgressListener {
-                override fun onProgress(progressFraction: Float, speedMbps: Float, bytesWritten: Long) {
-                    _progress.value = CreationProgress(
-                        fraction     = progressFraction,
-                        speedMbps    = speedMbps,
-                        bytesWritten = bytesWritten,
-                        totalBytes   = p.sizeBytes
-                    )
-                    updateNotification(progressFraction)
+            try {
+                if (!VaultPasswordPolicy.isWithinVeraCryptLimit(p.password)) {
+                    _progress.value = CreationProgress(isComplete = true, error = VaultPasswordPolicy.violationMessage())
+                    stopSelf()
+                    return@launch
                 }
-            }
+                if (VaultPasswordPolicy.hasUnsafeLowPim(p.password, p.pim)) {
+                    _progress.value = CreationProgress(isComplete = true, error = VaultPasswordPolicy.lowPimViolationMessage())
+                    stopSelf()
+                    return@launch
+                }
+                val listener = object : VeraCryptEngine.CreationProgressListener {
+                    override fun onProgress(progressFraction: Float, speedMbps: Float, bytesWritten: Long) {
+                        _progress.value = CreationProgress(
+                            fraction     = progressFraction,
+                            speedMbps    = speedMbps,
+                            bytesWritten = bytesWritten,
+                            totalBytes   = p.sizeBytes
+                        )
+                    }
+                }
 
-            val result = try {
-                if (p.safFd >= 0) {
+                val result = if (p.safFd >= 0) {
                     cryptoEngine.createContainerFd(
                         fd               = p.safFd,
                         sizeBytes        = p.sizeBytes,
@@ -104,6 +113,22 @@ class ContainerCreationService : Service() {
                         pim              = p.pim
                     )
                 }
+                if (result is zip.arcanum.crypto.CryptoResult.Success) {
+                    _progress.value = CreationProgress(
+                        fraction     = 1f,
+                        isComplete   = true,
+                        bytesWritten = p.sizeBytes,
+                        totalBytes   = p.sizeBytes
+                    )
+                } else {
+                    val err = (result as? zip.arcanum.crypto.CryptoResult.Failure)?.error?.name
+                    _progress.value = CreationProgress(
+                        fraction   = 0f,
+                        isComplete = true,
+                        error      = err ?: "Unknown error"
+                    )
+                }
+                stopSelf()
             } finally {
                 p.entropyBytes.fill(0)
                 p.safPfd?.close()
@@ -111,23 +136,6 @@ class ContainerCreationService : Service() {
                     p.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
                 }
             }
-
-            if (result is zip.arcanum.crypto.CryptoResult.Success) {
-                _progress.value = CreationProgress(
-                    fraction     = 1f,
-                    isComplete   = true,
-                    bytesWritten = p.sizeBytes,
-                    totalBytes   = p.sizeBytes
-                )
-            } else {
-                val err = (result as? zip.arcanum.crypto.CryptoResult.Failure)?.error?.name
-                _progress.value = CreationProgress(
-                    fraction   = 0f,
-                    isComplete = true,
-                    error      = err ?: "Unknown error"
-                )
-            }
-            stopSelf()
         }
         return START_NOT_STICKY
     }
@@ -148,7 +156,10 @@ class ContainerCreationService : Service() {
                 CHANNEL_ID,
                 getString(R.string.notif_channel_vault_creation),
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { description = getString(R.string.notif_channel_vault_creation_desc) }
+            ).apply {
+                description = getString(R.string.notif_channel_vault_creation_desc)
+                lockscreenVisibility = Notification.VISIBILITY_SECRET
+            }
             nm.createNotificationChannel(ch)
         }
     }
@@ -162,11 +173,7 @@ class ContainerCreationService : Service() {
             .setProgress(100, pct, pct == 0)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .build()
-    }
-
-    private fun updateNotification(fraction: Float) {
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.notify(NOTIFICATION_ID, buildNotification(fraction))
     }
 }

@@ -36,6 +36,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.files.domain.FileClipboard
+import zip.arcanum.arcanum.gallery.AudioPlayerQueue
+import zip.arcanum.arcanum.gallery.MediaViewerQueue
 import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.BuildConfig
 import zip.arcanum.core.database.entities.ContainerEntity
@@ -44,6 +47,8 @@ import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.BiometricCryptoManager
 import zip.arcanum.core.security.BiometricUnlockPayload
+import zip.arcanum.core.security.VaultPasswordPolicy
+import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.CryptoError
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
@@ -63,6 +68,9 @@ class VaultViewModel @Inject constructor(
     private val mountLogger: MountLogger,
     private val prefs: AppPreferences,
     private val externalActivityGuard: ExternalActivityGuard,
+    private val clipboard: FileClipboard,
+    private val audioQueue: AudioPlayerQueue,
+    private val mediaViewerQueue: MediaViewerQueue,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -90,7 +98,7 @@ class VaultViewModel @Inject constructor(
     val biometricUnlockEnabled = prefs.biometricUnlockEnabled.stateIn(
         scope        = viewModelScope,
         started      = SharingStarted.Eagerly,
-        initialValue = true
+        initialValue = false
     )
 
     // True when the installed version is newer than the last version the user acknowledged.
@@ -229,6 +237,12 @@ class VaultViewModel @Inject constructor(
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         onSuccess: (containerId: String) -> Unit
     ) {
+        if (!VaultPasswordPolicy.isWithinVeraCryptLimit(password) ||
+            (!protectHiddenPassword.isNullOrBlank() && !VaultPasswordPolicy.isWithinVeraCryptLimit(protectHiddenPassword))
+        ) {
+            _mountState.value = MountState.Error(VaultPasswordPolicy.violationMessage())
+            return
+        }
         mountJob = viewModelScope.launch {
             _mountState.value = MountState.Loading
             mountLogger.start()
@@ -431,6 +445,7 @@ class VaultViewModel @Inject constructor(
             val handle = repo.getContainerHandle(id)
             if (handle != null) cryptoEngine.unmountContainer(handle)
             repo.unmountContainer(id)
+            clearMediaQueues(id)
             onDone()
         }
     }
@@ -440,6 +455,7 @@ class VaultViewModel @Inject constructor(
             ids.forEach { id ->
                 val handle = repo.getContainerHandle(id)
                 if (handle != null) cryptoEngine.unmountContainer(handle)
+                clearMediaQueues(id)
             }
             repo.deleteContainersById(ids)
         }
@@ -454,17 +470,19 @@ class VaultViewModel @Inject constructor(
     }
 
     fun unmountContainersOnStop(isLocked: Boolean) {
-        if (!isLocked && externalActivityGuard.isActive) return
-        // Skip background unmounting if a container was just mounted — ProcessLifecycleOwner.onStop
-        // can fire during the mount animation or navigation transition, causing the freshly-mounted
-        // container to be unmounted immediately. Screen-off (isLocked=true) is not affected.
-        if (!isLocked && System.currentTimeMillis() - lastMountTimeMillis < 3_000L) return
         viewModelScope.launch {
-            repo.getAllContainersRaw().first().filter { it.isMounted }.forEach { c ->
+            val mounted = repo.getAllContainersRaw().first().filter { it.isMounted }
+            val hasExplicitBackgroundUnmount = mounted.any { it.unmountOnBackground }
+            if (!isLocked && externalActivityGuard.isActive && !hasExplicitBackgroundUnmount) return@launch
+            // Skip incidental stop events immediately after mount only when no mounted vault
+            // explicitly requests background unmounting.
+            if (!isLocked && !hasExplicitBackgroundUnmount && System.currentTimeMillis() - lastMountTimeMillis < 3_000L) return@launch
+            mounted.forEach { c ->
                 if (c.unmountOnBackground || (isLocked && c.unmountOnLock)) {
                     val handle = repo.getContainerHandle(c.id)
                     if (handle != null) cryptoEngine.unmountContainer(handle)
                     repo.unmountContainer(c.id)
+                    clearMediaQueues(c.id)
                 }
             }
         }
@@ -475,7 +493,14 @@ class VaultViewModel @Inject constructor(
             val handle = repo.getContainerHandle(id)
             if (handle != null) cryptoEngine.unmountContainer(handle)
             repo.deleteContainersById(setOf(id))
+            clearMediaQueues(id)
         }
+    }
+
+    private fun clearMediaQueues(containerId: String) {
+        clipboard.clear()
+        audioQueue.clearForContainer(containerId)
+        mediaViewerQueue.clearForContainer(containerId)
     }
 
     // ── Biometric ──────────────────────────────────────────────────────
@@ -554,7 +579,7 @@ class VaultViewModel @Inject constructor(
             }
             val uris = creds.keyfileUris
             val keyfileData = uris.map { uriStr ->
-                try { context.contentResolver.openInputStream(Uri.parse(uriStr))?.use { it.readBytes() } }
+                try { FileUtils.readKeyfileBytes(context, Uri.parse(uriStr))?.first }
                 catch (_: Exception) { null }
             }
             if (keyfileData.any { it == null }) {

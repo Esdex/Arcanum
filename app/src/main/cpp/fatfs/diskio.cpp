@@ -6,6 +6,15 @@
 #include <fcntl.h>
 #include <sys/types.h>
 
+static bool sector_range_valid(const DriveContext *ctx, LBA_t sector, UINT count) {
+    if (count == 0) return false;
+    uint64_t sector64 = (uint64_t)sector;
+    uint64_t count64 = (uint64_t)count;
+    if (sector64 > ctx->sectorCount) return false;
+    if (count64 > ctx->sectorCount - sector64) return false;
+    return true;
+}
+
 DSTATUS disk_initialize(BYTE pdrv) {
     if (pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return STA_NOINIT;
     return 0;
@@ -19,6 +28,7 @@ DSTATUS disk_status(BYTE pdrv) {
 DRESULT disk_read(BYTE pdrv, BYTE *buf, LBA_t sector, UINT count) {
     if (pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return RES_NOTRDY;
     DriveContext *ctx = &g_drives[pdrv];
+    if (!sector_range_valid(ctx, sector, count)) return RES_PARERR;
     uint64_t baseSector = ctx->dataOffset / VC_SECTOR_SIZE;
     for (UINT i = 0; i < count; i++) {
         off_t off = (off_t)(ctx->dataOffset + (uint64_t)(sector + i) * VC_SECTOR_SIZE);
@@ -35,10 +45,12 @@ DRESULT disk_read(BYTE pdrv, BYTE *buf, LBA_t sector, UINT count) {
 DRESULT disk_write(BYTE pdrv, const BYTE *buf, LBA_t sector, UINT count) {
     if (pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return RES_NOTRDY;
     DriveContext *ctx = &g_drives[pdrv];
+    if (!sector_range_valid(ctx, sector, count)) return RES_PARERR;
 
     /* Protect hidden volume area when outer volume is mounted */
     if (ctx->hiddenBoundary > 0) {
-        uint64_t writeEnd = ctx->dataOffset + ((uint64_t)sector + (uint64_t)count) * VC_SECTOR_SIZE;
+        uint64_t sectorEnd = (uint64_t)sector + (uint64_t)count;
+        uint64_t writeEnd = ctx->dataOffset + sectorEnd * VC_SECTOR_SIZE;
         if (writeEnd > ctx->hiddenBoundary) {
             ctx->hiddenBoundaryTripped = true;
             return RES_WRPRT;

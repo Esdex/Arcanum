@@ -1,6 +1,7 @@
 package zip.arcanum.arcanum.containers.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricPrompt
@@ -287,7 +288,7 @@ private fun MountScreenContent(
     var showRemoveBioDialog    by remember { mutableStateOf(false) }
 
     // ── Biometric prompt setup ────────────────────────────────────────────
-    val activity = LocalContext.current as FragmentActivity
+    val activity = LocalActivity.current as FragmentActivity
 
     val onUnlock: (String, Int, Int, String?, Int, List<ByteArray>) -> Unit = { pw, pim, hash, protectPw, protectPim, protectKeyfileData ->
         isMounting = true
