@@ -38,10 +38,10 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Fingerprint
-import androidx.compose.material.icons.outlined.HideSource
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Switch
 import androidx.compose.material3.CircularProgressIndicator
@@ -769,7 +769,7 @@ private fun MountScreenContent(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
-                                            Icons.Outlined.HideSource,
+                                            Icons.Outlined.Shield,
                                             contentDescription = null,
                                             tint     = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(20.dp)

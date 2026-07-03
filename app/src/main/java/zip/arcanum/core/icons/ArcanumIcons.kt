@@ -146,38 +146,32 @@ object ArcanumIcons {
                 lineTo(15f, 7f)
                 lineTo(20f, 7f)
             }
-            // Key bow: full circle, center (9,16) radius 2
+            // Key body + bow hole — EvenOdd fill: key solid, ring hole transparent
             path(
-                fill            = null,
-                stroke          = stroke,
-                strokeLineWidth = 1.5f
+                fill         = SolidColor(Color.White),
+                stroke       = null,
+                pathFillType = PathFillType.EvenOdd
             ) {
-                moveTo(7f, 16f)
-                arcTo(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = false, 11f, 16f)
-                arcTo(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = false, 7f, 16f)
+                // Outer key contour (Icons.Outlined.Key scaled ×0.55, centered at (12,16))
+                moveTo(17.0f, 14.9f)
+                lineTo(12.4f, 14.9f)
+                curveTo(11.9f, 13.6f, 10.7f, 12.7f, 9.3f, 12.7f)
+                curveTo(7.4f, 12.7f, 6.0f, 14.2f, 6.0f, 16.0f)
+                curveTo(6.0f, 17.8f, 7.4f, 19.3f, 9.3f, 19.3f)
+                curveTo(10.7f, 19.3f, 11.9f, 18.4f, 12.4f, 17.1f)
+                lineTo(12.6f, 17.1f)
+                lineTo(13.7f, 18.2f)
+                lineTo(14.8f, 17.1f)
+                lineTo(15.9f, 18.2f)
+                lineTo(18.1f, 16.0f)
                 close()
-            }
-            // Key shaft: from right edge of bow to far right
-            path(
-                fill            = null,
-                stroke          = stroke,
-                strokeLineWidth = 1.5f,
-                strokeLineCap   = StrokeCap.Round
-            ) {
-                moveTo(11f, 16f)
-                lineTo(17f, 16f)
-            }
-            // Key teeth: two downward notches on the shaft
-            path(
-                fill            = null,
-                stroke          = stroke,
-                strokeLineWidth = 1.5f,
-                strokeLineCap   = StrokeCap.Round
-            ) {
-                moveTo(13.5f, 16f)
-                lineTo(13.5f, 18f)
-                moveTo(15.5f, 16f)
-                lineTo(15.5f, 17.5f)
+                // Inner circle (hole via EvenOdd)
+                moveTo(9.3f, 17.7f)
+                curveTo(8.3f, 17.7f, 7.6f, 16.9f, 7.6f, 16.0f)
+                curveTo(7.6f, 15.1f, 8.3f, 14.4f, 9.3f, 14.4f)
+                curveTo(10.2f, 14.4f, 10.9f, 15.1f, 10.9f, 16.0f)
+                curveTo(10.9f, 16.9f, 10.2f, 17.7f, 9.3f, 17.7f)
+                close()
             }
         }.build()
     }
