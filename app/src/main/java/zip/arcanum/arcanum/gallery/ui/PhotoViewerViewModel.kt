@@ -312,11 +312,13 @@ class PhotoViewerViewModel @Inject constructor(
         val file = _uiState.value.currentFile ?: return
         val handle = repo.getContainerHandle(file.containerId)
         viewModelScope.launch(Dispatchers.IO) {
-            if (handle != null) {
-                try { engine.nativeDeleteFile(handle, file.relativePath) } catch (_: Exception) {}
+            val deleted = handle != null && runCatching {
+                engine.nativeDeleteFile(handle, file.relativePath) == VeraCryptEngine.ERR_OK
+            }.getOrDefault(false)
+            if (deleted) {
+                mediaFileDao.deleteMediaFile(file)
+                launch(Dispatchers.Main) { onDone() }
             }
-            mediaFileDao.deleteMediaFile(file)
-            launch(Dispatchers.Main) { onDone() }
         }
     }
 
@@ -402,7 +404,8 @@ class PhotoViewerViewModel @Inject constructor(
                 if (output != null) {
                     output.use { out ->
                         while (offset < file.size) {
-                            val chunk = engine.nativeReadFile(handle, file.relativePath, offset, chunkSize)
+                            val toRead = minOf(chunkSize.toLong(), file.size - offset).toInt()
+                            val chunk = engine.nativeReadFile(handle, file.relativePath, offset, toRead)
                                 ?: break
                             if (chunk.isEmpty()) break
                             out.write(chunk)
@@ -451,4 +454,10 @@ class PhotoViewerViewModel @Inject constructor(
         isDirectory = false,
         lastModified = dateModified
     )
+
+    override fun onCleared() {
+        loadingJob?.cancel()
+        _uiState.value = UiState(isLoading = false)
+        super.onCleared()
+    }
 }

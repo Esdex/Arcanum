@@ -162,6 +162,7 @@ import zip.arcanum.core.components.LocalHazeState
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.theme.ArcanumHazeStyle
 import zip.arcanum.core.theme.LocalAmoledMode
+import zip.arcanum.core.utils.FileProviderGrantUtils
 import zip.arcanum.crypto.NativeFileInfo
 import androidx.compose.material3.TopAppBarDefaults
 import java.io.File
@@ -176,6 +177,11 @@ private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "mov", "m4v", "webm", 
 private val MEDIA_EXTENSIONS = setOf(
     "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif",
 ) + VIDEO_EXTENSIONS
+
+private data class FileListTargetState(
+    val path: String,
+    val files: List<NativeFileInfo>
+)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -231,6 +237,7 @@ fun FileManagerScreen(
                     viewModel.clearSensitiveStateIfUnmounted()
                 }
                 Lifecycle.Event.ON_RESUME -> {
+                    FileProviderGrantUtils.revokeActiveGrants(context)
                     viewModel.clearTempFiles(context)
                     if (!viewModel.clearSensitiveStateIfUnmounted()) {
                         viewModel.refreshCurrentDirectory()
@@ -240,7 +247,10 @@ fun FileManagerScreen(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            FileProviderGrantUtils.revokeActiveGrants(context)
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     // Forward notifications
@@ -260,7 +270,7 @@ fun FileManagerScreen(
                     setDataAndType(uri, mimeType)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                context.startActivity(intent)
+                FileProviderGrantUtils.startReadOnlyIntent(context, intent, listOf(uri))
             }
             viewModel.clearTempFileToOpen()
         }
@@ -417,9 +427,9 @@ fun FileManagerScreen(
                     }
                     state.viewMode == ViewMode.LIST -> {
                         AnimatedContent(
-                            targetState = state.currentPath,
+                            targetState = FileListTargetState(state.currentPath, state.files),
                             transitionSpec = {
-                                val deeper = targetState.length > initialState.length
+                                val deeper = targetState.path.length > initialState.path.length
                                 if (deeper) {
                                     (slideInHorizontally { it } + fadeIn()) togetherWith
                                     (slideOutHorizontally { -it } + fadeOut())
@@ -428,10 +438,11 @@ fun FileManagerScreen(
                                     (slideOutHorizontally { it } + fadeOut())
                                 }
                             },
+                            contentKey = { it.path },
                             label = "file_list"
-                        ) {
+                        ) { target ->
                             FileListContent(
-                                files           = state.files,
+                                files           = target.files,
                                 selectedItems   = state.selectedItems,
                                 isSelectionMode = state.isSelectionMode,
                                 searchQuery     = state.searchQuery,
@@ -2114,9 +2125,12 @@ private fun launchShareIntent(context: Context, files: List<File>, mimeType: Str
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
-    runCatching {
-        context.startActivity(Intent.createChooser(intent, context.getString(R.string.files_share_chooser_title)))
-    }
+    FileProviderGrantUtils.startReadOnlyIntent(
+        context = context,
+        intent = intent,
+        uris = uris,
+        chooserTitle = context.getString(R.string.files_share_chooser_title)
+    )
 }
 
 private fun fileTypeIconAndColor(name: String, isDirectory: Boolean): Pair<ImageVector, Color> {

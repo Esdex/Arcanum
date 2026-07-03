@@ -129,7 +129,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.app.Activity
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
@@ -150,6 +149,7 @@ import zip.arcanum.core.components.LocalHazeState
 import zip.arcanum.core.components.WheelDateTimePicker
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.utils.FileProviderGrantUtils
 import java.io.File
 import java.text.DecimalFormat
 import java.time.Instant
@@ -224,6 +224,10 @@ fun MediaViewerScreen(
         viewModel.beginExternalActivity()
         runCatching { exportLauncher.launch(null) }
             .onFailure { viewModel.finishExternalActivity() }
+    }
+
+    DisposableEffect(context) {
+        onDispose { FileProviderGrantUtils.revokeActiveGrants(context) }
     }
 
     LaunchedEffect(uiState.sharePayload) {
@@ -1278,9 +1282,12 @@ private fun launchShareIntent(context: Context, files: List<File>, mimeType: Str
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
-    runCatching {
-        context.startActivity(Intent.createChooser(intent, context.getString(R.string.files_share_chooser_title)))
-    }
+    FileProviderGrantUtils.startReadOnlyIntent(
+        context = context,
+        intent = intent,
+        uris = uris,
+        chooserTitle = context.getString(R.string.files_share_chooser_title)
+    )
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────

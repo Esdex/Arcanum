@@ -23,16 +23,24 @@ class EncryptedDataSource(
     }
 
     override fun open(dataSpec: DataSpec): Long {
+        if (dataSpec.position < 0L || (fileSize > 0L && dataSpec.position > fileSize)) {
+            position = fileSize
+            return 0L
+        }
         position = dataSpec.position
         return if (fileSize > 0L) fileSize - position else C.LENGTH_UNSET.toLong()
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (position >= fileSize) return C.RESULT_END_OF_INPUT
-        val toRead = minOf(length.toLong(), fileSize - position, CHUNK_SIZE.toLong()).toInt()
+        if (offset < 0 || length <= 0 || offset > buffer.size) return C.RESULT_END_OF_INPUT
+        val capacity = buffer.size - offset
+        if (capacity <= 0) return C.RESULT_END_OF_INPUT
+        val toRead = minOf(length.toLong(), capacity.toLong(), fileSize - position, CHUNK_SIZE.toLong()).toInt()
         val chunk = engine.nativeReadFile(handle, filePath, position, toRead)
             ?.takeIf { it.isNotEmpty() }
             ?: return C.RESULT_END_OF_INPUT
+        if (chunk.size > toRead) return C.RESULT_END_OF_INPUT
         chunk.copyInto(buffer, offset)
         position += chunk.size
         return chunk.size

@@ -15,4 +15,11 @@ class AudioPlayerQueue @Inject constructor() {
         this.playlist = files
         this.currentIndex = startIndex.coerceIn(0, (files.size - 1).coerceAtLeast(0))
     }
+
+    fun clearForContainer(containerId: String) {
+        if (this.containerId != containerId) return
+        this.containerId = ""
+        this.playlist = emptyList()
+        this.currentIndex = 0
+    }
 }

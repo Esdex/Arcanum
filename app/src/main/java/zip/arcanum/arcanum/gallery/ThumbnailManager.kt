@@ -25,6 +25,7 @@ class ThumbnailManager @Inject constructor(
     private val exifReader: ExifReader
 ) {
     private val cacheRoot get() = File(context.cacheDir, "arcanum_thumbs")
+    private val maxEmbeddedArtworkBytes = 5 * 1024 * 1024
 
     // AES-256-GCM key from Android Keystore — mirrors PinManager's pattern
     private val masterKey by lazy {
@@ -99,9 +100,12 @@ class ThumbnailManager @Inject constructor(
         // NativeMediaDataSource lets MediaMetadataRetriever seek anywhere on demand —
         // correctly handles MP4 moov at end-of-file without pre-reading the whole file.
         val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(NativeMediaDataSource(engine, handle, file.relativePath, file.size))
-        val frame = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-        retriever.release()
+        val frame = try {
+            retriever.setDataSource(NativeMediaDataSource(engine, handle, file.relativePath, file.size))
+            retriever.getScaledFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 512, 512)
+        } finally {
+            retriever.release()
+        }
         frame?.let {
             val thumb = normalizeArgb(centerCrop(it, 256))
             saveToCacheFile(thumb, cacheFile)
@@ -118,12 +122,15 @@ class ThumbnailManager @Inject constructor(
         cacheFile: File
     ): Bitmap? = try {
         val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(NativeMediaDataSource(engine, handle, file.relativePath, file.size))
-        val artBytes = retriever.embeddedPicture
-        retriever.release()
+        val artBytes = try {
+            retriever.setDataSource(NativeMediaDataSource(engine, handle, file.relativePath, file.size))
+            retriever.embeddedPicture
+        } finally {
+            retriever.release()
+        }
         // Returns null if no embedded art → UI will show the music note icon instead
         artBytes?.let { bytes ->
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+            val bitmap = decodeEmbeddedArtwork(bytes) ?: return null
             val thumb = normalizeArgb(centerCrop(bitmap, 256))
             saveToCacheFile(thumb, cacheFile)
             thumb
@@ -162,6 +169,12 @@ class ThumbnailManager @Inject constructor(
     private fun normalizeArgb(bitmap: Bitmap): Bitmap =
         if (bitmap.config == Bitmap.Config.ARGB_8888) bitmap
         else bitmap.copy(Bitmap.Config.ARGB_8888, false)
+
+    private fun decodeEmbeddedArtwork(bytes: ByteArray): Bitmap? {
+        if (bytes.isEmpty() || bytes.size > maxEmbeddedArtworkBytes) return null
+        return ImageBitmapDecoder.decode(bytes, maxWidth = 512, maxHeight = 512)?.bitmap
+            ?: runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()
+    }
 
     private fun saveToCacheFile(bitmap: Bitmap, file: File) {
         try {
@@ -219,9 +232,13 @@ internal class NativeMediaDataSource(
 ) : MediaDataSource() {
 
     override fun readAt(position: Long, buffer: ByteArray?, offset: Int, size: Int): Int {
-        if (buffer == null || position < 0 || position >= fileSize) return -1
-        val toRead = minOf(size.toLong(), fileSize - position).toInt()
+        if (buffer == null || position < 0 || position >= fileSize || offset < 0 || size <= 0) return -1
+        if (offset > buffer.size) return -1
+        val capacity = buffer.size - offset
+        if (capacity <= 0) return -1
+        val toRead = minOf(size.toLong(), capacity.toLong(), MAX_MEDIA_SOURCE_READ_BYTES, fileSize - position).toInt()
         val chunk = engine.nativeReadFile(handle, filePath, position, toRead) ?: return -1
+        if (chunk.isEmpty() || chunk.size > toRead) return -1
         chunk.copyInto(buffer, offset, 0, chunk.size)
         return chunk.size
     }
@@ -229,4 +246,8 @@ internal class NativeMediaDataSource(
     override fun getSize(): Long = fileSize
 
     override fun close() {}
+
+    private companion object {
+        const val MAX_MEDIA_SOURCE_READ_BYTES = 1024L * 1024L
+    }
 }

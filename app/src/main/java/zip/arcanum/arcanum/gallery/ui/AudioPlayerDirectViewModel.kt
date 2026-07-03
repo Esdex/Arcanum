@@ -1,6 +1,7 @@
 package zip.arcanum.arcanum.gallery.ui
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaCodec
 import android.media.MediaExtractor
@@ -162,23 +163,35 @@ class AudioPlayerDirectViewModel @Inject constructor(
         }
         return try {
             val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(ByteArrayMediaDataSource(bytes))
-            val title  = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
-                ?: stripExtension(fallbackName)
-            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
-                ?: "Unknown Artist"
-            val album  = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
-                ?: "Unknown Album"
-            val dur    = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                ?.toLongOrNull() ?: 0L
-            val art    = retriever.embeddedPicture?.let {
-                BitmapFactory.decodeByteArray(it, 0, it.size)
+            try {
+                retriever.setDataSource(ByteArrayMediaDataSource(bytes))
+                val title  = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                    ?: stripExtension(fallbackName)
+                val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                    ?: "Unknown Artist"
+                val album  = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                    ?: "Unknown Album"
+                val dur    = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    ?.toLongOrNull() ?: 0L
+                val art    = retriever.embeddedPicture?.let { decodeEmbeddedArtwork(it) }
+                AudioMetadata(title, artist, album, dur, art)
+            } finally {
+                retriever.release()
             }
-            retriever.release()
-            AudioMetadata(title, artist, album, dur, art)
         } catch (_: Exception) {
             AudioMetadata(stripExtension(fallbackName), "Unknown Artist", "Unknown Album", 0L, null)
         }
+    }
+
+    private fun decodeEmbeddedArtwork(bytes: ByteArray): Bitmap? {
+        if (bytes.isEmpty() || bytes.size > MAX_EMBEDDED_ARTWORK_BYTES) return null
+        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+        if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
+        opts.inJustDecodeBounds = false
+        opts.inSampleSize = calculateInSampleSize(opts.outWidth, opts.outHeight, 512, 512)
+        opts.inPreferredConfig = Bitmap.Config.ARGB_8888
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
     }
 
     private fun generateWaveform(h: Long, path: String, fileSize: Long, barCount: Int = 80): List<Float> {
@@ -328,7 +341,8 @@ class AudioPlayerDirectViewModel @Inject constructor(
                 appContext, file, waveformMasterKey(),
                 androidx.security.crypto.EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
             ).build()
-            val bb = java.nio.ByteBuffer.wrap(encFile.openFileInput().use { it.readBytes() })
+            val bytes = encFile.openFileInput().use { readBounded(it, MAX_WAVEFORM_CACHE_BYTES) }
+            val bb = java.nio.ByteBuffer.wrap(bytes)
                 .order(java.nio.ByteOrder.LITTLE_ENDIAN)
             val count = bb.int
             if (count != barCount) return null
@@ -461,10 +475,36 @@ class AudioPlayerDirectViewModel @Inject constructor(
     private fun stripExtension(name: String) = name.substringBeforeLast(".", name)
 
     override fun onCleared() {
+        _state.value = PlayerState()
         progressJob?.cancel()
         waveformJob?.cancel()
         exoPlayer.removeListener(playerListener)
         exoPlayer.stop()
         exoPlayer.release()
+    }
+
+    private fun readBounded(input: java.io.InputStream, maxBytes: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(1024)
+        var total = 0
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            total += read
+            if (total > maxBytes) throw IllegalStateException("cache entry too large")
+            out.write(buffer, 0, read)
+        }
+        return out.toByteArray()
+    }
+
+    private fun calculateInSampleSize(width: Int, height: Int, reqWidth: Int, reqHeight: Int): Int {
+        var size = 1
+        while (width / size > reqWidth || height / size > reqHeight) size *= 2
+        return size.coerceAtLeast(1)
+    }
+
+    private companion object {
+        const val MAX_EMBEDDED_ARTWORK_BYTES = 5 * 1024 * 1024
+        const val MAX_WAVEFORM_CACHE_BYTES = 4 + 512 * 4
     }
 }

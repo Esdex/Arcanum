@@ -237,6 +237,7 @@ class MediaViewerDirectViewModel @Inject constructor(
     fun getFileAt(index: Int) = queue.files.getOrNull(index)
 
     override fun onCleared() {
+        _state.value = ViewerState(isLoadingCurrent = false)
         progressJob?.cancel()
         bitmapLoadJobs.values.forEach { it.cancel() }
         bitmapLoadJobs.clear()

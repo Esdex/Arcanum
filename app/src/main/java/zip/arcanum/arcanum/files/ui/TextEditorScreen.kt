@@ -27,6 +27,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,8 +41,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.ByteArrayOutputStream
@@ -62,6 +66,7 @@ import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.lifecycle.ExternalActivityGuard
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.core.security.AppPreferences
+import zip.arcanum.core.utils.FileProviderGrantUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import androidx.core.content.FileProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -200,6 +205,16 @@ class TextEditorViewModel @Inject constructor(
         _state.update { it.copy(exportDone = false, exportDeleted = false) }
     }
 
+    fun clearSensitiveStateIfUnmounted(): Boolean {
+        if (repo.getContainerHandle(containerId) != null) return false
+        clearSensitiveState(TextEditorError.NOT_MOUNTED)
+        return true
+    }
+
+    fun clearSensitiveStateForBackground() {
+        clearSensitiveState(null)
+    }
+
     private fun load() {
         val handle = repo.getContainerHandle(containerId) ?: run {
             _state.update { it.copy(isLoading = false, error = TextEditorError.NOT_MOUNTED) }
@@ -280,6 +295,21 @@ class TextEditorViewModel @Inject constructor(
             lastModified = System.currentTimeMillis()
         )
     }
+
+    private fun clearSensitiveState(error: TextEditorError?) {
+        _state.update {
+            it.copy(
+                text = "",
+                originalText = "",
+                isLoading = false,
+                isSaving = false,
+                error = error,
+                sharePayload = null,
+                exportDone = false,
+                exportDeleted = false
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -290,6 +320,7 @@ fun TextEditorScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var showDiscardConfirm by remember { mutableStateOf(false) }
 
     val decryptLauncher = rememberLauncherForActivityResult(
@@ -317,6 +348,24 @@ fun TextEditorScreen(
             val close = state.exportDeleted
             viewModel.clearExportDone()
             if (close) onBack()
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> viewModel.clearSensitiveStateForBackground()
+                Lifecycle.Event.ON_START -> {
+                    FileProviderGrantUtils.revokeActiveGrants(context)
+                    viewModel.clearSensitiveStateIfUnmounted()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            FileProviderGrantUtils.revokeActiveGrants(context)
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -468,7 +517,10 @@ private fun launchShareIntent(context: Context, files: List<File>, mimeType: Str
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
-    runCatching {
-        context.startActivity(Intent.createChooser(intent, context.getString(R.string.files_share_chooser_title)))
-    }
+    FileProviderGrantUtils.startReadOnlyIntent(
+        context = context,
+        intent = intent,
+        uris = uris,
+        chooserTitle = context.getString(R.string.files_share_chooser_title)
+    )
 }

@@ -217,13 +217,24 @@ object VaultFileTransfer {
         name: String,
         modifiedAt: Long
     ): Boolean {
+        val tempName = ".arcanum_export_${UUID.randomUUID()}_${File(name).name.ifBlank { "file" }}.tmp"
+        val tempDoc = parent.createFile(mimeType(name), tempName) ?: return false
+        val ok = exportFileToUri(context, engine, handle, srcPath, size, tempDoc.uri)
+        if (!ok) {
+            runCatching { tempDoc.delete() }
+            return false
+        }
         val existing = parent.findFile(name)
-        if (existing != null && existing.isFile) runCatching { existing.delete() }
-        val doc = parent.createFile(mimeType(name), name) ?: return false
-        val ok = exportFileToUri(context, engine, handle, srcPath, size, doc.uri)
-        if (!ok) runCatching { doc.delete() }
-        if (ok && modifiedAt > 0L) runCatching { doc.uri.path?.let { File(it).setLastModified(modifiedAt) } }
-        return ok
+        if (existing != null && existing.isFile && !existing.delete()) {
+            runCatching { tempDoc.delete() }
+            return false
+        }
+        if (!tempDoc.renameTo(name)) {
+            runCatching { tempDoc.delete() }
+            return false
+        }
+        if (modifiedAt > 0L) runCatching { parent.findFile(name)?.uri?.path?.let { File(it).setLastModified(modifiedAt) } }
+        return true
     }
 
     private fun exportDirectoryToPublicRelativePath(
@@ -287,10 +298,9 @@ object VaultFileTransfer {
         val safeName = File(item.name).name.ifBlank { "file" }
         val safeRelativePath = ensureTrailingSlash(relativePath)
 
-        runCatching { deleteExistingPublicFile(context, collection, safeRelativePath, safeName) }
-
+        val tempName = ".arcanum_export_${UUID.randomUUID()}_$safeName.tmp"
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, tempName)
             put(MediaStore.MediaColumns.MIME_TYPE, mimeType(safeName))
             put(MediaStore.MediaColumns.RELATIVE_PATH, safeRelativePath)
             put(MediaStore.MediaColumns.IS_PENDING, 1)
@@ -300,26 +310,36 @@ object VaultFileTransfer {
         }
         val uri = resolver.insert(collection, values) ?: return false
         val ok = exportFileToUri(context, engine, handle, item.path, item.size, uri)
-        if (ok) {
-            runCatching {
-                resolver.update(
-                    uri,
-                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
-                    null,
-                    null
-                )
-            }
-        } else {
+        if (!ok) {
             runCatching { resolver.delete(uri, null, null) }
+            return false
         }
-        return ok
+
+        val published = runCatching {
+            resolver.update(
+                uri,
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                },
+                null,
+                null
+            ) > 0
+        }.getOrDefault(false)
+        if (!published) {
+            runCatching { resolver.delete(uri, null, null) }
+            return false
+        }
+        runCatching { deleteExistingPublicFile(context, collection, safeRelativePath, safeName, excludeId = uri.lastPathSegment?.toLongOrNull()) }
+        return true
     }
 
     private fun deleteExistingPublicFile(
         context: Context,
         collection: android.net.Uri,
         relativePath: String,
-        name: String
+        name: String,
+        excludeId: Long? = null
     ) {
         val projection = arrayOf(MediaStore.MediaColumns._ID)
         val selection = "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH}=?"
@@ -327,7 +347,9 @@ object VaultFileTransfer {
         context.contentResolver.query(collection, projection, selection, args, null)?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
             while (cursor.moveToNext()) {
-                val uri = ContentUris.withAppendedId(collection, cursor.getLong(idColumn))
+                val id = cursor.getLong(idColumn)
+                if (excludeId != null && id == excludeId) continue
+                val uri = ContentUris.withAppendedId(collection, id)
                 runCatching { context.contentResolver.delete(uri, null, null) }
             }
         }

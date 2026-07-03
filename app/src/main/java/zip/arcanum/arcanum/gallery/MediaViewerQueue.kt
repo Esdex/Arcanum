@@ -19,6 +19,19 @@ class MediaViewerQueue @Inject constructor() {
         this.currentIndex = startIndex.coerceIn(0, (files.size - 1).coerceAtLeast(0))
     }
 
+    fun clearForContainer(containerId: String) {
+        if (this.containerId == containerId) {
+            this.containerId = ""
+            this.files = emptyList()
+            this.currentIndex = 0
+        }
+        if (orderedMediaContainerId == containerId) {
+            orderedMediaContainerId = ""
+            orderedMediaFileIds = emptyList()
+            orderedMediaUpdatedAt = 0L
+        }
+    }
+
     fun setMediaOrder(containerId: String, fileIds: List<String>) {
         orderedMediaContainerId = containerId
         orderedMediaFileIds = fileIds

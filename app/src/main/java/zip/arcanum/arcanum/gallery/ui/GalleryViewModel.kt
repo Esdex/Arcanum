@@ -217,11 +217,13 @@ class GalleryViewModel @Inject constructor(
         val containerId = currentContainerId ?: return
         val handle = repo.getContainerHandle(containerId) ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                engine.nativeDeleteFile(handle, file.relativePath)
-            } catch (_: Exception) {}
-            mediaFileDao.deleteMediaFile(file)
-            thumbnailManager.clearCache(containerId)
+            val deleted = runCatching {
+                engine.nativeDeleteFile(handle, file.relativePath) == VeraCryptEngine.ERR_OK
+            }.getOrDefault(false)
+            if (deleted) {
+                mediaFileDao.deleteMediaFile(file)
+                thumbnailManager.clearCache(containerId)
+            }
         }
     }
 

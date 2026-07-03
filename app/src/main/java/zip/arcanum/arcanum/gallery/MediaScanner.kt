@@ -1,6 +1,8 @@
 package zip.arcanum.arcanum.gallery
 
 import android.media.MediaMetadataRetriever
+import android.os.SystemClock
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import zip.arcanum.core.database.dao.MediaFileDao
@@ -14,6 +16,7 @@ import java.util.TimeZone
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.coroutineContext
 
 @Singleton
 class MediaScanner @Inject constructor(
@@ -33,6 +36,9 @@ class MediaScanner @Inject constructor(
         val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp")
         val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "mov", "m4v", "3gp", "webm")
         val AUDIO_EXTENSIONS = setOf("mp3", "flac", "aac", "ogg", "wav", "m4a")
+        private const val MAX_SCAN_DEPTH = 64
+        private const val MAX_SCAN_ITEMS = 100_000
+        private const val MAX_SCAN_DURATION_MS = 10L * 60L * 1000L
 
         // Formats returned by MediaMetadataRetriever.METADATA_KEY_DATE
         private val MEDIA_DATE_FORMATS = listOf(
@@ -52,17 +58,31 @@ class MediaScanner @Inject constructor(
         val found      = mutableListOf<MediaFileEntity>()
         val foundPaths = mutableSetOf<String>()
         var scanned    = 0
+        var visited    = 0
+        var fullScanCompleted = true
+        val startedAtMs = SystemClock.elapsedRealtime()
 
-        suspend fun scanDir(path: String) {
+        suspend fun scanDir(path: String, depth: Int) {
+            coroutineContext.ensureActive()
+            if (!withinScanBudget(depth, ++visited, startedAtMs)) {
+                fullScanCompleted = false
+                return
+            }
             val entries = try {
                 engine.nativeListFiles(handle, path)
             } catch (_: Exception) {
                 return
             }
             for (entry in entries.filterNotNull()) {
+                coroutineContext.ensureActive()
+                if (!withinScanBudget(depth + 1, ++visited, startedAtMs)) {
+                    fullScanCompleted = false
+                    return
+                }
                 if (entry.isDirectory) {
                     emit(ScanProgress(scanned, found.size, entry.path, false, found.toList()))
-                    scanDir(entry.path)
+                    scanDir(entry.path, depth + 1)
+                    if (!fullScanCompleted) return
                 } else {
                     scanned++
                     val type = visualTypeForName(entry.name) ?: continue
@@ -85,12 +105,14 @@ class MediaScanner @Inject constructor(
             }
         }
 
-        scanDir("/")
+        scanDir("/", 0)
 
         // Remove DB entries for files that no longer exist in the container.
-        existing.values
-            .filter { it.relativePath !in foundPaths }
-            .forEach { dao.deleteMediaFile(it) }
+        if (fullScanCompleted) {
+            existing.values
+                .filter { it.relativePath !in foundPaths }
+                .forEach { dao.deleteMediaFile(it) }
+        }
 
         emit(ScanProgress(scanned, found.size, "", true, found.toList()))
     }
@@ -185,15 +207,16 @@ class MediaScanner @Inject constructor(
         fallback: Long
     ): Long {
         return when (type) {
-            MediaFileType.IMAGE -> extractImageDate(handle, path, fallback)
+            MediaFileType.IMAGE -> extractImageDate(handle, path, size, fallback)
             MediaFileType.VIDEO,
             MediaFileType.AUDIO -> extractMediaDate(handle, path, size, fallback)
         }
     }
 
-    private fun extractImageDate(handle: Long, path: String, fallback: Long): Long {
+    private fun extractImageDate(handle: Long, path: String, size: Long, fallback: Long): Long {
         val bytes = try {
-            engine.nativeReadFile(handle, path, 0L, 65_536) ?: return fallback
+            val readSize = minOf(65_536L, size).takeIf { it > 0L }?.toInt() ?: return fallback
+            engine.nativeReadFile(handle, path, 0L, readSize) ?: return fallback
         } catch (_: Exception) { return fallback }
         val exifDate = exifReader.readDate(bytes)
         return if (exifDate > 0L) exifDate else fallback
@@ -202,12 +225,20 @@ class MediaScanner @Inject constructor(
     private fun extractMediaDate(handle: Long, path: String, size: Long, fallback: Long): Long {
         return try {
             val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(NativeMediaDataSource(engine, handle, path, size))
-            val dateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
-            retriever.release()
+            val dateStr = try {
+                retriever.setDataSource(NativeMediaDataSource(engine, handle, path, size))
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
+            } finally {
+                retriever.release()
+            }
             parseMediaDate(dateStr).takeIf { it > 0L } ?: fallback
         } catch (_: Exception) { fallback }
     }
+
+    private fun withinScanBudget(depth: Int, visited: Int, startedAtMs: Long): Boolean =
+        depth <= MAX_SCAN_DEPTH &&
+            visited <= MAX_SCAN_ITEMS &&
+            SystemClock.elapsedRealtime() - startedAtMs <= MAX_SCAN_DURATION_MS
 
     private fun parseMediaDate(dateStr: String?): Long {
         if (dateStr.isNullOrBlank()) return 0L
@@ -215,4 +246,5 @@ class MediaScanner @Inject constructor(
             runCatching { fmt.parse(dateStr)?.time?.takeIf { it > 0L } }.getOrNull()
         } ?: 0L
     }
+
 }
