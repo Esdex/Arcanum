@@ -54,6 +54,7 @@ import zip.arcanum.settings.SettingsScreen
 import zip.arcanum.arcanum.containers.ui.BackupHeaderScreen
 import zip.arcanum.arcanum.containers.ui.ChangeKeyfileScreen
 import zip.arcanum.arcanum.containers.ui.ChangePasswordScreen
+import zip.arcanum.arcanum.containers.ui.ExpandVolumeScreen
 import zip.arcanum.arcanum.containers.ui.RestoreHeaderScreen
 import zip.arcanum.arcanum.containers.ui.CreateContainerScreen
 import zip.arcanum.arcanum.containers.ui.MoveVaultScreen
@@ -448,7 +449,22 @@ fun AppNavigation(pinManager: PinManager) {
                 onChangeKeyfile  = { id -> navController.navigate(Screen.ChangeKeyfile.buildRoute(id)) },
                 onBackupHeader   = { id -> navController.navigate(Screen.BackupHeader.buildRoute(id)) },
                 onRestoreHeader  = { id -> navController.navigate(Screen.RestoreHeader.buildRoute(id)) },
+                onExpandVolume   = { id -> navController.navigate(Screen.ExpandVolume.buildRoute(id)) },
                 onMoveVault      = { id, toApp -> navController.navigate(Screen.MoveVault.buildRoute(id, toApp)) }
+            )
+        }
+
+        // ── Expand volume ─────────────────────────────────────────────────
+        composable(
+            route             = Screen.ExpandVolume.route,
+            arguments         = listOf(navArgument(Screen.ExpandVolume.ARG) { type = NavType.StringType }),
+            enterTransition   = { slideInHorizontally(tween(300)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(300)) { it } }
+        ) { backStackEntry ->
+            val containerId = backStackEntry.arguments?.getString(Screen.ExpandVolume.ARG) ?: return@composable
+            ExpandVolumeScreen(
+                containerId = containerId,
+                onBack      = { navController.popBackStack() }
             )
         }
 

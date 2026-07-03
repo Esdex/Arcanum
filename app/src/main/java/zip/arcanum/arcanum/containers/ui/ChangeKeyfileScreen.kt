@@ -67,13 +67,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.autofill.AutofillNode
-import androidx.compose.ui.autofill.AutofillType
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -81,11 +77,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalAutofill
-import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -102,6 +94,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import zip.arcanum.core.utils.DotVisualTransformation
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.utils.FileUtils
@@ -302,7 +295,6 @@ fun ChangeKeyfileScreen(
 
 // ─── Step 1: Current Credentials ─────────────────────────────────────────────
 
-@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun ChKfStep1(
     state: ChangeKeyfileState,
@@ -310,29 +302,14 @@ private fun ChKfStep1(
     onAddKeyfile: () -> Unit,
     onRemoveKeyfile: (Int) -> Unit
 ) {
-    val context         = LocalContext.current
-    val autofill        = LocalAutofill.current
-    val autofillManager = remember { context.getSystemService(android.view.autofill.AutofillManager::class.java) }
-    val autofillScope   = rememberCoroutineScope()
-    val lifecycleOwner  = LocalLifecycleOwner.current
-    val focusRequester  = remember { FocusRequester() }
-    val latestOnUpdate  = rememberUpdatedState(onUpdate)
-
-    val autofillNode = remember {
-        AutofillNode(listOf(AutofillType.Password)) { filled ->
-            latestOnUpdate.value { copy(password = filled) }
-        }
-    }
-    val autofillTree = LocalAutofillTree.current
-    DisposableEffect(Unit) {
-        autofillTree += autofillNode
-        onDispose { autofillTree.children.remove(autofillNode.id) }
-    }
+    val context        = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val focusRequester = remember { FocusRequester() }
 
     var refocusCount by remember { mutableIntStateOf(0) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) { autofillManager?.cancel(); refocusCount++ }
+            if (event == Lifecycle.Event.ON_RESUME) refocusCount++
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -368,18 +345,6 @@ private fun ChKfStep1(
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(focusRequester)
-                .onGloballyPositioned { autofillNode.boundingBox = it.boundsInRoot() }
-                .onFocusChanged { fs ->
-                    if (fs.isFocused) {
-                        autofillScope.launch {
-                            delay(150)
-                            autofillManager?.cancel()
-                            autofill?.requestAutofillForNode(autofillNode)
-                        }
-                    } else {
-                        autofill?.cancelAutofillForNode(autofillNode)
-                    }
-                }
         )
         Spacer(Modifier.height(12.dp))
 
@@ -396,13 +361,13 @@ private fun ChKfStep1(
             },
             label                = { Text(stringResource(R.string.create_pim_short_label)) },
             placeholder          = { Text(stringResource(R.string.create_pim_placeholder)) },
-            visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+            visualTransformation = if (showPim) VisualTransformation.None else DotVisualTransformation(),
             trailingIcon         = {
                 IconButton(onClick = { showPim = !showPim }) {
                     Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
                 }
             },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine      = true,
             modifier        = Modifier.fillMaxWidth()
         )

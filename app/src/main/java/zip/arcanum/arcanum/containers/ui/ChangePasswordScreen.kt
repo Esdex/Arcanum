@@ -68,7 +68,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -77,8 +76,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentType
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -88,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import zip.arcanum.core.utils.DotVisualTransformation
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.icons.ArcanumIcons
@@ -314,7 +312,6 @@ private fun ChPwdStep1(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .semantics { contentType = ContentType.Password }
         )
         Spacer(Modifier.height(12.dp))
 
@@ -331,13 +328,13 @@ private fun ChPwdStep1(
             },
             label                = { Text(stringResource(R.string.create_pim_short_label)) },
             placeholder          = { Text(stringResource(R.string.create_pim_placeholder)) },
-            visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+            visualTransformation = if (showPim) VisualTransformation.None else DotVisualTransformation(),
             trailingIcon         = {
                 IconButton(onClick = { showPim = !showPim }) {
                     Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
                 }
             },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine      = true,
             modifier        = Modifier.fillMaxWidth()
         )
@@ -386,7 +383,6 @@ private fun ChPwdStep2(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .semantics { contentType = ContentType.NewPassword }
         )
         Spacer(Modifier.height(12.dp))
 
@@ -411,7 +407,6 @@ private fun ChPwdStep2(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .semantics { contentType = ContentType.NewPassword }
         )
         Spacer(Modifier.height(12.dp))
 
@@ -428,13 +423,13 @@ private fun ChPwdStep2(
             },
             label                = { Text(stringResource(R.string.create_pim_short_label)) },
             placeholder          = { Text(stringResource(R.string.create_pim_placeholder)) },
-            visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+            visualTransformation = if (showPim) VisualTransformation.None else DotVisualTransformation(),
             trailingIcon         = {
                 IconButton(onClick = { showPim = !showPim }) {
                     Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
                 }
             },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine      = true,
             modifier        = Modifier.fillMaxWidth()
         )

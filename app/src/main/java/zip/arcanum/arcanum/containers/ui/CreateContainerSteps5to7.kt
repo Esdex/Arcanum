@@ -58,26 +58,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import android.view.HapticFeedbackConstants
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.autofill.AutofillNode
-import androidx.compose.ui.autofill.AutofillType
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalAutofill
-import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import kotlinx.coroutines.launch
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -86,12 +76,13 @@ import kotlinx.coroutines.delay
 import zip.arcanum.core.components.AppDialog
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import zip.arcanum.core.utils.DotVisualTransformation
 import zip.arcanum.R
 import kotlin.math.roundToInt
 
 // ─── Step 5: Password ─────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StepPassword(
     state: CreateContainerState,
@@ -99,33 +90,16 @@ fun StepPassword(
     onAddKeyfile: () -> Unit = {},
     onRemoveKeyfile: (index: Int) -> Unit = {},
 ) {
-    val context              = LocalContext.current
-    val autofill             = LocalAutofill.current
-    val autofillManager      = remember { context.getSystemService(android.view.autofill.AutofillManager::class.java) }
-    val autofillScope        = rememberCoroutineScope()
-    val focusManager         = LocalFocusManager.current
-    val keyboardController   = LocalSoftwareKeyboardController.current
-    val lifecycleOwner       = LocalLifecycleOwner.current
+    val context                = LocalContext.current
+    val focusManager           = LocalFocusManager.current
+    val keyboardController     = LocalSoftwareKeyboardController.current
+    val lifecycleOwner         = LocalLifecycleOwner.current
     val passwordFocusRequester = remember { FocusRequester() }
-    val latestOnUpdate       = rememberUpdatedState(onUpdate)
-    val passwordAutofillNode = remember {
-        AutofillNode(listOf(AutofillType.Password)) { filled ->
-            latestOnUpdate.value { copy(password = filled, confirmPassword = filled) }
-        }
-    }
-    val autofillTree = LocalAutofillTree.current
-    DisposableEffect(Unit) {
-        autofillTree += passwordAutofillNode
-        onDispose { autofillTree.children.remove(passwordAutofillNode.id) }
-    }
 
     var refocusCount by remember { mutableIntStateOf(0) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                autofillManager?.cancel()
-                refocusCount++
-            }
+            if (event == Lifecycle.Event.ON_RESUME) refocusCount++
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -206,18 +180,6 @@ fun StepPassword(
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(passwordFocusRequester)
-                .onGloballyPositioned { passwordAutofillNode.boundingBox = it.boundsInRoot() }
-                .onFocusChanged { focusState ->
-                    if (focusState.isFocused) {
-                        autofillScope.launch {
-                            delay(150)
-                            autofillManager?.cancel()
-                            autofill?.requestAutofillForNode(passwordAutofillNode)
-                        }
-                    } else {
-                        autofill?.cancelAutofillForNode(passwordAutofillNode)
-                    }
-                }
         )
         if (state.password.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
@@ -280,13 +242,13 @@ fun StepPassword(
             },
             label                = { Text(stringResource(R.string.create_pim_short_label)) },
             placeholder          = { Text(stringResource(R.string.create_pim_placeholder)) },
-            visualTransformation = if (showPim) VisualTransformation.None else PasswordVisualTransformation(),
+            visualTransformation = if (showPim) VisualTransformation.None else DotVisualTransformation(),
             trailingIcon         = {
                 IconButton(onClick = { showPim = !showPim }) {
                     Icon(if (showPim) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, contentDescription = null)
                 }
             },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine      = true,
             modifier        = Modifier.fillMaxWidth()
         )

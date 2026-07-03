@@ -11,9 +11,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.mikepenz.aboutlibraries.ui.compose.android.produceLibraries
 import com.mikepenz.aboutlibraries.ui.compose.m3.LibrariesContainer
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
@@ -45,7 +47,9 @@ fun LicensesScreen(onBack: () -> Unit) {
             )
         }
     ) { innerPadding ->
+        val libraries by produceLibraries()
         LibrariesContainer(
+            libraries = libraries,
             modifier = Modifier
                 .fillMaxSize()
                 .then(if (isAmoled) Modifier.hazeSource(hazeState) else Modifier),
