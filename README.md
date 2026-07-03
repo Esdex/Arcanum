@@ -44,38 +44,53 @@
 **Cryptography**
 - 🔐 Full VeraCrypt container compatibility — open containers created on desktop (Windows, macOS, Linux)
 - 🔒 15 cipher configurations: AES, Serpent, Twofish, Camellia, Kuznyechik and all cascade combinations
-- #️⃣ 5 PRF algorithms: SHA-512, SHA-256, Whirlpool, Streebog, BLAKE2s-256
+- #️⃣ PBKDF2 PRFs plus Argon2id KDF support: SHA-512, SHA-256, Whirlpool, Streebog, BLAKE2s-256, Argon2id
 - 🗝️ Keyfile support with pool-based derivation matching VeraCrypt's implementation
 - 🔢 PIM (Personal Iterations Multiplier) support
 
 **Privacy**
 - 🫥 Hidden volumes for plausible deniability
-- 🧮 Calculator disguise — app appears as a plain calculator on the home screen
-- 🚨 Panic PIN — instantly triggers configurable wipe (containers, files, app data)
+- 🧮 Disguise profiles — calculator, system, flashlight, timer, stopwatch, and other launcher identities
+- 🚨 Panic password — instantly triggers configurable wipe (containers, files, app data)
 - 🔏 Auto-lock with configurable delay
-- 🌐 No network permission — 100% offline, zero telemetry
+- 🕵️ Intruder capture — optional front-camera photo after failed unlock attempts
+- 🌐 Zero telemetry — network access is used only for optional manual backups to S3-compatible storage or MEGA
 
 **Vault access**
 - 👆 Biometric unlock per vault (hardware-backed key binding)
+- 🗝️ Biometric credentials remember PIM, cipher/hash choices, and keyfile URIs
+- 🔑 App password can be a numeric PIN or a 4-128 character password
 - ⏱️ Per-vault auto-unmount on screen lock or background
 
 **In-vault browsing**
-- 🖼️ Encrypted gallery with image and video viewer
+- 🖼️ Encrypted gallery with image and video viewer, HEIF decoding, and M4V indexing
 - 🎵 Audio player with waveform and dominant-color theming
-- 📂 Full file manager (create, rename, delete, move files and directories)
+- 📂 Full file manager (create, rename, delete, move, import, export, share, and cross-vault copy/move)
+- 📝 Built-in text editor for UTF-8 text files
+- 📷 Camera capture directly into a mounted vault
+
+**Vault maintenance**
+- 💾 Manual backups of the encrypted container file to a local folder, S3-compatible storage, or MEGA
+- 📈 Safe volume expansion by rebuilding a larger VeraCrypt container and migrating files
+- 🧹 Optional deletion of original files after successful import/export
 
 **UI**
 - 🎨 AMOLED Glass theme — frosted-glass system bars and dialogs on pure black
 - 🌙 Dynamic Color (Material You) support
 - 📱 Edge-to-edge, Android 10+
+- 🌍 English and Russian app locales
 
 ---
 
 ## Why Arcanum
 
-Arcanum is built directly on VeraCrypt's cryptographic C sources — the same AES, XTS, PBKDF2, and cascade cipher implementations used in the desktop application. Containers created in Arcanum open in VeraCrypt on desktop and vice versa, with no conversion or export needed.
+Arcanum is built directly on VeraCrypt's cryptographic C sources — the same AES, XTS, PBKDF2, Argon2id, and cascade cipher implementations used in the desktop application. Containers created in Arcanum open in VeraCrypt on desktop and vice versa, with no conversion or export needed.
 
-The PIN is protected with Argon2id (t=2, m=64 MB, p=1) rather than a simple hash. A panic PIN and a disguise mode are included as first-class features, not afterthoughts.
+The app password is protected with Argon2id (t=2, m=64 MB, p=1) rather than a simple hash. A panic password and disguise profiles are included as first-class features, not afterthoughts. Calculator mode unlocks by entering the password and holding `=` for about seven seconds; other disguise profiles open the real unlock screen by holding the fake screen title.
+
+Manual backup copies the encrypted container file as-is. Vault contents are not decrypted during backup, and backup destination credentials are stored in EncryptedSharedPreferences. Network permission is therefore present only for optional S3-compatible and MEGA backup destinations; the app does not include telemetry.
+
+Volume expansion uses a safe rebuild workflow: Arcanum creates a larger temporary VeraCrypt container, copies the file tree, verifies the migrated data, and then replaces the original. Hidden volumes are preserved only when the hidden credentials are supplied.
 
 ---
 
@@ -117,11 +132,22 @@ The `fdroid` flavor builds with all features unlocked and no billing dependency.
 | Local storage | Room (container metadata), EncryptedSharedPreferences (PIN hashes) |
 | DI | Hilt |
 | Media | ExoPlayer / Media3 |
-| Network | None — `INTERNET` permission is not declared |
+| Backup | Foreground service for local folder, S3-compatible, and MEGA encrypted-container backups |
+| Network | No telemetry; `INTERNET` is used only for optional manual S3/MEGA backup |
 
-The app presents itself as a calculator. Entering the correct PIN navigates to the authenticated vault home. A panic PIN triggers `PanicManager`, which executes a background wipe before navigation completes, equalizing the response time between both paths.
+The app can present itself as a calculator or another utility profile. Entering the correct app password navigates to the authenticated vault home. A panic password triggers `PanicManager`, which executes a background wipe before navigation completes, equalizing the response time between both paths.
 
 For a deeper dive, see the [architecture section in the docs](https://arcanum.zip/docs).
+
+### Permissions
+
+| Permission | Used for |
+|---|---|
+| `INTERNET` | Optional manual backup to S3-compatible storage or MEGA |
+| `CAMERA` | Optional intruder capture and flashlight disguise mode |
+| Foreground data sync service | Long-running container creation, expansion, and backup operations |
+
+MEGA uploads may use MEGA storage hostnames that require a scoped cleartext exception for `userstorage.mega.co.nz` and `userstorage.mega.nz`. This exception is limited to those domains.
 
 ---
 

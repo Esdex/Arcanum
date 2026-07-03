@@ -7,6 +7,8 @@
         <exclude domain="sharedpref" path="arcanum_pin_prefs.xml"/>
         <!-- Biometric-wrapped container passwords stored in EncryptedSharedPreferences -->
         <exclude domain="sharedpref" path="arcanum_bio_prefs.xml"/>
+        <!-- Backup destination credentials stored in EncryptedSharedPreferences -->
+        <exclude domain="sharedpref" path="backup_secure_prefs.xml"/>
 
         <!-- Room database: container registry, calculator history -->
         <exclude domain="database" path="arcanum.db"/>
@@ -26,6 +28,7 @@
         <!-- Same exclusions apply for device-to-device transfers -->
         <exclude domain="sharedpref" path="arcanum_pin_prefs.xml"/>
         <exclude domain="sharedpref" path="arcanum_bio_prefs.xml"/>
+        <exclude domain="sharedpref" path="backup_secure_prefs.xml"/>
 
         <exclude domain="database" path="arcanum.db"/>
         <exclude domain="database" path="arcanum.db-shm"/>

@@ -1,5 +1,6 @@
 *.iml
 .gradle
+.kotlin/
 local.properties
 .idea/
 .DS_Store
@@ -18,6 +19,7 @@ local.properties
 CLAUDE.md
 
 # Scratch / test files
+tools/
 kf_pool_test
 kf_pool_test.c
 test_xts.py
