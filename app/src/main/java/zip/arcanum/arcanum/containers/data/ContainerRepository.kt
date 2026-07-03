@@ -158,6 +158,9 @@ class ContainerRepository @Inject constructor(
     suspend fun updateHeaderModifiedAt(id: String, time: Long) =
         dao.updateHeaderModifiedAt(id, time)
 
+    suspend fun updateSize(id: String, size: Long) =
+        dao.updateSize(id, size)
+
     suspend fun deleteContainersById(ids: Set<String>) {
         ids.forEach { id ->
             mountedHandles.remove(id)
@@ -225,7 +228,9 @@ class ContainerRepository @Inject constructor(
         hasBackupHeader = hasBackupHeader,
         pkcs5Iterations = pkcs5Iterations,
         headerModifiedAt = headerModifiedAt,
-        isReadOnly      = mountedIsReadOnly[id] ?: false
+        isReadOnly      = mountedIsReadOnly[id] ?: false,
+        unmountOnLock   = unmountOnLock,
+        unmountOnBackground = unmountOnBackground
     )
 
     private fun Container.toEntity() = ContainerEntity(
@@ -247,6 +252,8 @@ class ContainerRepository @Inject constructor(
         formatVersion    = formatVersion,
         hasBackupHeader  = hasBackupHeader,
         pkcs5Iterations  = pkcs5Iterations,
-        headerModifiedAt = headerModifiedAt
+        headerModifiedAt = headerModifiedAt,
+        unmountOnLock    = unmountOnLock,
+        unmountOnBackground = unmountOnBackground
     )
 }

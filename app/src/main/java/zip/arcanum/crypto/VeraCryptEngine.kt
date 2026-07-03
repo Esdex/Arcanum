@@ -10,6 +10,20 @@ class VeraCryptEngine @Inject constructor() {
 
     // ── Progress callback interfaces ───────────────────────────────────
 
+    data class VolumeGeometry(
+        val fileSizeBytes: Long,
+        val dataSizeBytes: Long,
+        val dataOffsetBytes: Long,
+        val algorithmId: Int,
+        val hashId: Int,
+        val filesystemType: Int,
+        val keySizeBits: Int,
+        val pkcs5Iterations: Int,
+        val hasHiddenVolume: Boolean,
+        val hiddenSizeBytes: Long,
+        val isHiddenVolume: Boolean
+    )
+
     interface CreationProgressListener {
         /** Called from a background thread during container creation. */
         fun onProgress(progressFraction: Float, speedMbps: Float, bytesWritten: Long)
@@ -251,6 +265,84 @@ class VeraCryptEngine @Inject constructor() {
         ).toResult()
     }
 
+    suspend fun inspectVolume(
+        path: String,
+        password: String,
+        keyfileData: List<ByteArray> = emptyList(),
+        pim: Int = 0,
+        algorithm: Int = ALGO_AUTO,
+        hashAlgorithm: Int = HASH_AUTO,
+        hiddenPassword: String? = null,
+        hiddenKeyfileData: List<ByteArray> = emptyList(),
+        hiddenPim: Int = 0
+    ): CryptoResult<VolumeGeometry> = withContext(Dispatchers.IO) {
+        val geometry = nativeInspectVolume(
+            path, password,
+            keyfileData.toTypedArray().ifEmpty { null },
+            pim, algorithm, hashAlgorithm,
+            hiddenPassword,
+            hiddenKeyfileData.toTypedArray().ifEmpty { null },
+            hiddenPim
+        )
+        if (geometry != null) CryptoResult.Success(geometry)
+        else CryptoResult.Failure(CryptoError.WRONG_PASSWORD)
+    }
+
+    suspend fun inspectVolumeFd(
+        fd: Int,
+        password: String,
+        keyfileData: List<ByteArray> = emptyList(),
+        pim: Int = 0,
+        algorithm: Int = ALGO_AUTO,
+        hashAlgorithm: Int = HASH_AUTO,
+        hiddenPassword: String? = null,
+        hiddenKeyfileData: List<ByteArray> = emptyList(),
+        hiddenPim: Int = 0
+    ): CryptoResult<VolumeGeometry> = withContext(Dispatchers.IO) {
+        val geometry = nativeInspectVolumeFd(
+            fd, password,
+            keyfileData.toTypedArray().ifEmpty { null },
+            pim, algorithm, hashAlgorithm,
+            hiddenPassword,
+            hiddenKeyfileData.toTypedArray().ifEmpty { null },
+            hiddenPim
+        )
+        if (geometry != null) CryptoResult.Success(geometry)
+        else CryptoResult.Failure(CryptoError.WRONG_PASSWORD)
+    }
+
+    suspend fun expandVolumeInPlace(
+        path: String,
+        targetDataSizeBytes: Long,
+        password: String,
+        keyfileData: List<ByteArray> = emptyList(),
+        pim: Int = 0,
+        algorithm: Int = ALGO_AUTO,
+        hashAlgorithm: Int = HASH_AUTO
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        nativeExpandVolumeInPlace(
+            path, targetDataSizeBytes, password,
+            keyfileData.toTypedArray().ifEmpty { null },
+            pim, algorithm, hashAlgorithm
+        ).toResult()
+    }
+
+    suspend fun expandVolumeInPlaceFd(
+        fd: Int,
+        targetDataSizeBytes: Long,
+        password: String,
+        keyfileData: List<ByteArray> = emptyList(),
+        pim: Int = 0,
+        algorithm: Int = ALGO_AUTO,
+        hashAlgorithm: Int = HASH_AUTO
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        nativeExpandVolumeInPlaceFd(
+            fd, targetDataSizeBytes, password,
+            keyfileData.toTypedArray().ifEmpty { null },
+            pim, algorithm, hashAlgorithm
+        ).toResult()
+    }
+
     fun getVolumeType(handle: Long): Int = nativeGetVolumeType(handle)
     fun hasHiddenVolume(handle: Long): Boolean = nativeHasHiddenVolume(handle)
 
@@ -310,6 +402,50 @@ class VeraCryptEngine @Inject constructor() {
         mountProgressListener: MountProgressListener?
     ): Long
 
+    external fun nativeInspectVolume(
+        path: String,
+        password: String,
+        keyfileData: Array<ByteArray>?,
+        pim: Int,
+        algorithm: Int,
+        hashAlgorithm: Int,
+        hiddenPassword: String?,
+        hiddenKeyfileData: Array<ByteArray>?,
+        hiddenPim: Int
+    ): VolumeGeometry?
+
+    external fun nativeInspectVolumeFd(
+        fd: Int,
+        password: String,
+        keyfileData: Array<ByteArray>?,
+        pim: Int,
+        algorithm: Int,
+        hashAlgorithm: Int,
+        hiddenPassword: String?,
+        hiddenKeyfileData: Array<ByteArray>?,
+        hiddenPim: Int
+    ): VolumeGeometry?
+
+    external fun nativeExpandVolumeInPlace(
+        path: String,
+        targetDataSizeBytes: Long,
+        password: String,
+        keyfileData: Array<ByteArray>?,
+        pim: Int,
+        algorithm: Int,
+        hashAlgorithm: Int
+    ): Int
+
+    external fun nativeExpandVolumeInPlaceFd(
+        fd: Int,
+        targetDataSizeBytes: Long,
+        password: String,
+        keyfileData: Array<ByteArray>?,
+        pim: Int,
+        algorithm: Int,
+        hashAlgorithm: Int
+    ): Int
+
     external fun nativeListFiles(
         handle: Long,
         dirPath: String
@@ -328,6 +464,8 @@ class VeraCryptEngine @Inject constructor() {
         data: ByteArray,
         offset: Long
     ): Int
+
+    external fun nativeSetModifiedTime(handle: Long, filePath: String, epochMillis: Long): Int
 
     external fun nativeDeleteFile(handle: Long, filePath: String): Int
 
@@ -458,6 +596,7 @@ class VeraCryptEngine @Inject constructor() {
         }
 
         const val HASH_BLAKE2S = 4
+        const val HASH_ARGON2ID = 5
 
         fun hashIdToString(hashId: Int): String = when (hashId) {
             0 -> "SHA-512"
@@ -465,6 +604,7 @@ class VeraCryptEngine @Inject constructor() {
             2 -> "Whirlpool"
             3 -> "Streebog"
             4 -> "BLAKE2s-256"
+            5 -> "Argon2id"
             else -> "SHA-512"
         }
 
@@ -504,7 +644,10 @@ private fun Int.toError(): CryptoError = when (this) {
     VeraCryptEngine.ERR_FILE,
     VeraCryptEngine.ERR_READ           -> CryptoError.IO_ERROR
     VeraCryptEngine.ERR_RAND           -> CryptoError.RNG_FAILURE
-    VeraCryptEngine.ERR_UNSUPPORTED    -> CryptoError.UNSUPPORTED_ALGORITHM
+    VeraCryptEngine.ERR_UNSUPPORTED    -> CryptoError.UNSUPPORTED_OPERATION
+    VeraCryptEngine.ERR_NO_SPACE       -> CryptoError.NO_SPACE
+    VeraCryptEngine.ERR_FS             -> CryptoError.FILESYSTEM_ERROR
+    VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> CryptoError.HIDDEN_BOUNDARY
     else                               -> CryptoError.UNKNOWN
 }
 

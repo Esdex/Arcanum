@@ -49,7 +49,8 @@ enum class HashAlgorithm(val displayName: String) {
     SHA256("SHA-256"),
     WHIRLPOOL("Whirlpool"),
     STREEBOG("Streebog"),
-    BLAKE2S("BLAKE2s-256")
+    BLAKE2S("BLAKE2s-256"),
+    ARGON2ID("Argon2id")
 }
 enum class FilesystemType(
     val displayName: String,
@@ -87,9 +88,10 @@ data class CreateContainerState(
     val confirmPassword: String = "",
     val keyfilePaths: List<String> = emptyList(),
     val keyfileDisplayNames: List<String> = emptyList(),
-    val quickFormat: Boolean = true,
+    val quickFormat: Boolean = false,
     val filesystem: FilesystemType = FilesystemType.FAT32,
     val pim: Int = 0,
+    val appStorageFileNameExists: Boolean = false,
     val entropyPoints: Int = 0,
     val creationProgress: Float = 0f,
     val creationSpeed: String = "",
@@ -133,11 +135,11 @@ class CreateContainerViewModel @Inject constructor(
     val appStoragePathWithBackup: String = context.filesDir.absolutePath
 
     init {
-        _state.update { it.copy(filePath = context.noBackupFilesDir.absolutePath) }
+        _state.update { validateAppStorageName(it.copy(filePath = context.noBackupFilesDir.absolutePath)) }
     }
 
     fun update(transform: CreateContainerState.() -> CreateContainerState) =
-        _state.update { it.transform() }
+        _state.update { validateAppStorageName(it.transform()) }
 
     fun nextStep() = _state.update { it.copy(currentStep = (it.currentStep + 1).coerceAtMost(it.totalSteps)) }
     fun prevStep() = _state.update { it.copy(currentStep = (it.currentStep - 1).coerceAtLeast(1)) }
@@ -153,15 +155,15 @@ class CreateContainerViewModel @Inject constructor(
             if (cursor.moveToFirst()) cursor.getString(0) else null
         } ?: _state.value.fileName
         safParcelFd = context.contentResolver.openFileDescriptor(normalizedUri, "rw")
-        _state.update { it.copy(safUri = uriString, fileName = displayName) }
+        _state.update { validateAppStorageName(it.copy(safUri = uriString, fileName = displayName)) }
     }
 
     fun clearSafUri() {
         deletePendingSafFile()
-        _state.update { it.copy(
+        _state.update { validateAppStorageName(it.copy(
             safUri   = "",
             filePath = if (it.includeInBackup) context.filesDir.absolutePath else context.noBackupFilesDir.absolutePath
-        ) }
+        )) }
     }
 
     // Call this BEFORE launching the file creator picker so the old 0-byte file is gone
@@ -176,7 +178,7 @@ class CreateContainerViewModel @Inject constructor(
                     context.contentResolver, android.net.Uri.parse(oldSafUri)
                 )
             }
-            _state.update { it.copy(safUri = "") }
+            _state.update { validateAppStorageName(it.copy(safUri = "")) }
         }
     }
 
@@ -309,6 +311,11 @@ class CreateContainerViewModel @Inject constructor(
 
     fun startCreation() {
         val s = _state.value
+        val checkedState = validateAppStorageName(s)
+        if (checkedState.appStorageFileNameExists) {
+            _state.value = checkedState
+            return
+        }
         _state.update { it.copy(isCreating = true, creationProgress = 0f) }
 
         // Clear any stale completed state from a previous run before subscribing.
@@ -427,5 +434,12 @@ class CreateContainerViewModel @Inject constructor(
     private fun formatTime(secs: Long): String = when {
         secs < 60 -> "~$secs seconds"
         else      -> "~${secs / 60} min ${secs % 60} sec"
+    }
+
+    private fun validateAppStorageName(state: CreateContainerState): CreateContainerState {
+        val exists = state.location == StorageLocation.APP_STORAGE &&
+            state.fileName.isNotBlank() &&
+            java.io.File(state.filePath, state.fileName).exists()
+        return state.copy(appStorageFileNameExists = exists)
     }
 }

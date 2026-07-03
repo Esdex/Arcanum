@@ -160,6 +160,7 @@ fun VaultScreen(
     onCreateContainer: () -> Unit,
     onOpenSettings: () -> Unit,
     onVaultConfig: (containerId: String) -> Unit,
+    onOpenVault: (containerId: String) -> Unit,
     onMountContainer: (containerId: String) -> Unit = {},
     onMountSuccess: (id: String) -> Unit = {},
     onUnmountStart: (containerId: String) -> Unit = {},
@@ -270,6 +271,13 @@ fun VaultScreen(
     val appStorageLabel   = stringResource(R.string.vault_storage_app)
     val localStorageLabel = stringResource(R.string.vault_storage_local)
     val navBarPadding     = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val openContainer: (ContainerEntity) -> Unit = { container ->
+        when {
+            container.isMounted -> onOpenVault(container.id)
+            isContainerAccessible(context, container) -> onMountContainer(container.id)
+            else -> containerNotFound = container
+        }
+    }
 
     CompositionLocalProvider(LocalHazeState provides hazeState) {
         Box(Modifier.fillMaxSize()) {
@@ -377,15 +385,10 @@ fun VaultScreen(
                                             contextMenuContainerId = contextMenuContainerId,
                                             onContextMenuChange    = { open -> contextMenuContainerId = if (open) container.id else null },
                                             onSelect               = { selectedIds = if (container.id in selectedIds) selectedIds - container.id else selectedIds + container.id },
-                                            onOpen                 = {
-                                                if (container.isMounted || isContainerAccessible(context, container)) {
-                                                    onVaultConfig(container.id)
-                                                } else {
-                                                    containerNotFound = container
-                                                }
-                                            },
+                                            onOpen                 = { openContainer(container) },
                                             onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
                                             onUnmount              = { containerToUnmount = container },
+                                            onConfig               = { onVaultConfig(container.id) },
                                             onRemoveFromList       = { containerToRemoveFromList = container },
                                             onDeleteVault          = { containerToDeleteFile = container }
                                         )
@@ -402,15 +405,10 @@ fun VaultScreen(
                                         contextMenuContainerId = contextMenuContainerId,
                                         onContextMenuChange    = { open -> contextMenuContainerId = if (open) container.id else null },
                                         onSelect               = { selectedIds = if (container.id in selectedIds) selectedIds - container.id else selectedIds + container.id },
-                                        onOpen                 = {
-                                            if (container.isMounted || isContainerAccessible(context, container)) {
-                                                onVaultConfig(container.id)
-                                            } else {
-                                                containerNotFound = container
-                                            }
-                                        },
+                                        onOpen                 = { openContainer(container) },
                                         onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
                                         onUnmount              = { containerToUnmount = container },
+                                        onConfig               = { onVaultConfig(container.id) },
                                         onRemoveFromList       = { containerToRemoveFromList = container },
                                         onDeleteVault          = { containerToDeleteFile = container }
                                     )
@@ -679,6 +677,7 @@ private fun VaultCardItem(
     onOpen: () -> Unit,
     onLongClick: () -> Unit,
     onUnmount: () -> Unit,
+    onConfig: () -> Unit,
     onRemoveFromList: () -> Unit,
     onDeleteVault: () -> Unit,
 ) {
@@ -693,6 +692,8 @@ private fun VaultCardItem(
         onShowContextMenuChange = onContextMenuChange,
         onClick                 = { if (selectionMode) onSelect() else onOpen() },
         onLongClick             = onLongClick,
+        onUnmount               = onUnmount,
+        onConfig                = onConfig,
         onRemoveFromList        = onRemoveFromList,
         onDeleteVault           = onDeleteVault
     )
@@ -882,6 +883,8 @@ private fun VaultCard(
     onShowContextMenuChange: (Boolean) -> Unit = {},
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    onUnmount: () -> Unit,
+    onConfig: () -> Unit,
     onRemoveFromList: () -> Unit,
     onDeleteVault: () -> Unit,
 ) {
@@ -1038,6 +1041,18 @@ private fun VaultCard(
             leadingIcon = { Icon(Icons.Outlined.CheckBox, contentDescription = null) },
             onClick     = { onShowContextMenuChange(false); onLongClick() }
         )
+        DropdownMenuItem(
+            text        = { Text(stringResource(R.string.vault_menu_config)) },
+            leadingIcon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+            onClick     = { onShowContextMenuChange(false); onConfig() }
+        )
+        if (container.isMounted) {
+            DropdownMenuItem(
+                text        = { Text(stringResource(R.string.vault_menu_unmount)) },
+                leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
+                onClick     = { onShowContextMenuChange(false); onUnmount() }
+            )
+        }
         DropdownMenuItem(
             text        = { Text(stringResource(R.string.vault_menu_remove)) },
             leadingIcon = { Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = null) },
@@ -1218,4 +1233,3 @@ private fun ContainerNotFoundOverlay(
         }
     }
 }
-

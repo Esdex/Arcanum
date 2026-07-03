@@ -138,12 +138,13 @@ private data class EncryptPending(
 fun MountScreen(
     containerId: String,
     viewModel: VaultViewModel,
+    startBiometricSetup: Boolean = false,
     onBack: () -> Unit,
     onMountSuccess: (id: String) -> Unit
 ) {
     val containers by viewModel.containers.collectAsState()
     val container = containers.find { it.id == containerId } ?: return
-    MountScreenContent(container, viewModel, onBack, onMountSuccess)
+    MountScreenContent(container, viewModel, startBiometricSetup, onBack, onMountSuccess)
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
@@ -151,6 +152,7 @@ fun MountScreen(
 private fun MountScreenContent(
     container: ContainerEntity,
     viewModel: VaultViewModel,
+    startBiometricSetup: Boolean,
     onBack: () -> Unit,
     onMountSuccess: (id: String) -> Unit
 ) {
@@ -159,6 +161,7 @@ private fun MountScreenContent(
     val keyboardController = LocalSoftwareKeyboardController.current
     val mountState by viewModel.mountState.collectAsState()
     val mountLogs  by viewModel.mountLogs.collectAsState()
+    val biometricUnlockEnabled by viewModel.biometricUnlockEnabled.collectAsState()
     val mountId    = container.id
 
     var keyfiles by remember { mutableStateOf<List<KeyfileEntry>>(emptyList()) }
@@ -263,14 +266,18 @@ private fun MountScreenContent(
     val shakeAnim         = remember { Animatable(0f) }
 
     val algorithms = remember { listOf(-1 to "Auto") + (0..14).map { id -> id to VeraCryptEngine.algorithmIdToString(id).replace("-256-XTS", "") } }
-    val hashes     = remember { listOf(-1 to "Auto") + (0..4).map { it to VeraCryptEngine.hashIdToString(it) } }
+    val hashes     = remember { listOf(VeraCryptEngine.HASH_AUTO to "Auto") + (0..VeraCryptEngine.HASH_ARGON2ID).map { it to VeraCryptEngine.hashIdToString(it) } }
 
     // ── Biometric state ───────────────────────────────────────────────────
     val hasBiometricSaved  = remember(mountId) { viewModel.hasBiometricCredentials(mountId) }
-    val biometricAvailable = remember(mountId) { viewModel.isBiometricAvailable() }
-    val bioModeState           = remember { mutableStateOf(if (hasBiometricSaved) BioUiMode.Indicator else BioUiMode.Form) }
+    val biometricAvailable = biometricUnlockEnabled && remember(mountId) { viewModel.isBiometricAvailable() }
+    val bioModeState           = remember(mountId, biometricUnlockEnabled) {
+        mutableStateOf(if (hasBiometricSaved && biometricUnlockEnabled) BioUiMode.Indicator else BioUiMode.Form)
+    }
     var bioMode                by bioModeState
-    val biometricEnabledState  = remember { mutableStateOf(hasBiometricSaved) }
+    val biometricEnabledState  = remember(mountId, biometricUnlockEnabled, startBiometricSetup) {
+        mutableStateOf((hasBiometricSaved && biometricUnlockEnabled) || (startBiometricSetup && biometricAvailable && !hasBiometricSaved))
+    }
     var biometricEnabled       by biometricEnabledState
     var localHasBiometricSaved by remember { mutableStateOf(hasBiometricSaved) }
     val isDecryptModeState     = remember { mutableStateOf(false) }
@@ -309,9 +316,16 @@ private fun MountScreenContent(
     val latestOnUnlock      = rememberUpdatedState(onUnlock)
     val latestContainer     = rememberUpdatedState(container)
     val latestOnMountSuccess = rememberUpdatedState(onMountSuccess)
-    val latestOnSaveBio     = rememberUpdatedState<(Cipher, String, Int) -> Unit> { cipher, pw, pim ->
-        viewModel.saveBiometricCredentials(mountId, cipher, pw, pim)
-        viewModel.saveKeyfileUrisForBiometric(mountId, keyfiles.map { it.uriString })
+    val latestOnSaveBio     = rememberUpdatedState<(Cipher, EncryptPending) -> Unit> { cipher, data ->
+        viewModel.saveBiometricCredentials(
+            containerId    = mountId,
+            cipher         = cipher,
+            password       = data.password,
+            pim            = data.pim,
+            algorithm      = data.algorithm,
+            hashAlgorithm  = data.hash,
+            keyfileUris    = keyfiles.map { it.uriString }
+        )
     }
 
     val biometricCallback = remember {
@@ -341,7 +355,7 @@ private fun MountScreenContent(
                     )
                 } else {
                     val data = pendingEncryptState.value ?: return
-                    latestOnSaveBio.value(cipher, data.password, data.pim)
+                    latestOnSaveBio.value(cipher, data)
                     latestOnUnlock.value(data.password, data.pim, data.algorithm, data.hash, data.protectHidden, data.protectHiddenPim, data.protectHiddenKeyfileData)
                     pendingEncryptState.value = null
                 }
@@ -371,7 +385,8 @@ private fun MountScreenContent(
     val bioSaveSubtitle   = stringResource(R.string.vault_biometric_save_subtitle)
     val bioSkip           = stringResource(R.string.vault_biometric_skip)
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(mountId, biometricUnlockEnabled) {
+        if (!biometricUnlockEnabled) return@LaunchedEffect
         if (!hasBiometricSaved) return@LaunchedEffect
         val cryptoObj = viewModel.getBiometricCryptoObjectForDecrypt(mountId)
         if (cryptoObj == null) {
@@ -463,7 +478,7 @@ private fun MountScreenContent(
                                     val protectedPassword = if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null
                                     val protectedPim = if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0
                                     val protectedKeyfileData = if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList()
-                                    if (biometricEnabled) {
+                                    if (biometricEnabled && biometricAvailable) {
                                         val cryptoObj = viewModel.getBiometricCryptoObjectForEncrypt()
                                         if (cryptoObj != null) {
                                             isDecryptModeState.value  = false

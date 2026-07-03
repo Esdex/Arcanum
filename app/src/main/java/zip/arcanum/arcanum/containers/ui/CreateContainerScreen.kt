@@ -336,7 +336,7 @@ fun CreateContainerScreen(
 private fun isStepValid(state: CreateContainerState): Boolean = when (state.currentStep) {
     1    -> true
     2    -> state.fileName.isNotBlank() && when (state.location) {
-                StorageLocation.APP_STORAGE      -> true
+                StorageLocation.APP_STORAGE      -> !state.appStorageFileNameExists
                 StorageLocation.INTERNAL_STORAGE -> state.safUri.isNotBlank()
             }
     3    -> true
@@ -356,4 +356,3 @@ private fun isStepValid(state: CreateContainerState): Boolean = when (state.curr
     14   -> state.hiddenEntropyPoints >= 500
     else -> true
 }
-

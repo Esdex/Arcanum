@@ -130,7 +130,11 @@ fun VaultInfoScreen(
             InfoDivider()
             InfoRow(stringResource(R.string.vault_info_label_size), container.size.formatSize())
             InfoDivider()
-            InfoRow(stringResource(R.string.vault_info_label_location), container.locationDisplay())
+            InfoRow(
+                label = stringResource(R.string.vault_info_label_location),
+                value = container.locationDisplay(),
+                stacked = true
+            )
         }
 
         Spacer(Modifier.height(12.dp))
@@ -175,13 +179,35 @@ private fun InfoDivider() {
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
+private fun InfoRow(label: String, value: String, stacked: Boolean = false) {
+    if (stacked) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        return
+    }
+
     Row(
-        modifier              = Modifier
+        modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 13.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment     = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text     = label,

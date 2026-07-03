@@ -105,6 +105,7 @@ class ContainerCreationService : Service() {
                     )
                 }
             } finally {
+                p.entropyBytes.fill(0)
                 p.safPfd?.close()
                 if (!p.preserveKeyfiles) {
                     p.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }

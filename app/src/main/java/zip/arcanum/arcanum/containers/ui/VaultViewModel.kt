@@ -39,9 +39,11 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.BuildConfig
 import zip.arcanum.core.database.entities.ContainerEntity
+import zip.arcanum.core.lifecycle.ExternalActivityGuard
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.BiometricCryptoManager
+import zip.arcanum.core.security.BiometricUnlockPayload
 import zip.arcanum.crypto.CryptoError
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
@@ -60,6 +62,7 @@ class VaultViewModel @Inject constructor(
     private val billingManager: BillingManagerInterface,
     private val mountLogger: MountLogger,
     private val prefs: AppPreferences,
+    private val externalActivityGuard: ExternalActivityGuard,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -83,6 +86,12 @@ class VaultViewModel @Inject constructor(
 
     private val _sortState = MutableStateFlow(SortState())
     val sortState = _sortState.asStateFlow()
+
+    val biometricUnlockEnabled = prefs.biometricUnlockEnabled.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = true
+    )
 
     // True when the installed version is newer than the last version the user acknowledged.
     // null lastSeenVersionCode means first install — not an update.
@@ -243,7 +252,7 @@ class VaultViewModel @Inject constructor(
                 mountLogger.log("PRF: $hashLabel")
                 if (!protectHiddenPassword.isNullOrBlank()) mountLogger.log("Hidden volume protection: enabled")
                 mountLogger.log("Submitting credentials to crypto engine...")
-                mountLogger.log("Running PBKDF2 key derivation (may take several seconds)...")
+                mountLogger.log("Running header key derivation (may take several seconds)...")
                 // Only create the listener when the log terminal is visible — avoids
                 // allocating a JNI callback object when the user doesn't need the output.
                 val progressListener: VeraCryptEngine.MountProgressListener? =
@@ -445,6 +454,7 @@ class VaultViewModel @Inject constructor(
     }
 
     fun unmountContainersOnStop(isLocked: Boolean) {
+        if (!isLocked && externalActivityGuard.isActive) return
         // Skip background unmounting if a container was just mounted — ProcessLifecycleOwner.onStop
         // can fire during the mount animation or navigation transition, causing the freshly-mounted
         // container to be unmounted immediately. Screen-off (isLocked=true) is not affected.
@@ -472,17 +482,46 @@ class VaultViewModel @Inject constructor(
 
     fun isBiometricAvailable(): Boolean = biometricAuth.isAvailable()
 
-    fun hasBiometricCredentials(containerId: String): Boolean =
-        biometricCryptoManager.hasSavedCredentials(containerId)
+    fun hasBiometricCredentials(containerId: String): Boolean {
+        val hadSaved = biometricCryptoManager.hasSavedCredentials(containerId)
+        val usable = biometricCryptoManager.hasUsableCredentials(containerId)
+        if (hadSaved && !usable) {
+            viewModelScope.launch { repo.updateBiometric(containerId, false) }
+        }
+        return usable
+    }
 
     fun getBiometricCryptoObjectForEncrypt(): BiometricPrompt.CryptoObject? =
         try { biometricCryptoManager.getCryptoObjectForEncrypt() } catch (_: Exception) { null }
 
-    fun getBiometricCryptoObjectForDecrypt(containerId: String): BiometricPrompt.CryptoObject? =
-        biometricCryptoManager.getCryptoObjectForDecrypt(containerId)
+    fun getBiometricCryptoObjectForDecrypt(containerId: String): BiometricPrompt.CryptoObject? {
+        val cryptoObject = biometricCryptoManager.getCryptoObjectForDecrypt(containerId)
+        if (cryptoObject == null) {
+            viewModelScope.launch { repo.updateBiometric(containerId, false) }
+        }
+        return cryptoObject
+    }
 
-    fun saveBiometricCredentials(containerId: String, cipher: Cipher, password: String, pim: Int) {
-        biometricCryptoManager.saveEncryptedCredentials(containerId, cipher, password, pim)
+    fun saveBiometricCredentials(
+        containerId: String,
+        cipher: Cipher,
+        password: String,
+        pim: Int,
+        algorithm: Int,
+        hashAlgorithm: Int,
+        keyfileUris: List<String>
+    ) {
+        biometricCryptoManager.saveEncryptedCredentials(
+            containerId,
+            cipher,
+            BiometricUnlockPayload(
+                password      = password,
+                pim           = pim,
+                algorithm     = algorithm,
+                hashAlgorithm = hashAlgorithm,
+                keyfileUris   = keyfileUris
+            )
+        )
         viewModelScope.launch { repo.updateBiometric(containerId, true) }
     }
 
@@ -490,7 +529,7 @@ class VaultViewModel @Inject constructor(
         biometricCryptoManager.saveKeyfileUris(containerId, uris)
     }
 
-    fun decryptBiometricCredentials(containerId: String, cipher: Cipher): Pair<String, Int>? =
+    fun decryptBiometricCredentials(containerId: String, cipher: Cipher): BiometricUnlockPayload? =
         biometricCryptoManager.loadDecryptedCredentials(containerId, cipher)
 
     fun deleteBiometricCredentials(containerId: String) {
@@ -508,10 +547,12 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val creds = biometricCryptoManager.loadDecryptedCredentials(container.id, cipher)
             if (creds == null) {
+                biometricCryptoManager.deleteCredentials(container.id)
+                repo.updateBiometric(container.id, false)
                 withContext(Dispatchers.Main) { onInvalidCredentials() }
                 return@launch
             }
-            val uris = biometricCryptoManager.loadKeyfileUris(container.id)
+            val uris = creds.keyfileUris
             val keyfileData = uris.map { uriStr ->
                 try { context.contentResolver.openInputStream(Uri.parse(uriStr))?.use { it.readBytes() } }
                 catch (_: Exception) { null }
@@ -523,9 +564,11 @@ class VaultViewModel @Inject constructor(
             withContext(Dispatchers.Main) {
                 mountContainer(
                     container                 = container,
-                    password                  = creds.first,
+                    password                  = creds.password,
                     keyfileData               = keyfileData.filterNotNull(),
-                    pim                       = creds.second,
+                    pim                       = creds.pim,
+                    algorithm                 = creds.algorithm,
+                    hashAlgorithm             = creds.hashAlgorithm,
                     protectHiddenPassword     = null,
                     protectHiddenKeyfileData  = emptyList(),
                     protectHiddenPim          = 0,

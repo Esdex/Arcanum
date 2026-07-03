@@ -168,6 +168,12 @@ fun StepVolumeLocation(
                     onValueChange = { onUpdate { copy(fileName = it) } },
                     label         = { Text(stringResource(R.string.create_filename_label)) },
                     placeholder   = { Text(stringResource(R.string.create_filename_placeholder)) },
+                    isError       = state.appStorageFileNameExists,
+                    supportingText = if (state.appStorageFileNameExists) {
+                        { Text(stringResource(R.string.create_filename_exists)) }
+                    } else {
+                        null
+                    },
                     singleLine    = true,
                     modifier      = Modifier.fillMaxWidth()
                 )
@@ -339,12 +345,12 @@ fun StepVolumeSize(state: CreateContainerState, onUpdate: (CreateContainerState.
                         selected = !unitGb,
                         onClick  = { unitGb = false; val mb = customInput.toLongOrNull() ?: 0L; onUpdate { copy(sizeMb = mb) } },
                         shape    = SegmentedButtonDefaults.itemShape(0, 2)
-                    ) { Text("MB") }
+                    ) { Text(stringResource(R.string.common_mb)) }
                     SegmentedButton(
                         selected = unitGb,
                         onClick  = { unitGb = true; val mb = customInput.toLongOrNull() ?: 0L; onUpdate { copy(sizeMb = mb * 1024) } },
                         shape    = SegmentedButtonDefaults.itemShape(1, 2)
-                    ) { Text("GB") }
+                    ) { Text(stringResource(R.string.common_gb)) }
                 }
             }
         }

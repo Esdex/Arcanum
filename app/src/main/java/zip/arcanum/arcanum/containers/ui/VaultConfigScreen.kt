@@ -1,6 +1,5 @@
 package zip.arcanum.arcanum.containers.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -81,17 +80,20 @@ fun VaultConfigScreen(
     containerId: String,
     viewModel: VaultViewModel,
     onBack: () -> Unit,
-    onMount: (containerId: String) -> Unit,
+    onMount: (containerId: String, enableBiometricSetup: Boolean) -> Unit,
     onOpenVault: (containerId: String) -> Unit,
+    onUnmountVault: (containerId: String) -> Unit,
     onChangePassword: (containerId: String) -> Unit,
     onChangeKeyfile: (containerId: String) -> Unit,
-    onMoveVault: (containerId: String, toApp: Boolean) -> Unit
+    onMoveVault: (containerId: String, toApp: Boolean) -> Unit,
+    onBackup: (containerId: String) -> Unit,
+    onExpandVolume: (containerId: String) -> Unit
 ) {
-    val context      = LocalContext.current
     val isDynamic    = LocalDynamicColor.current
     val isAmoled     = LocalAmoledMode.current
     val containers   by viewModel.containers.collectAsState()
     val renameResult by viewModel.renameResult.collectAsState()
+    val biometricUnlockEnabled by viewModel.biometricUnlockEnabled.collectAsState()
     val container    = containers.firstOrNull { it.id == containerId }
     val isMounted    = container?.isMounted ?: false
 
@@ -101,6 +103,7 @@ fun VaultConfigScreen(
     var showRenameDialog     by remember { mutableStateOf(false) }
     var showMoveSheet        by remember { mutableStateOf(false) }
     var showAutoUnmountSheet by remember { mutableStateOf(false) }
+    var showRemoveBioDialog  by remember { mutableStateOf(false) }
     var renameText           by remember { mutableStateOf("") }
 
     LaunchedEffect(renameResult) {
@@ -110,7 +113,19 @@ fun VaultConfigScreen(
         }
     }
 
-    val comingSoon = stringResource(R.string.common_coming_soon)
+    LaunchedEffect(containerId, container?.hasBiometric) {
+        if (container?.hasBiometric == true) {
+            viewModel.hasBiometricCredentials(containerId)
+        }
+    }
+
+    fun runAfterUnmountIfNeeded(action: () -> Unit) {
+        if (isMounted) {
+            viewModel.unmountContainer(containerId) { action() }
+        } else {
+            action()
+        }
+    }
 
     val topBarColors  = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                         else TopAppBarDefaults.topAppBarColors()
@@ -147,20 +162,22 @@ fun VaultConfigScreen(
                                 DropdownMenuItem(
                                     text        = { Text(stringResource(R.string.vault_config_rename)) },
                                     leadingIcon = { Icon(Icons.Outlined.DriveFileRenameOutline, contentDescription = null) },
-                                    enabled     = !isMounted,
                                     onClick     = {
                                         showMoreMenu = false
-                                        renameText   = container?.name ?: ""
-                                        showRenameDialog = true
+                                        runAfterUnmountIfNeeded {
+                                            renameText   = container?.name ?: ""
+                                            showRenameDialog = true
+                                        }
                                     }
                                 )
                                 DropdownMenuItem(
                                     text        = { Text(stringResource(R.string.vault_config_move_sheet_title)) },
                                     leadingIcon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
-                                    enabled     = !isMounted,
                                     onClick     = {
-                                        showMoreMenu  = false
-                                        showMoveSheet = true
+                                        showMoreMenu = false
+                                        runAfterUnmountIfNeeded {
+                                            showMoveSheet = true
+                                        }
                                     }
                                 )
                             }
@@ -190,8 +207,20 @@ fun VaultConfigScreen(
                         title     = stringResource(if (isMounted) R.string.vault_config_op_open else R.string.vault_config_op_mount),
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_op_open_desc else R.string.vault_config_op_mount_desc),
                         isDynamic = isDynamic,
-                        onClick   = { if (isMounted) onOpenVault(containerId) else onMount(containerId) }
+                            onClick   = { if (isMounted) onOpenVault(containerId) else onMount(containerId, false) }
                     )
+                    if (isMounted) {
+                        VaultOperationItem(
+                            icon      = Icons.Outlined.Lock,
+                            rawColor  = Color(0xFF2563EB),
+                            title     = stringResource(R.string.vault_config_op_unmount),
+                            subtitle  = stringResource(R.string.vault_config_op_unmount_desc),
+                            isDynamic = isDynamic,
+                            onClick   = {
+                                viewModel.unmountContainer(containerId) { onUnmountVault(containerId) }
+                            }
+                        )
+                    }
                     VaultOperationItem(
                         icon      = Icons.Outlined.Timer,
                         rawColor  = Color(0xFFD97706),
@@ -201,46 +230,90 @@ fun VaultConfigScreen(
                         onClick   = { showAutoUnmountSheet = true }
                     )
 
+                    if (container != null) {
+                        SettingsSwitch(
+                            title           = stringResource(R.string.vault_config_biometric_unlock),
+                            subtitle        = stringResource(
+                                when {
+                                    !biometricUnlockEnabled && container.hasBiometric ->
+                                        R.string.vault_config_biometric_saved_global_disabled
+                                    !biometricUnlockEnabled && !container.hasBiometric ->
+                                        R.string.vault_config_biometric_global_disabled
+                                    container.hasBiometric ->
+                                        R.string.vault_config_biometric_enabled_desc
+                                    else ->
+                                        R.string.vault_config_biometric_enable_desc
+                                }
+                            ),
+                            checked         = container.hasBiometric,
+                            enabled         = biometricUnlockEnabled || container.hasBiometric,
+                            onCheckedChange = { enabled ->
+                                if (!enabled && container.hasBiometric) {
+                                    showRemoveBioDialog = true
+                                } else if (enabled && biometricUnlockEnabled && !container.hasBiometric) {
+                                    runAfterUnmountIfNeeded { onMount(containerId, true) }
+                                }
+                            }
+                        )
+                    }
+
                     VaultOperationItem(
                         icon      = Icons.Outlined.Lock,
                         rawColor  = Color(0xFF1E88E5),
                         title     = stringResource(R.string.vault_config_change_password),
-                        subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.chpwd_config_desc),
+                        subtitle  = stringResource(if (isMounted) R.string.vault_config_auto_unmount_before_action else R.string.chpwd_config_desc),
                         isDynamic = isDynamic,
-                        enabled   = !isMounted,
-                        onClick   = { onChangePassword(containerId) }
+                        onClick   = { runAfterUnmountIfNeeded { onChangePassword(containerId) } }
                     )
                     VaultOperationItem(
                         icon      = Icons.Outlined.VpnKey,
                         rawColor  = Color(0xFF7B1FA2),
                         title     = stringResource(R.string.vault_config_change_keyfile),
-                        subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.chkeyfile_config_desc),
+                        subtitle  = stringResource(if (isMounted) R.string.vault_config_auto_unmount_before_action else R.string.chkeyfile_config_desc),
                         isDynamic = isDynamic,
-                        enabled   = !isMounted,
-                        onClick   = { onChangeKeyfile(containerId) }
+                        onClick   = { runAfterUnmountIfNeeded { onChangeKeyfile(containerId) } }
                     )
 
                     VaultOperationItem(
                         icon      = Icons.Outlined.SaveAlt,
                         rawColor  = Color(0xFFE65100),
-                        title     = stringResource(R.string.vault_info_op_backup_header),
-                        subtitle  = stringResource(R.string.vault_card_backup_desc),
+                        title     = stringResource(R.string.vault_menu_backup),
+                        subtitle  = stringResource(if (isMounted) R.string.vault_config_backup_auto_unmount_desc else R.string.vault_config_backup_desc),
                         isDynamic = isDynamic,
-                        onClick   = { Toast.makeText(context, comingSoon, Toast.LENGTH_SHORT).show() }
+                        onClick   = { runAfterUnmountIfNeeded { onBackup(containerId) } }
                     )
                     VaultOperationItem(
                         icon      = Icons.Outlined.OpenInFull,
                         rawColor  = Color(0xFF8E24AA),
                         title     = stringResource(R.string.vault_info_op_expand_volume),
-                        subtitle  = stringResource(R.string.vault_card_expand_desc),
+                        subtitle  = stringResource(if (isMounted) R.string.vault_config_auto_unmount_before_action else R.string.vault_card_expand_desc),
                         isDynamic = isDynamic,
-                        onClick   = { Toast.makeText(context, comingSoon, Toast.LENGTH_SHORT).show() }
+                        onClick   = { runAfterUnmountIfNeeded { onExpandVolume(containerId) } }
                     )
 
                     Spacer(Modifier.navigationBarsPadding())
                     Spacer(Modifier.height(8.dp))
                 }
             }
+        }
+
+        if (showRemoveBioDialog && container != null) {
+            AppDialog(
+                onDismissRequest = { showRemoveBioDialog = false },
+                title            = { Text(stringResource(R.string.vault_remove_biometric_title)) },
+                text             = { Text(stringResource(R.string.vault_remove_biometric_body, container.name)) },
+                confirmButton    = {
+                    TextButton(onClick = {
+                        showRemoveBioDialog = false
+                        viewModel.deleteBiometricCredentials(containerId)
+                    }) { Text(stringResource(R.string.vault_remove_confirm)) }
+                },
+                dismissButton    = {
+                    TextButton(onClick = { showRemoveBioDialog = false }) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                }
+            )
         }
 
         // ── Rename dialog ─────────────────────────────────────────────────────────
