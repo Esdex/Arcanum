@@ -27,6 +27,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.rememberSplineBasedDecay
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -795,6 +800,7 @@ private fun ZoomableImagePage(
     var swipeY        by remember { mutableStateOf(0f) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     val scope         = rememberCoroutineScope()
+    val decaySpec     = rememberSplineBasedDecay<Float>()
 
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
         val newScale = (scale.value * zoomChange).coerceIn(1f, 5f)
@@ -846,9 +852,46 @@ private fun ZoomableImagePage(
                 )
             }
             .transformable(state = transformState, canPan = { scale.value > 1.05f })
+            // Track pan velocity and launch fling on finger lift
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val vt = VelocityTracker()
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    vt.addPointerInputChange(down)
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val pressed = event.changes.filter { it.pressed }
+                        if (pressed.size == 1) vt.addPointerInputChange(pressed[0])
+                        else if (pressed.size > 1) vt.resetTracking()
+                        if (pressed.isEmpty()) break
+                    }
+                    if (scale.value > 1.05f) {
+                        val vel = vt.calculateVelocity()
+                        val vx  = vel.x.coerceIn(-5000f, 5000f)
+                        val vy  = vel.y.coerceIn(-5000f, 5000f)
+                        scope.launch {
+                            val maxX = (containerSize.width  * (scale.value - 1f)) / 2f
+                            val maxY = (containerSize.height * (scale.value - 1f)) / 2f
+                            launch {
+                                panX.animateDecay(vx, decaySpec)
+                                panX.snapTo(panX.value.coerceIn(-maxX, maxX))
+                            }
+                            launch {
+                                panY.animateDecay(vy, decaySpec)
+                                panY.snapTo(panY.value.coerceIn(-maxY, maxY))
+                            }
+                        }
+                    }
+                }
+            }
             .graphicsLayer {
-                scaleX = scale.value; scaleY = scale.value
-                translationX = panX.value; translationY = panY.value + swipeY
+                val s  = scale.value
+                val mX = (containerSize.width  * (s - 1f)) / 2f
+                val mY = (containerSize.height * (s - 1f)) / 2f
+                scaleX       = s
+                scaleY       = s
+                translationX = panX.value.coerceIn(-mX, mX)
+                translationY = panY.value.coerceIn(-mY, mY) + swipeY
             }
     ) {
         when {
