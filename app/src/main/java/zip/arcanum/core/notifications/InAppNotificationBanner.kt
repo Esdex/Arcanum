@@ -255,7 +255,7 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         subtitle        = ctx.getString(R.string.notif_files_exported_subtitle)
     )
     InAppNotification.HiddenVolumeWriteProtection -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFD97706),
+        backgroundColor = Color(0xFFDC2626),
         icon            = Icons.Outlined.Warning,
         title           = ctx.getString(R.string.notif_hidden_write_protection),
         subtitle        = ctx.getString(R.string.notif_hidden_write_protection_subtitle)
