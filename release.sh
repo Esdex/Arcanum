@@ -26,7 +26,7 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 log "Verifying version in build.gradle.kts..."
-GRADLE_VERSION=$(grep 'versionName = ' app/build.gradle.kts | grep -o '"[^"]*"' | tr -d '"')
+GRADLE_VERSION=$(grep 'versionName = "' app/build.gradle.kts | grep -o '"[^"]*"' | tr -d '"')
 GRADLE_CODE=$(grep 'versionCode = ' app/build.gradle.kts | grep -o '[0-9]*' | head -1)
 [[ "$GRADLE_VERSION" != "$VERSION" ]]     && die "build.gradle.kts has versionName=$GRADLE_VERSION, expected $VERSION. Update it first."
 [[ "$GRADLE_CODE"    != "$VERSION_CODE" ]] && die "build.gradle.kts has versionCode=$GRADLE_CODE, expected $VERSION_CODE. Update it first."
