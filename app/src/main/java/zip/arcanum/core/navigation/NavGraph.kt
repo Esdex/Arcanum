@@ -1,8 +1,11 @@
 package zip.arcanum.core.navigation
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Row
 import androidx.compose.animation.core.EaseInOutCubic
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -23,6 +26,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Eject
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
@@ -34,6 +38,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.rememberTopAppBarState
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.runtime.LaunchedEffect
 import zip.arcanum.core.components.AppDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -94,14 +102,27 @@ fun ContainerScreen(
     galleryViewModel: GalleryViewModel = hiltViewModel(),
     fileManagerViewModel: FileManagerViewModel = hiltViewModel()
 ) {
-    val container           by viewModel.container.collectAsState()
-    val galleryState        by galleryViewModel.uiState.collectAsState()
-    val fileManagerState    by fileManagerViewModel.state.collectAsState()
-    val isAmoled            = LocalAmoledMode.current
-    val hazeState           = remember { HazeState() }
-    var selectedTab       by rememberSaveable { mutableStateOf(BottomNavItem.ContainerGallery.route) }
-    var notification        by remember { mutableStateOf<InAppNotification?>(null) }
-    var showUnmountConfirm  by remember { mutableStateOf(false) }
+    val container              by viewModel.container.collectAsState()
+    val galleryState           by galleryViewModel.uiState.collectAsState()
+    val gallerySelectedIds     by galleryViewModel.selectedIds.collectAsState()
+    val fileManagerState       by fileManagerViewModel.state.collectAsState()
+    val isAmoled               = LocalAmoledMode.current
+    val hazeState              = remember { HazeState() }
+    var selectedTab          by rememberSaveable { mutableStateOf(BottomNavItem.ContainerGallery.route) }
+    var notification           by remember { mutableStateOf<InAppNotification?>(null) }
+    var showUnmountConfirm     by remember { mutableStateOf(false) }
+
+    val gallerySelectionMode = gallerySelectedIds.isNotEmpty()
+
+    val galleryScrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
+
+    // Reset TopBar position when leaving Gallery so it's always visible on return
+    LaunchedEffect(selectedTab) {
+        if (selectedTab != BottomNavItem.ContainerGallery.route) {
+            galleryScrollBehavior.state.heightOffset = 0f
+            galleryScrollBehavior.state.contentOffset = 0f
+        }
+    }
 
     // Per-tab offset: 0f = center, 1f = off-screen right, -1f = off-screen left.
     // Initialized so the default tab (Gallery) is at 0 and others wait off to the right.
@@ -112,24 +133,33 @@ fun ContainerScreen(
     }
     val tabAnimScope = rememberCoroutineScope()
 
-    val showBottomBar = !(selectedTab == BottomNavItem.ContainerFiles.route && fileManagerState.isSelectionMode)
+    val showBottomBar = !(selectedTab == BottomNavItem.ContainerFiles.route && fileManagerState.isSelectionMode) &&
+                        !(selectedTab == BottomNavItem.ContainerGallery.route && gallerySelectionMode)
     val navBarPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     BackHandler { onBack() }
 
     CompositionLocalProvider(LocalHazeState provides hazeState) {
         Scaffold(
+            modifier            = if (selectedTab == BottomNavItem.ContainerGallery.route)
+                                      Modifier.nestedScroll(galleryScrollBehavior.nestedScrollConnection)
+                                  else Modifier,
             contentWindowInsets = WindowInsets(0),
             topBar = {
                 when (selectedTab) {
                     BottomNavItem.ContainerGallery.route -> GalleryTopBar(
-                        isSearchActive = galleryState.isSearchActive,
-                        searchQuery    = galleryState.searchQuery,
-                        onBack         = onBack,
-                        onSearchToggle = { galleryViewModel.setSearchActive(!galleryState.isSearchActive) },
-                        onSearchChange = { galleryViewModel.setSearchQuery(it) },
-                        onSearchClose  = { galleryViewModel.setSearchActive(false) },
-                        onRescan       = { galleryViewModel.scanContainer(viewModel.containerId) }
+                        isSearchActive   = galleryState.isSearchActive,
+                        searchQuery      = galleryState.searchQuery,
+                        selectionMode    = gallerySelectionMode,
+                        selectedCount    = gallerySelectedIds.size,
+                        scrollBehavior   = galleryScrollBehavior,
+                        onBack           = onBack,
+                        onSearchToggle   = { galleryViewModel.setSearchActive(!galleryState.isSearchActive) },
+                        onSearchChange   = { galleryViewModel.setSearchQuery(it) },
+                        onSearchClose    = { galleryViewModel.setSearchActive(false) },
+                        onRescan         = { galleryViewModel.scanContainer(viewModel.containerId) },
+                        onClearSelection = { galleryViewModel.clearSelection() },
+                        onDeleteSelected = { galleryViewModel.requestDeleteSelected() }
                     )
                     BottomNavItem.ContainerFiles.route -> {} // FileManagerScreen owns its top bar
                     else -> TopAppBar(
@@ -174,17 +204,18 @@ fun ContainerScreen(
                         ) {
                             when (tab) {
                                 BottomNavItem.ContainerGallery -> GalleryScreen(
-                                    containerId       = viewModel.containerId,
-                                    showTopBar        = false,
-                                    bottomPadding     = 60.dp + navBarPadding,
-                                    onMediaClick      = { file ->
+                                    containerId      = viewModel.containerId,
+                                    showTopBar       = false,
+                                    bottomPadding    = 60.dp + navBarPadding,
+                                    onMediaClick     = { file ->
                                         when (file.fileType) {
                                             MediaFileType.IMAGE -> onPhotoClick(file.id)
                                             MediaFileType.VIDEO -> onVideoClick(file.id)
                                             MediaFileType.AUDIO -> onAudioClick(file.id)
                                         }
                                     },
-                                    viewModel         = galleryViewModel
+                                    onNotification   = { notification = it },
+                                    viewModel        = galleryViewModel
                                 )
                                 BottomNavItem.ContainerFiles -> FileManagerScreen(
                                     containerId      = viewModel.containerId,
@@ -284,55 +315,105 @@ fun ContainerScreen(
 private fun GalleryTopBar(
     isSearchActive: Boolean,
     searchQuery: String,
+    selectionMode: Boolean,
+    selectedCount: Int,
+    scrollBehavior: TopAppBarScrollBehavior,
     onBack: () -> Unit,
     onSearchToggle: () -> Unit,
     onSearchChange: (String) -> Unit,
     onSearchClose: () -> Unit,
-    onRescan: () -> Unit
+    onRescan: () -> Unit,
+    onClearSelection: () -> Unit,
+    onDeleteSelected: () -> Unit
 ) {
     val isAmoled  = LocalAmoledMode.current
     val hazeState = LocalHazeState.current
+    val modifier  = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier
+    val colors    = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    else TopAppBarDefaults.topAppBarColors()
+
     TopAppBar(
-        modifier       = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier,
-        colors         = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                         else TopAppBarDefaults.topAppBarColors(),
-        navigationIcon = { BackIconButton(onBack) },
+        modifier       = modifier,
+        colors         = colors,
+        scrollBehavior = scrollBehavior,
+        navigationIcon = {
+            IconButton(onClick = if (selectionMode) onClearSelection else onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
+            }
+        },
         title = {
-            if (isSearchActive) {
-                BasicTextField(
-                    value         = searchQuery,
-                    onValueChange = onSearchChange,
-                    singleLine    = true,
-                    textStyle     = MaterialTheme.typography.bodyLarge.copy(
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    modifier      = Modifier.fillMaxWidth(),
-                    decorationBox = { inner ->
-                        if (searchQuery.isEmpty()) {
-                            Text(
-                                stringResource(R.string.nav_gallery_search_placeholder),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        inner()
+            AnimatedContent(
+                targetState = selectionMode,
+                transitionSpec = {
+                    val dir = if (targetState) 1 else -1
+                    (fadeIn(tween(200)) + slideInVertically(tween(200)) { it * dir / 3 }) togetherWith
+                    (fadeOut(tween(150)) + slideOutVertically(tween(150)) { it * -dir / 3 })
+                },
+                label = "gallery_title"
+            ) { inSelection ->
+                if (inSelection) {
+                    Text(
+                        stringResource(R.string.gallery_selected_count, selectedCount),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                } else {
+                    if (isSearchActive) {
+                        BasicTextField(
+                            value         = searchQuery,
+                            onValueChange = onSearchChange,
+                            singleLine    = true,
+                            textStyle     = MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            modifier      = Modifier.fillMaxWidth(),
+                            decorationBox = { inner ->
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        stringResource(R.string.nav_gallery_search_placeholder),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                inner()
+                            }
+                        )
+                    } else {
+                        Text(stringResource(R.string.nav_gallery))
                     }
-                )
-            } else {
-                Text(stringResource(R.string.nav_gallery))
+                }
             }
         },
         actions = {
-            if (isSearchActive) {
-                IconButton(onClick = onSearchClose) {
-                    Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.nav_gallery_cd_close_search))
-                }
-            } else {
-                IconButton(onClick = onSearchToggle) {
-                    Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.nav_gallery_cd_search))
-                }
-                IconButton(onClick = onRescan) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = stringResource(R.string.nav_gallery_cd_rescan))
+            AnimatedContent(
+                targetState = selectionMode,
+                transitionSpec = {
+                    fadeIn(tween(200)) togetherWith fadeOut(tween(150))
+                },
+                label = "gallery_actions"
+            ) { inSelection ->
+                if (inSelection) {
+                    IconButton(onClick = onDeleteSelected) {
+                        Icon(
+                            Icons.Outlined.Delete,
+                            contentDescription = stringResource(R.string.gallery_delete_selected),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                } else {
+                    Row {
+                        if (isSearchActive) {
+                            IconButton(onClick = onSearchClose) {
+                                Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.nav_gallery_cd_close_search))
+                            }
+                        } else {
+                            IconButton(onClick = onSearchToggle) {
+                                Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.nav_gallery_cd_search))
+                            }
+                            IconButton(onClick = onRescan) {
+                                Icon(Icons.Outlined.Refresh, contentDescription = stringResource(R.string.nav_gallery_cd_rescan))
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -160,6 +160,13 @@
     <string name="gallery_filter_photos">Photos</string>
     <string name="gallery_filter_videos">Videos</string>
     <string name="gallery_cd_video">Video</string>
+    <string name="gallery_selected_count">%1$d Selected</string>
+    <string name="gallery_deselect_all">Deselect all</string>
+    <string name="gallery_delete_selected">Delete selected</string>
+    <string name="gallery_delete_dialog_title">Delete %1$d photos?</string>
+    <string name="gallery_delete_dialog_body">This action cannot be undone.</string>
+    <string name="gallery_delete_cancel">Cancel</string>
+    <string name="gallery_delete_confirm">Delete</string>
 
     <!-- Media viewer screen -->
     <string name="viewer_cd_back">Back</string>
