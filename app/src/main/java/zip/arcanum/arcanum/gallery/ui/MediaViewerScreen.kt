@@ -40,7 +40,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -299,9 +298,7 @@ fun MediaViewerScreen(
         }
     }
 
-    var isImageZoomed   by remember { mutableStateOf(false) }
-    var swipeDownOffset by remember { mutableStateOf(0f) }
-    val bgAlpha = (1f - swipeDownOffset / 800f).coerceIn(0f, 1f)
+    var isImageZoomed by remember { mutableStateOf(false) }
 
     var showDeleteDialog   by remember { mutableStateOf(false) }
     var showInfoSheet      by remember { mutableStateOf(false) }
@@ -323,7 +320,7 @@ fun MediaViewerScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = bgAlpha))
+                .background(Color.Black)
                 .hazeSource(hazeState)
         ) {
             // ── Pager ────────────────────────────────────────────────────
@@ -337,20 +334,16 @@ fun MediaViewerScreen(
                 val bitmap    = pageFile?.let { uiState.bitmapCache[it.id] }
                 when (pageFile?.fileType) {
                     MediaFileType.IMAGE -> ZoomableImagePage(
-                        bitmap              = bitmap,
-                        isLoading           = uiState.isLoading && isCurrent,
-                        onTap               = { showBars = !showBars },
-                        onScaleChanged      = { isImageZoomed = it > 1.05f },
-                        onSwipeOffsetChange = { swipeDownOffset = it },
-                        onDismiss           = onBack
+                        bitmap         = bitmap,
+                        isLoading      = uiState.isLoading && isCurrent,
+                        onTap          = { showBars = !showBars },
+                        onScaleChanged = { isImageZoomed = it > 1.05f }
                     )
                     MediaFileType.VIDEO -> VideoSurfacePage(
-                        exoPlayer           = if (isCurrent) exoPlayer else null,
-                        onTap               = { userInteracted = true; showBars = !showBars },
-                        onSwipeOffsetChange = { swipeDownOffset = it },
-                        onDismiss           = onBack,
-                        onDoubleTapLeft     = { exoPlayer?.let { p -> p.seekTo((p.currentPosition - 10_000L).coerceAtLeast(0L)) }; seekLeftToken++ },
-                        onDoubleTapRight    = { exoPlayer?.let { p -> p.seekTo(p.currentPosition + 10_000L) }; seekRightToken++ }
+                        exoPlayer       = if (isCurrent) exoPlayer else null,
+                        onTap           = { userInteracted = true; showBars = !showBars },
+                        onDoubleTapLeft  = { exoPlayer?.let { p -> p.seekTo((p.currentPosition - 10_000L).coerceAtLeast(0L)) }; seekLeftToken++ },
+                        onDoubleTapRight = { exoPlayer?.let { p -> p.seekTo(p.currentPosition + 10_000L) }; seekRightToken++ }
                     )
                     else -> Box(Modifier.fillMaxSize().background(Color.Black))
                 }
@@ -651,13 +644,10 @@ fun MediaViewerScreen(
 private fun VideoSurfacePage(
     exoPlayer: ExoPlayer?,
     onTap: () -> Unit,
-    onSwipeOffsetChange: (Float) -> Unit,
-    onDismiss: () -> Unit,
     onDoubleTapLeft: () -> Unit,
     onDoubleTapRight: () -> Unit
 ) {
-    var swipeY by remember { mutableStateOf(0f) }
-    var width  by remember { mutableStateOf(0)  }
+    var width by remember { mutableStateOf(0) }
 
     Box(
         contentAlignment = Alignment.Center,
@@ -672,19 +662,6 @@ private fun VideoSurfacePage(
                     }
                 )
             }
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onVerticalDrag = { _, dy ->
-                        if (dy > 0) { swipeY += dy; onSwipeOffsetChange(swipeY) }
-                    },
-                    onDragEnd    = {
-                        if (swipeY > 200.dp.toPx()) onDismiss()
-                        else { swipeY = 0f; onSwipeOffsetChange(0f) }
-                    },
-                    onDragCancel = { swipeY = 0f; onSwipeOffsetChange(0f) }
-                )
-            }
-            .graphicsLayer { translationY = swipeY }
     ) {
         if (exoPlayer != null) {
             AndroidView(
@@ -790,22 +767,33 @@ private fun ZoomableImagePage(
     bitmap: Bitmap?,
     isLoading: Boolean,
     onTap: () -> Unit,
-    onScaleChanged: (Float) -> Unit,
-    onSwipeOffsetChange: (Float) -> Unit,
-    onDismiss: () -> Unit
+    onScaleChanged: (Float) -> Unit
 ) {
     val scale         = remember { Animatable(1f) }
     val panX          = remember { Animatable(0f) }
     val panY          = remember { Animatable(0f) }
-    var swipeY        by remember { mutableStateOf(0f) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     val scope         = rememberCoroutineScope()
     val decaySpec     = rememberSplineBasedDecay<Float>()
 
+    // Actual rendered size of the image inside the container (ContentScale.Fit may letterbox).
+    val renderedSize = remember(bitmap, containerSize) {
+        val bw = bitmap?.width  ?: 0
+        val bh = bitmap?.height ?: 0
+        if (bw == 0 || bh == 0 || containerSize == IntSize.Zero) containerSize
+        else {
+            val fitScale = minOf(
+                containerSize.width.toFloat()  / bw,
+                containerSize.height.toFloat() / bh
+            )
+            IntSize((bw * fitScale).toInt(), (bh * fitScale).toInt())
+        }
+    }
+
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
         val newScale = (scale.value * zoomChange).coerceIn(1f, 5f)
-        val maxX = (containerSize.width  * (newScale - 1f)) / 2f
-        val maxY = (containerSize.height * (newScale - 1f)) / 2f
+        val maxX = maxOf(0f, (renderedSize.width  * newScale - containerSize.width)  / 2f)
+        val maxY = maxOf(0f, (renderedSize.height * newScale - containerSize.height) / 2f)
         val newX = if (newScale > 1f) (panX.value + panChange.x).coerceIn(-maxX, maxX) else 0f
         val newY = if (newScale > 1f) (panY.value + panChange.y).coerceIn(-maxY, maxY) else 0f
         scope.launch {
@@ -839,18 +827,6 @@ private fun ZoomableImagePage(
                     }
                 )
             }
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onVerticalDrag = { _, dy ->
-                        if (scale.value <= 1.05f && dy > 0) { swipeY += dy; onSwipeOffsetChange(swipeY) }
-                    },
-                    onDragEnd    = {
-                        if (swipeY > 200.dp.toPx()) onDismiss()
-                        else { swipeY = 0f; onSwipeOffsetChange(0f) }
-                    },
-                    onDragCancel = { swipeY = 0f; onSwipeOffsetChange(0f) }
-                )
-            }
             .transformable(state = transformState, canPan = { scale.value > 1.05f })
             // Track pan velocity and launch fling on finger lift
             .pointerInput(Unit) {
@@ -870,8 +846,8 @@ private fun ZoomableImagePage(
                         val vx  = vel.x.coerceIn(-5000f, 5000f)
                         val vy  = vel.y.coerceIn(-5000f, 5000f)
                         scope.launch {
-                            val maxX = (containerSize.width  * (scale.value - 1f)) / 2f
-                            val maxY = (containerSize.height * (scale.value - 1f)) / 2f
+                            val maxX = maxOf(0f, (renderedSize.width  * scale.value - containerSize.width)  / 2f)
+                            val maxY = maxOf(0f, (renderedSize.height * scale.value - containerSize.height) / 2f)
                             launch {
                                 panX.animateDecay(vx, decaySpec)
                                 panX.snapTo(panX.value.coerceIn(-maxX, maxX))
@@ -886,12 +862,12 @@ private fun ZoomableImagePage(
             }
             .graphicsLayer {
                 val s  = scale.value
-                val mX = (containerSize.width  * (s - 1f)) / 2f
-                val mY = (containerSize.height * (s - 1f)) / 2f
+                val mX = maxOf(0f, (renderedSize.width  * s - containerSize.width)  / 2f)
+                val mY = maxOf(0f, (renderedSize.height * s - containerSize.height) / 2f)
                 scaleX       = s
                 scaleY       = s
                 translationX = panX.value.coerceIn(-mX, mX)
-                translationY = panY.value.coerceIn(-mY, mY) + swipeY
+                translationY = panY.value.coerceIn(-mY, mY)
             }
     ) {
         when {
