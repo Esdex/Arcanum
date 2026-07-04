@@ -1,0 +1,10 @@
+• Expand Volume: resize vaults without recreating them
+• Change Password & Keyfiles wizard
+• Backup & Restore Volume Header
+• New vault configuration screen
+• Detailed vault info: cipher, key size, iterations, dates
+• Smarter mount: hash hint reduces KDF passes from 5 to 1
+• Faster wrong-password detection via parallel header scan
+• Unmount all vaults on auto-lock (new security setting)
+• Encrypted app database (SQLCipher)
+• Fix: hidden volume creation with outer keyfile
