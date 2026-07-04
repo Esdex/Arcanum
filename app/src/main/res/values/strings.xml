@@ -67,8 +67,8 @@
     <string name="notif_folder_created">Folder created</string>
     <string name="notif_files_imported_subtitle">Encrypted and stored in vault</string>
     <string name="notif_files_exported_subtitle">Saved to selected folder</string>
-    <string name="notif_hidden_write_protection">Hidden Volume Protected</string>
-    <string name="notif_hidden_write_protection_subtitle">Import stopped — files would overwrite the hidden volume</string>
+    <string name="notif_hidden_write_protection">Write Error</string>
+    <string name="notif_hidden_write_protection_subtitle">A storage error occurred while importing</string>
     <string name="notif_import_failed">Import Failed</string>
     <string name="notif_import_failed_subtitle">Not enough space in the vault</string>
     <string name="notif_support_developer">Enjoying Arcanum?</string>

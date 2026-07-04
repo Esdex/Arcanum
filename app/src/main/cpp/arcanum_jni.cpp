@@ -1588,29 +1588,32 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     memset(effPwd, 0, sizeof(effPwd));
     if (rc != ERR_OK) { memset(masterKey, 0, sizeof(masterKey)); memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)rc; }
 
+    /* Only enforce boundary when protection is explicitly requested — never auto-detect from
+       the outer header's hiddenVolSize, because that would reveal the hidden volume's existence
+       to an adversary who forces the user to open the outer vault without protection. */
     uint64_t hiddenBoundary = 0;
-    if (!authIsHidden && hiddenVolSize > 0)
-        hiddenBoundary = dataOff + dataSz - hiddenVolSize;
-
-    /* If outer volume mounted but boundary unknown, derive it from hidden header */
-    if (!authIsHidden && hiddenBoundary == 0 && hidEffPwdLen > 0) {
-        uint64_t hidOffsets[2] = { VC_HIDDEN_HEADER_OFFSET, fileSize - VC_HIDDEN_HEADER_OFFSET };
-        uint8_t hidMasterKey[192] = {};
-        int hidMkLen = 0, hidAlgId = 0, hidHashId = 0;
-        uint64_t hidDataSz = 0, hidDataOff = 0, hidHvSz = 0;
-        for (int ti = 0; ti < 2; ti++) {
-            if (hidOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
-            int hrc = read_vc_header(fd, hidOffsets[ti], (const char*)hidEffPwd, hidEffPwdLen,
-                                     hidMasterKey, &hidMkLen, &hidDataSz, &hidDataOff,
-                                     &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
-            if (hrc == ERR_OK && hidDataSz > 0) {
-                hiddenBoundary = dataOff + dataSz - hidDataSz;
-                LOGE("[fd/open] protect-hidden: boundary set to 0x%llx from hidden header",
-                     (unsigned long long)hiddenBoundary);
-                break;
+    if (!authIsHidden && hidEffPwdLen > 0) {
+        if (hiddenVolSize > 0) {
+            hiddenBoundary = dataOff + dataSz - hiddenVolSize;
+        } else {
+            uint64_t hidOffsets[2] = { VC_HIDDEN_HEADER_OFFSET, fileSize - VC_HIDDEN_HEADER_OFFSET };
+            uint8_t hidMasterKey[192] = {};
+            int hidMkLen = 0, hidAlgId = 0, hidHashId = 0;
+            uint64_t hidDataSz = 0, hidDataOff = 0, hidHvSz = 0;
+            for (int ti = 0; ti < 2; ti++) {
+                if (hidOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
+                int hrc = read_vc_header(fd, hidOffsets[ti], (const char*)hidEffPwd, hidEffPwdLen,
+                                         hidMasterKey, &hidMkLen, &hidDataSz, &hidDataOff,
+                                         &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
+                if (hrc == ERR_OK && hidDataSz > 0) {
+                    hiddenBoundary = dataOff + dataSz - hidDataSz;
+                    LOGE("[fd/open] protect-hidden: boundary set to 0x%llx from hidden header",
+                         (unsigned long long)hiddenBoundary);
+                    break;
+                }
             }
+            memset(hidMasterKey, 0, sizeof(hidMasterKey));
         }
-        memset(hidMasterKey, 0, sizeof(hidMasterKey));
     }
     memset(hidEffPwd, 0, sizeof(hidEffPwd));
 
@@ -1719,28 +1722,28 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     }
 
     uint64_t hiddenBoundary = 0;
-    if (!authIsHidden && hiddenVolSize > 0)
-        hiddenBoundary = dataOff + dataSz - hiddenVolSize;
-
-    /* If outer volume mounted but boundary unknown, derive it from hidden header */
-    if (!authIsHidden && hiddenBoundary == 0 && hidEffPwdLen > 0) {
-        uint64_t hidOffsets[2] = { VC_HIDDEN_HEADER_OFFSET, fileSize - VC_HIDDEN_HEADER_OFFSET };
-        uint8_t hidMasterKey[192] = {};
-        int hidMkLen = 0, hidAlgId = 0, hidHashId = 0;
-        uint64_t hidDataSz = 0, hidDataOff = 0, hidHvSz = 0;
-        for (int ti = 0; ti < 2; ti++) {
-            if (hidOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
-            int hrc = read_vc_header(fd, hidOffsets[ti], (const char*)hidEffPwd, hidEffPwdLen,
-                                     hidMasterKey, &hidMkLen, &hidDataSz, &hidDataOff,
-                                     &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
-            if (hrc == ERR_OK && hidDataSz > 0) {
-                hiddenBoundary = dataOff + dataSz - hidDataSz;
-                LOGE("[open] protect-hidden: boundary set to 0x%llx from hidden header",
-                     (unsigned long long)hiddenBoundary);
-                break;
+    if (!authIsHidden && hidEffPwdLen > 0) {
+        if (hiddenVolSize > 0) {
+            hiddenBoundary = dataOff + dataSz - hiddenVolSize;
+        } else {
+            uint64_t hidOffsets[2] = { VC_HIDDEN_HEADER_OFFSET, fileSize - VC_HIDDEN_HEADER_OFFSET };
+            uint8_t hidMasterKey[192] = {};
+            int hidMkLen = 0, hidAlgId = 0, hidHashId = 0;
+            uint64_t hidDataSz = 0, hidDataOff = 0, hidHvSz = 0;
+            for (int ti = 0; ti < 2; ti++) {
+                if (hidOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
+                int hrc = read_vc_header(fd, hidOffsets[ti], (const char*)hidEffPwd, hidEffPwdLen,
+                                         hidMasterKey, &hidMkLen, &hidDataSz, &hidDataOff,
+                                         &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
+                if (hrc == ERR_OK && hidDataSz > 0) {
+                    hiddenBoundary = dataOff + dataSz - hidDataSz;
+                    LOGE("[open] protect-hidden: boundary set to 0x%llx from hidden header",
+                         (unsigned long long)hiddenBoundary);
+                    break;
+                }
             }
+            memset(hidMasterKey, 0, sizeof(hidMasterKey));
         }
-        memset(hidMasterKey, 0, sizeof(hidMasterKey));
     }
     memset(hidEffPwd, 0, sizeof(hidEffPwd));
 
@@ -2511,8 +2514,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeGetVolumeType(
 }
 
 /* ─── JNI: nativeHasHiddenVolume ────────────────────────────────────── */
-/* Returns true if this outer volume was created with a hidden volume inside
-   (i.e., field28 in the outer header was non-zero → hiddenBoundary > 0).  */
+/* Returns true if this outer volume was mounted with explicit hidden-volume
+   protection (i.e., a protection password was supplied → hiddenBoundary > 0).  */
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_zip_arcanum_crypto_VeraCryptEngine_nativeHasHiddenVolume(
