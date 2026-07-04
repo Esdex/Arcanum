@@ -1706,6 +1706,104 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                     }
                 }
             }
+            // ── 1.2.0 entries ─────────────────────────────────────────────
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Expand Volume",
+                    subtitle = "Resize an existing vault to any larger size without recreating it or touching your data. Progress runs as a foreground service — you can leave the screen and come back."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Change Password & Keyfiles",
+                    subtitle = "Change your vault password or swap keyfiles at any time from the vault configuration screen. A guided wizard re-encrypts only the volume header — your data is never re-written."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Backup & Restore Volume Header",
+                    subtitle = "Export an encrypted backup of your vault header and restore it later if it ever becomes damaged or corrupted. Fully compatible with VeraCrypt desktop backups."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Vault configuration screen",
+                    subtitle = "Each vault now has a dedicated configuration screen — a single hub for mount/unmount, auto-unmount, change password, change keyfiles, header backup, and expand. Tap any vault to open it."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Refresh,
+                    color    = Color(0xFF3B82F6),
+                    title    = "Detailed vault info",
+                    subtitle = "The Info tab now shows a full breakdown of your vault's encryption parameters: cipher, key size, hash algorithm, PKCS-5 iteration count, VeraCrypt format version, and header modification date."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Refresh,
+                    color    = Color(0xFF3B82F6),
+                    title    = "Smarter hash selection when mounting",
+                    subtitle = "If your vault's hash algorithm is known, Arcanum now passes it as a hint and tries only 1 KDF instead of 5, making the mount significantly faster. The Algorithm dropdown is removed — VeraCrypt always tries all ciphers automatically."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Refresh,
+                    color    = Color(0xFF3B82F6),
+                    title    = "Faster wrong-password detection",
+                    subtitle = "The mount logic was rewritten to match VeraCrypt's internal algorithm exactly — same header scan order, same KDF scheduling, same early-exit conditions. Both header copies are now tried in parallel, so wrong credentials are detected and reported significantly faster."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Security,
+                    color    = Color(0xFF22C55E),
+                    title    = "Unmount all vaults on auto-lock",
+                    subtitle = "A new toggle in Security settings automatically unmounts all open vaults when the app auto-locks. Keeps your data inaccessible while the screen is off."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Security,
+                    color    = Color(0xFF22C55E),
+                    title    = "Encrypted app database",
+                    subtitle = "The internal database storing vault metadata is now encrypted with SQLCipher — vault names, paths, and settings are no longer readable from the device filesystem."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.BugReport,
+                    color    = Color(0xFFEF4444),
+                    title    = "Fix: hidden volume creation with outer keyfile",
+                    subtitle = "Creating a hidden volume inside an outer volume that used a keyfile failed silently and left the hidden volume unusable. The outer keyfile is now correctly applied when writing the hidden volume header."
+                )
+            }
+
+            // ── 1.1.1 section ─────────────────────────────────────────────
+            item {
+                Row(
+                    modifier          = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                    Text(
+                        text  = "Version 1.1.1",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                }
+            }
             // ── 1.1.1 entries ─────────────────────────────────────────────
             item {
                 WhatsNewEntry(
