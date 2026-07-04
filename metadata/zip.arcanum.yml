@@ -19,6 +19,7 @@ Builds:
     subdir: app
     gradle:
       - fdroid
+
   - versionName: 1.1.1
     versionCode: 3
     commit: e6bfa604349ea4c0aa3fed7635f89480013b4adc
