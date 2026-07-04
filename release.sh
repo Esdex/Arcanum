@@ -65,65 +65,7 @@ log "APK: $APK_PATH"
 log "Returning to main..."
 git checkout main
 
-# ── 4. Update F-Droid metadata (keep last 3 builds) ─────────────────────────
-
-log "Updating metadata/zip.arcanum.yml..."
-python3 - "$COMMIT" "$VERSION" "$VERSION_CODE" <<'PYEOF'
-import re, sys
-
-commit, version, version_code = sys.argv[1], sys.argv[2], sys.argv[3]
-
-with open('metadata/zip.arcanum.yml', 'r') as f:
-    content = f.read()
-
-# Extract the Builds block
-builds_match = re.search(r'(Builds:\n)(.*?)(\nAllowedAPKSigningKeys)', content, re.DOTALL)
-if not builds_match:
-    print("ERROR: Could not find Builds block in metadata", file=sys.stderr)
-    sys.exit(1)
-
-builds_block = builds_match.group(2)
-
-# Split into individual entries
-entries = re.findall(r'  - versionName:.*?(?=\n  - versionName:|\Z)', builds_block, re.DOTALL)
-
-new_entry = (
-    f"  - versionName: {version}\n"
-    f"    versionCode: {version_code}\n"
-    f"    commit: {commit}\n"
-    f"    subdir: app\n"
-    f"    gradle:\n"
-    f"      - fdroid\n"
-)
-
-# Keep last 2 existing entries + new one = 3 total
-entries_to_keep = entries[-2:] if len(entries) >= 2 else entries
-new_builds = ''.join(entries_to_keep).rstrip('\n') + '\n\n' + new_entry
-
-content = re.sub(
-    r'(Builds:\n)(.*?)(\nAllowedAPKSigningKeys)',
-    lambda m: m.group(1) + new_builds + m.group(3),
-    content,
-    flags=re.DOTALL
-)
-
-content = re.sub(r'CurrentVersion: .*',     f'CurrentVersion: {version}',      content)
-content = re.sub(r'CurrentVersionCode: .*', f'CurrentVersionCode: {version_code}', content)
-
-with open('metadata/zip.arcanum.yml', 'w') as f:
-    f.write(content)
-
-print(f"metadata updated — 3 builds kept, CurrentVersion={version}")
-PYEOF
-
-# ── 5. Commit and push metadata ──────────────────────────────────────────────
-
-log "Committing metadata..."
-git add metadata/zip.arcanum.yml
-git commit -S -m "Update F-Droid metadata: add v${VERSION} build entry"
-git push
-
-# ── 6. Create GitHub Release (draft — add notes manually before publishing) ──
+# ── 4. Create GitHub Release (draft — add notes manually before publishing) ──
 
 log "Creating GitHub Release draft for $TAG..."
 gh release create "$TAG" "$APK_PATH" \
