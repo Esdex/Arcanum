@@ -61,7 +61,36 @@ log "APK: $APK_PATH"
 log "Returning to main..."
 git checkout main
 
-# ── 4. Update F-Droid metadata (keep last 3 builds) ─────────────────────────
+# ── 4. Generate F-Droid changelog ───────────────────────────────────────────
+
+CHANGELOG_DIR="fastlane/metadata/android/en-US/changelogs"
+CHANGELOG_FILE="${CHANGELOG_DIR}/${VERSION_CODE}.txt"
+
+if [[ -f "$CHANGELOG_FILE" ]]; then
+    log "Changelog $CHANGELOG_FILE already exists, skipping generation."
+else
+    log "Generating F-Droid changelog from git log..."
+    mkdir -p "$CHANGELOG_DIR"
+
+    PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
+    RANGE="${PREV_TAG:+${PREV_TAG}..}${TAG}"
+
+    # Collect commit subjects, skip build/metadata noise
+    LINES=$(git log "$RANGE" --format="%s" | grep -v -iE \
+        '^(Update F-Droid|Fix F-Droid|fdroiddata|build:|Bump version|Add release\.sh|Merge )' \
+        | sed 's/^/• /')
+
+    # Truncate to 500 chars (F-Droid hard limit)
+    CHANGELOG=$(printf '%s' "$LINES" | head -c 500)
+
+    printf '%s\n' "$CHANGELOG" > "$CHANGELOG_FILE"
+    warn "Auto-generated changelog → $CHANGELOG_FILE (review before publishing):"
+    echo "---"
+    cat "$CHANGELOG_FILE"
+    echo "---"
+fi
+
+# ── 5. Update F-Droid metadata (keep last 3 builds) ─────────────────────────
 
 log "Updating metadata/zip.arcanum.yml..."
 python3 - "$COMMIT" "$VERSION" "$VERSION_CODE" <<'PYEOF'
@@ -115,7 +144,7 @@ PYEOF
 # ── 5. Commit and push metadata ──────────────────────────────────────────────
 
 log "Committing metadata..."
-git add metadata/zip.arcanum.yml
+git add metadata/zip.arcanum.yml "$CHANGELOG_FILE"
 git commit -S -m "Update F-Droid metadata: add v${VERSION} build entry"
 git push
 
