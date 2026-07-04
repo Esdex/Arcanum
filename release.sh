@@ -77,11 +77,15 @@ else
 
     # Collect commit subjects, skip build/metadata noise
     LINES=$(git log "$RANGE" --format="%s" | grep -v -iE \
-        '^(Update F-Droid|Fix F-Droid|fdroiddata|build:|Bump version|Add release\.sh|Merge )' \
+        '^(Update F-Droid|Fix F-Droid|fdroiddata|build:|Bump version|Add release\.sh|release\.sh:|Merge )' \
         | sed 's/^/• /')
 
-    # Truncate to 500 chars (F-Droid hard limit)
-    CHANGELOG=$(printf '%s' "$LINES" | head -c 500)
+    # Truncate to 500 bytes at line boundary (F-Droid hard limit)
+    CHANGELOG=$(printf '%s\n' "$LINES" | LC_ALL=C awk '{
+        candidate = (result == "" ? $0 : result "\n" $0)
+        if (length(candidate) <= 500) result = candidate
+        else exit
+    } END { print result }')
 
     printf '%s\n' "$CHANGELOG" > "$CHANGELOG_FILE"
     warn "Auto-generated changelog → $CHANGELOG_FILE (review before publishing):"
