@@ -32,16 +32,20 @@ GRADLE_CODE=$(grep 'versionCode = ' app/build.gradle.kts | grep -o '[0-9]*' | he
 [[ "$GRADLE_CODE"    != "$VERSION_CODE" ]] && die "build.gradle.kts has versionCode=$GRADLE_CODE, expected $VERSION_CODE. Update it first."
 
 if git rev-parse "$TAG" &>/dev/null; then
-    die "Tag $TAG already exists."
+    warn "Tag $TAG already exists — skipping tag creation."
 fi
 
 # ── 2. Tag ───────────────────────────────────────────────────────────────────
 
-log "Creating signed tag $TAG..."
-git tag -s "$TAG" -m "Release $VERSION"
+if ! git rev-parse "$TAG" &>/dev/null; then
+    log "Creating signed tag $TAG..."
+    git tag -s "$TAG" -m "Release $VERSION"
 
-log "Pushing tag..."
-git push origin "$TAG"
+    log "Pushing tag..."
+    git push origin "$TAG"
+else
+    log "Using existing tag $TAG."
+fi
 
 COMMIT=$(git rev-parse "${TAG}^{}")
 log "Tag $TAG → $COMMIT"
