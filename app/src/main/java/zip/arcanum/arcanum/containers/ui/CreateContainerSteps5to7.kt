@@ -148,23 +148,6 @@ fun StepPassword(
         stringResource(R.string.create_step5_subtitle)
 
     StepContent(title = title, subtitle = subtitle) {
-        if (isHidden) {
-            Surface(
-                shape    = RoundedCornerShape(12.dp),
-                color    = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                    Text(
-                        text  = stringResource(R.string.create_step5_outer_info),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-        }
         OutlinedTextField(
             value         = state.password,
             onValueChange = { onUpdate { copy(password = it) } },
