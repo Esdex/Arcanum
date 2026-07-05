@@ -272,8 +272,24 @@ fun VaultScreen(
         if (!showAppStoragePicker) return@LaunchedEffect
         val dir = appStorageCurrentDir
         appStorageEntries = withContext(Dispatchers.IO) {
+            val isRoot              = dir == appStorageRoot
+            val isInsideFiles     = dir.parentFile == appStorageRoot && dir.name == "files"
+            val isInsideNoBackup  = dir.parentFile == appStorageRoot && dir.name == "no_backup"
+            val filesExclusions   = setOf("datastore", "profileInstalled")
+            val noBackupExclusions = setOf(
+                "androidx.work.workdb",
+                "androidx.work.workdb-shm",
+                "androidx.work.workdb-wal"
+            )
             (dir.listFiles() ?: emptyArray())
-                .filter { !it.name.startsWith(".") }
+                .filter { entry ->
+                    when {
+                        isRoot           -> entry.name == "files" || entry.name == "no_backup"
+                        isInsideFiles    -> entry.name !in filesExclusions
+                        isInsideNoBackup -> entry.name !in noBackupExclusions
+                        else             -> !entry.name.startsWith(".")
+                    }
+                }
                 .sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
         }
     }
