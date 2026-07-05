@@ -537,7 +537,7 @@ class FileManagerViewModel @Inject constructor(
         }
     }
 
-    fun importFiles(context: Context, uris: List<android.net.Uri>) {
+    fun importFiles(context: Context, uris: List<android.net.Uri>, deleteAfterImport: Boolean = false) {
         val s = _state.value
         val handle = repo.getContainerHandle(s.containerId) ?: return
 
@@ -554,6 +554,7 @@ class FileManagerViewModel @Inject constructor(
                     val name = File(rawName).name.ifEmpty { continue }
                     val destPath = buildDestinationPath(s.currentPath, name)
                     _state.update { it.copy(operationMessage = "Importing $name…") }
+                    var fileOk = false
                     context.contentResolver.openInputStream(uri)?.use { input ->
                         var offset = 0L
                         val buffer = ByteArray(chunkSize)
@@ -572,11 +573,15 @@ class FileManagerViewModel @Inject constructor(
                                     runCatching { engine.nativeDeleteFile(handle, destPath) }
                                     done = true
                                 }
-                                else -> offset += read
+                                else -> { offset += read; fileOk = true }
                             }
                         }
                     }
-                    if (!hiddenProtected && !importFailed) count++
+                    if (!hiddenProtected && !importFailed) {
+                        count++
+                        if (deleteAfterImport && fileOk)
+                            runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }
+                    }
                 } catch (_: Exception) { }
             }
             refreshNow()
@@ -591,6 +596,115 @@ class FileManagerViewModel @Inject constructor(
                 }
             ) }
         }
+    }
+
+    fun importFolder(context: Context, treeUri: android.net.Uri, deleteAfterImport: Boolean = false) {
+        val s = _state.value
+        val handle = repo.getContainerHandle(s.containerId) ?: return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _state.update { it.copy(isOperationInProgress = true) }
+
+            val rootDocId  = DocumentsContract.getTreeDocumentId(treeUri)
+            val rootDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootDocId)
+            val folderName = context.contentResolver.query(
+                rootDocUri,
+                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                null, null, null
+            )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+                ?: rootDocId.substringAfterLast('/')
+
+            val destPath = buildDestinationPath(s.currentPath, folderName)
+            runCatching { engine.nativeCreateDirectory(handle, destPath) }
+
+            val (count, hiddenProtected, importFailed) =
+                importFolderRecursive(context, handle, treeUri, rootDocId, destPath)
+
+            if (deleteAfterImport && !hiddenProtected && !importFailed && count > 0)
+                runCatching { DocumentsContract.deleteDocument(context.contentResolver, rootDocUri) }
+
+            refreshNow()
+            _state.update { it.copy(
+                isOperationInProgress = false,
+                operationMessage      = null,
+                pendingNotification   = when {
+                    hiddenProtected -> InAppNotification.HiddenVolumeWriteProtection
+                    importFailed    -> InAppNotification.ImportFailed
+                    count > 0       -> InAppNotification.FilesImported(count)
+                    else            -> null
+                }
+            ) }
+        }
+    }
+
+    private suspend fun importFolderRecursive(
+        context: Context,
+        handle: Long,
+        treeUri: android.net.Uri,
+        docId: String,
+        destPath: String
+    ): Triple<Int, Boolean, Boolean> {
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
+        val projection  = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE
+        )
+        var count           = 0
+        var hiddenProtected = false
+        var importFailed    = false
+        val chunkSize       = 1 * 1024 * 1024
+
+        context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+            val idCol   = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            val mimeCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+
+            while (cursor.moveToNext() && !hiddenProtected && !importFailed) {
+                val childDocId  = cursor.getString(idCol) ?: continue
+                val childName   = cursor.getString(nameCol) ?: continue
+                val childMime   = cursor.getString(mimeCol) ?: continue
+                val childDest   = buildDestinationPath(destPath, childName)
+
+                try {
+                    if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                        runCatching { engine.nativeCreateDirectory(handle, childDest) }
+                        val (sub, subProtected, subFailed) =
+                            importFolderRecursive(context, handle, treeUri, childDocId, childDest)
+                        count += sub
+                        if (subProtected) hiddenProtected = true
+                        if (subFailed)    importFailed    = true
+                    } else {
+                        val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
+                        _state.update { it.copy(operationMessage = "Importing $childName…") }
+                        context.contentResolver.openInputStream(childUri)?.use { input ->
+                            var offset = 0L
+                            val buffer = ByteArray(chunkSize)
+                            var read = 0
+                            var done = false
+                            while (!done && input.read(buffer).also { read = it } != -1) {
+                                val rc = engine.nativeWriteFile(handle, childDest, buffer.copyOf(read), offset)
+                                when {
+                                    rc == VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> {
+                                        hiddenProtected = true
+                                        runCatching { engine.nativeDeleteFile(handle, childDest) }
+                                        done = true
+                                    }
+                                    rc != VeraCryptEngine.ERR_OK -> {
+                                        importFailed = true
+                                        runCatching { engine.nativeDeleteFile(handle, childDest) }
+                                        done = true
+                                    }
+                                    else -> { offset += read }
+                                }
+                            }
+                        }
+                        if (!hiddenProtected && !importFailed) count++
+                    }
+                } catch (_: Exception) { importFailed = true }
+            }
+        }
+        return Triple(count, hiddenProtected, importFailed)
     }
 
     fun exportSelected(context: Context, treeUri: android.net.Uri) {
