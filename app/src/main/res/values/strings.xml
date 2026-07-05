@@ -313,6 +313,8 @@
     <string name="vault_empty_subtitle">Create or open an existing VeraCrypt container</string>
     <string name="vault_storage_app">App Storage</string>
     <string name="vault_storage_local">Local Storage</string>
+    <string name="vault_storage_internal">Internal Storage</string>
+    <string name="vault_appstorage_empty">No files found</string>
     <string name="vault_cd_close_fab">Close</string>
     <string name="vault_cd_new_vault_fab">New vault</string>
     <string name="vault_fab_open_existing">Open existing vault</string>
