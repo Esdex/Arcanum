@@ -38,6 +38,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Fingerprint
+import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Visibility
@@ -71,6 +72,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -213,6 +215,7 @@ private fun MountScreenContent(
     var showAdvanced  by remember { mutableStateOf(false) }
     var pimValue      by remember { mutableStateOf("") }
     var showPim       by remember { mutableStateOf(false) }
+    var readOnly           by remember { mutableStateOf(false) }
     var protectHidden      by remember { mutableStateOf(false) }
     var hiddenPassword     by hiddenPasswordState
     var showHiddenPassword by remember { mutableStateOf(false) }
@@ -251,6 +254,7 @@ private fun MountScreenContent(
             protectHiddenPassword     = protectPw,
             protectHiddenPim          = protectPim,
             protectHiddenKeyfileData  = protectKeyfileData,
+            readOnly                  = readOnly,
             onSuccess = { id ->
                 keyfiles.forEach { it.zero() }
                 hiddenKeyfiles.forEach { it.zero() }
@@ -764,7 +768,35 @@ private fun MountScreenContent(
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clickable { protectHidden = !protectHidden }
+                                            .clickable { val v = !readOnly; readOnly = v; if (v) protectHidden = false }
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.AutoStories,
+                                            contentDescription = null,
+                                            tint     = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(stringResource(R.string.vault_mount_read_only), style = MaterialTheme.typography.bodyMedium)
+                                            Text(
+                                                stringResource(R.string.vault_mount_read_only_desc),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Switch(
+                                            checked         = readOnly,
+                                            onCheckedChange = { readOnly = it; if (it) protectHidden = false }
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .then(if (!readOnly) Modifier.clickable { protectHidden = !protectHidden } else Modifier)
+                                            .alpha(if (readOnly) 0.38f else 1f)
                                             .padding(vertical = 4.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -785,7 +817,8 @@ private fun MountScreenContent(
                                         }
                                         Switch(
                                             checked         = protectHidden,
-                                            onCheckedChange = { protectHidden = it }
+                                            onCheckedChange = { if (!readOnly) protectHidden = it },
+                                            enabled         = !readOnly
                                         )
                                     }
                                     AnimatedVisibility(visible = protectHidden) {

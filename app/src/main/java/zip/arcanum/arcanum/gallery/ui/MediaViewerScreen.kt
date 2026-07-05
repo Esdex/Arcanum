@@ -502,14 +502,22 @@ fun MediaViewerScreen(
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment     = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = { uiState.currentFile?.id?.let { onOpenEditor(it) } }) {
-                                Icon(Icons.Outlined.Edit, "Edit", tint = Color.White)
+                            IconButton(
+                                enabled = !uiState.isReadOnly,
+                                onClick = { uiState.currentFile?.id?.let { onOpenEditor(it) } }
+                            ) {
+                                Icon(Icons.Outlined.Edit, "Edit",
+                                    tint = if (uiState.isReadOnly) Color.White.copy(alpha = 0.38f) else Color.White)
                             }
                             IconButton(onClick = {
                                 exportLauncher.launch(uiState.currentFile?.fileName ?: "export")
                             }) { Icon(Icons.Filled.Share, stringResource(R.string.viewer_action_export), tint = Color.White) }
-                            IconButton(onClick = { showDeleteDialog = true }) {
-                                Icon(Icons.Filled.Delete, stringResource(R.string.viewer_action_delete), tint = Color.White)
+                            IconButton(
+                                enabled = !uiState.isReadOnly,
+                                onClick = { showDeleteDialog = true }
+                            ) {
+                                Icon(Icons.Filled.Delete, stringResource(R.string.viewer_action_delete),
+                                    tint = if (uiState.isReadOnly) Color.White.copy(alpha = 0.38f) else Color.White)
                             }
                             IconButton(onClick = { showInfoSheet = true }) {
                                 Icon(Icons.Filled.Info, stringResource(R.string.common_info), tint = Color.White)
@@ -531,6 +539,7 @@ fun MediaViewerScreen(
                         file              = file,
                         exifData          = uiState.exifData,
                         isExifLoading     = uiState.isExifLoading,
+                        isReadOnly        = uiState.isReadOnly,
                         onSaveDescription = { viewModel.updateDescription(it) },
                         onEditDate        = { showInfoSheet = false; showDateSheet = true },
                         onEditFile        = { showRenameDialog = true },
@@ -872,6 +881,7 @@ private fun MediaInfoSheetContent(
     file: MediaFileEntity,
     exifData: MediaExifData?,
     isExifLoading: Boolean,
+    isReadOnly: Boolean = false,
     onSaveDescription: (String) -> Unit,
     onEditDate: () -> Unit,
     onEditFile: () -> Unit,
@@ -908,8 +918,8 @@ private fun MediaInfoSheetContent(
         val (dateStr, timeStr) = formatDateParts(dateMillis)
         InfoRow(
             icon     = Icons.Outlined.CalendarMonth,
-            onClick  = onEditDate,
-            trailing = { RowEditIcon(onEditDate) }
+            onClick  = if (isReadOnly) null else onEditDate,
+            trailing = if (isReadOnly) null else { { RowEditIcon(onEditDate) } }
         ) {
             Text(dateStr, style = MaterialTheme.typography.bodyLarge)
             Text(timeStr, style = MaterialTheme.typography.bodySmall, color = secondary)
@@ -923,8 +933,8 @@ private fun MediaInfoSheetContent(
         val mp = exifData?.megapixels
         InfoRow(
             icon     = Icons.Outlined.Image,
-            onClick  = onEditFile,
-            trailing = { RowEditIcon(onEditFile) }
+            onClick  = if (isReadOnly) null else onEditFile,
+            trailing = if (isReadOnly) null else { { RowEditIcon(onEditFile) } }
         ) {
             Text(file.fileName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             when {

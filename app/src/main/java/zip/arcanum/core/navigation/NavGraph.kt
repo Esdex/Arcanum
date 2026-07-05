@@ -81,6 +81,8 @@ import zip.arcanum.core.navigation_components.FloatingBottomBar
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.InAppNotificationBanner
 import zip.arcanum.core.theme.LocalAmoledMode
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 
 private val containerTabs = listOf(
     BottomNavItem.ContainerGallery,
@@ -152,6 +154,7 @@ fun ContainerScreen(
                         searchQuery      = galleryState.searchQuery,
                         selectionMode    = gallerySelectionMode,
                         selectedCount    = gallerySelectedIds.size,
+                        isReadOnly       = galleryState.isReadOnly,
                         scrollBehavior   = galleryScrollBehavior,
                         onBack           = onBack,
                         onSearchToggle   = { galleryViewModel.setSearchActive(!galleryState.isSearchActive) },
@@ -317,6 +320,7 @@ private fun GalleryTopBar(
     searchQuery: String,
     selectionMode: Boolean,
     selectedCount: Int,
+    isReadOnly: Boolean = false,
     scrollBehavior: TopAppBarScrollBehavior,
     onBack: () -> Unit,
     onSearchToggle: () -> Unit,
@@ -378,7 +382,25 @@ private fun GalleryTopBar(
                             }
                         )
                     } else {
-                        Text(stringResource(R.string.nav_gallery))
+                        Row(
+                            verticalAlignment     = Alignment.CenterVertically,
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(stringResource(R.string.nav_gallery))
+                            if (isReadOnly) {
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = MaterialTheme.colorScheme.primary
+                                ) {
+                                    Text(
+                                        text     = stringResource(R.string.vault_mount_read_only),
+                                        style    = MaterialTheme.typography.labelSmall,
+                                        color    = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -392,11 +414,12 @@ private fun GalleryTopBar(
                 label = "gallery_actions"
             ) { inSelection ->
                 if (inSelection) {
-                    IconButton(onClick = onDeleteSelected) {
+                    IconButton(onClick = onDeleteSelected, enabled = !isReadOnly) {
                         Icon(
                             Icons.Outlined.Delete,
                             contentDescription = stringResource(R.string.gallery_delete_selected),
-                            tint = MaterialTheme.colorScheme.error
+                            tint = if (isReadOnly) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                                   else MaterialTheme.colorScheme.error
                         )
                     }
                 } else {

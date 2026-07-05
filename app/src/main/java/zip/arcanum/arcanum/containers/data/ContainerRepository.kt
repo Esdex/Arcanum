@@ -97,6 +97,8 @@ class ContainerRepository @Inject constructor(
 
     fun getContainerHandle(id: String): Long? = mountedHandles[id]
 
+    fun isContainerReadOnly(id: String): Boolean = mountedIsReadOnly[id] ?: false
+
     suspend fun containsPath(path: String): Boolean = dao.countByPath(path) > 0
 
     suspend fun containsSafUri(safUri: String): Boolean = dao.countBySafUri(safUri) > 0

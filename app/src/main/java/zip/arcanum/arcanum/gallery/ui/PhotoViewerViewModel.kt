@@ -53,7 +53,8 @@ class PhotoViewerViewModel @Inject constructor(
         val exportDone: Boolean = false,
         val exifData: MediaExifData? = null,
         val isExifLoading: Boolean = false,
-        val pendingNotification: InAppNotification? = null
+        val pendingNotification: InAppNotification? = null,
+        val isReadOnly: Boolean = false
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -69,7 +70,14 @@ class PhotoViewerViewModel @Inject constructor(
             }
             val siblings = mediaFileDao.getVisualMediaOnce(file.containerId)
             val idx = siblings.indexOfFirst { it.id == fileId }.coerceAtLeast(0)
-            _uiState.update { it.copy(currentFile = file, siblings = siblings, currentIndex = idx) }
+            _uiState.update {
+                it.copy(
+                    currentFile = file,
+                    siblings    = siblings,
+                    currentIndex = idx,
+                    isReadOnly  = repo.isContainerReadOnly(file.containerId)
+                )
+            }
             loadBitmapRange(idx)
         }
 
