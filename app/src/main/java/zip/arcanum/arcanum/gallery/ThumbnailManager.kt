@@ -42,37 +42,47 @@ class ThumbnailManager @Inject constructor(
         engine: VeraCryptEngine,
         handle: Long,
         file: MediaFileEntity
+    ): Bitmap? = getThumbnail(engine, handle, file.containerId, file.relativePath, file.fileType, file.size)
+
+    suspend fun getThumbnail(
+        engine: VeraCryptEngine,
+        handle: Long,
+        containerId: String,
+        relativePath: String,
+        type: MediaFileType,
+        size: Long
     ): Bitmap? {
-        val cached = cacheFile(file.containerId, file.relativePath)
+        val cached = cacheFile(containerId, relativePath)
         if (cached.exists() && cached.length() > 0L) {
             val bmp = readCacheFile(cached)
             if (bmp != null) return bmp
             cached.delete()  // Corrupted or wrong key — regenerate
         }
-        return when (file.fileType) {
-            MediaFileType.IMAGE -> generateImageThumbnail(engine, handle, file, cached)
-            MediaFileType.VIDEO -> generateVideoThumbnail(engine, handle, file, cached)
-            MediaFileType.AUDIO -> generateAudioThumbnail(engine, handle, file, cached)
+        return when (type) {
+            MediaFileType.IMAGE -> generateImageThumbnail(engine, handle, relativePath, size, cached)
+            MediaFileType.VIDEO -> generateVideoThumbnail(engine, handle, relativePath, size, cached)
+            MediaFileType.AUDIO -> generateAudioThumbnail(engine, handle, relativePath, size, cached)
         }
     }
 
     private fun generateImageThumbnail(
         engine: VeraCryptEngine,
         handle: Long,
-        file: MediaFileEntity,
+        relativePath: String,
+        fileSize: Long,
         cacheFile: File
     ): Bitmap? {
         // Pass 1: read first 512 KB to detect format and get dimensions from header only
-        val headerBytes = engine.nativeReadFile(handle, file.relativePath, 0L, 512 * 1024) ?: return null
+        val headerBytes = engine.nativeReadFile(handle, relativePath, 0L, 512 * 1024) ?: return null
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(headerBytes, 0, headerBytes.size, opts)
         if (opts.outWidth <= 0) return null
 
         // Pass 2: read the COMPLETE file so BitmapFactory gets a full stream.
         // Truncated JPEG data causes BitmapFactory to return a non-null but partially black bitmap.
-        val fileCap = minOf(file.size, 20L * 1024 * 1024).toInt()
-        val bytes = if (file.size <= headerBytes.size.toLong()) headerBytes
-                    else engine.nativeReadFile(handle, file.relativePath, 0L, fileCap) ?: return null
+        val fileCap = minOf(fileSize, 20L * 1024 * 1024).toInt()
+        val bytes = if (fileSize <= headerBytes.size.toLong()) headerBytes
+                    else engine.nativeReadFile(handle, relativePath, 0L, fileCap) ?: return null
 
         opts.inSampleSize = calculateInSampleSize(opts, 256, 256)
         opts.inJustDecodeBounds = false
@@ -86,13 +96,14 @@ class ThumbnailManager @Inject constructor(
     private fun generateVideoThumbnail(
         engine: VeraCryptEngine,
         handle: Long,
-        file: MediaFileEntity,
+        relativePath: String,
+        fileSize: Long,
         cacheFile: File
     ): Bitmap? = try {
         // NativeMediaDataSource lets MediaMetadataRetriever seek anywhere on demand —
         // correctly handles MP4 moov at end-of-file without pre-reading the whole file.
         val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(NativeMediaDataSource(engine, handle, file.relativePath, file.size))
+        retriever.setDataSource(NativeMediaDataSource(engine, handle, relativePath, fileSize))
         val frame = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
         retriever.release()
         frame?.let {
@@ -107,11 +118,12 @@ class ThumbnailManager @Inject constructor(
     private fun generateAudioThumbnail(
         engine: VeraCryptEngine,
         handle: Long,
-        file: MediaFileEntity,
+        relativePath: String,
+        fileSize: Long,
         cacheFile: File
     ): Bitmap? = try {
         val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(NativeMediaDataSource(engine, handle, file.relativePath, file.size))
+        retriever.setDataSource(NativeMediaDataSource(engine, handle, relativePath, fileSize))
         val artBytes = retriever.embeddedPicture
         retriever.release()
         // Returns null if no embedded art → UI will show the music note icon instead
