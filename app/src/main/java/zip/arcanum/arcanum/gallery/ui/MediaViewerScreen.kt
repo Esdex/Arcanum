@@ -71,8 +71,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForwardIos
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
@@ -445,7 +443,6 @@ fun MediaViewerScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         if (uiState.currentFile?.fileType == MediaFileType.VIDEO) {
-                            val isFavMenu = uiState.currentFile?.isFavorite == true
                             Box {
                                 IconButton(onClick = { videoMenuExpanded = true }) {
                                     Icon(Icons.Filled.MoreVert, stringResource(R.string.viewer_cd_more_options), tint = Color.White)
@@ -454,17 +451,6 @@ fun MediaViewerScreen(
                                     expanded         = videoMenuExpanded,
                                     onDismissRequest = { videoMenuExpanded = false }
                                 ) {
-                                    DropdownMenuItem(
-                                        leadingIcon = {
-                                            Icon(
-                                                if (isFavMenu) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                                null,
-                                                tint = if (isFavMenu) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        },
-                                        text    = { Text(if (isFavMenu) stringResource(R.string.viewer_action_remove_favorite) else stringResource(R.string.viewer_action_add_favorite)) },
-                                        onClick = { viewModel.toggleFavorite(); videoMenuExpanded = false }
-                                    )
                                     DropdownMenuItem(
                                         leadingIcon = { Icon(Icons.Filled.Share, null) },
                                         text        = { Text(stringResource(R.string.viewer_action_export)) },

@@ -275,11 +275,6 @@ class GalleryViewModel @Inject constructor(
         _thumbnails.value = emptyMap()
     }
 
-    fun toggleFavorite(file: MediaFileEntity) {
-        viewModelScope.launch {
-            mediaFileDao.updateMediaFile(file.copy(isFavorite = !file.isFavorite))
-        }
-    }
 
     fun deleteFile(file: MediaFileEntity) {
         val containerId = currentContainerId ?: return

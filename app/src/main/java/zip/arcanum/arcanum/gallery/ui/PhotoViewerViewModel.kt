@@ -267,15 +267,6 @@ class PhotoViewerViewModel @Inject constructor(
         }
     }
 
-    fun toggleFavorite() {
-        val file = _uiState.value.currentFile ?: return
-        viewModelScope.launch {
-            val updated = file.copy(isFavorite = !file.isFavorite)
-            mediaFileDao.updateMediaFile(updated)
-            _uiState.update { it.copy(currentFile = updated) }
-        }
-    }
-
     fun deleteCurrentFile(onDone: () -> Unit) {
         val file = _uiState.value.currentFile ?: return
         val handle = repo.getContainerHandle(file.containerId)
