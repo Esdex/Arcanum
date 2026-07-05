@@ -326,6 +326,7 @@ fun FileManagerScreen(
                                 files           = state.files,
                                 selectedItems   = state.selectedItems,
                                 isSelectionMode = state.isSelectionMode,
+                                isReadOnly      = state.isReadOnly,
                                 searchQuery     = state.searchQuery,
                                 topPadding      = topPadding,
                                 bottomPadding   = bottomPadding + if (state.isSelectionMode) 72.dp else 80.dp,
@@ -400,6 +401,7 @@ fun FileManagerScreen(
                             searchQuery      = state.searchQuery,
                             viewMode         = state.viewMode,
                             isAtRoot         = isAtRoot,
+                            isReadOnly       = state.isReadOnly,
                             onBack           = { if (isAtRoot) onBack() else viewModel.navigateUp() },
                             onSearchToggle   = viewModel::toggleSearch,
                             onSearchChange   = viewModel::setSearchQuery,
@@ -449,6 +451,7 @@ fun FileManagerScreen(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             SelectionBottomBar(
+                isReadOnly = state.isReadOnly,
                 onCopy   = {
                     if (mountedContainers.size <= 1) viewModel.copySelected()
                     else showCopySheet = true
@@ -475,7 +478,7 @@ fun FileManagerScreen(
         }
 
         // ── FAB menu items ─────────────────────────────────────────────────
-        if (!state.isSelectionMode) Column(
+        if (!state.isSelectionMode && !state.isReadOnly) Column(
             modifier            = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 8.dp, bottom = bottomPadding + 88.dp)
@@ -510,7 +513,7 @@ fun FileManagerScreen(
         }
 
         // ── Diamond FAB ────────────────────────────────────────────────────
-        if (!state.isSelectionMode) Box(
+        if (!state.isSelectionMode && !state.isReadOnly) Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 16.dp, bottom = bottomPadding + 16.dp)
@@ -730,6 +733,7 @@ private fun FileManagerTopBar(
     searchQuery: String,
     viewMode: ViewMode,
     isAtRoot: Boolean,
+    isReadOnly: Boolean,
     onBack: () -> Unit,
     onSearchToggle: () -> Unit,
     onSearchChange: (String) -> Unit,
@@ -780,7 +784,19 @@ private fun FileManagerTopBar(
                     }
                 )
             } else {
-                Text(stringResource(R.string.files_title))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.files_title))
+                    if (isReadOnly) {
+                        Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(50), color = MaterialTheme.colorScheme.primary) {
+                            Text(
+                                text     = stringResource(R.string.vault_mount_read_only),
+                                style    = MaterialTheme.typography.labelSmall,
+                                color    = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
             }
         },
         actions = {
@@ -801,7 +817,8 @@ private fun FileManagerTopBar(
                             DropdownMenuItem(
                                 text = { Text(pluralStringResource(R.plurals.files_paste_clipboard, clipboardCount, clipboardCount)) },
                                 leadingIcon = { Icon(Icons.Outlined.ContentPaste, null) },
-                                onClick = onPaste
+                                onClick = onPaste,
+                                enabled = !isReadOnly
                             )
                             HorizontalDivider()
                         }
@@ -928,6 +945,7 @@ private fun FileListContent(
     files: List<NativeFileInfo>,
     selectedItems: Set<String>,
     isSelectionMode: Boolean,
+    isReadOnly: Boolean,
     searchQuery: String,
     topPadding: Dp = 0.dp,
     bottomPadding: Dp,
@@ -946,6 +964,7 @@ private fun FileListContent(
                 file            = file,
                 isSelected      = file.path in selectedItems,
                 isSelectionMode = isSelectionMode,
+                isReadOnly      = isReadOnly,
                 searchQuery     = searchQuery,
                 onFileClick     = { onFileClick(file) },
                 onFileLongClick = { onFileLongClick(file) },
@@ -963,6 +982,7 @@ private fun FileListItem(
     file: NativeFileInfo,
     isSelected: Boolean,
     isSelectionMode: Boolean,
+    isReadOnly: Boolean,
     searchQuery: String,
     onFileClick: () -> Unit,
     onFileLongClick: () -> Unit,
@@ -1051,7 +1071,8 @@ private fun FileListItem(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.files_action_rename)) },
                             leadingIcon = { Icon(Icons.Outlined.Edit, null) },
-                            onClick = { onRename(); showItemMenu = false }
+                            onClick = { onRename(); showItemMenu = false },
+                            enabled = !isReadOnly
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.files_action_properties)) },
@@ -1153,6 +1174,7 @@ private fun FileGridContent(
 
 @Composable
 private fun SelectionBottomBar(
+    isReadOnly: Boolean,
     onCopy: () -> Unit,
     onMove: () -> Unit,
     onExport: () -> Unit,
@@ -1171,10 +1193,10 @@ private fun SelectionBottomBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             SelectionAction(stringResource(R.string.files_action_copy),   Icons.Outlined.ContentCopy,                onCopy)
-            SelectionAction(stringResource(R.string.files_action_move),   Icons.AutoMirrored.Outlined.DriveFileMove, onMove)
+            SelectionAction(stringResource(R.string.files_action_move),   Icons.AutoMirrored.Outlined.DriveFileMove, onMove,   enabled = !isReadOnly)
             SelectionAction(stringResource(R.string.files_action_export), Icons.Outlined.FileUpload,                 onExport)
             SelectionAction(stringResource(R.string.files_action_delete), Icons.Outlined.Delete,                     onDelete,
-                            tint = MaterialTheme.colorScheme.error)
+                            tint = MaterialTheme.colorScheme.error, enabled = !isReadOnly)
         }
     }
 }
@@ -1184,15 +1206,20 @@ private fun SelectionAction(
     label: String,
     icon: ImageVector,
     onClick: () -> Unit,
-    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    enabled: Boolean = true
 ) {
+    val effectiveTint = if (enabled) tint else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(onClick = onClick).padding(12.dp)
+        modifier = Modifier
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
+            .alpha(if (enabled) 1f else 0.38f)
+            .padding(12.dp)
     ) {
-        Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
+        Icon(icon, null, tint = effectiveTint, modifier = Modifier.size(22.dp))
         Spacer(Modifier.height(2.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = tint)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = effectiveTint)
     }
 }
 

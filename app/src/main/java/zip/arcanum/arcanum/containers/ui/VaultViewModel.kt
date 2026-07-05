@@ -218,6 +218,7 @@ class VaultViewModel @Inject constructor(
         protectHiddenPassword: String? = null,
         protectHiddenPim: Int = 0,
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
+        readOnly: Boolean = false,
         onSuccess: (containerId: String) -> Unit
     ) {
         mountJob = viewModelScope.launch {
@@ -226,7 +227,7 @@ class VaultViewModel @Inject constructor(
             mountLogger.log("Container: ${container.name}")
             val pfd: ParcelFileDescriptor? = if (container.safUri.isNotEmpty()) {
                 mountLogger.log("Source: SAF URI (${container.safUri.takeLast(40)})")
-                context.contentResolver.openFileDescriptor(Uri.parse(container.safUri), "rw")
+                context.contentResolver.openFileDescriptor(Uri.parse(container.safUri), if (readOnly) "r" else "rw")
             } else {
                 mountLogger.log("Source: ${container.path}")
                 null
@@ -242,6 +243,7 @@ class VaultViewModel @Inject constructor(
                 mountLogger.log("Cipher: $algoLabel")
                 mountLogger.log("PRF: $hashLabel")
                 if (!protectHiddenPassword.isNullOrBlank()) mountLogger.log("Hidden volume protection: enabled")
+                if (readOnly) mountLogger.log("Mode: read-only")
                 mountLogger.log("Submitting credentials to crypto engine...")
                 mountLogger.log("Running PBKDF2 key derivation (may take several seconds)...")
                 // Only create the listener when the log terminal is visible — avoids
@@ -262,7 +264,8 @@ class VaultViewModel @Inject constructor(
                         protectHiddenPassword = protectHiddenPassword,
                         protectHiddenKeyfileData = protectHiddenKeyfileData,
                         protectHiddenPim = protectHiddenPim,
-                        mountProgressListener = progressListener
+                        mountProgressListener = progressListener,
+                        readOnly = readOnly
                     )
                 } else {
                     cryptoEngine.mountContainer(
@@ -272,7 +275,8 @@ class VaultViewModel @Inject constructor(
                         protectHiddenPassword = protectHiddenPassword,
                         protectHiddenKeyfileData = protectHiddenKeyfileData,
                         protectHiddenPim = protectHiddenPim,
-                        mountProgressListener = progressListener
+                        mountProgressListener = progressListener,
+                        readOnly = readOnly
                     )
                 }
                 when (result) {
@@ -292,7 +296,8 @@ class VaultViewModel @Inject constructor(
                         mountLogger.log("Mounting FatFs virtual filesystem...")
                         repo.mountContainer(container.id, result.value, pim,
                             isHidden = isHidden, hasHidden = hasHidden,
-                            dataSize = dataSize, parcelFd = pfd)
+                            dataSize = dataSize, parcelFd = pfd,
+                            isReadOnly = readOnly)
                         pfdConsumed = true
                         if (algId      >= 0) repo.updateAlgorithm(container.id, VeraCryptEngine.algorithmIdToString(algId))
                         if (hashId     >= 0) repo.updatePrf(container.id, VeraCryptEngine.hashIdToString(hashId))

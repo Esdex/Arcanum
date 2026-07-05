@@ -80,7 +80,8 @@ class FileManagerViewModel @Inject constructor(
         val pendingNotification: InAppNotification? = null,
         val tempFileToOpen: Pair<File, String>? = null,
         val isOperationInProgress: Boolean = false,
-        val operationMessage: String? = null
+        val operationMessage: String? = null,
+        val isReadOnly: Boolean = false
     )
 
     private val _state = MutableStateFlow(FileManagerState())
@@ -106,7 +107,7 @@ class FileManagerViewModel @Inject constructor(
     fun initialize(containerId: String) {
         if (initialized && _state.value.containerId == containerId) return
         initialized = true
-        _state.update { it.copy(containerId = containerId) }
+        _state.update { it.copy(containerId = containerId, isReadOnly = repo.isContainerReadOnly(containerId)) }
         viewModelScope.launch {
             runCatching {
                 val p = prefs.data.first()
@@ -298,6 +299,7 @@ class FileManagerViewModel @Inject constructor(
 
     fun cutSelected() {
         val s = _state.value
+        if (s.isReadOnly) return
         val handle = repo.getContainerHandle(s.containerId) ?: return
         val items = s.selectedItems.mapNotNull { path ->
             s.files.find { it.path == path }?.let { f ->
@@ -320,6 +322,7 @@ class FileManagerViewModel @Inject constructor(
     }
 
     fun paste() {
+        if (_state.value.isReadOnly) return
         val destContainerId = _state.value.containerId
         val destHandle = repo.getContainerHandle(destContainerId) ?: return
         val clipItems = clipboard.items
@@ -480,6 +483,7 @@ class FileManagerViewModel @Inject constructor(
 
     fun deleteSelected() {
         val s = _state.value
+        if (s.isReadOnly) return
         val handle = repo.getContainerHandle(s.containerId) ?: return
         val toDelete = s.selectedItems.mapNotNull { path -> s.files.find { it.path == path } }
 
@@ -504,17 +508,24 @@ class FileManagerViewModel @Inject constructor(
 
     fun createFolder(name: String) {
         val s = _state.value
+        if (s.isReadOnly) {
+            _state.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+            return
+        }
         val handle = repo.getContainerHandle(s.containerId) ?: return
         val folderPath = if (s.currentPath == "/") "/$name" else "${s.currentPath}/$name"
 
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { engine.nativeCreateDirectory(handle, folderPath) }
+            val rc = runCatching { engine.nativeCreateDirectory(handle, folderPath) }.getOrDefault(VeraCryptEngine.ERR_FS)
             refreshNow()
-            _state.update { it.copy(pendingNotification = InAppNotification.FolderCreated(name)) }
+            _state.update {
+                it.copy(pendingNotification = if (rc == VeraCryptEngine.ERR_OK) InAppNotification.FolderCreated(name) else InAppNotification.ReadOnlyError)
+            }
         }
     }
 
     fun renameFile(file: NativeFileInfo, newName: String, onResult: (Boolean) -> Unit) {
+        if (_state.value.isReadOnly) { onResult(false); return }
         val s = _state.value
         val handle = repo.getContainerHandle(s.containerId) ?: return
         val dir = file.path.substringBeforeLast("/", "")
@@ -539,6 +550,10 @@ class FileManagerViewModel @Inject constructor(
 
     fun importFiles(context: Context, uris: List<android.net.Uri>, deleteAfterImport: Boolean = false) {
         val s = _state.value
+        if (s.isReadOnly) {
+            _state.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+            return
+        }
         val handle = repo.getContainerHandle(s.containerId) ?: return
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -600,6 +615,10 @@ class FileManagerViewModel @Inject constructor(
 
     fun importFolder(context: Context, treeUri: android.net.Uri, deleteAfterImport: Boolean = false) {
         val s = _state.value
+        if (s.isReadOnly) {
+            _state.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+            return
+        }
         val handle = repo.getContainerHandle(s.containerId) ?: return
 
         viewModelScope.launch(Dispatchers.IO) {

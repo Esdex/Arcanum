@@ -58,7 +58,8 @@ class VeraCryptEngine @Inject constructor() {
         protectHiddenPassword: String? = null,
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         protectHiddenPim: Int = 0,
-        mountProgressListener: MountProgressListener? = null
+        mountProgressListener: MountProgressListener? = null,
+        readOnly: Boolean = false
     ): CryptoResult<Long> = withContext(Dispatchers.IO) {
         val handle = nativeOpenContainer(
             path, password,
@@ -67,7 +68,8 @@ class VeraCryptEngine @Inject constructor() {
             protectHiddenPassword,
             protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
             protectHiddenPim,
-            mountProgressListener
+            mountProgressListener,
+            readOnly
         )
         if (handle >= 0) CryptoResult.Success(handle)
         else CryptoResult.Failure(handle.toInt().toError())
@@ -105,7 +107,8 @@ class VeraCryptEngine @Inject constructor() {
         protectHiddenPassword: String? = null,
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         protectHiddenPim: Int = 0,
-        mountProgressListener: MountProgressListener? = null
+        mountProgressListener: MountProgressListener? = null,
+        readOnly: Boolean = false
     ): CryptoResult<Long> = withContext(Dispatchers.IO) {
         val handle = nativeOpenContainerFd(
             fd, password,
@@ -114,7 +117,8 @@ class VeraCryptEngine @Inject constructor() {
             protectHiddenPassword,
             protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
             protectHiddenPim,
-            mountProgressListener
+            mountProgressListener,
+            readOnly
         )
         if (handle >= 0) CryptoResult.Success(handle)
         else CryptoResult.Failure(handle.toInt().toError())
@@ -382,7 +386,8 @@ class VeraCryptEngine @Inject constructor() {
         protectHiddenPassword: String?,
         protectHiddenKeyfileData: Array<ByteArray>?,
         protectHiddenPim: Int,
-        mountProgressListener: MountProgressListener?
+        mountProgressListener: MountProgressListener?,
+        readOnly: Boolean
     ): Long
 
     external fun nativeOpenContainerFd(
@@ -395,7 +400,8 @@ class VeraCryptEngine @Inject constructor() {
         protectHiddenPassword: String?,
         protectHiddenKeyfileData: Array<ByteArray>?,
         protectHiddenPim: Int,
-        mountProgressListener: MountProgressListener?
+        mountProgressListener: MountProgressListener?,
+        readOnly: Boolean
     ): Long
 
     external fun nativeListFiles(
@@ -588,6 +594,7 @@ class VeraCryptEngine @Inject constructor() {
         const val ERR_FS               = -7
         const val ERR_RAND             = -8
         const val ERR_HIDDEN_BOUNDARY  = -9
+        const val ERR_READ_ONLY        = -10
 
         fun filesystemIdToString(fsType: Int): String = when (fsType) {
             1 -> "FAT12"

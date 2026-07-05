@@ -66,7 +66,8 @@ class GalleryViewModel @Inject constructor(
         val isSearchActive: Boolean = false,
         val isEmpty: Boolean = false,
         val pendingNotification: InAppNotification? = null,
-        val showDeleteConfirm: Boolean = false
+        val showDeleteConfirm: Boolean = false,
+        val isReadOnly: Boolean = false
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -92,6 +93,7 @@ class GalleryViewModel @Inject constructor(
     private val _allFiles = MutableStateFlow<List<MediaFileEntity>>(emptyList())
 
     fun loadForContainer(containerId: String) {
+        _uiState.update { it.copy(isReadOnly = repo.isContainerReadOnly(containerId)) }
         if (currentContainerId == containerId) return
         currentContainerId = containerId
         clearThumbnailState()
@@ -186,9 +188,8 @@ class GalleryViewModel @Inject constructor(
     }
 
     fun requestDeleteSelected() {
-        if (_selectedIds.value.isNotEmpty()) {
-            _uiState.update { it.copy(showDeleteConfirm = true) }
-        }
+        if (_uiState.value.isReadOnly || _selectedIds.value.isEmpty()) return
+        _uiState.update { it.copy(showDeleteConfirm = true) }
     }
 
     fun dismissDeleteConfirm() {

@@ -102,6 +102,10 @@ sealed class InAppNotification {
         override val priority = 2
     }
 
+    data object ReadOnlyError : InAppNotification() {
+        override val priority = 2
+    }
+
     data object AppUpdated : InAppNotification() {
         override val priority    = 3
         override val persistent  = true

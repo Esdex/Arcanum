@@ -55,6 +55,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -151,6 +152,7 @@ fun GalleryScreen(
                     searchQuery     = uiState.searchQuery,
                     selectionMode   = selectionMode,
                     selectedCount   = selectedIds.size,
+                    isReadOnly      = uiState.isReadOnly,
                     onSearchToggle  = { viewModel.setSearchActive(!uiState.isSearchActive) },
                     onSearchChange  = { viewModel.setSearchQuery(it) },
                     onSearchClose   = { viewModel.setSearchActive(false) },
@@ -208,6 +210,7 @@ private fun GalleryTopBar(
     searchQuery: String,
     selectionMode: Boolean,
     selectedCount: Int,
+    isReadOnly: Boolean,
     onSearchToggle: () -> Unit,
     onSearchChange: (String) -> Unit,
     onSearchClose: () -> Unit,
@@ -229,11 +232,12 @@ private fun GalleryTopBar(
                 )
             },
             actions = {
-                IconButton(onClick = onDeleteSelected) {
+                IconButton(onClick = onDeleteSelected, enabled = !isReadOnly) {
                     Icon(
                         Icons.Outlined.Delete,
                         stringResource(R.string.gallery_delete_selected),
-                        tint = MaterialTheme.colorScheme.error
+                        tint = if (isReadOnly) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                               else MaterialTheme.colorScheme.error
                     )
                 }
             }
@@ -268,7 +272,19 @@ private fun GalleryTopBar(
                     )
                 }
                 AnimatedVisibility(visible = !isSearchActive, enter = fadeIn(), exit = fadeOut()) {
-                    Text(stringResource(R.string.gallery_title))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.gallery_title))
+                        if (isReadOnly) {
+                            Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primary) {
+                                Text(
+                                    text     = stringResource(R.string.vault_mount_read_only),
+                                    style    = MaterialTheme.typography.labelSmall,
+                                    color    = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             },
             actions = {

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FolderZip
+import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.NoEncryption
@@ -265,6 +266,12 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         icon            = Icons.Outlined.Warning,
         title           = ctx.getString(R.string.notif_import_failed),
         subtitle        = ctx.getString(R.string.notif_import_failed_subtitle)
+    )
+    InAppNotification.ReadOnlyError -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFDC2626),
+        icon            = Icons.Outlined.AutoStories,
+        title           = ctx.getString(R.string.notif_read_only_error),
+        subtitle        = ctx.getString(R.string.notif_read_only_error_subtitle)
     )
     InAppNotification.AppUpdated -> NotificationDisplayConfig(
         backgroundColor = Color(0xFF7C3AED),

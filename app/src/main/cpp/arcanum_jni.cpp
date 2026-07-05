@@ -92,6 +92,7 @@ static uint32_t vc_get_iterations(int hashId, int pim) {
 #define ERR_FS               -7
 #define ERR_RAND             -8
 #define ERR_HIDDEN_BOUNDARY  -9  /* write blocked by hidden-volume protection */
+#define ERR_READ_ONLY       -10  /* write blocked: container mounted read-only */
 
 /* Key schedule sizes for Serpent and Camellia (others use their structs) */
 #define SERPENT_KS_SIZE    (140 * 4)   /* 560 bytes */
@@ -176,6 +177,7 @@ struct ContainerCtx {
     int   pdrv;
     FATFS fatFs;
     int   fd;
+    bool  readOnly;
 };
 
 static std::unordered_map<int, ContainerCtx*> g_ctxMap;
@@ -1531,7 +1533,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
         jint safFd, jstring jPassword, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
         jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
-        jobject mountProgressListener)
+        jobject mountProgressListener, jboolean readOnly)
 {
     std::string password = jstring_to_string(env, jPassword);
 
@@ -1623,7 +1625,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     memset(masterKey, 0, sizeof(masterKey));
     if (pdrv < 0) { close(fd); return (jlong)ERR_NO_SLOT; }
 
-    auto *ctx = new ContainerCtx{ pdrv, {}, fd };
+    auto *ctx = new ContainerCtx{ pdrv, {}, fd, (bool)readOnly };
     char drvPath[8];
     snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
     FRESULT fr;
@@ -1649,7 +1651,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
         jstring jPath, jstring jPassword, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
         jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
-        jobject mountProgressListener)
+        jobject mountProgressListener, jboolean readOnly)
 {
     std::string path     = jstring_to_string(env, jPath);
     std::string password = jstring_to_string(env, jPassword);
@@ -1753,7 +1755,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     memset(masterKey, 0, sizeof(masterKey));
     if (pdrv < 0) { close(fd); return (jlong)ERR_NO_SLOT; }
 
-    auto *ctx = new ContainerCtx{ pdrv, {}, fd };
+    auto *ctx = new ContainerCtx{ pdrv, {}, fd, (bool)readOnly };
     char drvPath[8];
     snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
     FRESULT fr;
@@ -1918,6 +1920,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteFile(
 {
     int pdrv = (int)handle;
     if (pdrv < 0 || pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return ERR_NO_SLOT;
+    { auto it = g_ctxMap.find(pdrv); if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY; }
 
     std::string path = jstring_to_string(env, jFilePath);
     char fullPath[512];
@@ -2055,6 +2058,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeDeleteFile(
 {
     int pdrv = (int)handle;
     if (pdrv < 0 || pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return ERR_NO_SLOT;
+    { auto it = g_ctxMap.find(pdrv); if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY; }
 
     std::string path = jstring_to_string(env, jFilePath);
     char fullPath[512];
@@ -2078,6 +2082,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRenameFile(
 {
     int pdrv = (int)handle;
     if (pdrv < 0 || pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return ERR_NO_SLOT;
+    { auto it = g_ctxMap.find(pdrv); if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY; }
 
     std::string oldPath = jstring_to_string(env, jOldPath);
     std::string newPath = jstring_to_string(env, jNewPath);
@@ -2106,6 +2111,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateDirectory(
 {
     int pdrv = (int)handle;
     if (pdrv < 0 || pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return ERR_NO_SLOT;
+    { auto it = g_ctxMap.find(pdrv); if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY; }
 
     std::string path = jstring_to_string(env, jDirPath);
     char fullPath[512];
@@ -2151,6 +2157,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeDeleteDirectory(
 {
     int pdrv = (int)handle;
     if (pdrv < 0 || pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return ERR_NO_SLOT;
+    { auto it = g_ctxMap.find(pdrv); if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY; }
 
     std::string path = jstring_to_string(env, jDirPath);
     char fullPath[512];

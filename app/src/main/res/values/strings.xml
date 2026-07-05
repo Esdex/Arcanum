@@ -71,6 +71,8 @@
     <string name="notif_hidden_write_protection_subtitle">A storage error occurred while importing</string>
     <string name="notif_import_failed">Import Failed</string>
     <string name="notif_import_failed_subtitle">Not enough space in the vault</string>
+    <string name="notif_read_only_error">Read-Only</string>
+    <string name="notif_read_only_error_subtitle">The vault is mounted in read-only mode</string>
     <string name="notif_support_developer">Enjoying Arcanum?</string>
     <string name="notif_support_developer_subtitle">Consider supporting development</string>
 
@@ -379,6 +381,8 @@
     <string name="mount_screen_title">Mount</string>
     <string name="vault_mount_add_keyfile">Add Keyfile (optional)</string>
     <string name="vault_mount_add_keyfile_hidden">Add Hidden Volume Keyfile (optional)</string>
+    <string name="vault_mount_read_only">Read Only</string>
+    <string name="vault_mount_read_only_desc">Mount the vault in read-only mode; all write operations will be blocked</string>
     <string name="vault_mount_protect_hidden">Protect hidden volume</string>
     <string name="vault_mount_protect_hidden_desc">Prevents outer volume writes from reaching the hidden area</string>
     <string name="vault_mount_hidden_password">Hidden Volume Password</string>
