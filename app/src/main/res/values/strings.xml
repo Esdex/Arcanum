@@ -228,8 +228,12 @@
     <string name="files_action_properties">Properties</string>
     <string name="files_cd_close_fab">Close</string>
     <string name="files_cd_file_actions_fab">File actions</string>
-    <string name="files_action_import">Import files</string>
+    <string name="files_action_import">Import</string>
+    <string name="files_action_import_files">Import files</string>
+    <string name="files_action_import_folder">Import folder</string>
     <string name="files_action_new_folder">New folder</string>
+    <string name="files_import_delete_source">Delete source files after import</string>
+    <string name="files_import_delete_source_desc">Permanently removes files from their original location after a successful import</string>
     <string name="files_action_copy">Copy</string>
     <string name="files_action_move">Move</string>
     <string name="files_action_export">Export</string>

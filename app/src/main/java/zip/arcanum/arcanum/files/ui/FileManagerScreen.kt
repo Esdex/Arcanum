@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -76,6 +77,7 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.DriveFolderUpload
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material3.Card
@@ -88,6 +90,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -232,9 +236,16 @@ fun FileManagerScreen(
     BackHandler(enabled = !state.isSelectionMode && state.currentPath != "/") { viewModel.navigateUp() }
 
     // Activity result launchers
+    var showImportSheet       by remember { mutableStateOf(false) }
+    var deleteAfterImport     by rememberSaveable { mutableStateOf(false) }
+
     val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetMultipleContents()
-    ) { uris -> if (uris.isNotEmpty()) viewModel.importFiles(context, uris) }
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris -> if (uris.isNotEmpty()) viewModel.importFiles(context, uris, deleteAfterImport) }
+
+    val importFolderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri -> uri?.let { viewModel.importFolder(context, it, deleteAfterImport) } }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -481,7 +492,7 @@ fun FileManagerScreen(
                 exit    = slideOutVertically(tween(180), targetOffsetY = { it / 2 }) + fadeOut(tween(150))
             ) {
                 FabMenuItem(stringResource(R.string.files_action_import), Icons.Outlined.FileUpload) {
-                    importLauncher.launch("*/*"); showFabMenu = false
+                    showImportSheet = true; showFabMenu = false
                 }
             }
             AnimatedVisibility(
@@ -590,6 +601,68 @@ fun FileManagerScreen(
                     openWithTarget = null
                 }
             )
+        }
+    }
+
+    if (showImportSheet) {
+        AppSheet(
+            onDismissRequest = { showImportSheet = false },
+            sheetState       = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Text(
+                text       = stringResource(R.string.files_action_import),
+                style      = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier   = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+            ListItem(
+                colors          = ListItemDefaults.colors(containerColor = Color.Transparent),
+                leadingContent  = { Icon(Icons.Outlined.Description, contentDescription = null) },
+                headlineContent = { Text(stringResource(R.string.files_action_import_files)) },
+                trailingContent = { Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                modifier        = Modifier.clickable {
+                    showImportSheet = false
+                    importLauncher.launch(arrayOf("*/*"))
+                }
+            )
+            ListItem(
+                colors          = ListItemDefaults.colors(containerColor = Color.Transparent),
+                leadingContent  = { Icon(Icons.Outlined.Folder, contentDescription = null) },
+                headlineContent = { Text(stringResource(R.string.files_action_import_folder)) },
+                trailingContent = { Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                modifier        = Modifier.clickable {
+                    showImportSheet = false
+                    importFolderLauncher.launch(null)
+                }
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Row(
+                modifier          = Modifier
+                    .fillMaxWidth()
+                    .clickable { deleteAfterImport = !deleteAfterImport }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Icon(
+                    imageVector        = Icons.Outlined.Delete,
+                    contentDescription = null,
+                    tint               = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text  = stringResource(R.string.files_import_delete_source),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text  = stringResource(R.string.files_import_delete_source_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = deleteAfterImport, onCheckedChange = { deleteAfterImport = it })
+            }
+            Spacer(Modifier.navigationBarsPadding().padding(bottom = 8.dp))
         }
     }
 
