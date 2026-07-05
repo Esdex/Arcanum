@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import zip.arcanum.arcanum.gallery.NativeFileInputStream
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -152,18 +153,20 @@ class MediaViewerDirectViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val h = handle
             val path = "/" + file.path.trimStart('/')
-            val bytes = runCatching {
-                engine.nativeReadFile(h, path, 0L, minOf(file.size, 30 * 1024 * 1024L).toInt())
-            }.getOrNull() ?: return@launch
+            // Stream the file instead of reading into a ByteArray — no size cap, handles 30 MB+ images.
+            val stream = NativeFileInputStream(engine, h, path, file.size)
+            stream.mark(0)
             val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+            BitmapFactory.decodeStream(stream, null, opts)
+            if (opts.outWidth <= 0) return@launch
+            stream.reset()
             opts.inSampleSize = run {
                 var s = 1
                 while (opts.outWidth / s > 4096 || opts.outHeight / s > 4096) s *= 2
                 s
             }
             opts.inJustDecodeBounds = false
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return@launch
+            val bitmap = BitmapFactory.decodeStream(stream, null, opts) ?: return@launch
             _state.update { s ->
                 val isCurrent = index == s.currentIndex
                 s.copy(

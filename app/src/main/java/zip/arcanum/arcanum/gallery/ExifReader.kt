@@ -51,10 +51,39 @@ class ExifReader @Inject constructor() {
     } catch (_: Exception) { 0L }
 
     fun readOrientation(bytes: ByteArray): Int = try {
-        ImageMetadataReader.readMetadata(ByteArrayInputStream(bytes))
+        // Isolate the first EXIF APP1 segment so that non-EXIF APP1 blocks
+        // (e.g. Nothing Phone stores ~85 depth-map chunks as consecutive APP1s)
+        // don't cause the parser to throw on a truncated segment.
+        val isolated = isolateFirstExifApp1(bytes) ?: bytes
+        ImageMetadataReader.readMetadata(ByteArrayInputStream(isolated))
             .getFirstDirectoryOfType(ExifIFD0Directory::class.java)
             ?.getInteger(ExifIFD0Directory.TAG_ORIENTATION) ?: 1
     } catch (_: Exception) { 1 }
+
+    private fun isolateFirstExifApp1(bytes: ByteArray): ByteArray? {
+        if (bytes.size < 4 || bytes[0] != 0xFF.toByte() || bytes[1] != 0xD8.toByte()) return null
+        var i = 2
+        while (i + 3 < bytes.size) {
+            if (bytes[i] != 0xFF.toByte()) break
+            val marker = bytes[i + 1].toInt() and 0xFF
+            val segLen = ((bytes[i + 2].toInt() and 0xFF) shl 8) or (bytes[i + 3].toInt() and 0xFF)
+            if (marker == 0xE1) {
+                val payloadStart = i + 4
+                // Accept only segments with "Exif\0\0" — skip XMP and other APP1 uses
+                if (payloadStart + 6 <= bytes.size &&
+                    bytes.copyOfRange(payloadStart, payloadStart + 6)
+                        .contentEquals(byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00))
+                ) {
+                    val segEnd = minOf(i + 2 + segLen, bytes.size)
+                    return byteArrayOf(0xFF.toByte(), 0xD8.toByte()) +
+                           bytes.copyOfRange(i, segEnd)
+                }
+            }
+            if (marker == 0xDA || marker == 0xD9) break  // SOS / EOI
+            i += 2 + segLen
+        }
+        return null
+    }
 
     suspend fun readExif(bytes: ByteArray): MediaExifData = withContext(Dispatchers.IO) {
         try {
