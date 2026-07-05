@@ -1,3 +1,10 @@
+/*
+ * Arcanum - VeraCrypt-compatible encrypted vault manager for Android
+ *
+ * Copyright (C) 2026 Esdex
+ * Licensed under Apache License 2.0
+ */
+
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
