@@ -17,13 +17,16 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.core.database.AppDatabase
 import zip.arcanum.core.database.dao.ContainerDao
 import zip.arcanum.core.security.PanicManager
@@ -42,6 +45,7 @@ class DebugViewModel @Inject constructor(
     private val repo: ContainerRepository,
     private val dao: ContainerDao,
     private val panicManager: PanicManager,
+    private val thumbnailManager: ThumbnailManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -88,6 +92,13 @@ class DebugViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(DebugState())
     val state = _state.asStateFlow()
+
+    private val _events = MutableSharedFlow<DebugEvent>(extraBufferCapacity = 1)
+    val events = _events.asSharedFlow()
+
+    sealed interface DebugEvent {
+        object CacheCleared : DebugEvent
+    }
 
     fun refresh() {
         viewModelScope.launch {
@@ -160,6 +171,13 @@ class DebugViewModel @Inject constructor(
     }
 
     fun clearDryRun() = _state.update { it.copy(dryRunActions = null) }
+
+    fun clearAllThumbnailCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            thumbnailManager.clearAllCache()
+            _events.emit(DebugEvent.CacheCleared)
+        }
+    }
 
     fun copyToClipboard() {
         val s  = state.value

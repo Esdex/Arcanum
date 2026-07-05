@@ -44,9 +44,10 @@ class ThumbnailPreloader @Inject constructor(
         currentJob?.cancel()
         val gen = ++activeGeneration
 
-        // Only images and videos; sort newest-first so top-of-gallery items come first
+        // Only images and videos without an existing disk cache entry; sort newest-first
         val preloadFiles = files
             .filter { it.fileType == MediaFileType.IMAGE || it.fileType == MediaFileType.VIDEO }
+            .let { thumbnailManager.filterUncached(containerId, it) }
             .sortedByDescending { it.dateModified }
 
         if (preloadFiles.isEmpty()) {

@@ -15,6 +15,7 @@ import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.crypto.VeraCryptEngine
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,7 +35,7 @@ class ThumbnailManager @Inject constructor(
     }
 
     private fun cacheFile(containerId: String, filePath: String): File {
-        val key = md5("$containerId:$filePath:v3")
+        val key = md5("$containerId:$filePath:v4")
         return File(cacheRoot, "$containerId/$key.enc")
     }
 
@@ -72,22 +73,37 @@ class ThumbnailManager @Inject constructor(
         fileSize: Long,
         cacheFile: File
     ): Bitmap? {
-        // Pass 1: read first 512 KB to detect format and get dimensions from header only
-        val headerBytes = engine.nativeReadFile(handle, relativePath, 0L, 512 * 1024) ?: return null
+        val stream = NativeFileInputStream(engine, handle, relativePath, fileSize)
+
+        // Pass 1: bounds-only scan. BitmapFactory stops as soon as it finds the SOF marker,
+        // so this works even when huge APP1 blocks (e.g. Nothing Phone refocus data) push
+        // SOF past 5 MB into the file. mark(0) lets us rewind for pass 2.
+        stream.mark(0)
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(headerBytes, 0, headerBytes.size, opts)
+        BitmapFactory.decodeStream(stream, null, opts)
         if (opts.outWidth <= 0) return null
 
-        // Pass 2: read the COMPLETE file so BitmapFactory gets a full stream.
-        // Truncated JPEG data causes BitmapFactory to return a non-null but partially black bitmap.
-        val fileCap = minOf(fileSize, 20L * 1024 * 1024).toInt()
-        val bytes = if (fileSize <= headerBytes.size.toLong()) headerBytes
-                    else engine.nativeReadFile(handle, relativePath, 0L, fileCap) ?: return null
-
+        // Pass 2: full decode from the start at reduced resolution.
+        stream.reset()
         opts.inSampleSize = calculateInSampleSize(opts, 256, 256)
         opts.inJustDecodeBounds = false
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
-        val oriented = applyExifOrientation(bitmap, exifReader.readOrientation(bytes))
+        val bitmap = BitmapFactory.decodeStream(stream, null, opts) ?: return null
+
+        // Read EXIF orientation from the first 64 KB — always within the initial APP1.
+        val exifBytes = engine.nativeReadFile(handle, relativePath, 0L, 65_536) ?: ByteArray(0)
+        val exifOrientation = exifReader.readOrientation(exifBytes)
+
+        // Orientations 5-8 swap width↔height. On Android 12+ with hardware-accelerated
+        // JPEG decoding, BitmapFactory may already apply the rotation automatically.
+        // Detect this: if raw stored dimensions are landscape but the decoded bitmap is
+        // portrait, the decoder already rotated — applying again would double-rotate.
+        val oriented = if (exifOrientation in 5..8
+                           && opts.outWidth > opts.outHeight
+                           && bitmap.height > bitmap.width) {
+            bitmap
+        } else {
+            applyExifOrientation(bitmap, exifOrientation)
+        }
         val thumb = centerCrop(oriented, 256)
         saveToCacheFile(thumb, cacheFile)
         return thumb
@@ -202,6 +218,12 @@ class ThumbnailManager @Inject constructor(
         return size
     }
 
+    fun filterUncached(containerId: String, files: List<MediaFileEntity>): List<MediaFileEntity> =
+        files.filter { file ->
+            val f = cacheFile(containerId, file.relativePath)
+            !f.exists() || f.length() == 0L
+        }
+
     fun clearCache(containerId: String) {
         File(cacheRoot, containerId).deleteRecursively()
     }
@@ -238,6 +260,73 @@ internal class NativeMediaDataSource(
     }
 
     override fun getSize(): Long = fileSize
+
+    override fun close() {}
+}
+
+/**
+ * Sequential InputStream backed by the native container JNI bridge.
+ * BitmapFactory reads the compressed image data chunk-by-chunk without
+ * pre-buffering the whole file, so arbitrarily large images (50 MP+) decode
+ * at a sampled resolution without OOM.
+ */
+internal class NativeFileInputStream(
+    private val engine: VeraCryptEngine,
+    private val handle: Long,
+    private val filePath: String,
+    private val fileSize: Long,
+    private val chunkSize: Int = 256 * 1024
+) : InputStream() {
+
+    private var position: Long = 0   // file offset of the next byte to fetch from JNI
+    private var bufStart: Long = 0   // file offset of buf[0]
+    private var buf: ByteArray = ByteArray(0)
+    private var bufPos: Int = 0
+    private var markedPosition: Long = 0
+
+    override fun read(): Int {
+        if (bufPos >= buf.size && !fillBuffer()) return -1
+        return buf[bufPos++].toInt() and 0xFF
+    }
+
+    override fun read(dest: ByteArray, off: Int, len: Int): Int {
+        if (bufPos >= buf.size && !fillBuffer()) return -1
+        val toRead = minOf(len, buf.size - bufPos)
+        System.arraycopy(buf, bufPos, dest, off, toRead)
+        bufPos += toRead
+        return toRead
+    }
+
+    // BitmapFactory calls mark/reset to detect the image format before decoding.
+    // We support it by tracking the marked file offset and re-seeking via JNI on reset().
+    override fun markSupported() = true
+
+    override fun mark(readlimit: Int) {
+        markedPosition = bufStart + bufPos
+    }
+
+    override fun reset() {
+        val target = markedPosition
+        if (target >= bufStart && target < bufStart + buf.size) {
+            bufPos = (target - bufStart).toInt()
+        } else {
+            position = target
+            bufStart = target
+            buf = ByteArray(0)
+            bufPos = 0
+        }
+    }
+
+    private fun fillBuffer(): Boolean {
+        if (position >= fileSize) return false
+        val toRead = minOf(chunkSize.toLong(), fileSize - position).toInt()
+        val chunk = engine.nativeReadFile(handle, filePath, position, toRead) ?: return false
+        bufStart = position
+        buf = chunk
+        bufPos = 0
+        position += chunk.size
+        return chunk.isNotEmpty()
+    }
 
     override fun close() {}
 }

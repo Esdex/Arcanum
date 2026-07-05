@@ -21,6 +21,7 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.gallery.ExifJpegPatcher
 import zip.arcanum.arcanum.gallery.ExifReader
 import zip.arcanum.arcanum.gallery.MediaExifData
+import zip.arcanum.arcanum.gallery.NativeFileInputStream
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
@@ -85,15 +86,18 @@ class PhotoViewerViewModel @Inject constructor(
 
     // Loads the bitmap for a single image file. Returns null on error. Must be called on IO dispatcher.
     private fun loadBitmapForFile(file: MediaFileEntity, handle: Long): Bitmap? {
-        val readSize = minOf(file.size, 50L * 1024 * 1024).toInt()
-        val bytes = engine.nativeReadFile(handle, file.relativePath, 0L, readSize) ?: return null
+        val stream = NativeFileInputStream(engine, handle, file.relativePath, file.size)
+        stream.mark(0)
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+        BitmapFactory.decodeStream(stream, null, opts)
+        if (opts.outWidth <= 0) return null
+        stream.reset()
         opts.inSampleSize      = calculateInSampleSize(opts, 4096, 4096)
         opts.inJustDecodeBounds = false
         opts.inPreferredConfig  = Bitmap.Config.ARGB_8888
-        val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
-        return applyExifOrientation(decoded, exifReader.readOrientation(bytes))
+        val decoded = BitmapFactory.decodeStream(stream, null, opts) ?: return null
+        val exifBytes = engine.nativeReadFile(handle, file.relativePath, 0L, 65_536) ?: ByteArray(0)
+        return applyExifOrientation(decoded, exifReader.readOrientation(exifBytes))
     }
 
     // Loads current page first, then ±1 neighbors. Cancels any prior load.

@@ -4,6 +4,7 @@ import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import zip.arcanum.arcanum.containers.domain.Container
+import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.core.database.dao.ContainerDao
 import zip.arcanum.core.database.entities.ContainerEntity
 import java.util.UUID
@@ -12,7 +13,8 @@ import javax.inject.Singleton
 
 @Singleton
 class ContainerRepository @Inject constructor(
-    private val dao: ContainerDao
+    private val dao: ContainerDao,
+    private val thumbnailManager: ThumbnailManager
 ) {
     // In-memory handle map: containerId → JNI handle
     private val mountedHandles      = mutableMapOf<String, Long>()
@@ -40,8 +42,10 @@ class ContainerRepository @Inject constructor(
     suspend fun saveContainer(container: Container) =
         dao.insertContainer(container.toEntity())
 
-    suspend fun deleteContainer(container: Container) =
+    suspend fun deleteContainer(container: Container) {
+        thumbnailManager.clearCache(container.id)
         dao.deleteContainerById(container.id)
+    }
 
     suspend fun setMounted(id: String, mounted: Boolean) =
         dao.setMounted(id, mounted)
@@ -172,6 +176,7 @@ class ContainerRepository @Inject constructor(
             mountedIsReadOnly.remove(id)
             mountedDataSize.remove(id)
             mountedParcelFds.remove(id)?.close()
+            thumbnailManager.clearCache(id)
             dao.deleteContainerById(id)
         }
     }

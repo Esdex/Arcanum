@@ -1,6 +1,7 @@
 package zip.arcanum.settings
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -122,6 +123,7 @@ import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LocalCafe
 import androidx.compose.material.icons.outlined.Lock
@@ -2106,6 +2108,16 @@ private fun DebugSubScreen(
         if (debugMode) debugViewModel.refresh()
     }
 
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        debugViewModel.events.collect { event ->
+            when (event) {
+                DebugViewModel.DebugEvent.CacheCleared ->
+                    Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     if (showWarningDialog) {
         DebugWarningDialog(
             onDismiss = { showWarningDialog = false },
@@ -2444,6 +2456,19 @@ private fun DebugSubScreen(
                                 Text(stringResource(R.string.settings_debug_reset_disguise), style = MaterialTheme.typography.labelMedium)
                             }
                         }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    OutlinedButton(
+                        onClick  = { debugViewModel.clearAllThumbnailCache() },
+                        colors   = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        border   = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Outlined.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Force Clean Cache", style = MaterialTheme.typography.labelMedium)
                     }
                 }
 
