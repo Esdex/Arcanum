@@ -52,9 +52,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccessTime
+import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.EnhancedEncryption
 import androidx.compose.material.icons.outlined.DataUsage
 import androidx.compose.material.icons.outlined.Delete
@@ -145,6 +150,8 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Button
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -194,6 +201,11 @@ fun VaultScreen(
     var showUpgradeDialog            by remember { mutableStateOf(false) }
     var containerNotFound            by remember { mutableStateOf<ContainerEntity?>(null) }
     var showRemoveNotFoundConfirm    by remember { mutableStateOf(false) }
+    var showOpenVaultSheet           by remember { mutableStateOf(false) }
+    var showAppStoragePicker         by remember { mutableStateOf(false) }
+    val appStorageRoot               = remember(context) { context.filesDir.parentFile!! }
+    var appStorageCurrentDir         by remember { mutableStateOf(appStorageRoot) }
+    var appStorageEntries            by remember { mutableStateOf<List<java.io.File>>(emptyList()) }
 
     LaunchedEffect(Unit) { viewModel.initVersionCheck() }
 
@@ -254,6 +266,16 @@ fun VaultScreen(
 
     LaunchedEffect(selectionMode) {
         if (selectionMode) { fabExpanded = false; contextMenuContainerId = null }
+    }
+
+    LaunchedEffect(showAppStoragePicker, appStorageCurrentDir) {
+        if (!showAppStoragePicker) return@LaunchedEffect
+        val dir = appStorageCurrentDir
+        appStorageEntries = withContext(Dispatchers.IO) {
+            (dir.listFiles() ?: emptyArray())
+                .filter { !it.name.startsWith(".") }
+                .sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+        }
     }
 
     BackHandler(enabled = !suppressBackHandler) {
@@ -455,7 +477,7 @@ fun VaultScreen(
                         label   = stringResource(R.string.vault_fab_open_existing),
                         onClick = {
                             fabExpanded = false
-                            if (canAddMoreContainers) openDocumentLauncher.launch(arrayOf("*/*"))
+                            if (canAddMoreContainers) showOpenVaultSheet = true
                             else showUpgradeDialog = true
                         }
                     )
@@ -615,6 +637,125 @@ fun VaultScreen(
                         TextButton(onClick = { showLockDialog = false }) { Text(stringResource(R.string.common_cancel)) }
                     }
                 )
+            }
+
+            // ── Open vault source sheet ───────────────────────────────────────
+            if (showOpenVaultSheet) {
+                AppSheet(
+                    onDismissRequest = { showOpenVaultSheet = false },
+                    sheetState       = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                ) {
+                    Text(
+                        text       = stringResource(R.string.vault_fab_open_existing),
+                        style      = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier   = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                    ListItem(
+                        colors          = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        leadingContent  = { Icon(Icons.Outlined.PhoneAndroid, contentDescription = null) },
+                        headlineContent = { Text(stringResource(R.string.vault_storage_app)) },
+                        trailingContent = { Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        modifier        = Modifier.clickable {
+                            showOpenVaultSheet = false
+                            showAppStoragePicker = true
+                        }
+                    )
+                    ListItem(
+                        colors          = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        leadingContent  = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
+                        headlineContent = { Text(stringResource(R.string.vault_storage_internal)) },
+                        trailingContent = { Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        modifier        = Modifier.clickable {
+                            showOpenVaultSheet = false
+                            openDocumentLauncher.launch(arrayOf("*/*"))
+                        }
+                    )
+                    Spacer(Modifier.height(navBarPadding + 8.dp))
+                }
+            }
+
+            // ── App Storage picker sheet ──────────────────────────────────────
+            if (showAppStoragePicker) {
+                val isAtRoot   = appStorageCurrentDir == appStorageRoot
+                val relPath    = if (isAtRoot) "" else appStorageCurrentDir.toRelativeString(appStorageRoot)
+                val breadcrumb = if (isAtRoot) stringResource(R.string.vault_storage_app)
+                                 else stringResource(R.string.vault_storage_app) + " > " + relPath.replace("/", " > ")
+
+                AppSheet(
+                    onDismissRequest = {
+                        showAppStoragePicker = false
+                        appStorageCurrentDir = appStorageRoot
+                    },
+                    sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                ) {
+                    BackHandler(!isAtRoot) {
+                        appStorageCurrentDir = appStorageCurrentDir.parentFile ?: appStorageRoot
+                    }
+                    Row(
+                        modifier          = Modifier.fillMaxWidth().padding(end = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (!isAtRoot) {
+                            IconButton(onClick = { appStorageCurrentDir = appStorageCurrentDir.parentFile ?: appStorageRoot }) {
+                                Icon(Icons.Outlined.ArrowBack, contentDescription = stringResource(R.string.common_back))
+                            }
+                        } else {
+                            Spacer(Modifier.width(16.dp))
+                        }
+                        Text(
+                            text       = breadcrumb,
+                            style      = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier   = Modifier.padding(vertical = 12.dp)
+                        )
+                    }
+                    if (appStorageEntries.isEmpty()) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier         = Modifier.fillMaxWidth().height(120.dp)
+                        ) {
+                            Text(
+                                text  = stringResource(R.string.vault_appstorage_empty),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        LazyColumn {
+                            items(appStorageEntries, key = { it.absolutePath }) { entry ->
+                                ListItem(
+                                    colors           = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                    leadingContent   = {
+                                        Icon(
+                                            if (entry.isDirectory) Icons.Outlined.Folder else Icons.Outlined.Article,
+                                            contentDescription = null,
+                                            tint = if (entry.isDirectory) MaterialTheme.colorScheme.primary
+                                                   else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    headlineContent  = { Text(entry.name) },
+                                    supportingContent = if (!entry.isDirectory) ({
+                                        Text(entry.length().fmtSize())
+                                    }) else null,
+                                    trailingContent  = if (entry.isDirectory) ({
+                                        Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }) else null,
+                                    modifier = Modifier.clickable {
+                                        if (entry.isDirectory) {
+                                            appStorageCurrentDir = entry
+                                        } else {
+                                            viewModel.addContainerFromPath(entry.absolutePath)
+                                            showAppStoragePicker = false
+                                            appStorageCurrentDir = appStorageRoot
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(navBarPadding + 8.dp))
+                }
             }
 
             // ── Sort / group sheet ────────────────────────────────────────────
