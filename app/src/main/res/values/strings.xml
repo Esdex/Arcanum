@@ -101,6 +101,8 @@
     <string name="common_next">Next</string>
     <string name="common_exit">Exit</string>
     <string name="common_save">Save</string>
+    <string name="editor_save_copy">Save Copy</string>
+    <string name="editor_overwrite">Overwrite</string>
     <string name="common_back">Back</string>
     <string name="common_delete">Delete</string>
     <string name="common_rename">Rename</string>

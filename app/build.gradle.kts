@@ -197,6 +197,9 @@ dependencies {
     // Play Billing — playstore flavor only (F-Droid must not include this)
     "playstoreImplementation"(libs.billing.ktx)
 
+    // Image processing (Sharpness + Denoise for photo editor)
+    implementation(libs.aire)
+
     // Utilities
     implementation(libs.timber)
     implementation(libs.kotlinx.serialization.json)

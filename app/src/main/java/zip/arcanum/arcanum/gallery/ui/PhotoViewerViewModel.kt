@@ -72,6 +72,7 @@ class PhotoViewerViewModel @Inject constructor(
             _uiState.update { it.copy(currentFile = file, siblings = siblings, currentIndex = idx) }
             loadBitmapRange(idx)
         }
+
     }
 
     // Loads the bitmap for a single image file. Returns null on error. Must be called on IO dispatcher.

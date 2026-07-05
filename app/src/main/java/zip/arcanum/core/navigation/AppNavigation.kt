@@ -45,6 +45,7 @@ import zip.arcanum.arcanum.gallery.ui.MediaViewerDirectScreen
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerScreen
 import zip.arcanum.arcanum.gallery.ui.MediaViewerScreen
 import zip.arcanum.arcanum.gallery.ui.VideoPlayerScreen
+import zip.arcanum.arcanum.gallery.editor.PhotoEditorScreen
 import zip.arcanum.calculator.ui.CalculatorScreen
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.PinManager
@@ -321,8 +322,27 @@ fun AppNavigation(pinManager: PinManager) {
             MediaViewerScreen(
                 photoId        = photoId,
                 onBack         = { navController.popBackStack() },
+                onOpenEditor   = { fileId -> navController.navigate(Screen.PhotoEditor.buildRoute(fileId)) },
                 onNotification = { /* TODO: propagate to VaultScreen banner */ }
             )
+        }
+
+        // ── Photo editor ─────────────────────────────────────────────────
+        composable(
+            route             = Screen.PhotoEditor.route,
+            arguments         = listOf(navArgument(Screen.PhotoEditor.ARG) { type = NavType.StringType }),
+            enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
+        ) {
+            PhotoEditorScreen(onBack = { savedFileId ->
+                if (savedFileId != null) {
+                    navController.navigate(Screen.PhotoViewer.buildRoute(savedFileId)) {
+                        popUpTo(Screen.PhotoViewer.route) { inclusive = true }
+                    }
+                } else {
+                    navController.popBackStack()
+                }
+            })
         }
 
         // ── Video player ─────────────────────────────────────────────────
