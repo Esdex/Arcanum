@@ -155,7 +155,15 @@ class MediaViewerDirectViewModel @Inject constructor(
             val bytes = runCatching {
                 engine.nativeReadFile(h, path, 0L, minOf(file.size, 30 * 1024 * 1024L).toInt())
             }.getOrNull() ?: return@launch
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@launch
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+            opts.inSampleSize = run {
+                var s = 1
+                while (opts.outWidth / s > 4096 || opts.outHeight / s > 4096) s *= 2
+                s
+            }
+            opts.inJustDecodeBounds = false
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return@launch
             _state.update { s ->
                 val isCurrent = index == s.currentIndex
                 s.copy(

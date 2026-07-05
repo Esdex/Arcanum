@@ -29,7 +29,11 @@ import zip.arcanum.arcanum.files.domain.ClipboardItem
 import zip.arcanum.arcanum.files.domain.FileClipboard
 import zip.arcanum.arcanum.gallery.AudioPlayerQueue
 import zip.arcanum.arcanum.gallery.MediaViewerQueue
+import zip.arcanum.arcanum.gallery.ThumbnailManager
+import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.notifications.InAppNotification
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import zip.arcanum.crypto.NativeFileInfo
@@ -39,11 +43,10 @@ import javax.inject.Inject
 
 private val Context.fileManagerPrefs: DataStore<Preferences> by preferencesDataStore("file_manager_prefs")
 
-private val AUDIO_EXTENSIONS_VM = setOf("mp3", "m4a", "aac", "ogg", "flac", "wav", "opus")
-private val MEDIA_EXTENSIONS_VM = setOf(
-    "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif",
-    "mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp"
-)
+private val AUDIO_EXTENSIONS_VM  = setOf("mp3", "m4a", "aac", "ogg", "flac", "wav", "opus")
+private val IMAGE_EXTENSIONS_VM  = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif")
+private val VIDEO_EXTENSIONS_VM  = setOf("mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp")
+private val MEDIA_EXTENSIONS_VM  = IMAGE_EXTENSIONS_VM + VIDEO_EXTENSIONS_VM
 
 @HiltViewModel
 class FileManagerViewModel @Inject constructor(
@@ -52,7 +55,8 @@ class FileManagerViewModel @Inject constructor(
     private val clipboard: FileClipboard,
     private val repo: ContainerRepository,
     private val audioQueue: AudioPlayerQueue,
-    private val mediaQueue: MediaViewerQueue
+    private val mediaQueue: MediaViewerQueue,
+    private val thumbnailManager: ThumbnailManager
 ) : ViewModel() {
 
     enum class ViewMode { LIST, GRID }
@@ -81,7 +85,8 @@ class FileManagerViewModel @Inject constructor(
         val tempFileToOpen: Pair<File, String>? = null,
         val isOperationInProgress: Boolean = false,
         val operationMessage: String? = null,
-        val isReadOnly: Boolean = false
+        val isReadOnly: Boolean = false,
+        val thumbnails: Map<String, android.graphics.Bitmap> = emptyMap()
     )
 
     private val _state = MutableStateFlow(FileManagerState())
@@ -93,6 +98,8 @@ class FileManagerViewModel @Inject constructor(
 
     private val _tempFiles = mutableListOf<File>()
     private var initialized = false
+    private val loadingThumbnails = mutableSetOf<String>()
+    private val thumbnailSemaphore = Semaphore(4)
 
     private val prefs = context.fileManagerPrefs
 
@@ -102,6 +109,31 @@ class FileManagerViewModel @Inject constructor(
         private val SHOW_HIDDEN_KEY  = booleanPreferencesKey("show_hidden")
         private val FOLDERS_FIRST_KEY = booleanPreferencesKey("folders_first")
         private val VIEW_MODE_KEY    = stringPreferencesKey("view_mode")
+    }
+
+    fun requestThumbnail(file: NativeFileInfo) {
+        if (file.isDirectory) return
+        val ext = file.name.substringAfterLast('.', "").lowercase()
+        val type = when (ext) {
+            in IMAGE_EXTENSIONS_VM -> MediaFileType.IMAGE
+            in VIDEO_EXTENSIONS_VM -> MediaFileType.VIDEO
+            else -> return
+        }
+        if (!loadingThumbnails.add(file.path)) return
+        val containerId = _state.value.containerId
+        val handle = repo.getContainerHandle(containerId) ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            thumbnailSemaphore.withPermit {
+                val bitmap = thumbnailManager.getThumbnail(engine, handle, containerId, file.path, type, file.size)
+                if (bitmap != null) {
+                    withContext(Dispatchers.Main) {
+                        _state.update { it.copy(thumbnails = it.thumbnails + (file.path to bitmap)) }
+                    }
+                } else {
+                    loadingThumbnails.remove(file.path)
+                }
+            }
+        }
     }
 
     fun initialize(containerId: String) {

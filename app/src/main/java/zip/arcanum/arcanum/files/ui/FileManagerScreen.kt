@@ -47,8 +47,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.draw.paint
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.outlined.Archive
@@ -323,14 +328,16 @@ fun FileManagerScreen(
                             label = "file_list"
                         ) {
                             FileListContent(
-                                files           = state.files,
-                                selectedItems   = state.selectedItems,
-                                isSelectionMode = state.isSelectionMode,
-                                isReadOnly      = state.isReadOnly,
-                                searchQuery     = state.searchQuery,
-                                topPadding      = topPadding,
-                                bottomPadding   = bottomPadding + if (state.isSelectionMode) 72.dp else 80.dp,
-                                onFileClick     = { file ->
+                                files                = state.files,
+                                selectedItems        = state.selectedItems,
+                                isSelectionMode      = state.isSelectionMode,
+                                isReadOnly           = state.isReadOnly,
+                                searchQuery          = state.searchQuery,
+                                thumbnails           = state.thumbnails,
+                                topPadding           = topPadding,
+                                bottomPadding        = bottomPadding + if (state.isSelectionMode) 72.dp else 80.dp,
+                                onThumbnailRequest   = viewModel::requestThumbnail,
+                                onFileClick          = { file ->
                                     if (state.isSelectionMode) viewModel.toggleSelection(file.path)
                                     else if (file.isDirectory) viewModel.navigateTo(file.path)
                                     else if (onAudioFileClick != null &&
@@ -343,13 +350,13 @@ fun FileManagerScreen(
                                         onMediaFileClick(file.path, file.name, file.size)
                                     } else { openWithTarget = file; showOpenWithWarning = true }
                                 },
-                                onFileLongClick = { file ->
+                                onFileLongClick      = { file ->
                                     if (!state.isSelectionMode) viewModel.enterSelectionMode(file.path)
                                     else viewModel.toggleSelection(file.path)
                                 },
-                                onRename        = { renameTarget = it },
-                                onProperties    = { propertiesTarget = it },
-                                formatSize      = viewModel::formatFileSize
+                                onRename             = { renameTarget = it },
+                                onProperties         = { propertiesTarget = it },
+                                formatSize           = viewModel::formatFileSize
                             )
                         }
                     }
@@ -947,8 +954,10 @@ private fun FileListContent(
     isSelectionMode: Boolean,
     isReadOnly: Boolean,
     searchQuery: String,
+    thumbnails: Map<String, android.graphics.Bitmap>,
     topPadding: Dp = 0.dp,
     bottomPadding: Dp,
+    onThumbnailRequest: (NativeFileInfo) -> Unit,
     onFileClick: (NativeFileInfo) -> Unit,
     onFileLongClick: (NativeFileInfo) -> Unit,
     onRename: (NativeFileInfo) -> Unit,
@@ -961,16 +970,18 @@ private fun FileListContent(
     ) {
         items(files, key = { it.path }) { file ->
             FileListItem(
-                file            = file,
-                isSelected      = file.path in selectedItems,
-                isSelectionMode = isSelectionMode,
-                isReadOnly      = isReadOnly,
-                searchQuery     = searchQuery,
-                onFileClick     = { onFileClick(file) },
-                onFileLongClick = { onFileLongClick(file) },
-                onRename        = { onRename(file) },
-                onProperties    = { onProperties(file) },
-                formatSize      = formatSize
+                file               = file,
+                isSelected         = file.path in selectedItems,
+                isSelectionMode    = isSelectionMode,
+                isReadOnly         = isReadOnly,
+                searchQuery        = searchQuery,
+                thumbnail          = thumbnails[file.path],
+                onThumbnailRequest = { onThumbnailRequest(file) },
+                onFileClick        = { onFileClick(file) },
+                onFileLongClick    = { onFileLongClick(file) },
+                onRename           = { onRename(file) },
+                onProperties       = { onProperties(file) },
+                formatSize         = formatSize
             )
         }
     }
@@ -984,6 +995,8 @@ private fun FileListItem(
     isSelectionMode: Boolean,
     isReadOnly: Boolean,
     searchQuery: String,
+    thumbnail: android.graphics.Bitmap? = null,
+    onThumbnailRequest: () -> Unit = {},
     onFileClick: () -> Unit,
     onFileLongClick: () -> Unit,
     onRename: () -> Unit,
@@ -992,6 +1005,7 @@ private fun FileListItem(
 ) {
     val isHidden = file.name.startsWith(".")
     val (icon, iconColor) = fileTypeIconAndColor(file.name, file.isDirectory)
+    LaunchedEffect(file.path) { if (thumbnail == null && !file.isDirectory) onThumbnailRequest() }
     val bgColor by animateColorAsState(
         targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
                       else Color.Transparent,
@@ -1035,7 +1049,28 @@ private fun FileListItem(
                         .clip(RoundedCornerShape(12.dp))
                         .background(iconColor.copy(alpha = 0.12f))
                 ) {
-                    Icon(icon, null, tint = iconColor, modifier = Modifier.size(22.dp))
+                    if (thumbnail != null) {
+                        val isVideo = file.name.substringAfterLast('.', "").lowercase() in
+                            setOf("mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp")
+                        Box(Modifier.fillMaxSize()) {
+                            Box(
+                                Modifier.fillMaxSize().paint(
+                                    painter      = BitmapPainter(thumbnail.asImageBitmap()),
+                                    contentScale = ContentScale.Crop
+                                )
+                            )
+                            if (isVideo) {
+                                Icon(
+                                    Icons.Filled.PlayArrow,
+                                    contentDescription = null,
+                                    tint     = Color.White,
+                                    modifier = Modifier.size(20.dp).align(Alignment.Center)
+                                )
+                            }
+                        }
+                    } else {
+                        Icon(icon, null, tint = iconColor, modifier = Modifier.size(22.dp))
+                    }
                 }
             }
         }
