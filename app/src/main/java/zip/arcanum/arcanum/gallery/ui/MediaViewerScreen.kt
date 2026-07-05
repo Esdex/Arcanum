@@ -165,6 +165,7 @@ import kotlin.math.abs
 fun MediaViewerScreen(
     photoId: String,
     onBack: () -> Unit,
+    onOpenEditor: (String) -> Unit = {},
     onNotification: (InAppNotification) -> Unit = {},
     viewModel: PhotoViewerViewModel = hiltViewModel()
 ) {
@@ -493,7 +494,6 @@ fun MediaViewerScreen(
                 exit     = fadeOut() + slideOutVertically { it },
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
-                val isFav = uiState.currentFile?.isFavorite == true
                 if (uiState.currentFile?.fileType == MediaFileType.VIDEO) {
                     val sliderValue = if (durationMs > 0L) {
                         ((if (isScrubbing) scrubMs else positionMs).toFloat() / durationMs).coerceIn(0f, 1f)
@@ -516,9 +516,8 @@ fun MediaViewerScreen(
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment     = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = { viewModel.toggleFavorite() }) {
-                                Icon(if (isFav) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                    stringResource(R.string.viewer_action_favorite), tint = if (isFav) Color.Red else Color.White)
+                            IconButton(onClick = { uiState.currentFile?.id?.let { onOpenEditor(it) } }) {
+                                Icon(Icons.Outlined.Edit, "Edit", tint = Color.White)
                             }
                             IconButton(onClick = {
                                 exportLauncher.launch(uiState.currentFile?.fileName ?: "export")

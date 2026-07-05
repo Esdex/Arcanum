@@ -36,6 +36,7 @@ aboutlibraries = "14.2.1"
 bouncycastle = "1.79"
 billing = "7.1.1"
 sqlcipher = "4.5.4"
+aire = "0.18.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -85,6 +86,7 @@ aboutlibraries-compose-m3 = { group = "com.mikepenz", name = "aboutlibraries-com
 bouncycastle-provider = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 sqlcipher = { group = "net.zetetic", name = "android-database-sqlcipher", version.ref = "sqlcipher" }
+aire = { group = "com.github.awxkee", name = "aire", version.ref = "aire" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
