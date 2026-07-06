@@ -2,7 +2,11 @@ package zip.arcanum.arcanum.containers.data
 
 import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.core.database.dao.ContainerDao
@@ -16,6 +20,9 @@ class ContainerRepository @Inject constructor(
     private val dao: ContainerDao,
     private val thumbnailManager: ThumbnailManager
 ) {
+    private val _mountedContainerIds = MutableStateFlow<Set<String>>(emptySet())
+    val mountedContainerIds: StateFlow<Set<String>> = _mountedContainerIds.asStateFlow()
+
     // In-memory handle map: containerId → JNI handle
     private val mountedHandles      = mutableMapOf<String, Long>()
     // In-memory PIM map: containerId → PIM (0 = default)
@@ -58,6 +65,7 @@ class ContainerRepository @Inject constructor(
         isReadOnly: Boolean = false
     ) {
         mountedHandles[id] = handle
+        _mountedContainerIds.update { it + id }
         if (pim > 0) mountedPims[id] = pim else mountedPims.remove(id)
         mountedIsHidden[id]   = isHidden
         mountedHasHidden[id]  = hasHidden
@@ -72,6 +80,7 @@ class ContainerRepository @Inject constructor(
 
     suspend fun unmountContainer(id: String) {
         mountedHandles.remove(id)
+        _mountedContainerIds.update { it - id }
         mountedPims.remove(id)
         mountedIsHidden.remove(id)
         mountedHasHidden.remove(id)
@@ -86,6 +95,7 @@ class ContainerRepository @Inject constructor(
     fun closeAllHandlesSync(): List<Long> {
         val handles = mountedHandles.values.toList()
         mountedHandles.clear()
+        _mountedContainerIds.value = emptySet()
         mountedPims.clear()
         mountedIsHidden.clear()
         mountedHasHidden.clear()
