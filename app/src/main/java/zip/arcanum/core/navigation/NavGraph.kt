@@ -107,6 +107,7 @@ fun ContainerScreen(
     val container              by viewModel.container.collectAsState()
     val galleryState           by galleryViewModel.uiState.collectAsState()
     val gallerySelectedIds     by galleryViewModel.selectedIds.collectAsState()
+    val galleryShowResync      by galleryViewModel.showResyncButton.collectAsState()
     val fileManagerState       by fileManagerViewModel.state.collectAsState()
     val isAmoled               = LocalAmoledMode.current
     val hazeState              = remember { HazeState() }
@@ -155,6 +156,7 @@ fun ContainerScreen(
                         selectionMode    = gallerySelectionMode,
                         selectedCount    = gallerySelectedIds.size,
                         isReadOnly       = galleryState.isReadOnly,
+                        showResyncButton = galleryShowResync,
                         scrollBehavior   = galleryScrollBehavior,
                         onBack           = onBack,
                         onSearchToggle   = { galleryViewModel.setSearchActive(!galleryState.isSearchActive) },
@@ -321,6 +323,7 @@ private fun GalleryTopBar(
     selectionMode: Boolean,
     selectedCount: Int,
     isReadOnly: Boolean = false,
+    showResyncButton: Boolean = false,
     scrollBehavior: TopAppBarScrollBehavior,
     onBack: () -> Unit,
     onSearchToggle: () -> Unit,
@@ -429,11 +432,13 @@ private fun GalleryTopBar(
                                 Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.nav_gallery_cd_close_search))
                             }
                         } else {
+                            if (showResyncButton) {
+                                IconButton(onClick = onRescan) {
+                                    Icon(Icons.Outlined.Refresh, contentDescription = stringResource(R.string.nav_gallery_cd_rescan))
+                                }
+                            }
                             IconButton(onClick = onSearchToggle) {
                                 Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.nav_gallery_cd_search))
-                            }
-                            IconButton(onClick = onRescan) {
-                                Icon(Icons.Outlined.Refresh, contentDescription = stringResource(R.string.nav_gallery_cd_rescan))
                             }
                         }
                     }
