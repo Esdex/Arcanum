@@ -1,0 +1,9 @@
+• Gallery: timeline view of photos and videos inside vaults
+• Photo editor: crop, rotate, adjust — without leaving the vault
+• Background audio playback with media notification
+• Media thumbnails in the Files tab
+• Read-only mount mode
+• Import folder into vault
+• Open existing vault from app storage picker
+• Fix: SD card creation hang and 0-byte file (issue #84)
+• Fix: hidden volume detection false positive
