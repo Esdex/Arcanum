@@ -259,7 +259,11 @@ class MediaViewerDirectViewModel @Inject constructor(
 
     override fun onCleared() {
         progressJob?.cancel()
-        mediaController?.removeListener(playerListener)
+        mediaController?.run {
+            removeListener(playerListener)
+            stop()
+            clearMediaItems()
+        }
         controllerFuture?.let { MediaController.releaseFuture(it) }
     }
 }
