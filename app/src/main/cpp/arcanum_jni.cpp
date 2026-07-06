@@ -44,6 +44,7 @@ extern "C" {
 #define LOG_TAG "ArcanumNative"
 #ifdef NDEBUG
 #  define LOGE(...) ((void)0)
+#  define LOGI(...) ((void)0)
 #else
 #  define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #  define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
