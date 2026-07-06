@@ -374,6 +374,21 @@ fun StepVolumeSize(
                 color = MaterialTheme.colorScheme.error
             )
         }
+        if (state.isExternalSd && state.sizeMb >= 4096L) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.create_size_fat32_limit),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        } else if (state.isExternalSd) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.create_size_sd_slow),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         if (!notEnoughSpace && state.sizeMb > 0L) {
             Spacer(Modifier.height(4.dp))
             Text(

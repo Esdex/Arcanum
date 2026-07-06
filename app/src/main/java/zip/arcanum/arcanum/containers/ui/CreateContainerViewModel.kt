@@ -107,7 +107,8 @@ data class CreateContainerState(
     val hiddenKeyfileDisplayNames: List<String> = emptyList(),
     val hiddenPim: Int = 0,
     val hiddenEntropyPoints: Int = 0,
-    val isHiddenCreated: Boolean = false
+    val isHiddenCreated: Boolean = false,
+    val isExternalSd: Boolean = false
 )
 
 @HiltViewModel
@@ -153,15 +154,24 @@ class CreateContainerViewModel @Inject constructor(
             if (cursor.moveToFirst()) cursor.getString(0) else null
         } ?: _state.value.fileName
         safParcelFd = context.contentResolver.openFileDescriptor(normalizedUri, "rw")
-        _state.update { it.copy(safUri = uriString, fileName = displayName) }
+        _state.update { it.copy(safUri = uriString, fileName = displayName, isExternalSd = isRemovableSafUri(normalizedUri)) }
     }
 
     fun clearSafUri() {
         deletePendingSafFile()
         _state.update { it.copy(
-            safUri   = "",
-            filePath = if (it.includeInBackup) context.filesDir.absolutePath else context.noBackupFilesDir.absolutePath
+            safUri      = "",
+            isExternalSd = false,
+            filePath    = if (it.includeInBackup) context.filesDir.absolutePath else context.noBackupFilesDir.absolutePath
         ) }
+    }
+
+    private fun isRemovableSafUri(uri: Uri): Boolean {
+        if (uri.authority != "com.android.externalstorage.documents") return false
+        val docId = runCatching { android.provider.DocumentsContract.getDocumentId(uri) }.getOrNull()
+            ?: runCatching { android.provider.DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+            ?: return false
+        return docId.substringBefore(":") != "primary"
     }
 
     // Call this BEFORE launching the file creator picker so the old 0-byte file is gone
