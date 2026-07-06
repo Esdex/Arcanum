@@ -1,18 +1,22 @@
 package zip.arcanum.arcanum.gallery.ui
 
+import android.content.ComponentName
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import zip.arcanum.arcanum.gallery.NativeFileInputStream
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -22,10 +26,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.media.MediaMetadataRetriever
 import zip.arcanum.arcanum.containers.data.ContainerRepository
-import zip.arcanum.arcanum.gallery.EncryptedDataSource
+import zip.arcanum.arcanum.gallery.JniMediaDataSource
 import zip.arcanum.arcanum.gallery.MediaViewerQueue
-import zip.arcanum.arcanum.gallery.MutableEncryptedDataSourceFactory
+import zip.arcanum.arcanum.gallery.ServiceEncryptedDataSource
+import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.crypto.NativeFileInfo
 import zip.arcanum.crypto.VeraCryptEngine
@@ -70,30 +77,39 @@ class MediaViewerDirectViewModel @Inject constructor(
     )
     val state = _state.asStateFlow()
 
+    // Exposed to UI for PlayerView — null until MediaController connects
+    private val _player = MutableStateFlow<Player?>(null)
+    val player = _player.asStateFlow()
+
     private val handle: Long get() = repo.getContainerHandle(containerId) ?: 0L
 
-    private lateinit var mutableFactory: MutableEncryptedDataSourceFactory
-    lateinit var exoPlayer: ExoPlayer
-        private set
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var mediaController: MediaController? = null
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(playing: Boolean) { _state.update { it.copy(isPlaying = playing) } }
         override fun onPlaybackStateChanged(s: Int) {
             _state.update { it.copy(isBuffering = s == Player.STATE_BUFFERING) }
-            exoPlayer.duration.takeIf { it > 0L }?.let { dur -> _state.update { it.copy(durationMs = dur) } }
+            mediaController?.duration?.takeIf { it > 0L }?.let { dur ->
+                _state.update { it.copy(durationMs = dur) }
+            }
         }
     }
 
     private var progressJob: Job? = null
 
     init {
-        mutableFactory = MutableEncryptedDataSourceFactory(engine, handle)
-        exoPlayer = ExoPlayer.Builder(appContext)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(mutableFactory))
-            .build()
-        exoPlayer.addListener(playerListener)
-        startProgressTracking()
-        activatePage(queue.currentIndex)
+        val token = SessionToken(appContext, ComponentName(appContext, ArcanumMediaService::class.java))
+        val future = MediaController.Builder(appContext, token).buildAsync()
+        controllerFuture = future
+        future.addListener({
+            val mc = runCatching { future.get() }.getOrNull() ?: return@addListener
+            mediaController = mc
+            _player.value = mc
+            mc.addListener(playerListener)
+            startProgressTracking()
+            activatePage(queue.currentIndex)
+        }, ContextCompat.getMainExecutor(appContext))
     }
 
     fun navigateTo(index: Int) {
@@ -105,12 +121,14 @@ class MediaViewerDirectViewModel @Inject constructor(
     fun toggleBars() = _state.update { it.copy(showBars = !it.showBars) }
 
     fun togglePlayPause() {
-        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+        val mc = mediaController ?: return
+        if (mc.isPlaying) mc.pause() else mc.play()
     }
 
     fun seekTo(fraction: Float) {
-        val dur = exoPlayer.duration.coerceAtLeast(1L)
-        exoPlayer.seekTo((fraction * dur).toLong())
+        val mc = mediaController ?: return
+        val dur = mc.duration.coerceAtLeast(1L)
+        mc.seekTo((fraction * dur).toLong())
     }
 
     private fun activatePage(index: Int) {
@@ -118,25 +136,70 @@ class MediaViewerDirectViewModel @Inject constructor(
         when {
             file == null -> _state.update { it.copy(isLoadingCurrent = false) }
             file.isVideo() -> {
-                exoPlayer.pause()
+                mediaController?.pause()
                 loadVideo(file)
                 preloadBitmaps(index)
             }
             file.isImage() -> {
-                exoPlayer.pause()
+                mediaController?.pause()
                 preloadBitmaps(index)
             }
         }
     }
 
     private fun loadVideo(file: NativeFileInfo) {
+        val mc = mediaController ?: return
         val path = "/" + file.path.trimStart('/')
+        val uri = Uri.Builder()
+            .scheme(ServiceEncryptedDataSource.URI_SCHEME)
+            .authority("media")
+            .appendQueryParameter("cid",  containerId)
+            .appendQueryParameter("path", path)
+            .appendQueryParameter("size", file.size.toString())
+            .build()
         viewModelScope.launch(Dispatchers.Main) {
-            mutableFactory.configure(path, file.size)
-            exoPlayer.setMediaItem(MediaItem.fromUri(Uri.parse("${EncryptedDataSource.URI_SCHEME}://$path")))
-            exoPlayer.prepare()
-            exoPlayer.playWhenReady = true
+            mc.stop()
+            mc.clearMediaItems()
+            mc.setMediaItem(
+                MediaItem.Builder()
+                    .setUri(uri)
+                    .setMediaMetadata(MediaMetadata.Builder().setTitle(file.name).build())
+                    .build()
+            )
+            mc.prepare()
+            mc.playWhenReady = true
             _state.update { it.copy(positionMs = 0L, durationMs = 0L, isLoadingCurrent = false) }
+
+            // Extract thumbnail on IO and update notification artwork once ready
+            val h = handle
+            val thumb = withContext(Dispatchers.IO) {
+                try {
+                    val retriever = MediaMetadataRetriever()
+                    retriever.setDataSource(JniMediaDataSource(engine, h, path, file.size))
+                    val raw = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    retriever.release()
+                    raw ?: return@withContext null
+                    val maxDim = maxOf(raw.width, raw.height).coerceAtLeast(1)
+                    val bmp = if (maxDim > 512) {
+                        val s = 512f / maxDim
+                        Bitmap.createScaledBitmap(raw, (raw.width * s).toInt(), (raw.height * s).toInt(), true)
+                            .also { raw.recycle() }
+                    } else raw
+                    val baos = java.io.ByteArrayOutputStream()
+                    bmp.compress(Bitmap.CompressFormat.JPEG, 80, baos)
+                    bmp.recycle()
+                    baos.toByteArray()
+                } catch (_: Exception) { null }
+            }
+            if (thumb != null && mc.mediaItemCount > 0) {
+                mc.replaceMediaItem(0, MediaItem.Builder()
+                    .setUri(uri)
+                    .setMediaMetadata(MediaMetadata.Builder()
+                        .setTitle(file.name)
+                        .setArtworkData(thumb, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                        .build())
+                    .build())
+            }
         }
     }
 
@@ -153,7 +216,6 @@ class MediaViewerDirectViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val h = handle
             val path = "/" + file.path.trimStart('/')
-            // Stream the file instead of reading into a ByteArray — no size cap, handles 30 MB+ images.
             val stream = NativeFileInputStream(engine, h, path, file.size)
             stream.mark(0)
             val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -181,10 +243,11 @@ class MediaViewerDirectViewModel @Inject constructor(
         progressJob = viewModelScope.launch(Dispatchers.Main) {
             while (true) {
                 delay(200L)
-                if (exoPlayer.isPlaying) {
+                val mc = mediaController
+                if (mc != null && mc.isPlaying) {
                     _state.update { it.copy(
-                        positionMs = exoPlayer.currentPosition,
-                        durationMs = exoPlayer.duration.let { d -> if (d > 0L) d else it.durationMs }
+                        positionMs = mc.currentPosition,
+                        durationMs = mc.duration.let { d -> if (d > 0L) d else it.durationMs }
                     )}
                 }
             }
@@ -196,8 +259,7 @@ class MediaViewerDirectViewModel @Inject constructor(
 
     override fun onCleared() {
         progressJob?.cancel()
-        exoPlayer.removeListener(playerListener)
-        exoPlayer.stop()
-        exoPlayer.release()
+        mediaController?.removeListener(playerListener)
+        controllerFuture?.let { MediaController.releaseFuture(it) }
     }
 }

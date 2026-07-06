@@ -346,6 +346,9 @@ fun AppNavigation(pinManager: PinManager) {
         }
 
         // ── Video player ─────────────────────────────────────────────────
+        // TODO(refactor): VideoPlayerScreen and Screen.VideoPlayer are unused — video is opened
+        //  via Screen.PhotoViewer → MediaViewerScreen which now routes through ArcanumMediaService.
+        //  Remove VideoPlayerScreen, Screen.VideoPlayer, and this route during the next cleanup pass.
         composable(
             route     = Screen.VideoPlayer.route,
             arguments = listOf(navArgument(Screen.VideoPlayer.ARG) { type = NavType.StringType })

@@ -182,6 +182,7 @@ dependencies {
     implementation(libs.coil.video)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
+    implementation(libs.media3.session)
 
     // UI libraries
     implementation(libs.haze)

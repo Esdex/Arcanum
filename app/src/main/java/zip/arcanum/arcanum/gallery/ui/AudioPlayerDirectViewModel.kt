@@ -1,5 +1,6 @@
 package zip.arcanum.arcanum.gallery.ui
 
+import android.content.ComponentName
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.media.MediaCodec
@@ -7,16 +8,19 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.palette.graphics.Palette
+import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -30,10 +34,10 @@ import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.gallery.AudioPlayerQueue
 import zip.arcanum.arcanum.gallery.ByteArrayMediaDataSource
-import zip.arcanum.arcanum.gallery.EncryptedDataSource
 import zip.arcanum.arcanum.gallery.JniMediaDataSource
-import zip.arcanum.arcanum.gallery.MutableEncryptedDataSourceFactory
+import zip.arcanum.arcanum.gallery.ServiceEncryptedDataSource
 import zip.arcanum.arcanum.gallery.domain.AudioMetadata
+import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
@@ -83,10 +87,11 @@ class AudioPlayerDirectViewModel @Inject constructor(
 
     val handle: Long get() = repo.getContainerHandle(containerId) ?: 0L
 
-    private lateinit var mutableFactory: MutableEncryptedDataSourceFactory
-    lateinit var exoPlayer: ExoPlayer
-        private set
+    // Backed by the MediaController (implements Player); null until service connects
+    val exoPlayer: Player? get() = mediaController
 
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var mediaController: MediaController? = null
     private var progressJob: Job? = null
     private var waveformJob: Job? = null
 
@@ -105,13 +110,18 @@ class AudioPlayerDirectViewModel @Inject constructor(
     }
 
     init {
-        mutableFactory = MutableEncryptedDataSourceFactory(engine, handle)
-        exoPlayer = ExoPlayer.Builder(appContext)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(mutableFactory))
-            .build()
-        exoPlayer.addListener(playerListener)
-        startProgressTracking()
-        viewModelScope.launch(Dispatchers.IO) { loadTrackAt(posInOrder) }
+        val token = SessionToken(appContext, ComponentName(appContext, ArcanumMediaService::class.java))
+        controllerFuture = MediaController.Builder(appContext, token).buildAsync()
+        controllerFuture!!.addListener({
+            val mc = runCatching { controllerFuture!!.get() }.getOrElse { e ->
+                _state.update { it.copy(error = "Media service unavailable: ${e.message}") }
+                return@addListener
+            }
+            mediaController = mc
+            mc.addListener(playerListener)
+            startProgressTracking()
+            viewModelScope.launch(Dispatchers.IO) { loadTrackAt(posInOrder) }
+        }, ContextCompat.getMainExecutor(appContext))
     }
 
     // ── Track loading ─────────────────────────────────────────────────────
@@ -141,12 +151,25 @@ class AudioPlayerDirectViewModel @Inject constructor(
         )}
 
         withContext(Dispatchers.Main) {
-            mutableFactory.configure(path, size)
-            exoPlayer.stop()
-            exoPlayer.clearMediaItems()
-            exoPlayer.setMediaItem(MediaItem.fromUri(Uri.parse("${EncryptedDataSource.URI_SCHEME}://$path")))
-            exoPlayer.prepare()
-            exoPlayer.playWhenReady = true
+            val mc = mediaController ?: return@withContext
+            val uri = Uri.Builder()
+                .scheme(ServiceEncryptedDataSource.URI_SCHEME)
+                .authority("media")
+                .appendQueryParameter("cid", containerId)
+                .appendQueryParameter("path", path)
+                .appendQueryParameter("size", size.toString())
+                .build()
+            mc.stop()
+            mc.clearMediaItems()
+            mc.setMediaItem(MediaItem.Builder()
+                .setUri(uri)
+                .setMediaMetadata(MediaMetadata.Builder()
+                    .setTitle(metadata.title)
+                    .setArtist(metadata.artist)
+                    .build())
+                .build())
+            mc.prepare()
+            mc.playWhenReady = true
         }
 
         waveformJob?.cancel()
@@ -365,19 +388,26 @@ class AudioPlayerDirectViewModel @Inject constructor(
     // ── Playback controls ─────────────────────────────────────────────────
 
     fun togglePlayPause() = viewModelScope.launch(Dispatchers.Main) {
-        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+        val mc = mediaController ?: return@launch
+        if (mc.mediaItemCount == 0) {
+            // Service queue was cleared by another screen (e.g. video player); reload current track
+            viewModelScope.launch(Dispatchers.IO) { loadTrackAt(posInOrder) }
+            return@launch
+        }
+        if (mc.isPlaying) mc.pause() else mc.play()
     }
 
     fun seekTo(progress: Float) = viewModelScope.launch(Dispatchers.Main) {
-        val dur = exoPlayer.duration.coerceAtLeast(1L)
-        exoPlayer.seekTo((progress * dur).toLong())
+        val mc = mediaController ?: return@launch
+        val dur = mc.duration.coerceAtLeast(1L)
+        mc.seekTo((progress * dur).toLong())
     }
 
     fun playNext() { advanceTrack(+1, _state.value.repeatMode == RepeatMode.ALL) }
 
     fun playPrevious() {
-        if (exoPlayer.currentPosition > 3_000L) {
-            viewModelScope.launch(Dispatchers.Main) { exoPlayer.seekTo(0L) }
+        if ((mediaController?.currentPosition ?: 0L) > 3_000L) {
+            viewModelScope.launch(Dispatchers.Main) { mediaController?.seekTo(0L) }
         } else {
             advanceTrack(-1, _state.value.repeatMode == RepeatMode.ALL)
         }
@@ -407,8 +437,9 @@ class AudioPlayerDirectViewModel @Inject constructor(
     }
 
     private fun handleTrackEnd() {
+        val mc = mediaController ?: return
         when (_state.value.repeatMode) {
-            RepeatMode.ONE  -> { exoPlayer.seekTo(0L); exoPlayer.play() }
+            RepeatMode.ONE  -> { mc.seekTo(0L); mc.play() }
             RepeatMode.ALL  -> advanceTrack(+1, wraparound = true)
             RepeatMode.NONE -> if (posInOrder < playOrder.size - 1) advanceTrack(+1, wraparound = false)
         }
@@ -428,13 +459,14 @@ class AudioPlayerDirectViewModel @Inject constructor(
         progressJob = viewModelScope.launch(Dispatchers.Main) {
             while (true) {
                 delay(200L)
-                val pos = exoPlayer.currentPosition
-                val dur = exoPlayer.duration.let { if (it <= 0L) 1L else it }
+                val mc = mediaController ?: continue
+                val pos = mc.currentPosition
+                val dur = mc.duration.let { if (it <= 0L) 1L else it }
                 _state.update { it.copy(
                     currentPositionMs = pos,
                     durationMs        = dur,
                     progress          = (pos.toFloat() / dur).coerceIn(0f, 1f),
-                    isPlaying         = exoPlayer.isPlaying
+                    isPlaying         = mc.isPlaying
                 )}
             }
         }
@@ -463,8 +495,7 @@ class AudioPlayerDirectViewModel @Inject constructor(
     override fun onCleared() {
         progressJob?.cancel()
         waveformJob?.cancel()
-        exoPlayer.removeListener(playerListener)
-        exoPlayer.stop()
-        exoPlayer.release()
+        mediaController?.removeListener(playerListener)
+        controllerFuture?.let { MediaController.releaseFuture(it) }
     }
 }

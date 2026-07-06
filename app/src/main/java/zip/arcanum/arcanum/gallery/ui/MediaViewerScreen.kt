@@ -3,6 +3,10 @@ package zip.arcanum.arcanum.gallery.ui
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import zip.arcanum.arcanum.gallery.JniMediaDataSource
 import android.net.Uri
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
@@ -14,12 +18,15 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import android.content.ComponentName
+import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaMetadata
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import zip.arcanum.arcanum.gallery.EncryptedDataSource
-import zip.arcanum.arcanum.gallery.MutableEncryptedDataSourceFactory
+import zip.arcanum.arcanum.gallery.ServiceEncryptedDataSource
+import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
 import zip.arcanum.core.database.entities.MediaFileType
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -171,15 +178,20 @@ fun MediaViewerScreen(
     val scope   = rememberCoroutineScope()
     val context = LocalContext.current
 
-    // ── Video player ──────────────────────────────────────────────────────
-    val containerId  = uiState.currentFile?.containerId
-    val videoHandle  = remember(containerId) { containerId?.let { viewModel.getHandleForContainer(it) } }
-    val videoFactory = remember(videoHandle) { videoHandle?.let { MutableEncryptedDataSourceFactory(viewModel.engine, it) } }
-    val exoPlayer    = remember(videoHandle) {
-        videoFactory?.let { factory ->
-            ExoPlayer.Builder(context)
-                .setMediaSourceFactory(DefaultMediaSourceFactory(factory))
-                .build()
+    // ── Video player (service-backed for notification) ────────────────────
+    val appContext   = context.applicationContext
+    val sessionToken = remember { SessionToken(appContext, ComponentName(appContext, ArcanumMediaService::class.java)) }
+    val controllerFuture = remember { MediaController.Builder(appContext, sessionToken).buildAsync() }
+    var mc by remember { mutableStateOf<MediaController?>(null) }
+
+    DisposableEffect(Unit) {
+        controllerFuture.addListener(
+            { mc = runCatching { controllerFuture.get() }.getOrNull() },
+            ContextCompat.getMainExecutor(appContext)
+        )
+        onDispose {
+            mc?.run { stop(); clearMediaItems() }
+            MediaController.releaseFuture(controllerFuture)
         }
     }
 
@@ -190,25 +202,22 @@ fun MediaViewerScreen(
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubMs     by remember { mutableStateOf(0L)    }
 
-    DisposableEffect(exoPlayer) {
+    DisposableEffect(mc) {
+        val controller = mc ?: return@DisposableEffect onDispose {}
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
             override fun onPlaybackStateChanged(state: Int) {
                 isBuffering = state == Player.STATE_BUFFERING
-                exoPlayer?.duration?.takeIf { it > 0L }?.let { durationMs = it }
+                controller.duration.takeIf { it > 0L }?.let { durationMs = it }
             }
         }
-        exoPlayer?.addListener(listener)
-        onDispose {
-            exoPlayer?.removeListener(listener)
-            exoPlayer?.stop()
-            exoPlayer?.release()
-        }
+        controller.addListener(listener)
+        onDispose { controller.removeListener(listener) }
     }
 
     LaunchedEffect(isPlaying, isScrubbing) {
         while (isPlaying && !isScrubbing) {
-            positionMs = exoPlayer?.currentPosition ?: 0L
+            positionMs = mc?.currentPosition ?: 0L
             delay(200)
         }
     }
@@ -283,17 +292,48 @@ fun MediaViewerScreen(
         userInteracted = false
         showBars = true
         val file = uiState.currentFile ?: return@LaunchedEffect
-        if (file.fileType == MediaFileType.VIDEO && videoFactory != null && exoPlayer != null) {
-            videoFactory.configure(file.relativePath, file.size)
-            exoPlayer.setMediaItem(MediaItem.fromUri(Uri.parse("${EncryptedDataSource.URI_SCHEME}://${file.relativePath}")))
-            exoPlayer.prepare()
-            exoPlayer.playWhenReady = true  // auto-play
+        if (file.fileType == MediaFileType.VIDEO) {
+            val controller = mc ?: return@LaunchedEffect
+            val serviceUri = Uri.Builder()
+                .scheme(ServiceEncryptedDataSource.URI_SCHEME)
+                .authority("media")
+                .appendQueryParameter("cid",  file.containerId)
+                .appendQueryParameter("path", "/" + file.relativePath.trimStart('/'))
+                .appendQueryParameter("size", file.size.toString())
+                .build()
+            controller.stop()
+            controller.clearMediaItems()
+            controller.setMediaItem(
+                MediaItem.Builder()
+                    .setUri(serviceUri)
+                    .setMediaMetadata(MediaMetadata.Builder().setTitle(file.fileName).build())
+                    .build()
+            )
+            controller.prepare()
+            controller.playWhenReady = true
+
+            // Extract thumbnail on IO and update metadata once ready
+            val h = viewModel.getHandleForContainer(file.containerId)
+            if (h != null) {
+                val thumb = withContext(Dispatchers.IO) {
+                    extractVideoThumb(viewModel.engine, h, "/" + file.relativePath.trimStart('/'), file.size)
+                }
+                if (thumb != null && controller.mediaItemCount > 0) {
+                    controller.replaceMediaItem(0, MediaItem.Builder()
+                        .setUri(serviceUri)
+                        .setMediaMetadata(MediaMetadata.Builder()
+                            .setTitle(file.fileName)
+                            .setArtworkData(thumb, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                            .build())
+                        .build())
+                }
+            }
             positionMs  = 0L
             durationMs  = 0L
             isPlaying   = false
             isScrubbing = false
         } else if (file.fileType != MediaFileType.VIDEO) {
-            exoPlayer?.pause()
+            mc?.pause()
         }
     }
 
@@ -339,10 +379,10 @@ fun MediaViewerScreen(
                         onScaleChanged = { isImageZoomed = it > 1.05f }
                     )
                     MediaFileType.VIDEO -> VideoSurfacePage(
-                        exoPlayer       = if (isCurrent) exoPlayer else null,
+                        exoPlayer       = if (isCurrent) mc else null,
                         onTap           = { userInteracted = true; showBars = !showBars },
-                        onDoubleTapLeft  = { exoPlayer?.let { p -> p.seekTo((p.currentPosition - 10_000L).coerceAtLeast(0L)) }; seekLeftToken++ },
-                        onDoubleTapRight = { exoPlayer?.let { p -> p.seekTo(p.currentPosition + 10_000L) }; seekRightToken++ }
+                        onDoubleTapLeft  = { mc?.let { p -> p.seekTo((p.currentPosition - 10_000L).coerceAtLeast(0L)) }; seekLeftToken++ },
+                        onDoubleTapRight = { mc?.let { p -> p.seekTo(p.currentPosition + 10_000L) }; seekRightToken++ }
                     )
                     else -> Box(Modifier.fillMaxSize().background(Color.Black))
                 }
@@ -398,7 +438,7 @@ fun MediaViewerScreen(
                             .size(72.dp)
                             .clip(CircleShape)
                             .background(Color.Black.copy(alpha = 0.55f))
-                            .clickable { if (isPlaying) exoPlayer?.pause() else exoPlayer?.play() },
+                            .clickable { if (isPlaying) mc?.pause() else mc?.play() },
                         contentAlignment = Alignment.Center
                     ) {
                         if (isBuffering) {
@@ -488,8 +528,8 @@ fun MediaViewerScreen(
                         sliderValue            = sliderValue,
                         positionMs             = if (isScrubbing) scrubMs else positionMs,
                         durationMs             = durationMs,
-                        onSliderChange         = { f -> val ms = (f * durationMs).toLong(); isScrubbing = true; scrubMs = ms; exoPlayer?.seekTo(ms) },
-                        onSliderChangeFinished = { exoPlayer?.seekTo(scrubMs); isScrubbing = false }
+                        onSliderChange         = { f -> val ms = (f * durationMs).toLong(); isScrubbing = true; scrubMs = ms; mc?.seekTo(ms) },
+                        onSliderChangeFinished = { mc?.seekTo(scrubMs); isScrubbing = false }
                     )
                 } else {
                     Box(
@@ -636,7 +676,7 @@ fun MediaViewerScreen(
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun VideoSurfacePage(
-    exoPlayer: ExoPlayer?,
+    exoPlayer: Player?,
     onTap: () -> Unit,
     onDoubleTapLeft: () -> Unit,
     onDoubleTapRight: () -> Unit
@@ -1270,5 +1310,30 @@ private fun formatDateParts(millis: Long): Pair<String, String> {
 private fun Double.formatCoord(isLat: Boolean): String {
     val dir = if (isLat) (if (this >= 0) "N" else "S") else (if (this >= 0) "E" else "W")
     return "%.4f° %s".format(abs(this), dir)
+}
+
+private fun extractVideoThumb(
+    engine: zip.arcanum.crypto.VeraCryptEngine,
+    handle: Long,
+    path: String,
+    size: Long
+): ByteArray? {
+    return try {
+        val retriever = MediaMetadataRetriever()
+        retriever.setDataSource(JniMediaDataSource(engine, handle, path, size))
+        val raw = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        retriever.release()
+        val frame = raw ?: return null
+        val maxDim = maxOf(frame.width, frame.height).coerceAtLeast(1)
+        val bmp = if (maxDim > 512) {
+            val s = 512f / maxDim
+            Bitmap.createScaledBitmap(frame, (frame.width * s).toInt(), (frame.height * s).toInt(), true)
+                .also { frame.recycle() }
+        } else frame
+        val baos = java.io.ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.JPEG, 80, baos)
+        bmp.recycle()
+        baos.toByteArray()
+    } catch (_: Exception) { null }
 }
 

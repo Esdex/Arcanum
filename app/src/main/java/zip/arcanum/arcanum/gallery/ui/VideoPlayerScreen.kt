@@ -1,5 +1,8 @@
 package zip.arcanum.arcanum.gallery.ui
 
+import android.app.Activity
+import android.content.ComponentName
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,31 +15,34 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import zip.arcanum.R
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.media3.common.MediaItem
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.ui.PlayerView
-import android.app.Activity
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import zip.arcanum.arcanum.gallery.EncryptedDataSourceFactory
-import android.net.Uri
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import androidx.media3.ui.PlayerView
+import zip.arcanum.R
+import zip.arcanum.arcanum.gallery.ServiceEncryptedDataSource
+import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
@@ -45,11 +51,10 @@ fun VideoPlayerScreen(
     onBack: () -> Unit,
     viewModel: MediaPlayerViewModel = hiltViewModel()
 ) {
-    val file   by viewModel.file.collectAsState()
-    val handle = viewModel.getHandle()
-    val engine = viewModel.engine
+    val file    by viewModel.file.collectAsState()
     val context = LocalContext.current
     val view    = LocalView.current
+
     DisposableEffect(view) {
         val window = (context as? Activity)?.window ?: return@DisposableEffect onDispose {}
         val wic = WindowCompat.getInsetsController(window, view)
@@ -58,55 +63,73 @@ fun VideoPlayerScreen(
         onDispose { wic.show(WindowInsetsCompat.Type.systemBars()) }
     }
 
+    val appContext    = context.applicationContext
+    val sessionToken  = remember { SessionToken(appContext, ComponentName(appContext, ArcanumMediaService::class.java)) }
+    val controllerFuture = remember { MediaController.Builder(appContext, sessionToken).buildAsync() }
+    var mediaController by remember { mutableStateOf<MediaController?>(null) }
+
+    DisposableEffect(Unit) {
+        controllerFuture.addListener(
+            { mediaController = runCatching { controllerFuture.get() }.getOrNull() },
+            ContextCompat.getMainExecutor(appContext)
+        )
+        onDispose {
+            mediaController?.run { stop(); clearMediaItems() }
+            MediaController.releaseFuture(controllerFuture)
+        }
+    }
+
+    val currentFile = file
+
+    // Send video to the service — it stops whatever is playing (music) and plays this instead
+    LaunchedEffect(mediaController, currentFile) {
+        val mc = mediaController ?: return@LaunchedEffect
+        val cf = currentFile    ?: return@LaunchedEffect
+        val uri = Uri.Builder()
+            .scheme(ServiceEncryptedDataSource.URI_SCHEME)
+            .authority("media")
+            .appendQueryParameter("cid",  cf.containerId)
+            .appendQueryParameter("path", "/" + cf.relativePath.trimStart('/'))
+            .appendQueryParameter("size", cf.size.toString())
+            .build()
+        mc.stop()
+        mc.clearMediaItems()
+        mc.setMediaItem(
+            MediaItem.Builder()
+                .setUri(uri)
+                .setMediaMetadata(MediaMetadata.Builder().setTitle(cf.fileName).build())
+                .build()
+        )
+        mc.prepare()
+        mc.playWhenReady = true
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        val currentFile = file
-        if (currentFile == null || handle == null) {
+        val mc = mediaController
+        if (mc == null || currentFile == null) {
             CircularProgressIndicator(
                 color    = Color.White,
                 modifier = Modifier.align(Alignment.Center)
             )
         } else {
-            val dataSourceFactory = remember(handle, currentFile.relativePath) {
-                EncryptedDataSourceFactory(engine, handle, currentFile.relativePath, currentFile.size)
-            }
-
-            val exoPlayer = remember(handle, currentFile.relativePath) {
-                ExoPlayer.Builder(context)
-                    .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
-                    .build()
-                    .also { player ->
-                        val uri = Uri.parse("${EncryptedDataSourceFactory.URI_SCHEME}://${currentFile.relativePath}")
-                        player.setMediaItem(MediaItem.fromUri(uri))
-                        player.prepare()
-                        player.playWhenReady = true
-                    }
-            }
-
-            DisposableEffect(exoPlayer) {
-                onDispose {
-                    exoPlayer.stop()
-                    exoPlayer.release()
-                }
-            }
-
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
-                        player = exoPlayer
+                        player = mc
                         useController = true
                         setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
                         setBackgroundColor(android.graphics.Color.BLACK)
                     }
                 },
+                update  = { it.player = mc },
                 modifier = Modifier.fillMaxSize()
             )
         }
 
-        // Back button always visible
         IconButton(
             onClick  = onBack,
             modifier = Modifier

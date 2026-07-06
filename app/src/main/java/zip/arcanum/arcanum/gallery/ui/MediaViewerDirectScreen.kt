@@ -62,7 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import android.app.Activity
@@ -82,7 +82,8 @@ fun MediaViewerDirectScreen(
     onBack: () -> Unit,
     viewModel: MediaViewerDirectViewModel = hiltViewModel()
 ) {
-    val state by viewModel.state.collectAsState()
+    val state  by viewModel.state.collectAsState()
+    val player by viewModel.player.collectAsState()
 
     val view    = LocalView.current
     val context = LocalContext.current
@@ -137,7 +138,7 @@ fun MediaViewerDirectScreen(
                     onZoomChange = { isImageZoomed = it > 1.05f }
                 )
                 pageFile?.isVideo() == true -> VideoPage(
-                    exoPlayer   = if (isCurrent) viewModel.exoPlayer else null,
+                    exoPlayer   = if (isCurrent) player else null,
                     isPlaying   = state.isPlaying,
                     isBuffering = state.isBuffering,
                     onTap       = { viewModel.toggleBars() }
@@ -334,7 +335,7 @@ private fun ZoomableImagePage(
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun VideoPage(
-    exoPlayer: ExoPlayer?,
+    exoPlayer: Player?,
     isPlaying: Boolean,
     isBuffering: Boolean,
     onTap: () -> Unit,
