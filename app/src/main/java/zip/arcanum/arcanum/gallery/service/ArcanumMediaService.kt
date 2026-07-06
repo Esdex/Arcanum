@@ -34,7 +34,6 @@ class ArcanumMediaService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(ServiceEncryptedDataSourceFactory(engine, repo)))
             .setAudioAttributes(
