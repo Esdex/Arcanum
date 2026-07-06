@@ -1708,6 +1708,104 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                     }
                 }
             }
+            // ── 1.3.0 entries ─────────────────────────────────────────────
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Gallery",
+                    subtitle = "A new Gallery tab gives you a timeline view of all photos and videos inside your vaults. Multi-select, swipe between items, and pinch-to-zoom — all without decrypting to disk."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Photo editor",
+                    subtitle = "Edit photos directly inside the vault — crop, rotate, adjust brightness and contrast — without ever writing the decrypted image to external storage."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Background audio playback",
+                    subtitle = "Audio files from your vaults now play in the background with a media notification and playback controls. Lock the screen and keep listening."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Media thumbnails in Files tab",
+                    subtitle = "Photos and videos now show thumbnails directly in the file browser, decoded on demand and cached for smooth scrolling."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Read-only mount mode",
+                    subtitle = "Vaults can now be mounted in read-only mode — useful for viewing sensitive files without any risk of accidental modification."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Import folder",
+                    subtitle = "Import an entire folder into a vault in one tap. The app copies all files recursively, preserving the folder structure."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Stars,
+                    color    = Color(0xFFFFC107),
+                    title    = "Open existing vault from app storage",
+                    subtitle = "A new picker lets you select an existing vault file from app storage without knowing its exact path."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Refresh,
+                    color    = Color(0xFF3B82F6),
+                    title    = "Gallery stays in sync with file operations",
+                    subtitle = "Importing or deleting files in the Files tab now automatically refreshes the Gallery — no manual resync needed."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.BugReport,
+                    color    = Color(0xFFEF4444),
+                    title    = "Fix: SD card container creation hang",
+                    subtitle = "Creating a container on an external SD card caused the device to freeze, left a 0-byte file, and made deletion freeze the device again. File allocation is now done incrementally with live progress, and failed attempts are cleaned up instantly."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.BugReport,
+                    color    = Color(0xFFEF4444),
+                    title    = "Fix: hidden volume detection",
+                    subtitle = "Mounting an outer volume without hidden volume protection active incorrectly reported a hidden volume present in some configurations."
+                )
+            }
+
+            // ── 1.2.0 section ─────────────────────────────────────────────
+            item {
+                Row(
+                    modifier          = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                    Text(
+                        text  = "Version 1.2.0",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                }
+            }
             // ── 1.2.0 entries ─────────────────────────────────────────────
             item {
                 WhatsNewEntry(
