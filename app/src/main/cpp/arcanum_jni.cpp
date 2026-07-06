@@ -1832,8 +1832,11 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
         bool isDir = (fno.fattrib & AM_DIR) != 0;
 
         char ep[512];
-        snprintf(ep, sizeof(ep), "%s/%s",
-                 dirPath.empty() ? "/" : dirPath.c_str(), fno.fname);
+        if (dirPath.empty() || dirPath == "/") {
+            snprintf(ep, sizeof(ep), "/%s", fno.fname);
+        } else {
+            snprintf(ep, sizeof(ep), "%s/%s", dirPath.c_str(), fno.fname);
+        }
 
         // Skip entries whose names are not valid UTF-8 — NewStringUTF aborts on invalid bytes.
         // FF_LFN_UNICODE 2 makes FatFs produce UTF-8; this guard catches any residual garbage.

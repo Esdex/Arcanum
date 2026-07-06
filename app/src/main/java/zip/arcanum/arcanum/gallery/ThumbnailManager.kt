@@ -19,6 +19,9 @@ import java.io.InputStream
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 @Singleton
 class ThumbnailManager @Inject constructor(
@@ -26,6 +29,29 @@ class ThumbnailManager @Inject constructor(
     private val exifReader: ExifReader
 ) {
     private val cacheRoot get() = File(context.cacheDir, "arcanum_thumbs")
+
+    // Emits fileId whenever a specific file's disk cache is cleared (e.g. after overwrite).
+    // GalleryViewModel collects this to evict the stale bitmap from its in-memory map.
+    private val _invalidatedIds = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    val invalidatedIds: SharedFlow<String> = _invalidatedIds.asSharedFlow()
+
+    // Emits containerId after new media files are indexed (e.g. after import).
+    // GalleryViewModel collects this to refresh its media list without waiting for Room Flow debounce.
+    private val _importedContainerIds = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val importedContainerIds: SharedFlow<String> = _importedContainerIds.asSharedFlow()
+
+    fun notifyFilesImported(containerId: String) {
+        _importedContainerIds.tryEmit(containerId)
+    }
+
+    // Emits containerId after files are deleted (e.g. from Files tab).
+    // GalleryViewModel collects this to refresh its media list immediately.
+    private val _deletedContainerIds = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val deletedContainerIds: SharedFlow<String> = _deletedContainerIds.asSharedFlow()
+
+    fun notifyFilesDeleted(containerId: String) {
+        _deletedContainerIds.tryEmit(containerId)
+    }
 
     // AES-256-GCM key from Android Keystore — mirrors PinManager's pattern
     private val masterKey by lazy {
@@ -223,6 +249,15 @@ class ThumbnailManager @Inject constructor(
             val f = cacheFile(containerId, file.relativePath)
             !f.exists() || f.length() == 0L
         }
+
+    fun clearFileCache(containerId: String, filePath: String, fileId: String) {
+        cacheFile(containerId, filePath).delete()
+        _invalidatedIds.tryEmit(fileId)
+    }
+
+    fun deleteFileCacheEntry(containerId: String, filePath: String) {
+        cacheFile(containerId, filePath).delete()
+    }
 
     fun clearCache(containerId: String) {
         File(cacheRoot, containerId).deleteRecursively()

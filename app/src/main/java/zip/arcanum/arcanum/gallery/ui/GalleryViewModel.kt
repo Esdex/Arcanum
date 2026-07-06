@@ -92,6 +92,40 @@ class GalleryViewModel @Inject constructor(
     private val _filter = MutableStateFlow(MediaFilter.ALL)
     private val _allFiles = MutableStateFlow<List<MediaFileEntity>>(emptyList())
 
+    init {
+        viewModelScope.launch {
+            thumbnailManager.invalidatedIds.collect { fileId -> evictThumbnail(fileId) }
+        }
+        viewModelScope.launch {
+            thumbnailManager.importedContainerIds.collect { containerId ->
+                if (containerId == currentContainerId) refreshMedia(containerId)
+            }
+        }
+        viewModelScope.launch {
+            thumbnailManager.deletedContainerIds.collect { containerId ->
+                if (containerId == currentContainerId) refreshMedia(containerId)
+            }
+        }
+    }
+
+    private suspend fun refreshMedia(containerId: String) {
+        val files = mediaFileDao.getAllForContainerOnce(containerId)
+        _allFiles.value = files
+        val filtered = applyFilter(files, _filter.value)
+        val groups = groupByMonthAndDay(filtered)
+        _uiState.update {
+            it.copy(allMedia = files, monthGroups = groups, isEmpty = files.isEmpty() && !it.isScanning)
+        }
+    }
+
+    private fun evictThumbnail(fileId: String) {
+        thumbnailMap.remove(fileId)
+        loadingThumbnails.remove(fileId)
+        retriedThumbnails.remove(fileId)
+        failedThumbnails.remove(fileId)
+        _thumbnails.update { it - fileId }
+    }
+
     fun loadForContainer(containerId: String) {
         _uiState.update { it.copy(isReadOnly = repo.isContainerReadOnly(containerId)) }
         if (currentContainerId == containerId) return
@@ -206,12 +240,11 @@ class GalleryViewModel @Inject constructor(
             files.forEach { file ->
                 runCatching { engine.nativeDeleteFile(handle, file.relativePath) }
                 mediaFileDao.deleteMediaFile(file)
-                thumbnailMap.remove(file.id)
+                thumbnailManager.deleteFileCacheEntry(file.containerId, file.relativePath)
             }
-            thumbnailManager.clearCache(containerId)
             withContext(Dispatchers.Main) {
+                toDelete.forEach { evictThumbnail(it) }
                 _selectedIds.value = emptySet()
-                _thumbnails.update { current -> current - toDelete }
                 _uiState.update { it.copy(pendingNotification = InAppNotification.FilesDeleted(files.size)) }
             }
         }
@@ -283,7 +316,8 @@ class GalleryViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { engine.nativeDeleteFile(handle, file.relativePath) }
             mediaFileDao.deleteMediaFile(file)
-            thumbnailManager.clearCache(containerId)
+            thumbnailManager.deleteFileCacheEntry(file.containerId, file.relativePath)
+            withContext(Dispatchers.Main) { evictThumbnail(file.id) }
         }
     }
 

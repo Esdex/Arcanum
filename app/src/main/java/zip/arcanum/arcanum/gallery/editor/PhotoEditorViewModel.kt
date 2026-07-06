@@ -26,6 +26,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.arcanum.gallery.editor.adjustments.applyBorders
 import zip.arcanum.arcanum.gallery.editor.adjustments.applyColorMatrix
 import zip.arcanum.arcanum.gallery.editor.adjustments.applyEdges
@@ -56,7 +57,8 @@ class PhotoEditorViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val mediaFileDao: MediaFileDao,
     private val repo: ContainerRepository,
-    private val engine: VeraCryptEngine
+    private val engine: VeraCryptEngine,
+    private val thumbnailManager: ThumbnailManager
 ) : ViewModel() {
 
     private val mediaId: String = savedStateHandle[Screen.PhotoEditor.ARG] ?: ""
@@ -461,6 +463,7 @@ class PhotoEditorViewModel @Inject constructor(
                 if (renameResult != 0) throw IOException("Rename failed (error $renameResult)")
 
                 mediaFileDao.updateMediaFile(file.copy(size = bytes.size.toLong(), width = bmp.width, height = bmp.height))
+                thumbnailManager.clearFileCache(file.containerId, file.relativePath, file.id)
                 _state.update { it.copy(isSaving = false, saveSuccess = true, savedFileId = mediaId) }
             } catch (e: Exception) {
                 _state.update { it.copy(isSaving = false, error = "Save failed: ${e.message}") }

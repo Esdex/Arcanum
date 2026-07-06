@@ -140,6 +140,38 @@ class MediaScanner @Inject constructor(
         } catch (_: Exception) { fallback }
     }
 
+    suspend fun indexFile(
+        handle: Long,
+        containerId: String,
+        path: String,
+        fileSize: Long
+    ): MediaFileEntity? {
+        val name = path.substringAfterLast('/')
+        val ext  = name.substringAfterLast('.', "").lowercase()
+        val type = when (ext) {
+            in IMAGE_EXTENSIONS -> MediaFileType.IMAGE
+            in VIDEO_EXTENSIONS -> MediaFileType.VIDEO
+            else -> null
+        } ?: return null
+        val prev = dao.getByPath(containerId, path)
+        val date = prev?.dateCreated
+            ?: extractDate(handle, path, fileSize, type, System.currentTimeMillis())
+        val entity = MediaFileEntity(
+            id           = prev?.id ?: UUID.randomUUID().toString(),
+            containerId  = containerId,
+            relativePath = path,
+            fileName     = name,
+            fileType     = type,
+            size         = fileSize,
+            dateCreated  = date,
+            dateModified = prev?.dateModified ?: date,
+            isFavorite   = prev?.isFavorite ?: false,
+            description  = prev?.description ?: ""
+        )
+        dao.insertMediaFile(entity)
+        return entity
+    }
+
     private fun parseMediaDate(dateStr: String?): Long {
         if (dateStr.isNullOrBlank()) return 0L
         return MEDIA_DATE_FORMATS.firstNotNullOfOrNull { fmt ->
