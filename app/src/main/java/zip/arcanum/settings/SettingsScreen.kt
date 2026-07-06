@@ -2218,12 +2218,19 @@ private fun DebugSubScreen(
 
             if (debugMode) {
                 val showMountLog by viewModel.showMountLog.collectAsState()
+                val galleryResyncButton by viewModel.galleryResyncButton.collectAsState()
                 SettingsGroup {
                     SettingsSwitch(
                         title           = stringResource(R.string.settings_debug_mount_log_title),
                         subtitle        = stringResource(R.string.settings_debug_mount_log_desc),
                         checked         = showMountLog,
                         onCheckedChange = { viewModel.setShowMountLog(it) }
+                    )
+                    SettingsSwitch(
+                        title           = stringResource(R.string.settings_debug_gallery_resync_title),
+                        subtitle        = stringResource(R.string.settings_debug_gallery_resync_desc),
+                        checked         = galleryResyncButton,
+                        onCheckedChange = { viewModel.setGalleryResyncButton(it) }
                     )
                 }
 

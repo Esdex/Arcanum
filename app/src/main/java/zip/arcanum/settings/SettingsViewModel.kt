@@ -117,10 +117,23 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.setShowMountLog(enabled) }
     }
 
+    val galleryResyncButton = prefs.galleryResyncButton.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = false
+    )
+
+    fun setGalleryResyncButton(enabled: Boolean) {
+        viewModelScope.launch { prefs.setGalleryResyncButton(enabled) }
+    }
+
     fun setDebugMode(enabled: Boolean) {
         viewModelScope.launch {
             prefs.setDebugMode(enabled)
-            if (!enabled) prefs.setShowMountLog(false)
+            if (!enabled) {
+                prefs.setShowMountLog(false)
+                prefs.setGalleryResyncButton(false)
+            }
         }
     }
 
