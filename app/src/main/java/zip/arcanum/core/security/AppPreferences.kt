@@ -37,6 +37,7 @@ class AppPreferences @Inject constructor(
         val SHOW_MOUNT_LOG            = booleanPreferencesKey("show_mount_log")
         val LAST_SEEN_VERSION_CODE    = intPreferencesKey("last_seen_version_code")
         val UNMOUNT_ON_AUTO_LOCK      = booleanPreferencesKey("unmount_on_auto_lock")
+        val GALLERY_RESYNC_BUTTON     = booleanPreferencesKey("gallery_resync_button")
     }
 
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
@@ -142,5 +143,12 @@ class AppPreferences @Inject constructor(
 
     suspend fun setUnmountOnAutoLock(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.UNMOUNT_ON_AUTO_LOCK] = enabled }
+    }
+
+    val galleryResyncButton: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.GALLERY_RESYNC_BUTTON] ?: false }
+
+    suspend fun setGalleryResyncButton(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.GALLERY_RESYNC_BUTTON] = enabled }
     }
 }

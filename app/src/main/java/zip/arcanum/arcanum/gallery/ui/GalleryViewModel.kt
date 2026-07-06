@@ -22,7 +22,10 @@ import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.crypto.VeraCryptEngine
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -38,7 +41,8 @@ class GalleryViewModel @Inject constructor(
     private val thumbnailPreloader: ThumbnailPreloader,
     private val mediaFileDao: MediaFileDao,
     private val repo: ContainerRepository,
-    private val engine: VeraCryptEngine
+    private val engine: VeraCryptEngine,
+    private val prefs: AppPreferences
 ) : ViewModel() {
 
     enum class MediaFilter { ALL, PHOTOS, VIDEOS }
@@ -81,6 +85,12 @@ class GalleryViewModel @Inject constructor(
     val selectedIds = _selectedIds.asStateFlow()
 
     val preloadState = thumbnailPreloader.state
+
+    val showResyncButton = prefs.galleryResyncButton.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = false
+    )
 
     private val thumbnailSemaphore = Semaphore(4)
     private val thumbnailMap = LinkedHashMap<String, Bitmap>(MAX_THUMBNAILS + 1, 0.75f, false)

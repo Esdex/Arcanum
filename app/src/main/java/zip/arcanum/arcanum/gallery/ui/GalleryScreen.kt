@@ -44,6 +44,7 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -99,10 +100,11 @@ fun GalleryScreen(
         if (containerId != null) viewModel.loadForContainer(containerId)
     }
 
-    val uiState      by viewModel.uiState.collectAsState()
-    val thumbnails   by viewModel.thumbnails.collectAsState()
-    val selectedIds  by viewModel.selectedIds.collectAsState()
-    val preloadState by viewModel.preloadState.collectAsState()
+    val uiState           by viewModel.uiState.collectAsState()
+    val thumbnails        by viewModel.thumbnails.collectAsState()
+    val selectedIds       by viewModel.selectedIds.collectAsState()
+    val preloadState      by viewModel.preloadState.collectAsState()
+    val showResyncButton  by viewModel.showResyncButton.collectAsState()
     val selectionMode = selectedIds.isNotEmpty()
 
     // Intercept back press in selection mode instead of navigating away
@@ -147,14 +149,16 @@ fun GalleryScreen(
         Scaffold(
             topBar = {
                 GalleryTopBar(
-                    isSearchActive  = uiState.isSearchActive,
-                    searchQuery     = uiState.searchQuery,
-                    selectionMode   = selectionMode,
-                    selectedCount   = selectedIds.size,
-                    isReadOnly      = uiState.isReadOnly,
-                    onSearchToggle  = { viewModel.setSearchActive(!uiState.isSearchActive) },
-                    onSearchChange  = { viewModel.setSearchQuery(it) },
-                    onSearchClose   = { viewModel.setSearchActive(false) },
+                    isSearchActive   = uiState.isSearchActive,
+                    searchQuery      = uiState.searchQuery,
+                    selectionMode    = selectionMode,
+                    selectedCount    = selectedIds.size,
+                    isReadOnly       = uiState.isReadOnly,
+                    showResyncButton = showResyncButton,
+                    onSearchToggle   = { viewModel.setSearchActive(!uiState.isSearchActive) },
+                    onSearchChange   = { viewModel.setSearchQuery(it) },
+                    onSearchClose    = { viewModel.setSearchActive(false) },
+                    onResync         = { containerId?.let { viewModel.scanContainer(it) } },
                     onClearSelection = { viewModel.clearSelection() },
                     onDeleteSelected = { viewModel.requestDeleteSelected() }
                 )
@@ -209,9 +213,11 @@ private fun GalleryTopBar(
     selectionMode: Boolean,
     selectedCount: Int,
     isReadOnly: Boolean,
+    showResyncButton: Boolean,
     onSearchToggle: () -> Unit,
     onSearchChange: (String) -> Unit,
     onSearchClose: () -> Unit,
+    onResync: () -> Unit,
     onClearSelection: () -> Unit,
     onDeleteSelected: () -> Unit
 ) {
@@ -285,6 +291,11 @@ private fun GalleryTopBar(
                 }
             },
             actions = {
+                if (showResyncButton && !isSearchActive) {
+                    IconButton(onClick = onResync) {
+                        Icon(Icons.Outlined.Sync, stringResource(R.string.gallery_scan))
+                    }
+                }
                 IconButton(onClick = if (isSearchActive) onSearchClose else onSearchToggle) {
                     Icon(
                         if (isSearchActive) Icons.Outlined.Close else Icons.Outlined.Search,
