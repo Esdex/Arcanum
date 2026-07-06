@@ -46,6 +46,7 @@ extern "C" {
 #  define LOGE(...) ((void)0)
 #else
 #  define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#  define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
 #endif
 
 /* ─── VeraCrypt volume constants ────────────────────────────────────── */
@@ -1394,6 +1395,81 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
     return ERR_OK;
 }
 
+/* ─── Pre-allocate helper (FAT32 / FUSE-safe) ───────────────────────── */
+/*
+ * ftruncate() on FAT32/exFAT SD cards via Android's FUSE/MediaProvider layer
+ * blocks the FUSE daemon for the full duration of FAT chain allocation — which
+ * serializes all storage I/O for that volume and can freeze the device for
+ * minutes on a multi-GB container.
+ *
+ * Fix: try fallocate(2) first (completes in milliseconds on exFAT, fails
+ * quickly with EOPNOTSUPP on FAT32), then fall back to a chunked zero-write
+ * that works on any filesystem, reports progress, and keeps the UI responsive.
+ *
+ * allocWeight — fraction of the overall 0→1 progress budget consumed by
+ * allocation (before headers and any random fill):
+ *   0.9f  quickFormat  (allocation IS nearly all the work; mkfs gets ~10%)
+ *   0.5f  secureFormat (allocation + random-fill share the budget evenly)
+ *
+ * dataSize — caller's payload size; used to produce a monotonically increasing
+ * bytesWritten that spans both allocation and fill phases for stable ETA.
+ *
+ * On failure: truncates fd back to 0 so that the subsequent
+ * DocumentsContract.deleteDocument() call returns instantly instead of
+ * walking a multi-GB FAT chain and freezing the device a second time.
+ */
+static bool preallocate_fd(
+        JNIEnv *env, jobject progressListener, jmethodID progressMid,
+        int fd, uint64_t fileSize, uint64_t dataSize, float allocWeight)
+{
+    if (fallocate(fd, 0, 0, (off_t)fileSize) == 0) {
+        lseek(fd, 0, SEEK_SET);
+        jlong pseudo = (jlong)((double)allocWeight * (double)dataSize);
+        report_progress(env, progressListener, progressMid, allocWeight, 0.f, pseudo);
+        return true;
+    }
+
+    if (errno != EOPNOTSUPP && errno != ENOSYS && errno != EINVAL && errno != EPERM) {
+        LOGE("[fd/create] fallocate failed: errno=%d", errno);
+        ftruncate(fd, 0);
+        return false;
+    }
+    LOGI("[fd/create] fallocate unsupported (errno=%d), using zero-fill fallback", errno);
+
+    const size_t CHUNK = 65536;
+    auto *zeros = static_cast<uint8_t*>(malloc(CHUNK));
+    if (!zeros) { ftruncate(fd, 0); return false; }
+    memset(zeros, 0, CHUNK);
+
+    lseek(fd, 0, SEEK_SET);
+    uint64_t remaining = fileSize;
+    auto t0 = (uint64_t)time(nullptr);
+
+    while (remaining > 0) {
+        size_t sz = (remaining > CHUNK) ? CHUNK : (size_t)remaining;
+        ssize_t w = write(fd, zeros, sz);
+        if (w <= 0) {
+            if (errno == EINTR) continue;
+            LOGE("[fd/create] zero-fill failed at offset %llu: errno=%d",
+                 (unsigned long long)(fileSize - remaining), errno);
+            free(zeros);
+            ftruncate(fd, 0);
+            return false;
+        }
+        remaining -= (uint64_t)w;
+        uint64_t allocated = fileSize - remaining;
+        float frac = (float)allocated / (float)fileSize * allocWeight;
+        uint64_t el = (uint64_t)time(nullptr) - t0;
+        float speed = el > 0 ? (float)(allocated / 1048576ULL) / (float)el : 0.f;
+        jlong pseudo = (jlong)((double)frac / (double)allocWeight * (double)dataSize);
+        report_progress(env, progressListener, progressMid, frac, speed, pseudo);
+    }
+
+    free(zeros);
+    lseek(fd, 0, SEEK_SET);
+    return true;
+}
+
 /* ─── JNI: nativeCreateContainerFd ──────────────────────────────────── */
 /* SAF variant: receives an open file descriptor instead of a path.       */
 /* The caller keeps its ParcelFileDescriptor open; we dup() to own ours.  */
@@ -1431,15 +1507,17 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
     uint64_t dataSize = (uint64_t)sizeBytes;
     uint64_t fileSize = dataSize + VC_DATA_OFFSET + VC_BACKUP_AREA_SIZE;
 
-    if (ftruncate(fd, (off_t)fileSize) != 0) {
-        LOGE("[fd/create] ftruncate failed");
+    jmethodID progressMid = resolve_progress_mid(env, progressListener);
+    float allocWeight = quickFormat ? 0.9f : 0.5f;
+
+    if (!preallocate_fd(env, progressListener, progressMid, fd, fileSize, dataSize, allocWeight)) {
         close(fd); return ERR_NO_SPACE;
     }
-    lseek(fd, 0, SEEK_SET);
 
     uint8_t masterKey[192] = {};
     if (!read_urandom(masterKey, (size_t)(n * 64))) {
         LOGE("[fd/create] /dev/urandom failed for master key");
+        ftruncate(fd, 0);
         close(fd); return ERR_RAND;
     }
 
@@ -1448,6 +1526,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
                         (const char*)effPwd, pbkdf2PwdLen, (int)pim) != 0) {
         LOGE("[fd/create] Primary header write failed");
         memset(effPwd, 0, sizeof(effPwd));
+        ftruncate(fd, 0);
         close(fd); return ERR_FILE;
     }
 
@@ -1457,9 +1536,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
                     (const char*)effPwd, pbkdf2PwdLen, (int)pim);
     memset(effPwd, 0, sizeof(effPwd));
 
-    jmethodID progressMid = resolve_progress_mid(env, progressListener);
-
     if (!quickFormat) {
+        /* Fill factor: allocation consumed allocWeight, random fill covers the rest up to 0.9. */
+        const float fillEnd = 0.9f;
         const size_t CHUNK = 65536;
         auto *rnd = static_cast<uint8_t*>(malloc(CHUNK));
         if (rnd) {
@@ -1480,30 +1559,36 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
                     }
                 }
                 if (!rng_ok) break;
-                pwrite(fd, rnd, sz, (off_t)offset);
+                ssize_t pw = pwrite(fd, rnd, sz, (off_t)offset);
+                if (pw <= 0 && errno != EINTR) { rng_ok = false; break; }
                 remaining -= sz; offset += sz;
                 uint64_t written = dataSize - remaining;
-                float frac  = (float)written / (float)dataSize;
+                float fillFrac  = (float)written / (float)dataSize;
+                float frac  = allocWeight + fillFrac * (fillEnd - allocWeight);
                 uint64_t el = (uint64_t)time(nullptr) - t0;
                 float speed = el > 0 ? (float)(written/1048576UL)/(float)el : 10.f;
-                report_progress(env, progressListener, progressMid, frac, speed, (jlong)written);
+                jlong pseudo = (jlong)((double)frac * (double)dataSize);
+                report_progress(env, progressListener, progressMid, frac, speed, pseudo);
             }
             if (rfd >= 0) close(rfd);
             memset(rnd, 0, CHUNK);
             free(rnd);
             if (!rng_ok) {
                 secure_memset((volatile uint8_t*)masterKey, 0, sizeof(masterKey));
+                ftruncate(fd, 0);
                 close(fd); return ERR_RAND;
             }
         }
-    } else {
-        report_progress(env, progressListener, progressMid, 0.5f, 500.f, (jlong)(dataSize/2));
     }
 
     int pdrv = alloc_drive(fd, VC_DATA_OFFSET, dataSize / VC_SECTOR_SIZE, masterKey, algId);
     memset(masterKey, 0, sizeof(masterKey));
 
-    if (pdrv < 0) { LOGE("[fd/create] No drive slot"); close(fd); return ERR_NO_SLOT; }
+    if (pdrv < 0) {
+        LOGE("[fd/create] No drive slot");
+        ftruncate(fd, 0);
+        close(fd); return ERR_NO_SLOT;
+    }
 
     char drvPath[8];
     snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
@@ -1518,8 +1603,13 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
     }
     free_drive(pdrv);
 
-    if (fr != FR_OK) { LOGE("[fd/create] f_mkfs failed: %d", (int)fr); close(fd); return ERR_FS; }
+    if (fr != FR_OK) {
+        LOGE("[fd/create] f_mkfs failed: %d", (int)fr);
+        ftruncate(fd, 0);
+        close(fd); return ERR_FS;
+    }
 
+    fsync(fd);
     report_progress(env, progressListener, progressMid, 1.0f, 0.f, (jlong)dataSize);
     close(fd);
     return ERR_OK;
