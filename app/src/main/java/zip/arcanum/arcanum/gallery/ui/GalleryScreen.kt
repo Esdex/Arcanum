@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -156,7 +155,6 @@ fun GalleryScreen(
                     onSearchToggle  = { viewModel.setSearchActive(!uiState.isSearchActive) },
                     onSearchChange  = { viewModel.setSearchQuery(it) },
                     onSearchClose   = { viewModel.setSearchActive(false) },
-                    onScanClick     = { containerId?.let { viewModel.scanContainer(it) } },
                     onClearSelection = { viewModel.clearSelection() },
                     onDeleteSelected = { viewModel.requestDeleteSelected() }
                 )
@@ -214,7 +212,6 @@ private fun GalleryTopBar(
     onSearchToggle: () -> Unit,
     onSearchChange: (String) -> Unit,
     onSearchClose: () -> Unit,
-    onScanClick: () -> Unit,
     onClearSelection: () -> Unit,
     onDeleteSelected: () -> Unit
 ) {
@@ -296,11 +293,6 @@ private fun GalleryTopBar(
                         else
                             stringResource(R.string.gallery_search_open)
                     )
-                }
-                if (!isSearchActive) {
-                    IconButton(onClick = onScanClick) {
-                        Icon(Icons.Outlined.FilterList, stringResource(R.string.gallery_scan))
-                    }
                 }
             }
         )

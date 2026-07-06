@@ -28,8 +28,11 @@ import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.arcanum.files.domain.ClipboardItem
 import zip.arcanum.arcanum.files.domain.FileClipboard
 import zip.arcanum.arcanum.gallery.AudioPlayerQueue
+import zip.arcanum.arcanum.gallery.MediaScanner
 import zip.arcanum.arcanum.gallery.MediaViewerQueue
 import zip.arcanum.arcanum.gallery.ThumbnailManager
+import kotlinx.coroutines.coroutineScope
+import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.notifications.InAppNotification
 import kotlinx.coroutines.sync.Semaphore
@@ -56,7 +59,9 @@ class FileManagerViewModel @Inject constructor(
     private val repo: ContainerRepository,
     private val audioQueue: AudioPlayerQueue,
     private val mediaQueue: MediaViewerQueue,
-    private val thumbnailManager: ThumbnailManager
+    private val thumbnailManager: ThumbnailManager,
+    private val mediaScanner: MediaScanner,
+    private val mediaFileDao: MediaFileDao
 ) : ViewModel() {
 
     enum class ViewMode { LIST, GRID }
@@ -511,6 +516,36 @@ class FileManagerViewModel @Inject constructor(
         }
     }
 
+    // ── Post-import indexing & thumbnail generation ───────────────────────
+
+    private suspend fun indexAndThumbnail(
+        handle: Long,
+        containerId: String,
+        files: List<Pair<String, Long>>
+    ) {
+        // Phase 1: index all files into DB sequentially (fast — just EXIF read + insert).
+        // Do this before thumbnail generation so Gallery's Room Flow sees them immediately.
+        val entities = files.mapNotNull { (path, size) ->
+            mediaScanner.indexFile(handle, containerId, path, size)
+        }
+        if (entities.isEmpty()) return
+
+        // Explicitly notify GalleryViewModel in case Room Flow debounce hasn't fired yet.
+        thumbnailManager.notifyFilesImported(containerId)
+
+        // Phase 2: generate thumbnails concurrently (slow — image decode + cache write).
+        coroutineScope {
+            val sem = Semaphore(3)
+            entities.forEach { entity ->
+                launch {
+                    sem.withPermit {
+                        thumbnailManager.getThumbnail(engine, handle, entity)
+                    }
+                }
+            }
+        }
+    }
+
     // ── File operations ───────────────────────────────────────────────────
 
     fun deleteSelected() {
@@ -524,8 +559,13 @@ class FileManagerViewModel @Inject constructor(
             var count = 0
             for (file in toDelete) {
                 runCatching {
-                    if (file.isDirectory) engine.nativeDeleteDirectory(handle, file.path)
-                    else engine.nativeDeleteFile(handle, file.path)
+                    if (file.isDirectory) {
+                        engine.nativeDeleteDirectory(handle, file.path)
+                        cleanupDirectoryMedia(s.containerId, file.path)
+                    } else {
+                        engine.nativeDeleteFile(handle, file.path)
+                        cleanupFileMedia(s.containerId, file.path)
+                    }
                     count++
                 }
             }
@@ -535,7 +575,32 @@ class FileManagerViewModel @Inject constructor(
                 isOperationInProgress = false,
                 pendingNotification   = if (count > 0) InAppNotification.FilesDeleted(count) else null
             ) }
+            if (count > 0) thumbnailManager.notifyFilesDeleted(s.containerId)
         }
+    }
+
+    private suspend fun cleanupFileMedia(containerId: String, path: String) {
+        // Get entity first for fileId (needed to evict bitmap from GalleryViewModel memory).
+        val entity = mediaFileDao.getByPath(containerId, path)
+        // Direct @Query DELETE works even if getByPath returned null (path format mismatch edge case).
+        mediaFileDao.deleteByPath(containerId, path)
+        if (entity != null) {
+            thumbnailManager.clearFileCache(entity.containerId, entity.relativePath, entity.id)
+        } else {
+            thumbnailManager.deleteFileCacheEntry(containerId, path)
+        }
+    }
+
+    private suspend fun cleanupDirectoryMedia(containerId: String, dirPath: String) {
+        val prefix = if (dirPath.endsWith("/")) dirPath else "$dirPath/"
+        // Evict bitmaps for any entity we can identify by path prefix.
+        mediaFileDao.getAllForContainerOnce(containerId)
+            .filter { it.relativePath.startsWith(prefix) }
+            .forEach { entity ->
+                thumbnailManager.clearFileCache(entity.containerId, entity.relativePath, entity.id)
+            }
+        // Direct DELETE triggers Room's InvalidationTracker for Gallery's Flow.
+        mediaFileDao.deleteByPathPrefix(containerId, prefix)
     }
 
     fun createFolder(name: String) {
@@ -594,6 +659,7 @@ class FileManagerViewModel @Inject constructor(
             var hiddenProtected = false
             var importFailed = false
             val chunkSize = 1 * 1024 * 1024
+            val importedMedia = mutableListOf<Pair<String, Long>>()
             for (uri in uris) {
                 if (hiddenProtected || importFailed) break
                 try {
@@ -602,6 +668,7 @@ class FileManagerViewModel @Inject constructor(
                     val destPath = buildDestinationPath(s.currentPath, name)
                     _state.update { it.copy(operationMessage = "Importing $name…") }
                     var fileOk = false
+                    var fileSize = 0L
                     context.contentResolver.openInputStream(uri)?.use { input ->
                         var offset = 0L
                         val buffer = ByteArray(chunkSize)
@@ -623,9 +690,14 @@ class FileManagerViewModel @Inject constructor(
                                 else -> { offset += read; fileOk = true }
                             }
                         }
+                        fileSize = offset
                     }
                     if (!hiddenProtected && !importFailed) {
                         count++
+                        val ext = name.substringAfterLast('.', "").lowercase()
+                        if (ext in IMAGE_EXTENSIONS_VM || ext in VIDEO_EXTENSIONS_VM) {
+                            importedMedia.add(Pair(destPath, fileSize))
+                        }
                         if (deleteAfterImport && fileOk)
                             runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }
                     }
@@ -642,6 +714,9 @@ class FileManagerViewModel @Inject constructor(
                     else            -> null
                 }
             ) }
+            if (importedMedia.isNotEmpty()) {
+                indexAndThumbnail(handle, s.containerId, importedMedia)
+            }
         }
     }
 
@@ -668,8 +743,9 @@ class FileManagerViewModel @Inject constructor(
             val destPath = buildDestinationPath(s.currentPath, folderName)
             runCatching { engine.nativeCreateDirectory(handle, destPath) }
 
+            val importedMedia = mutableListOf<Pair<String, Long>>()
             val (count, hiddenProtected, importFailed) =
-                importFolderRecursive(context, handle, treeUri, rootDocId, destPath)
+                importFolderRecursive(context, handle, treeUri, rootDocId, destPath, importedMedia)
 
             if (deleteAfterImport && !hiddenProtected && !importFailed && count > 0)
                 runCatching { DocumentsContract.deleteDocument(context.contentResolver, rootDocUri) }
@@ -685,6 +761,9 @@ class FileManagerViewModel @Inject constructor(
                     else            -> null
                 }
             ) }
+            if (importedMedia.isNotEmpty()) {
+                indexAndThumbnail(handle, s.containerId, importedMedia)
+            }
         }
     }
 
@@ -693,7 +772,8 @@ class FileManagerViewModel @Inject constructor(
         handle: Long,
         treeUri: android.net.Uri,
         docId: String,
-        destPath: String
+        destPath: String,
+        importedMedia: MutableList<Pair<String, Long>> = mutableListOf()
     ): Triple<Int, Boolean, Boolean> {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
         val projection  = arrayOf(
@@ -721,13 +801,14 @@ class FileManagerViewModel @Inject constructor(
                     if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
                         runCatching { engine.nativeCreateDirectory(handle, childDest) }
                         val (sub, subProtected, subFailed) =
-                            importFolderRecursive(context, handle, treeUri, childDocId, childDest)
+                            importFolderRecursive(context, handle, treeUri, childDocId, childDest, importedMedia)
                         count += sub
                         if (subProtected) hiddenProtected = true
                         if (subFailed)    importFailed    = true
                     } else {
                         val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
                         _state.update { it.copy(operationMessage = "Importing $childName…") }
+                        var childFileSize = 0L
                         context.contentResolver.openInputStream(childUri)?.use { input ->
                             var offset = 0L
                             val buffer = ByteArray(chunkSize)
@@ -749,8 +830,15 @@ class FileManagerViewModel @Inject constructor(
                                     else -> { offset += read }
                                 }
                             }
+                            childFileSize = offset
                         }
-                        if (!hiddenProtected && !importFailed) count++
+                        if (!hiddenProtected && !importFailed) {
+                            count++
+                            val ext = childName.substringAfterLast('.', "").lowercase()
+                            if (ext in IMAGE_EXTENSIONS_VM || ext in VIDEO_EXTENSIONS_VM) {
+                                importedMedia.add(Pair(childDest, childFileSize))
+                            }
+                        }
                     }
                 } catch (_: Exception) { importFailed = true }
             }

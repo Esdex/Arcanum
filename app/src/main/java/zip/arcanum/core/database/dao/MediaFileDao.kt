@@ -50,4 +50,13 @@ interface MediaFileDao {
 
     @Query("DELETE FROM media_files WHERE containerId = :containerId")
     suspend fun deleteAllForContainer(containerId: String)
+
+    @Query("SELECT * FROM media_files WHERE containerId = :containerId AND relativePath = :path LIMIT 1")
+    suspend fun getByPath(containerId: String, path: String): MediaFileEntity?
+
+    @Query("DELETE FROM media_files WHERE containerId = :containerId AND relativePath = :path")
+    suspend fun deleteByPath(containerId: String, path: String)
+
+    @Query("DELETE FROM media_files WHERE containerId = :containerId AND relativePath LIKE :prefix || '%'")
+    suspend fun deleteByPathPrefix(containerId: String, prefix: String)
 }

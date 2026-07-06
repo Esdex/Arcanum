@@ -22,6 +22,7 @@ import zip.arcanum.arcanum.gallery.ExifJpegPatcher
 import zip.arcanum.arcanum.gallery.ExifReader
 import zip.arcanum.arcanum.gallery.MediaExifData
 import zip.arcanum.arcanum.gallery.NativeFileInputStream
+import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
@@ -37,7 +38,8 @@ class PhotoViewerViewModel @Inject constructor(
     private val mediaFileDao: MediaFileDao,
     private val repo: ContainerRepository,
     val engine: VeraCryptEngine,
-    private val exifReader: ExifReader
+    private val exifReader: ExifReader,
+    private val thumbnailManager: ThumbnailManager
 ) : ViewModel() {
 
     private val fileId: String = savedStateHandle[Screen.PhotoViewer.ARG] ?: ""
@@ -287,6 +289,7 @@ class PhotoViewerViewModel @Inject constructor(
                 try { engine.nativeDeleteFile(handle, file.relativePath) } catch (_: Exception) {}
             }
             mediaFileDao.deleteMediaFile(file)
+            thumbnailManager.clearFileCache(file.containerId, file.relativePath, file.id)
             launch(Dispatchers.Main) { onDone() }
         }
     }
