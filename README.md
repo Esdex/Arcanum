@@ -9,9 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.apache.org/licenses/LICENSE-2.0">
-    <img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge" alt="License">
-  </a>
+  <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge" alt="License"></a>
   <img src="https://img.shields.io/badge/platform-Android-green?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/min%20SDK-29%20(Android%2010)-brightgreen?style=for-the-badge" alt="Min SDK">
   <img src="https://img.shields.io/badge/language-Kotlin-7F52FF?style=for-the-badge" alt="Kotlin">
@@ -148,13 +146,9 @@ Contributions are welcome for bug fixes and non-cryptographic improvements (UI, 
 If Arcanum is useful to you, you can support its development:
 
 <p>
-  <a href="https://github.com/sponsors/Esdex">
-    <img src="https://img.shields.io/badge/GitHub%20Sponsors-♥-ea4aaa?style=for-the-badge&logo=github-sponsors&logoColor=white" alt="GitHub Sponsors">
-  </a>
+  <a href="https://github.com/sponsors/Esdex"><img src="https://img.shields.io/badge/GitHub%20Sponsors-♥-ea4aaa?style=for-the-badge&logo=github-sponsors&logoColor=white" alt="GitHub Sponsors"></a>
   &nbsp;
-  <a href="https://ko-fi.com/Esdex">
-    <img src="https://img.shields.io/badge/Ko--fi-support-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi">
-  </a>
+  <a href="https://ko-fi.com/Esdex"><img src="https://img.shields.io/badge/Ko--fi-support-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
 </p>
 
 ### Crypto
