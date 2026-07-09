@@ -42,6 +42,23 @@ typedef struct {
     uint64_t             hiddenBoundary;        /* absolute file offset; outer writes must not reach or exceed this (0 = no protection) */
     bool                 hiddenBoundaryTripped; /* set to true when disk_write blocks a write due to hiddenBoundary */
     struct GenCipherCtx *cipherCtx;             /* heap-allocated, null when !active */
+    uint32_t             generation;            /* bumped on every alloc_drive() of this slot; part of the
+                                                    jlong handle so a stale handle from a freed+reused slot
+                                                    is rejected instead of silently operating on the wrong
+                                                    (newer) container. Preserved across free_drive()'s
+                                                    memset; starts at 1 on a slot's first-ever allocation. */
 } DriveContext;
 
 extern DriveContext g_drives[MAX_DRIVES];
+
+/* pread_all/write_all_at (stage 2a/4): loop over partial transfers, retry
+ * EINTR, false on error/EOF-short. Defined in arcanum_jni.cpp, used by
+ * diskio.cpp for batched sector I/O. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+bool pread_all(int fd, void *buf, size_t len, long long off);
+bool write_all_at(int fd, const void *buf, size_t len, long long off);
+#ifdef __cplusplus
+}
+#endif

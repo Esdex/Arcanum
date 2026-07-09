@@ -248,7 +248,7 @@ class GalleryViewModel @Inject constructor(
         _uiState.update { it.copy(showDeleteConfirm = false) }
         viewModelScope.launch(Dispatchers.IO) {
             files.forEach { file ->
-                runCatching { engine.nativeDeleteFile(handle, file.relativePath) }
+                runCatching { engine.deleteFile(handle, file.relativePath) }
                 mediaFileDao.deleteMediaFile(file)
                 thumbnailManager.deleteFileCacheEntry(file.containerId, file.relativePath)
             }
@@ -324,7 +324,7 @@ class GalleryViewModel @Inject constructor(
         val containerId = currentContainerId ?: return
         val handle = repo.getContainerHandle(containerId) ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { engine.nativeDeleteFile(handle, file.relativePath) }
+            runCatching { engine.deleteFile(handle, file.relativePath) }
             mediaFileDao.deleteMediaFile(file)
             thumbnailManager.deleteFileCacheEntry(file.containerId, file.relativePath)
             withContext(Dispatchers.Main) { evictThumbnail(file.id) }

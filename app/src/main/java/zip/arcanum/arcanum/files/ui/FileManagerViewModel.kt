@@ -377,21 +377,21 @@ class FileManagerViewModel @Inject constructor(
                     _state.update { it.copy(operationMessage = "${if (isCut) "Moving" else "Copying"} ${item.fileName}…") }
                     if (item.isDirectory) {
                         val ok = copyDirectoryRecursive(item.sourceHandle, item.sourcePath, destHandle, destPath)
-                        if (ok && isCut) runCatching { engine.nativeDeleteDirectory(item.sourceHandle, item.sourcePath) }
+                        if (ok && isCut) runCatching { engine.deleteDirectory(item.sourceHandle, item.sourcePath) }
                         if (ok) count++
                     } else {
                         var offset = 0L
                         var writeOk = true
                         while (true) {
-                            val chunk = engine.nativeReadFile(item.sourceHandle, item.sourcePath, offset, chunkSize) ?: run { writeOk = false; break }
-                            val rc = engine.nativeWriteFile(destHandle, destPath, chunk, offset)
+                            val chunk = engine.readFile(item.sourceHandle, item.sourcePath, offset, chunkSize) ?: run { writeOk = false; break }
+                            val rc = engine.writeFile(destHandle, destPath, chunk, offset)
                             if (rc != VeraCryptEngine.ERR_OK) { writeOk = false; break }
                             offset += chunk.size
                             if (chunk.size < chunkSize) break
                         }
-                        if (!writeOk) runCatching { engine.nativeDeleteFile(destHandle, destPath) }
+                        if (!writeOk) runCatching { engine.deleteFile(destHandle, destPath) }
                         if (writeOk) {
-                            if (isCut) runCatching { engine.nativeDeleteFile(item.sourceHandle, item.sourcePath) }
+                            if (isCut) runCatching { engine.deleteFile(item.sourceHandle, item.sourcePath) }
                             count++
                         }
                     }
@@ -441,13 +441,13 @@ class FileManagerViewModel @Inject constructor(
                         var offset = 0L
                         var writeOk = true
                         while (offset < item.size) {
-                            val chunk = engine.nativeReadFile(sourceHandle, item.path, offset, chunkSize) ?: run { writeOk = false; break }
-                            val rc = engine.nativeWriteFile(destHandle, destItemPath, chunk, offset)
+                            val chunk = engine.readFile(sourceHandle, item.path, offset, chunkSize) ?: run { writeOk = false; break }
+                            val rc = engine.writeFile(destHandle, destItemPath, chunk, offset)
                             if (rc != VeraCryptEngine.ERR_OK) { writeOk = false; break }
                             offset += chunk.size
                             if (chunk.size < chunkSize) break
                         }
-                        if (!writeOk) runCatching { engine.nativeDeleteFile(destHandle, destItemPath) }
+                        if (!writeOk) runCatching { engine.deleteFile(destHandle, destItemPath) }
                         if (writeOk) count++
                     }
                 } catch (_: Exception) { }
@@ -486,7 +486,7 @@ class FileManagerViewModel @Inject constructor(
                 val moved = when {
                     destinationContainerId == s.containerId -> {
                         val result = runCatching {
-                            engine.nativeRenameFile(sourceHandle, item.path, destItemPath)
+                            engine.renameFile(sourceHandle, item.path, destItemPath)
                         }.getOrDefault(VeraCryptEngine.ERR_FS)
                         result == VeraCryptEngine.ERR_OK
                     }
@@ -510,7 +510,7 @@ class FileManagerViewModel @Inject constructor(
         val handle = repo.getContainerHandle(containerId) ?: run { onResult(emptyList()); return }
         viewModelScope.launch(Dispatchers.IO) {
             val dirs = runCatching {
-                engine.nativeListFiles(handle, path).toList().filter { it.isDirectory }
+                engine.listFiles(handle, path).toList().filter { it.isDirectory }
             }.getOrDefault(emptyList())
             withContext(Dispatchers.Main) { onResult(dirs) }
         }
@@ -560,10 +560,10 @@ class FileManagerViewModel @Inject constructor(
             for (file in toDelete) {
                 runCatching {
                     if (file.isDirectory) {
-                        engine.nativeDeleteDirectory(handle, file.path)
+                        engine.deleteDirectory(handle, file.path)
                         cleanupDirectoryMedia(s.containerId, file.path)
                     } else {
-                        engine.nativeDeleteFile(handle, file.path)
+                        engine.deleteFile(handle, file.path)
                         cleanupFileMedia(s.containerId, file.path)
                     }
                     count++
@@ -613,7 +613,7 @@ class FileManagerViewModel @Inject constructor(
         val folderPath = if (s.currentPath == "/") "/$name" else "${s.currentPath}/$name"
 
         viewModelScope.launch(Dispatchers.IO) {
-            val rc = runCatching { engine.nativeCreateDirectory(handle, folderPath) }.getOrDefault(VeraCryptEngine.ERR_FS)
+            val rc = runCatching { engine.createDirectory(handle, folderPath) }.getOrDefault(VeraCryptEngine.ERR_FS)
             refreshNow()
             _state.update {
                 it.copy(pendingNotification = if (rc == VeraCryptEngine.ERR_OK) InAppNotification.FolderCreated(name) else InAppNotification.ReadOnlyError)
@@ -635,7 +635,7 @@ class FileManagerViewModel @Inject constructor(
         val newPath = if (dir.isEmpty() || dir == "") "/$finalName" else "$dir/$finalName"
 
         viewModelScope.launch(Dispatchers.IO) {
-            val result = runCatching { engine.nativeRenameFile(handle, file.path, newPath) }.getOrDefault(VeraCryptEngine.ERR_FS)
+            val result = runCatching { engine.renameFile(handle, file.path, newPath) }.getOrDefault(VeraCryptEngine.ERR_FS)
             val success = result == VeraCryptEngine.ERR_OK
             if (success) {
                 refreshNow()
@@ -675,16 +675,16 @@ class FileManagerViewModel @Inject constructor(
                         var read: Int = 0
                         var done = false
                         while (!done && input.read(buffer).also { read = it } != -1) {
-                            val rc = engine.nativeWriteFile(handle, destPath, buffer.copyOf(read), offset)
+                            val rc = engine.writeFile(handle, destPath, buffer.copyOf(read), offset)
                             when {
                                 rc == VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> {
                                     hiddenProtected = true
-                                    runCatching { engine.nativeDeleteFile(handle, destPath) }
+                                    runCatching { engine.deleteFile(handle, destPath) }
                                     done = true
                                 }
                                 rc != VeraCryptEngine.ERR_OK -> {
                                     importFailed = true
-                                    runCatching { engine.nativeDeleteFile(handle, destPath) }
+                                    runCatching { engine.deleteFile(handle, destPath) }
                                     done = true
                                 }
                                 else -> { offset += read; fileOk = true }
@@ -741,7 +741,7 @@ class FileManagerViewModel @Inject constructor(
                 ?: rootDocId.substringAfterLast('/')
 
             val destPath = buildDestinationPath(s.currentPath, folderName)
-            runCatching { engine.nativeCreateDirectory(handle, destPath) }
+            runCatching { engine.createDirectory(handle, destPath) }
 
             val importedMedia = mutableListOf<Pair<String, Long>>()
             val (count, hiddenProtected, importFailed) =
@@ -799,7 +799,7 @@ class FileManagerViewModel @Inject constructor(
 
                 try {
                     if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
-                        runCatching { engine.nativeCreateDirectory(handle, childDest) }
+                        runCatching { engine.createDirectory(handle, childDest) }
                         val (sub, subProtected, subFailed) =
                             importFolderRecursive(context, handle, treeUri, childDocId, childDest, importedMedia)
                         count += sub
@@ -815,16 +815,16 @@ class FileManagerViewModel @Inject constructor(
                             var read = 0
                             var done = false
                             while (!done && input.read(buffer).also { read = it } != -1) {
-                                val rc = engine.nativeWriteFile(handle, childDest, buffer.copyOf(read), offset)
+                                val rc = engine.writeFile(handle, childDest, buffer.copyOf(read), offset)
                                 when {
                                     rc == VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> {
                                         hiddenProtected = true
-                                        runCatching { engine.nativeDeleteFile(handle, childDest) }
+                                        runCatching { engine.deleteFile(handle, childDest) }
                                         done = true
                                     }
                                     rc != VeraCryptEngine.ERR_OK -> {
                                         importFailed = true
-                                        runCatching { engine.nativeDeleteFile(handle, childDest) }
+                                        runCatching { engine.deleteFile(handle, childDest) }
                                         done = true
                                     }
                                     else -> { offset += read }
@@ -871,7 +871,7 @@ class FileManagerViewModel @Inject constructor(
                         context.contentResolver.openOutputStream(docUri)?.use { out ->
                             var offset = 0L
                             while (offset < file.size) {
-                                val chunk = engine.nativeReadFile(handle, file.path, offset, chunkSize) ?: break
+                                val chunk = engine.readFile(handle, file.path, offset, chunkSize) ?: break
                                 out.write(chunk)
                                 offset += chunk.size
                                 if (chunk.size < chunkSize) break
@@ -904,7 +904,7 @@ class FileManagerViewModel @Inject constructor(
                 val chunkSize = 1 * 1024 * 1024
                 var offset = 0L
                 while (offset < file.size) {
-                    val chunk = engine.nativeReadFile(handle, file.path, offset, chunkSize) ?: break
+                    val chunk = engine.readFile(handle, file.path, offset, chunkSize) ?: break
                     baos.write(chunk)
                     offset += chunk.size
                     if (chunk.size < chunkSize) break
@@ -963,16 +963,16 @@ class FileManagerViewModel @Inject constructor(
         return try {
             var offset = 0L
             while (offset < fileSize) {
-                val chunk = engine.nativeReadFile(srcHandle, srcPath, offset, chunkSize) ?: return false
-                val rc = engine.nativeWriteFile(destHandle, destPath, chunk, offset)
+                val chunk = engine.readFile(srcHandle, srcPath, offset, chunkSize) ?: return false
+                val rc = engine.writeFile(destHandle, destPath, chunk, offset)
                 if (rc != VeraCryptEngine.ERR_OK) {
-                    runCatching { engine.nativeDeleteFile(destHandle, destPath) }
+                    runCatching { engine.deleteFile(destHandle, destPath) }
                     return false
                 }
                 offset += chunk.size
                 if (chunk.size < chunkSize) break
             }
-            runCatching { engine.nativeDeleteFile(srcHandle, srcPath) }
+            runCatching { engine.deleteFile(srcHandle, srcPath) }
             true
         } catch (_: Exception) { false }
     }
@@ -988,7 +988,7 @@ class FileManagerViewModel @Inject constructor(
             context.contentResolver, parentDocUri,
             DocumentsContract.Document.MIME_TYPE_DIR, dirName
         ) ?: return false
-        val entries = runCatching { engine.nativeListFiles(handle, srcPath).toList() }.getOrDefault(emptyList())
+        val entries = runCatching { engine.listFiles(handle, srcPath).toList() }.getOrDefault(emptyList())
         val chunkSize = 1 * 1024 * 1024
         var allOk = true
         for (entry in entries) {
@@ -1005,7 +1005,7 @@ class FileManagerViewModel @Inject constructor(
                     context.contentResolver.openOutputStream(docUri)?.use { out ->
                         var offset = 0L
                         while (offset < entry.size) {
-                            val chunk = engine.nativeReadFile(handle, entryPath, offset, chunkSize) ?: break
+                            val chunk = engine.readFile(handle, entryPath, offset, chunkSize) ?: break
                             out.write(chunk)
                             offset += chunk.size
                             if (chunk.size < chunkSize) break
@@ -1022,8 +1022,8 @@ class FileManagerViewModel @Inject constructor(
         destHandle: Long, destPath: String
     ): Boolean {
         return try {
-            runCatching { engine.nativeCreateDirectory(destHandle, destPath) }
-            val entries = engine.nativeListFiles(srcHandle, srcPath).toList()
+            runCatching { engine.createDirectory(destHandle, destPath) }
+            val entries = engine.listFiles(srcHandle, srcPath).toList()
             var allCopied = true
             val chunkSize = 1 * 1024 * 1024
             for (entry in entries) {
@@ -1035,14 +1035,14 @@ class FileManagerViewModel @Inject constructor(
                     var offset = 0L
                     var ok = true
                     while (offset < entry.size) {
-                        val chunk = engine.nativeReadFile(srcHandle, srcEntry, offset, chunkSize)
+                        val chunk = engine.readFile(srcHandle, srcEntry, offset, chunkSize)
                             ?: run { ok = false; break }
-                        val rc = engine.nativeWriteFile(destHandle, destEntry, chunk, offset)
+                        val rc = engine.writeFile(destHandle, destEntry, chunk, offset)
                         if (rc != VeraCryptEngine.ERR_OK) { ok = false; break }
                         offset += chunk.size
                         if (chunk.size < chunkSize) break
                     }
-                    if (!ok) runCatching { engine.nativeDeleteFile(destHandle, destEntry) }
+                    if (!ok) runCatching { engine.deleteFile(destHandle, destEntry) }
                     ok
                 }
                 if (!copied) allCopied = false
@@ -1056,8 +1056,8 @@ class FileManagerViewModel @Inject constructor(
         destHandle: Long, destPath: String
     ): Boolean {
         return try {
-            runCatching { engine.nativeCreateDirectory(destHandle, destPath) }
-            val entries = engine.nativeListFiles(srcHandle, srcPath).toList()
+            runCatching { engine.createDirectory(destHandle, destPath) }
+            val entries = engine.listFiles(srcHandle, srcPath).toList()
             var allMoved = true
             for (entry in entries) {
                 val srcEntry  = if (srcPath  == "/") "/${entry.name}" else "$srcPath/${entry.name}"
@@ -1069,7 +1069,7 @@ class FileManagerViewModel @Inject constructor(
                 }
                 if (!moved) allMoved = false
             }
-            if (allMoved) runCatching { engine.nativeDeleteDirectory(srcHandle, srcPath) }
+            if (allMoved) runCatching { engine.deleteDirectory(srcHandle, srcPath) }
             allMoved
         } catch (_: Exception) { false }
     }
@@ -1084,7 +1084,7 @@ class FileManagerViewModel @Inject constructor(
         val s = _state.value
         val handle = repo.getContainerHandle(s.containerId) ?: return
         runCatching {
-            val rawFiles = engine.nativeListFiles(handle, s.currentPath).toList()
+            val rawFiles = engine.listFiles(handle, s.currentPath).toList()
             _state.update { st ->
                 val files = applyFiltersAndSort(rawFiles, st.sortBy, st.sortAscending, st.showHidden, st.foldersFirst, st.searchQuery)
                 st.copy(rawFiles = rawFiles, files = files)
@@ -1101,7 +1101,7 @@ class FileManagerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isLoading = true, error = null) }
             try {
-                val rawFiles = engine.nativeListFiles(handle, path).toList()
+                val rawFiles = engine.listFiles(handle, path).toList()
                 _state.update { s ->
                     val files = applyFiltersAndSort(rawFiles, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, s.searchQuery)
                     s.copy(

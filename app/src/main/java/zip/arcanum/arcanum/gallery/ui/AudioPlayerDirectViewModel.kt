@@ -136,7 +136,7 @@ class AudioPlayerDirectViewModel @Inject constructor(
         _state.update { it.copy(waveformBars = null, error = null) }
 
         val headerBytes = runCatching {
-            engine.nativeReadFile(h, path, 0L, minOf(size, 524288L).toInt())
+            engine.readFile(h, path, 0L, minOf(size, 524288L).toInt())
         }.getOrNull()
 
         val metadata = parseMetadata(headerBytes, name)
@@ -216,7 +216,7 @@ class AudioPlayerDirectViewModel @Inject constructor(
             var offset = 0L
             while (offset < fileSize && bars.size < barCount) {
                 val toRead = minOf(chunkSize.toLong(), fileSize - offset).toInt()
-                val chunk = runCatching { engine.nativeReadFile(h, path, offset, toRead) }
+                val chunk = runCatching { engine.readFile(h, path, offset, toRead) }
                     .getOrNull() ?: break
                 if (chunk.isEmpty()) break
                 var sum = 0.0

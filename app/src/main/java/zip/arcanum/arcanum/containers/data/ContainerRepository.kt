@@ -91,7 +91,7 @@ class ContainerRepository @Inject constructor(
     }
 
     // Synchronous — safe to call from onDestroy without a coroutine.
-    // Returns all active JNI handles so the caller can close them via nativeCloseContainer.
+    // Returns all active JNI handles so the caller can close them via VeraCryptEngine.closeContainer.
     fun closeAllHandlesSync(): List<Long> {
         val handles = mountedHandles.values.toList()
         mountedHandles.clear()
