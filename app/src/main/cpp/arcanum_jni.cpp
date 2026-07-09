@@ -1284,168 +1284,6 @@ static void report_progress(JNIEnv *env, jobject listener, jmethodID mid,
     if (env->ExceptionCheck()) env->ExceptionClear();
 }
 
-/* ─── JNI: nativeCreateContainer ────────────────────────────────────── */
-
-extern "C" JNIEXPORT jint JNICALL
-Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
-        JNIEnv *env, jobject /*thiz*/,
-        jstring jPath, jlong sizeBytes,
-        jstring jPassword, jobjectArray jKeyfilePaths,
-        jint algorithm, jint hashAlg, jint filesystem,
-        jboolean quickFormat,
-        jbyteArray entropyBytes,
-        jobject progressListener,
-        jint pim)
-{
-    if (algorithm < 0 || algorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
-
-    std::string path     = jstring_to_string(env, jPath);
-    std::string password = jstring_to_string(env, jPassword);
-    StringWiper _wipe_password(password);
-    auto keyfilePaths    = jstringArray_to_vector(env, jKeyfilePaths);
-    if (path.empty() || password.empty()) return ERR_FILE;
-
-    uint8_t effPwd[VC_MAX_PWD_LEN] = {};
-    int effPwdLen = (int)password.size();
-    if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
-    memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
-    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
-    const int pbkdf2PwdLen = effPwdLen;
-
-    int algId = (int)algorithm;
-    if (algId < 0 || algId >= NUM_ALGORITHMS) return ERR_FS;
-    int n     = ALGORITHMS[algId].n;
-
-    uint64_t dataSize = (uint64_t)sizeBytes;
-    uint64_t fileSize = dataSize + VC_DATA_OFFSET + VC_BACKUP_AREA_SIZE;
-
-    int fd = open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0600);
-    if (fd < 0) { LOGE("[2/6] Cannot open/create: %s (errno=%d: %s)", path.c_str(), errno, strerror(errno)); return ERR_FILE; }
-
-    if (ftruncate(fd, (off_t)fileSize) != 0) {
-        LOGE("[create] ftruncate failed — disk full?");
-        close(fd); unlink(path.c_str()); return ERR_NO_SPACE;
-    }
-
-    uint8_t masterKey[192] = {};
-    if (!read_urandom(masterKey, (size_t)(n * 64))) {
-        LOGE("[create] /dev/urandom failed for master key — aborting");
-        close(fd); unlink(path.c_str());
-        return ERR_RAND;
-    }
-
-    if (write_vc_header(fd, 0, dataSize, VC_DATA_OFFSET,
-                        masterKey, algId, (int)hashAlg,
-                        (const char*)effPwd, pbkdf2PwdLen, (int)pim) != 0) {
-        LOGE("[create] Primary header write failed");
-        secure_memset(effPwd, 0, sizeof(effPwd));
-        secure_memset((volatile uint8_t*)masterKey, 0, sizeof(masterKey));
-        close(fd); unlink(path.c_str()); return ERR_FILE;
-    }
-
-    /* Write backup header at end of file */
-    uint64_t backupOff = fileSize - VC_BACKUP_AREA_SIZE;
-    if (write_vc_header(fd, backupOff, dataSize, VC_DATA_OFFSET,
-                        masterKey, algId, (int)hashAlg,
-                        (const char*)effPwd, pbkdf2PwdLen, (int)pim) != 0) {
-        LOGE("[create] Backup header write failed");
-        secure_memset(effPwd, 0, sizeof(effPwd));
-        secure_memset((volatile uint8_t*)masterKey, 0, sizeof(masterKey));
-        close(fd); unlink(path.c_str()); return ERR_FILE;
-    }
-    secure_memset(effPwd, 0, sizeof(effPwd));
-
-    /* Resolve progress callback method ID once — reused across all chunks */
-    jmethodID progressMid = resolve_progress_mid(env, progressListener);
-
-    /* Fill data area */
-    if (!quickFormat) {
-        const size_t CHUNK = 65536;
-        auto *rnd = static_cast<uint8_t*>(malloc(CHUNK));
-        if (rnd) {
-            memset(rnd, 0, CHUNK);
-            uint64_t remaining = dataSize, offset = VC_DATA_OFFSET;
-            int rfd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
-            bool rng_ok = true, write_ok = true;
-            auto t0 = (uint64_t)time(nullptr);
-            while (remaining > 0) {
-                size_t sz = (remaining > CHUNK) ? CHUNK : (size_t)remaining;
-                if (rfd >= 0) {
-                    size_t got = 0;
-                    while (got < sz) {
-                        ssize_t r = read(rfd, rnd + got, sz - got);
-                        if (r > 0) { got += (size_t)r; continue; }
-                        if (r < 0 && errno == EINTR) continue;
-                        rng_ok = false;
-                        break;
-                    }
-                }
-                if (!rng_ok) break;
-                if (!write_all_at(fd, rnd, sz, (long long)offset)) { write_ok = false; break; }
-                remaining -= sz; offset += sz;
-                uint64_t written = dataSize - remaining;
-                float frac = (float)written / (float)dataSize;
-                uint64_t elapsed = (uint64_t)time(nullptr) - t0;
-                float speed = elapsed > 0 ? (float)(written/1048576UL)/(float)elapsed : 10.f;
-                report_progress(env, progressListener, progressMid, frac, speed, (jlong)written);
-            }
-            if (rfd >= 0) close(rfd);
-            secure_memset(rnd, 0, CHUNK);
-            free(rnd);
-            if (!rng_ok) {
-                LOGE("[create] /dev/urandom failed during data fill — aborting");
-                secure_memset((volatile uint8_t *)masterKey, 0, sizeof(masterKey));
-                close(fd);
-                unlink(path.c_str());
-                return ERR_RAND;
-            }
-            if (!write_ok) {
-                LOGE("[create] write failed during data fill — disk full?");
-                secure_memset((volatile uint8_t *)masterKey, 0, sizeof(masterKey));
-                close(fd);
-                unlink(path.c_str());
-                return ERR_NO_SPACE;
-            }
-        }
-    } else {
-        report_progress(env, progressListener, progressMid, 0.5f, 500.f, (jlong)(dataSize/2));
-    }
-
-    /* Format filesystem. alloc_drive/free_drive touch g_drives[] slot state
-     * shared with every other native call, so the whole claim→format→release
-     * sequence runs under one g_fatfs_mutex critical section (diskio.cpp's
-     * callbacks run synchronously inside f_mkfs on this same thread and must
-     * NOT re-lock — see the comment on g_fatfs_mutex). */
-    char drvPath[8];
-    BYTE  work[4096];
-    BYTE  fmtFlag = (filesystem == 1) ? (FM_EXFAT|FM_SFD) : ((FM_FAT|FM_FAT32)|FM_SFD);
-    BYTE  nFat    = (filesystem == 1) ? 1 : 2;
-    MKFS_PARM opts = { fmtFlag, nFat, 0, 0, 0 };
-    FRESULT fr = FR_DISK_ERR;
-    int pdrv;
-    {
-        std::lock_guard<std::mutex> lock(g_fatfs_mutex);
-        pdrv = alloc_drive(fd, VC_DATA_OFFSET, dataSize / VC_SECTOR_SIZE, masterKey, algId);
-        secure_memset(masterKey, 0, sizeof(masterKey));
-        if (pdrv < 0) {
-            LOGE("[create] No drive slot");
-            close(fd); unlink(path.c_str()); return ERR_NO_SLOT;
-        }
-        snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
-        fr = f_mkfs(drvPath, &opts, work, sizeof(work));
-        free_drive(pdrv);
-    }
-
-    if (fr != FR_OK) {
-        LOGE("[create] f_mkfs failed: %d", (int)fr);
-        close(fd); unlink(path.c_str()); return ERR_FS;
-    }
-
-    report_progress(env, progressListener, progressMid, 1.0f, 0.f, (jlong)dataSize);
-    close(fd);
-    return ERR_OK;
-}
-
 /* ─── Pre-allocate helper (FAT32 / FUSE-safe) ───────────────────────── */
 /*
  * ftruncate() on FAT32/exFAT SD cards via Android's FUSE/MediaProvider layer
@@ -1521,30 +1359,33 @@ static bool preallocate_fd(
     return true;
 }
 
-/* ─── JNI: nativeCreateContainerFd ──────────────────────────────────── */
-/* SAF variant: receives an open file descriptor instead of a path.       */
-/* The caller keeps its ParcelFileDescriptor open; we dup() to own ours.  */
-
-extern "C" JNIEXPORT jint JNICALL
-Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
-        JNIEnv *env, jobject /*thiz*/,
-        jint safFd, jlong sizeBytes,
-        jstring jPassword, jobjectArray jKeyfilePaths,
+/* ─── Create-container core ─────────────────────────────────────────── */
+/*
+ * Shared by the path and SAF-fd JNI wrappers below. Takes ownership of fd
+ * (always closed before returning).
+ *
+ * unlinkPathOnFail — non-null for the path wrapper: the file was freshly
+ * created by open(O_CREAT|O_TRUNC), so failure cleanup deletes it and
+ * allocation is a plain (sparse) ftruncate. Null for the SAF-fd wrapper:
+ * failure cleanup truncates to 0 (so DocumentsContract.deleteDocument()
+ * returns instantly) and allocation goes through preallocate_fd()
+ * (FUSE-safe, with progress).
+ *
+ * Progress budget: path mode fills 0→1; SAF mode reserves allocWeight
+ * (0.9 quick / 0.5 secure) for allocation and random-fills up to 0.9,
+ * exactly as the two pre-dedup variants did.
+ */
+static jint do_create_container(
+        JNIEnv *env, int fd, const char *unlinkPathOnFail, const char *logTag,
+        jlong sizeBytes, const std::string &password,
+        const std::vector<std::string> &keyfilePaths,
         jint algorithm, jint hashAlg, jint filesystem,
-        jboolean quickFormat,
-        jbyteArray entropyBytes,
-        jobject progressListener,
-        jint pim)
+        jboolean quickFormat, jobject progressListener, jint pim)
 {
-    if (algorithm < 0 || algorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
-
-    std::string password = jstring_to_string(env, jPassword);
-    StringWiper _wipe_password(password);
-    auto keyfilePaths    = jstringArray_to_vector(env, jKeyfilePaths);
-    if (password.empty()) return ERR_FILE;
-
-    int fd = dup((int)safFd);
-    if (fd < 0) { LOGE("[fd/create] dup failed: errno=%d", errno); return ERR_FILE; }
+    auto fail_cleanup = [&]() {
+        if (unlinkPathOnFail) { close(fd); unlink(unlinkPathOnFail); }
+        else                  { ftruncate(fd, 0); close(fd); }
+    };
 
     uint8_t effPwd[VC_MAX_PWD_LEN] = {};
     int effPwdLen = (int)password.size();
@@ -1559,51 +1400,62 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
     uint64_t dataSize = (uint64_t)sizeBytes;
     uint64_t fileSize = dataSize + VC_DATA_OFFSET + VC_BACKUP_AREA_SIZE;
 
+    /* Resolve progress callback method ID once — reused across all chunks */
     jmethodID progressMid = resolve_progress_mid(env, progressListener);
-    float allocWeight = quickFormat ? 0.9f : 0.5f;
 
-    if (!preallocate_fd(env, progressListener, progressMid, fd, fileSize, dataSize, allocWeight)) {
-        close(fd); return ERR_NO_SPACE;
+    /* Allocation phase — see the mode note above. */
+    float allocWeight = 0.f, fillEnd = 1.f;
+    if (unlinkPathOnFail) {
+        if (ftruncate(fd, (off_t)fileSize) != 0) {
+            LOGE("[%s] ftruncate failed - disk full?", logTag);
+            secure_memset(effPwd, 0, sizeof(effPwd));
+            fail_cleanup(); return ERR_NO_SPACE;
+        }
+    } else {
+        allocWeight = quickFormat ? 0.9f : 0.5f;
+        fillEnd     = 0.9f;
+        if (!preallocate_fd(env, progressListener, progressMid, fd, fileSize, dataSize, allocWeight)) {
+            secure_memset(effPwd, 0, sizeof(effPwd));
+            close(fd); return ERR_NO_SPACE;   /* preallocate_fd already truncated to 0 */
+        }
+        /* Cut a stale tail if the SAF file pre-existed larger than the new container —
+         * later size-derived offsets (hidden-volume creation, restore) use lseek(SEEK_END)
+         * and would otherwise compute from the wrong (larger) file size. fallocate() only
+         * grows/reserves; it doesn't shrink, so this is needed even after a successful
+         * preallocate_fd(). */
+        ftruncate(fd, (off_t)fileSize);
     }
-    /* Cut a stale tail if the SAF file pre-existed larger than the new container —
-     * later size-derived offsets (hidden-volume creation, restore) use lseek(SEEK_END)
-     * and would otherwise compute from the wrong (larger) file size. fallocate() only
-     * grows/reserves; it doesn't shrink, so this is needed even after a successful
-     * preallocate_fd(). */
-    ftruncate(fd, (off_t)fileSize);
 
     uint8_t masterKey[192] = {};
     if (!read_urandom(masterKey, (size_t)(n * 64))) {
-        LOGE("[fd/create] /dev/urandom failed for master key");
-        ftruncate(fd, 0);
-        close(fd); return ERR_RAND;
+        LOGE("[%s] /dev/urandom failed for master key - aborting", logTag);
+        secure_memset(effPwd, 0, sizeof(effPwd));
+        fail_cleanup(); return ERR_RAND;
     }
 
     if (write_vc_header(fd, 0, dataSize, VC_DATA_OFFSET,
                         masterKey, algId, (int)hashAlg,
                         (const char*)effPwd, pbkdf2PwdLen, (int)pim) != 0) {
-        LOGE("[fd/create] Primary header write failed");
+        LOGE("[%s] Primary header write failed", logTag);
         secure_memset(effPwd, 0, sizeof(effPwd));
         secure_memset((volatile uint8_t*)masterKey, 0, sizeof(masterKey));
-        ftruncate(fd, 0);
-        close(fd); return ERR_FILE;
+        fail_cleanup(); return ERR_FILE;
     }
 
+    /* Write backup header at end of file */
     uint64_t backupOff = fileSize - VC_BACKUP_AREA_SIZE;
     if (write_vc_header(fd, backupOff, dataSize, VC_DATA_OFFSET,
                         masterKey, algId, (int)hashAlg,
                         (const char*)effPwd, pbkdf2PwdLen, (int)pim) != 0) {
-        LOGE("[fd/create] Backup header write failed");
+        LOGE("[%s] Backup header write failed", logTag);
         secure_memset(effPwd, 0, sizeof(effPwd));
         secure_memset((volatile uint8_t*)masterKey, 0, sizeof(masterKey));
-        ftruncate(fd, 0);
-        close(fd); return ERR_FILE;
+        fail_cleanup(); return ERR_FILE;
     }
     secure_memset(effPwd, 0, sizeof(effPwd));
 
+    /* Fill data area */
     if (!quickFormat) {
-        /* Fill factor: allocation consumed allocWeight, random fill covers the rest up to 0.9. */
-        const float fillEnd = 0.9f;
         const size_t CHUNK = 65536;
         auto *rnd = static_cast<uint8_t*>(malloc(CHUNK));
         if (rnd) {
@@ -1624,39 +1476,45 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
                     }
                 }
                 if (!rng_ok) break;
-                /* write_all_at loops over partial writes — the previous pwrite()-based
-                 * check only bailed on pw<=0 but still advanced `remaining -= sz` on a
-                 * short (partial) write, silently truncating the fill. */
                 if (!write_all_at(fd, rnd, sz, (long long)offset)) { write_ok = false; break; }
                 remaining -= sz; offset += sz;
                 uint64_t written = dataSize - remaining;
-                float fillFrac  = (float)written / (float)dataSize;
-                float frac  = allocWeight + fillFrac * (fillEnd - allocWeight);
-                uint64_t el = (uint64_t)time(nullptr) - t0;
-                float speed = el > 0 ? (float)(written/1048576UL)/(float)el : 10.f;
-                jlong pseudo = (jlong)((double)frac * (double)dataSize);
-                report_progress(env, progressListener, progressMid, frac, speed, pseudo);
+                float fillFrac = (float)written / (float)dataSize;
+                float frac     = allocWeight + fillFrac * (fillEnd - allocWeight);
+                uint64_t el    = (uint64_t)time(nullptr) - t0;
+                float speed    = el > 0 ? (float)(written/1048576UL)/(float)el : 10.f;
+                report_progress(env, progressListener, progressMid, frac, speed,
+                                (jlong)((double)frac * (double)dataSize));
             }
             if (rfd >= 0) close(rfd);
             secure_memset(rnd, 0, CHUNK);
             free(rnd);
             if (!rng_ok) {
-                secure_memset((volatile uint8_t*)masterKey, 0, sizeof(masterKey));
-                ftruncate(fd, 0);
-                close(fd); return ERR_RAND;
+                LOGE("[%s] /dev/urandom failed during data fill - aborting", logTag);
+                secure_memset((volatile uint8_t *)masterKey, 0, sizeof(masterKey));
+                fail_cleanup(); return ERR_RAND;
             }
             if (!write_ok) {
-                secure_memset((volatile uint8_t*)masterKey, 0, sizeof(masterKey));
-                ftruncate(fd, 0);
-                close(fd); return ERR_NO_SPACE;
+                LOGE("[%s] write failed during data fill - disk full?", logTag);
+                secure_memset((volatile uint8_t *)masterKey, 0, sizeof(masterKey));
+                fail_cleanup(); return ERR_NO_SPACE;
             }
         }
+    } else if (unlinkPathOnFail) {
+        /* Legacy mid-point tick for the plain-file path; the SAF path already
+         * reported allocWeight progress from preallocate_fd(). */
+        report_progress(env, progressListener, progressMid, 0.5f, 500.f, (jlong)(dataSize/2));
     }
 
+    /* Format filesystem. alloc_drive/free_drive touch g_drives[] slot state
+     * shared with every other native call, so the whole claim→format→release
+     * sequence runs under one g_fatfs_mutex critical section (diskio.cpp's
+     * callbacks run synchronously inside f_mkfs on this same thread and must
+     * NOT re-lock — see the comment on g_fatfs_mutex). */
     char drvPath[8];
-    BYTE work[4096];
-    BYTE fmtFlag = (filesystem == 1) ? (FM_EXFAT|FM_SFD) : ((FM_FAT|FM_FAT32)|FM_SFD);
-    BYTE nFat    = (filesystem == 1) ? 1 : 2;
+    BYTE  work[4096];
+    BYTE  fmtFlag = (filesystem == 1) ? (FM_EXFAT|FM_SFD) : ((FM_FAT|FM_FAT32)|FM_SFD);
+    BYTE  nFat    = (filesystem == 1) ? 1 : 2;
     MKFS_PARM opts = { fmtFlag, nFat, 0, 0, 0 };
     FRESULT fr = FR_DISK_ERR;
     int pdrv;
@@ -1665,9 +1523,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
         pdrv = alloc_drive(fd, VC_DATA_OFFSET, dataSize / VC_SECTOR_SIZE, masterKey, algId);
         secure_memset(masterKey, 0, sizeof(masterKey));
         if (pdrv < 0) {
-            LOGE("[fd/create] No drive slot");
-            ftruncate(fd, 0);
-            close(fd); return ERR_NO_SLOT;
+            LOGE("[%s] No drive slot", logTag);
+            fail_cleanup(); return ERR_NO_SLOT;
         }
         snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
         fr = f_mkfs(drvPath, &opts, work, sizeof(work));
@@ -1675,9 +1532,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
     }
 
     if (fr != FR_OK) {
-        LOGE("[fd/create] f_mkfs failed: %d", (int)fr);
-        ftruncate(fd, 0);
-        close(fd); return ERR_FS;
+        LOGE("[%s] f_mkfs failed: %d", logTag, (int)fr);
+        fail_cleanup(); return ERR_FS;
     }
 
     fsync(fd);
@@ -1686,22 +1542,82 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
     return ERR_OK;
 }
 
-/* ─── JNI: nativeOpenContainerFd ────────────────────────────────────── */
+/* ─── JNI: nativeCreateContainer ────────────────────────────────────── */
 
-extern "C" JNIEXPORT jlong JNICALL
-Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
         JNIEnv *env, jobject /*thiz*/,
-        jint safFd, jstring jPassword, jobjectArray jKeyfileData,
-        jint pim, jint algorithm, jint hashAlgorithm,
-        jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
-        jobject mountProgressListener, jboolean readOnly)
+        jstring jPath, jlong sizeBytes,
+        jstring jPassword, jobjectArray jKeyfilePaths,
+        jint algorithm, jint hashAlg, jint filesystem,
+        jboolean quickFormat,
+        jbyteArray /*entropyBytes*/,
+        jobject progressListener,
+        jint pim)
 {
+    if (algorithm < 0 || algorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
+
+    std::string path     = jstring_to_string(env, jPath);
     std::string password = jstring_to_string(env, jPassword);
     StringWiper _wipe_password(password);
+    auto keyfilePaths    = jstringArray_to_vector(env, jKeyfilePaths);
+    if (path.empty() || password.empty()) return ERR_FILE;
+
+    int fd = open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) { LOGE("[create] Cannot open/create: %s (errno=%d: %s)", path.c_str(), errno, strerror(errno)); return ERR_FILE; }
+
+    return do_create_container(env, fd, path.c_str(), "create",
+                               sizeBytes, password, keyfilePaths,
+                               algorithm, hashAlg, filesystem, quickFormat,
+                               progressListener, pim);
+}
+
+/* ─── JNI: nativeCreateContainerFd ──────────────────────────────────── */
+/* SAF variant: receives an open file descriptor instead of a path.       */
+/* The caller keeps its ParcelFileDescriptor open; we dup() to own ours.  */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
+        JNIEnv *env, jobject /*thiz*/,
+        jint safFd, jlong sizeBytes,
+        jstring jPassword, jobjectArray jKeyfilePaths,
+        jint algorithm, jint hashAlg, jint filesystem,
+        jboolean quickFormat,
+        jbyteArray /*entropyBytes*/,
+        jobject progressListener,
+        jint pim)
+{
+    if (algorithm < 0 || algorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
+
+    std::string password = jstring_to_string(env, jPassword);
+    StringWiper _wipe_password(password);
+    auto keyfilePaths    = jstringArray_to_vector(env, jKeyfilePaths);
+    if (password.empty()) return ERR_FILE;
 
     int fd = dup((int)safFd);
-    if (fd < 0) { LOGE("[fd/open] dup failed: errno=%d", errno); return (jlong)ERR_FILE; }
+    if (fd < 0) { LOGE("[fd/create] dup failed: errno=%d", errno); return ERR_FILE; }
 
+    return do_create_container(env, fd, nullptr, "fd/create",
+                               sizeBytes, password, keyfilePaths,
+                               algorithm, hashAlg, filesystem, quickFormat,
+                               progressListener, pim);
+}
+
+/* ─── Open-container core ───────────────────────────────────────────── */
+/*
+ * Shared by the path and SAF-fd JNI wrappers below. Takes ownership of fd:
+ * every failure path closes it; on success it lives in ContainerCtx until
+ * nativeCloseContainer. Passwords arrive as std::strings owned (and wiped
+ * via StringWiper) by the wrappers; keyfile data stays as JNI arrays since
+ * apply_keyfile_buffers() reads them without mutation.
+ */
+static jlong do_open_container(
+        JNIEnv *env, int fd, const char *logTag,
+        const std::string &password, jobjectArray jKeyfileData,
+        jint pim, jint algorithm, jint hashAlgorithm,
+        const std::string &hiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
+        jobject mountProgressListener, jboolean readOnly)
+{
     uint8_t effPwd[VC_MAX_PWD_LEN] = {};
     int effPwdLen = (int)password.size();
     if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
@@ -1709,8 +1625,6 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     apply_keyfile_buffers(env, jKeyfileData, effPwd, &effPwdLen);
 
     /* Prepare hidden-volume credentials for boundary derivation */
-    std::string hiddenPassword = jProtectHiddenPassword ? jstring_to_string(env, jProtectHiddenPassword) : "";
-    StringWiper _wipe_hiddenPassword(hiddenPassword);
     uint8_t hidEffPwd[VC_MAX_PWD_LEN] = {};
     int hidEffPwdLen = (int)hiddenPassword.size();
     if (hidEffPwdLen > VC_MAX_PWD_LEN) hidEffPwdLen = VC_MAX_PWD_LEN;
@@ -1721,15 +1635,19 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
 
     struct stat st{};
     if (fstat(fd, &st) != 0) {
-        LOGE("[fd/open] fstat failed: errno=%d", errno);
+        LOGE("[%s] fstat failed: errno=%d", logTag, errno);
+        secure_memset(effPwd, 0, sizeof(effPwd));
         secure_memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)ERR_FILE;
     }
     uint64_t fileSize = (uint64_t)st.st_size;
 
     /* Too-small / misaligned is an I/O-shaped problem, not evidence about the
      * password — ERR_READ (Kotlin maps it to IO_ERROR) is the honest category. */
-    if (fileSize < VC_DATA_OFFSET) { secure_memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)ERR_READ; }
-    if (fileSize % VC_SECTOR_SIZE != 0) { secure_memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)ERR_READ; }
+    if (fileSize < VC_DATA_OFFSET || fileSize % VC_SECTOR_SIZE != 0) {
+        LOGE("[%s] file too small or not sector-aligned: %llu", logTag, (unsigned long long)fileSize);
+        secure_memset(effPwd, 0, sizeof(effPwd));
+        secure_memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)ERR_READ;
+    }
 
     uint8_t masterKey[192] = {};
     int mkLen = 0, algId = 0, hashId = 0;
@@ -1756,7 +1674,11 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     }
 
     secure_memset(effPwd, 0, sizeof(effPwd));
-    if (rc != ERR_OK) { secure_memset(masterKey, 0, sizeof(masterKey)); secure_memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)rc; }
+    if (rc != ERR_OK) {
+        secure_memset(masterKey, 0, sizeof(masterKey));
+        secure_memset(hidEffPwd, 0, sizeof(hidEffPwd));
+        close(fd); return (jlong)rc;
+    }
 
     /* Geometry sanity check (stage 2b): a header can be CRC-valid yet describe
      * geometry that would cause out-of-bounds I/O (e.g. a corrupted or
@@ -1764,8 +1686,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
      * unconditionally, so validate before handing them off. */
     if (dataSz == 0 || dataSz % VC_SECTOR_SIZE != 0 ||
         dataOff % VC_SECTOR_SIZE != 0 || dataOff + dataSz > fileSize) {
-        LOGE("[fd/open] header geometry out of range (dataOff=%llu dataSz=%llu fileSize=%llu)",
-             (unsigned long long)dataOff, (unsigned long long)dataSz, (unsigned long long)fileSize);
+        LOGE("[%s] header geometry out of range (dataOff=%llu dataSz=%llu fileSize=%llu)",
+             logTag, (unsigned long long)dataOff, (unsigned long long)dataSz, (unsigned long long)fileSize);
         secure_memset(masterKey, 0, sizeof(masterKey)); secure_memset(hidEffPwd, 0, sizeof(hidEffPwd));
         close(fd); return (jlong)ERR_UNSUPPORTED;
     }
@@ -1789,8 +1711,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
                                          &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
                 if (hrc == ERR_OK && hidDataSz > 0) {
                     hiddenBoundary = dataOff + dataSz - hidDataSz;
-                    LOGE("[fd/open] protect-hidden: boundary set to 0x%llx from hidden header",
-                         (unsigned long long)hiddenBoundary);
+                    LOGE("[%s] protect-hidden: boundary set to 0x%llx from hidden header",
+                         logTag, (unsigned long long)hiddenBoundary);
                     break;
                 }
             }
@@ -1819,7 +1741,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
         snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
         fr = f_mount(&ctx->fatFs, drvPath, 1);
         if (fr != FR_OK) {
-            LOGE("[fd/open] f_mount failed: %d", (int)fr);
+            LOGE("[%s] f_mount failed: %d", logTag, (int)fr);
             free_drive(pdrv); close(fd); delete ctx;
             return (jlong)ERR_FS;
         }
@@ -1829,6 +1751,30 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
      * opaque Long (checks handle >= 0 for success); generation is capped well
      * under 2^31 so the sign bit never flips. */
     return ((jlong)gen << 8) | (jlong)pdrv;
+}
+
+/* ─── JNI: nativeOpenContainerFd ────────────────────────────────────── */
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
+        JNIEnv *env, jobject /*thiz*/,
+        jint safFd, jstring jPassword, jobjectArray jKeyfileData,
+        jint pim, jint algorithm, jint hashAlgorithm,
+        jstring jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
+        jobject mountProgressListener, jboolean readOnly)
+{
+    std::string password = jstring_to_string(env, jPassword);
+    StringWiper _wipe_password(password);
+    std::string hiddenPassword = jProtectHiddenPassword ? jstring_to_string(env, jProtectHiddenPassword) : "";
+    StringWiper _wipe_hiddenPassword(hiddenPassword);
+
+    int fd = dup((int)safFd);
+    if (fd < 0) { LOGE("[fd/open] dup failed: errno=%d", errno); return (jlong)ERR_FILE; }
+
+    return do_open_container(env, fd, "fd/open",
+                             password, jKeyfileData, pim, algorithm, hashAlgorithm,
+                             hiddenPassword, jProtectHiddenKeyfileData, protectHiddenPim,
+                             mountProgressListener, readOnly);
 }
 
 /* ─── JNI: nativeOpenContainer ──────────────────────────────────────── */
@@ -1844,139 +1790,16 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     std::string path     = jstring_to_string(env, jPath);
     std::string password = jstring_to_string(env, jPassword);
     StringWiper _wipe_password(password);
-
-    uint8_t effPwd[VC_MAX_PWD_LEN] = {};
-    int effPwdLen = (int)password.size();
-    if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
-    memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
-    apply_keyfile_buffers(env, jKeyfileData, effPwd, &effPwdLen);
-
-    /* Prepare hidden-volume credentials for boundary derivation */
     std::string hiddenPassword = jProtectHiddenPassword ? jstring_to_string(env, jProtectHiddenPassword) : "";
     StringWiper _wipe_hiddenPassword(hiddenPassword);
-    uint8_t hidEffPwd[VC_MAX_PWD_LEN] = {};
-    int hidEffPwdLen = (int)hiddenPassword.size();
-    if (hidEffPwdLen > VC_MAX_PWD_LEN) hidEffPwdLen = VC_MAX_PWD_LEN;
-    if (hidEffPwdLen > 0) {
-        memcpy(hidEffPwd, hiddenPassword.c_str(), (size_t)hidEffPwdLen);
-        apply_keyfile_buffers(env, jProtectHiddenKeyfileData, hidEffPwd, &hidEffPwdLen);
-    }
 
     int fd = open(path.c_str(), O_RDWR);
-    if (fd < 0) { LOGE("Cannot open: %s (errno=%d: %s)", path.c_str(), errno, strerror(errno)); secure_memset(hidEffPwd, 0, sizeof(hidEffPwd)); return (jlong)ERR_FILE; }
+    if (fd < 0) { LOGE("[open] Cannot open: %s (errno=%d: %s)", path.c_str(), errno, strerror(errno)); return (jlong)ERR_FILE; }
 
-    struct stat st{};
-    if (fstat(fd, &st) != 0) {
-        LOGE("fstat failed: errno=%d", errno);
-        secure_memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)ERR_FILE;
-    }
-    uint64_t fileSize = (uint64_t)st.st_size;
-
-    /* Too-small / misaligned is an I/O-shaped problem, not evidence about the
-     * password — ERR_READ (Kotlin maps it to IO_ERROR) is the honest category. */
-    if (fileSize < VC_DATA_OFFSET) {
-        LOGE("File too small: %llu", (unsigned long long)fileSize);
-        secure_memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)ERR_READ;
-    }
-    if (fileSize % VC_SECTOR_SIZE != 0) {
-        LOGE("Not sector-aligned: %llu", (unsigned long long)fileSize);
-        secure_memset(hidEffPwd, 0, sizeof(hidEffPwd)); close(fd); return (jlong)ERR_READ;
-    }
-
-    uint8_t masterKey[192] = {};
-    int mkLen = 0, algId = 0, hashId = 0;
-    uint64_t dataSz = 0, dataOff = 0;
-
-    /* Try primary headers only — matching VeraCrypt default mount (no backup headers) */
-    uint64_t tryOffsets[2] = { 0, VC_HIDDEN_HEADER_OFFSET };
-    bool tryIsHidden[2] = { false, true };
-
-    int rc = ERR_WRONG_PASSWORD;
-    bool authIsHidden = false;
-    uint64_t hiddenVolSize = 0;
-
-    MountCb mountCb{ env, mountProgressListener, resolve_mount_mid(env, mountProgressListener), 1, 75 };
-    MountCb *pMountCb = mountProgressListener ? &mountCb : nullptr;
-
-    for (int ti = 0; ti < 2 && rc != ERR_OK; ti++) {
-        if (tryOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
-        uint64_t hvSz = 0;
-        rc = read_vc_header(fd, tryOffsets[ti], (const char*)effPwd, effPwdLen,
-                            masterKey, &mkLen, &dataSz, &dataOff, &algId, &hashId, (int)pim, &hvSz,
-                            (int)algorithm, (int)hashAlgorithm, pMountCb);
-        if (rc == ERR_OK) {
-            authIsHidden = tryIsHidden[ti];
-            hiddenVolSize = hvSz;
-        }
-    }
-
-    secure_memset(effPwd, 0, sizeof(effPwd));
-
-    if (rc != ERR_OK) {
-        secure_memset(masterKey, 0, sizeof(masterKey));
-        secure_memset(hidEffPwd, 0, sizeof(hidEffPwd));
-        close(fd); return (jlong)rc;
-    }
-
-    /* Geometry sanity check (stage 2b) — see nativeOpenContainerFd for rationale. */
-    if (dataSz == 0 || dataSz % VC_SECTOR_SIZE != 0 ||
-        dataOff % VC_SECTOR_SIZE != 0 || dataOff + dataSz > fileSize) {
-        LOGE("header geometry out of range (dataOff=%llu dataSz=%llu fileSize=%llu)",
-             (unsigned long long)dataOff, (unsigned long long)dataSz, (unsigned long long)fileSize);
-        secure_memset(masterKey, 0, sizeof(masterKey)); secure_memset(hidEffPwd, 0, sizeof(hidEffPwd));
-        close(fd); return (jlong)ERR_UNSUPPORTED;
-    }
-
-    uint64_t hiddenBoundary = 0;
-    if (!authIsHidden && hidEffPwdLen > 0) {
-        if (hiddenVolSize > 0) {
-            hiddenBoundary = dataOff + dataSz - hiddenVolSize;
-        } else {
-            uint64_t hidOffsets[2] = { VC_HIDDEN_HEADER_OFFSET, fileSize - VC_HIDDEN_HEADER_OFFSET };
-            uint8_t hidMasterKey[192] = {};
-            int hidMkLen = 0, hidAlgId = 0, hidHashId = 0;
-            uint64_t hidDataSz = 0, hidDataOff = 0, hidHvSz = 0;
-            for (int ti = 0; ti < 2; ti++) {
-                if (hidOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
-                int hrc = read_vc_header(fd, hidOffsets[ti], (const char*)hidEffPwd, hidEffPwdLen,
-                                         hidMasterKey, &hidMkLen, &hidDataSz, &hidDataOff,
-                                         &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
-                if (hrc == ERR_OK && hidDataSz > 0) {
-                    hiddenBoundary = dataOff + dataSz - hidDataSz;
-                    LOGE("[open] protect-hidden: boundary set to 0x%llx from hidden header",
-                         (unsigned long long)hiddenBoundary);
-                    break;
-                }
-            }
-            secure_memset(hidMasterKey, 0, sizeof(hidMasterKey));
-        }
-    }
-    secure_memset(hidEffPwd, 0, sizeof(hidEffPwd));
-
-    uint32_t iterCount = vc_get_iterations(hashId, (int)pim);
-    char drvPath[8];
-    FRESULT fr = FR_DISK_ERR;
-    int pdrv;
-    uint32_t gen;
-    {
-        std::lock_guard<std::mutex> lock(g_fatfs_mutex);
-        pdrv = alloc_drive(fd, dataOff, dataSz / VC_SECTOR_SIZE, masterKey, algId, hashId,
-                           authIsHidden, hiddenBoundary, iterCount);
-        secure_memset(masterKey, 0, sizeof(masterKey));
-        if (pdrv < 0) { close(fd); return (jlong)ERR_NO_SLOT; }
-        gen = g_drives[pdrv].generation;
-
-        auto *ctx = new ContainerCtx{ pdrv, {}, fd, (bool)readOnly };
-        snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
-        fr = f_mount(&ctx->fatFs, drvPath, 1);
-        if (fr != FR_OK) {
-            LOGE("f_mount failed: %d", (int)fr);
-            free_drive(pdrv); close(fd); delete ctx;
-            return (jlong)ERR_FS;
-        }
-        g_ctxMap[pdrv] = ctx;
-    }
-    return ((jlong)gen << 8) | (jlong)pdrv;
+    return do_open_container(env, fd, "open",
+                             password, jKeyfileData, pim, algorithm, hashAlgorithm,
+                             hiddenPassword, jProtectHiddenKeyfileData, protectHiddenPim,
+                             mountProgressListener, readOnly);
 }
 
 /* Converts a FatFs packed date/time to Unix epoch milliseconds (UTC).
@@ -2436,35 +2259,16 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeDeleteDirectory(
  * container with no hidden volume. Reading field28 on mount is kept only for
  * backward compatibility with containers created before this fix. */
 
-extern "C" JNIEXPORT jint JNICALL
-Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
-        JNIEnv *env, jobject /*thiz*/,
-        jstring jPath,
+/* Shared by the path and SAF-fd JNI wrappers below. Takes ownership of fd. */
+static jint do_create_hidden_volume(
+        JNIEnv *env, int fd, const char *logTag,
         jlong hiddenSizeBytes,
-        jstring jOuterPassword, jobjectArray jOuterKeyfilePaths, jint outerPim,
-        jstring jHiddenPassword, jobjectArray jHiddenKeyfilePaths, jint hiddenPim,
+        const std::string &outerPassword, const std::vector<std::string> &outerKeyfilePaths, jint outerPim,
+        const std::string &hiddenPassword, const std::vector<std::string> &hiddenKeyfilePaths, jint hiddenPim,
         jint hiddenAlgorithm, jint hiddenHashAlg,
-        jboolean /*quickFormat*/,
-        jbyteArray /*entropyBytes*/,
         jobject progressListener)
 {
-    if (hiddenAlgorithm < 0 || hiddenAlgorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
-    if (hiddenSizeBytes < (jlong)(4 * 1024 * 1024)) return ERR_NO_SPACE;
-
-    std::string path           = jstring_to_string(env, jPath);
-    std::string outerPassword  = jstring_to_string(env, jOuterPassword);
-    std::string hiddenPassword = jstring_to_string(env, jHiddenPassword);
-    StringWiper _wipe_outerPassword(outerPassword);
-    StringWiper _wipe_hiddenPassword(hiddenPassword);
-    auto outerKeyfilePaths     = jstringArray_to_vector(env, jOuterKeyfilePaths);
-    auto hiddenKeyfilePaths    = jstringArray_to_vector(env, jHiddenKeyfilePaths);
-
-    if (path.empty() || outerPassword.empty() || hiddenPassword.empty()) return ERR_FILE;
-
     jmethodID progressMid = resolve_progress_mid(env, progressListener);
-
-    int fd = open(path.c_str(), O_RDWR);
-    if (fd < 0) { LOGE("nativeCreateHiddenVolume: cannot open %s", path.c_str()); return ERR_FILE; }
 
     off_t fileSzOff = lseek(fd, 0, SEEK_END);
     if (fileSzOff < 0) { close(fd); return ERR_FILE; }
@@ -2473,8 +2277,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
     uint64_t hidSz = (uint64_t)hiddenSizeBytes;
     /* Need room for both header regions + data offset + hidden data */
     if (fileSize < VC_DATA_OFFSET + VC_BACKUP_AREA_SIZE + hidSz) {
-        LOGE("nativeCreateHiddenVolume: file too small (%llu) for hidden size %llu",
-             (unsigned long long)fileSize, (unsigned long long)hidSz);
+        LOGE("[%s] file too small (%llu) for hidden size %llu",
+             logTag, (unsigned long long)fileSize, (unsigned long long)hidSz);
         close(fd);
         return ERR_NO_SPACE;
     }
@@ -2509,7 +2313,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
     secure_memset(outerMasterKey, 0, sizeof(outerMasterKey));
     secure_memset(outerEffPwd,    0, sizeof(outerEffPwd));
     if (rc != ERR_OK) {
-        LOGE("nativeCreateHiddenVolume: outer auth failed (%d)", rc);
+        LOGE("[%s] outer auth failed (%d)", logTag, rc);
         secure_memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
         close(fd);
         return ERR_WRONG_PASSWORD;
@@ -2521,11 +2325,14 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
 
     /* ── Generate hidden master key and write hidden headers ── */
     int hiddenAlgId = (int)hiddenAlgorithm;
-    if (hiddenAlgId < 0 || hiddenAlgId >= NUM_ALGORITHMS) { close(fd); return ERR_FS; }
+    if (hiddenAlgId < 0 || hiddenAlgId >= NUM_ALGORITHMS) {
+        secure_memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
+        close(fd); return ERR_FS;
+    }
     int hiddenN     = ALGORITHMS[hiddenAlgId].n;
     uint8_t hiddenMasterKey[192] = {};
     if (!read_urandom(hiddenMasterKey, (size_t)(hiddenN * 64))) {
-        LOGE("[hidden] /dev/urandom failed for hidden master key — aborting");
+        LOGE("[%s] /dev/urandom failed for hidden master key - aborting", logTag);
         secure_memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
         close(fd);
         return ERR_RAND;
@@ -2567,7 +2374,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
                                true, 0);
         secure_memset(hiddenMasterKey, 0, sizeof(hiddenMasterKey));
         if (pdrv < 0) {
-            LOGE("[5/5] No free drive slot");
+            LOGE("[%s] No free drive slot", logTag);
             close(fd);
             return ERR_NO_SLOT;
         }
@@ -2579,6 +2386,40 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
     report_progress(env, progressListener, progressMid, 1.0f, 0.f, (jlong)hidSz);
     close(fd);
     return (fr == FR_OK) ? ERR_OK : ERR_FS;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
+        JNIEnv *env, jobject /*thiz*/,
+        jstring jPath,
+        jlong hiddenSizeBytes,
+        jstring jOuterPassword, jobjectArray jOuterKeyfilePaths, jint outerPim,
+        jstring jHiddenPassword, jobjectArray jHiddenKeyfilePaths, jint hiddenPim,
+        jint hiddenAlgorithm, jint hiddenHashAlg,
+        jboolean /*quickFormat*/,
+        jbyteArray /*entropyBytes*/,
+        jobject progressListener)
+{
+    if (hiddenAlgorithm < 0 || hiddenAlgorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
+    if (hiddenSizeBytes < (jlong)(4 * 1024 * 1024)) return ERR_NO_SPACE;
+
+    std::string path           = jstring_to_string(env, jPath);
+    std::string outerPassword  = jstring_to_string(env, jOuterPassword);
+    std::string hiddenPassword = jstring_to_string(env, jHiddenPassword);
+    StringWiper _wipe_outerPassword(outerPassword);
+    StringWiper _wipe_hiddenPassword(hiddenPassword);
+    auto outerKeyfilePaths     = jstringArray_to_vector(env, jOuterKeyfilePaths);
+    auto hiddenKeyfilePaths    = jstringArray_to_vector(env, jHiddenKeyfilePaths);
+
+    if (path.empty() || outerPassword.empty() || hiddenPassword.empty()) return ERR_FILE;
+
+    int fd = open(path.c_str(), O_RDWR);
+    if (fd < 0) { LOGE("[hidden] cannot open %s", path.c_str()); return ERR_FILE; }
+
+    return do_create_hidden_volume(env, fd, "hidden", hiddenSizeBytes,
+                                   outerPassword, outerKeyfilePaths, outerPim,
+                                   hiddenPassword, hiddenKeyfilePaths, hiddenPim,
+                                   hiddenAlgorithm, hiddenHashAlg, progressListener);
 }
 
 /* ─── JNI: nativeCreateHiddenVolumeFd ───────────────────────────────── */
@@ -2609,101 +2450,13 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeFd(
 
     if (outerPassword.empty() || hiddenPassword.empty()) return ERR_FILE;
 
-    jmethodID progressMid = resolve_progress_mid(env, progressListener);
-
     int fd = dup((int)safFd);
     if (fd < 0) { LOGE("[fd/hidden] dup failed: errno=%d", errno); return ERR_FILE; }
 
-    off_t fileSzOff = lseek(fd, 0, SEEK_END);
-    if (fileSzOff < 0) { close(fd); return ERR_FILE; }
-    uint64_t fileSize = (uint64_t)fileSzOff;
-
-    uint64_t hidSz = (uint64_t)hiddenSizeBytes;
-    if (fileSize < VC_DATA_OFFSET + VC_BACKUP_AREA_SIZE + hidSz) {
-        close(fd); return ERR_NO_SPACE;
-    }
-
-    uint8_t outerEffPwd[VC_MAX_PWD_LEN] = {};
-    int outerEffPwdLen = (int)outerPassword.size();
-    if (outerEffPwdLen > VC_MAX_PWD_LEN) outerEffPwdLen = VC_MAX_PWD_LEN;
-    memcpy(outerEffPwd, outerPassword.c_str(), (size_t)outerEffPwdLen);
-    apply_keyfiles_to_password(outerKeyfilePaths, outerEffPwd, &outerEffPwdLen);
-
-    uint8_t hiddenEffPwd[VC_MAX_PWD_LEN] = {};
-    int hiddenEffPwdLen = (int)hiddenPassword.size();
-    if (hiddenEffPwdLen > VC_MAX_PWD_LEN) hiddenEffPwdLen = VC_MAX_PWD_LEN;
-    memcpy(hiddenEffPwd, hiddenPassword.c_str(), (size_t)hiddenEffPwdLen);
-    apply_keyfiles_to_password(hiddenKeyfilePaths, hiddenEffPwd, &hiddenEffPwdLen);
-
-    /* Outer headers are never rewritten — see the deniability note on
-       nativeCreateHiddenVolume above. This read_vc_header call exists solely
-       to verify the outer password before touching the hidden-area headers. */
-    uint8_t outerMasterKey[192] = {};
-    int outerMkLen = 0, outerAlgId = 0, outerHashId = 0;
-    uint64_t outerDataSz = 0, outerDataOff = 0;
-    int rc = read_vc_header(fd, 0,
-                            (const char*)outerEffPwd, outerEffPwdLen,
-                            outerMasterKey, &outerMkLen,
-                            &outerDataSz, &outerDataOff,
-                            &outerAlgId, &outerHashId,
-                            (int)outerPim, nullptr);
-    secure_memset(outerMasterKey, 0, sizeof(outerMasterKey));
-    secure_memset(outerEffPwd,    0, sizeof(outerEffPwd));
-    if (rc != ERR_OK) {
-        secure_memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
-        close(fd); return ERR_WRONG_PASSWORD;
-    }
-
-    uint64_t hiddenDataOff = fileSize - VC_BACKUP_AREA_SIZE - hidSz;
-
-    int hiddenAlgId = (int)hiddenAlgorithm;
-    if (hiddenAlgId < 0 || hiddenAlgId >= NUM_ALGORITHMS) { close(fd); return ERR_FS; }
-    int hiddenN     = ALGORITHMS[hiddenAlgId].n;
-    uint8_t hiddenMasterKey[192] = {};
-    if (!read_urandom(hiddenMasterKey, (size_t)(hiddenN * 64))) {
-        secure_memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
-        close(fd); return ERR_RAND;
-    }
-
-    if (write_vc_header(fd, VC_HIDDEN_HEADER_OFFSET,
-                        hidSz, hiddenDataOff,
-                        hiddenMasterKey, hiddenAlgId, (int)hiddenHashAlg,
-                        (const char*)hiddenEffPwd, hiddenEffPwdLen,
-                        (int)hiddenPim, 0, nullptr) != 0) {
-        secure_memset((volatile uint8_t*)hiddenMasterKey, 0, sizeof(hiddenMasterKey));
-        secure_memset(hiddenEffPwd,    0, sizeof(hiddenEffPwd));
-        close(fd); return ERR_FILE;
-    }
-    if (write_vc_header(fd, fileSize - VC_HIDDEN_HEADER_OFFSET,
-                        hidSz, hiddenDataOff,
-                        hiddenMasterKey, hiddenAlgId, (int)hiddenHashAlg,
-                        (const char*)hiddenEffPwd, hiddenEffPwdLen,
-                        (int)hiddenPim, 0, nullptr) != 0) {
-        secure_memset((volatile uint8_t*)hiddenMasterKey, 0, sizeof(hiddenMasterKey));
-        secure_memset(hiddenEffPwd,    0, sizeof(hiddenEffPwd));
-        close(fd); return ERR_FILE;
-    }
-    secure_memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
-
-    char drvPath[8];
-    BYTE work[4096];
-    MKFS_PARM opts = { (FM_FAT | FM_FAT32) | FM_SFD, 2, 0, 0, 0 };
-    FRESULT fr = FR_DISK_ERR;
-    {
-        std::lock_guard<std::mutex> lock(g_fatfs_mutex);
-        int pdrv = alloc_drive(fd, hiddenDataOff, hidSz / VC_SECTOR_SIZE,
-                               hiddenMasterKey, hiddenAlgId, (int)hiddenHashAlg,
-                               true, 0);
-        secure_memset(hiddenMasterKey, 0, sizeof(hiddenMasterKey));
-        if (pdrv < 0) { close(fd); return ERR_NO_SLOT; }
-        snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
-        fr = f_mkfs(drvPath, &opts, work, sizeof(work));
-        free_drive(pdrv);
-    }
-
-    report_progress(env, progressListener, progressMid, 1.0f, 0.f, (jlong)hidSz);
-    close(fd);
-    return (fr == FR_OK) ? ERR_OK : ERR_FS;
+    return do_create_hidden_volume(env, fd, "fd/hidden", hiddenSizeBytes,
+                                   outerPassword, outerKeyfilePaths, outerPim,
+                                   hiddenPassword, hiddenKeyfilePaths, hiddenPim,
+                                   hiddenAlgorithm, hiddenHashAlg, progressListener);
 }
 
 /* ─── JNI: nativeGetVolumeType ──────────────────────────────────────── */
@@ -2791,27 +2544,15 @@ static int wipe_and_rewrite_header(int fd, uint64_t fileOff,
     return ret;
 }
 
-/* ─── JNI: nativeChangePassword ─────────────────────────────────────── */
-
-extern "C" JNIEXPORT jint JNICALL
-Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePassword(
-        JNIEnv *env, jobject /*thiz*/,
-        jstring jPath,
-        jstring jOldPassword, jobjectArray jOldKeyfilePaths, jint oldPim,
-        jstring jNewPassword, jobjectArray jNewKeyfilePaths, jint newHashAlg, jint newPim,
-        jint wipePassCount, jbyteArray jExtraEntropy)
+/* ─── Change-password core ──────────────────────────────────────────── */
+/* Shared by the path and SAF-fd JNI wrappers below. Takes ownership of fd. */
+static jint do_change_password(
+        JNIEnv *env, int fd,
+        const std::string &oldPassword, const std::vector<std::string> &oldKeyfilePaths, jint oldPim,
+        const std::string &newPassword, const std::vector<std::string> &newKeyfilePaths,
+        jint newHashAlg, jint newPim, jint wipePassCount, jbyteArray jExtraEntropy)
 {
-    std::string path        = jstring_to_string(env, jPath);
-    std::string oldPassword = jstring_to_string(env, jOldPassword);
-    std::string newPassword = jstring_to_string(env, jNewPassword);
-    StringWiper _wipe_oldPassword(oldPassword);
-    StringWiper _wipe_newPassword(newPassword);
-    auto oldKeyfilePaths    = jstringArray_to_vector(env, jOldKeyfilePaths);
-    auto newKeyfilePaths    = jstringArray_to_vector(env, jNewKeyfilePaths);
-
-    if (path.empty() || newPassword.empty()) return ERR_FILE;
-
-    /* Build old effective password (password XOR'd with keyfile pool) */
+    /* Build old effective password (password + keyfile pool) */
     uint8_t oldEffPwd[VC_MAX_PWD_LEN] = {};
     int oldEffPwdLen = (int)oldPassword.size();
     if (oldEffPwdLen > VC_MAX_PWD_LEN) oldEffPwdLen = VC_MAX_PWD_LEN;
@@ -2824,13 +2565,6 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePassword(
     if (newEffPwdLen > VC_MAX_PWD_LEN) newEffPwdLen = VC_MAX_PWD_LEN;
     memcpy(newEffPwd, newPassword.c_str(), (size_t)newEffPwdLen);
     apply_keyfiles_to_password(newKeyfilePaths, newEffPwd, &newEffPwdLen);
-
-    int fd = open(path.c_str(), O_RDWR);
-    if (fd < 0) {
-        secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
-        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
-        return ERR_FILE;
-    }
 
     off_t fileSzOff = lseek(fd, 0, SEEK_END);
     if (fileSzOff < 0) {
@@ -2863,8 +2597,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePassword(
 
     uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
 
-    /* oldPassword/newPassword contents are now in effPwd buffers; StringWiper
-     * (see declarations above) wipes the std::string storage at scope exit. */
+    /* oldPassword/newPassword contents are now in effPwd buffers; the wrappers'
+     * StringWipers wipe the std::string storage at scope exit. */
 
     /* Acquire entropy pin only after all validation passes, so every subsequent
      * exit path can release it without needing early-return bookkeeping. */
@@ -2899,6 +2633,35 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePassword(
     return r2 == 0 ? ERR_OK : ERR_FILE;
 }
 
+/* ─── JNI: nativeChangePassword ─────────────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePassword(
+        JNIEnv *env, jobject /*thiz*/,
+        jstring jPath,
+        jstring jOldPassword, jobjectArray jOldKeyfilePaths, jint oldPim,
+        jstring jNewPassword, jobjectArray jNewKeyfilePaths, jint newHashAlg, jint newPim,
+        jint wipePassCount, jbyteArray jExtraEntropy)
+{
+    std::string path        = jstring_to_string(env, jPath);
+    std::string oldPassword = jstring_to_string(env, jOldPassword);
+    std::string newPassword = jstring_to_string(env, jNewPassword);
+    StringWiper _wipe_oldPassword(oldPassword);
+    StringWiper _wipe_newPassword(newPassword);
+    auto oldKeyfilePaths    = jstringArray_to_vector(env, jOldKeyfilePaths);
+    auto newKeyfilePaths    = jstringArray_to_vector(env, jNewKeyfilePaths);
+
+    if (path.empty() || newPassword.empty()) return ERR_FILE;
+
+    int fd = open(path.c_str(), O_RDWR);
+    if (fd < 0) return ERR_FILE;
+
+    return do_change_password(env, fd,
+                              oldPassword, oldKeyfilePaths, oldPim,
+                              newPassword, newKeyfilePaths,
+                              newHashAlg, newPim, wipePassCount, jExtraEntropy);
+}
+
 /* ─── JNI: nativeChangePasswordFd ───────────────────────────────────── */
 /* SAF variant: takes an open file descriptor instead of a path.         */
 
@@ -2922,100 +2685,24 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePasswordFd(
     int fd = dup((int)safFd);
     if (fd < 0) return ERR_FILE;
 
-    uint8_t oldEffPwd[VC_MAX_PWD_LEN] = {};
-    int oldEffPwdLen = (int)oldPassword.size();
-    if (oldEffPwdLen > VC_MAX_PWD_LEN) oldEffPwdLen = VC_MAX_PWD_LEN;
-    memcpy(oldEffPwd, oldPassword.c_str(), (size_t)oldEffPwdLen);
-    apply_keyfiles_to_password(oldKeyfilePaths, oldEffPwd, &oldEffPwdLen);
-
-    uint8_t newEffPwd[VC_MAX_PWD_LEN] = {};
-    int newEffPwdLen = (int)newPassword.size();
-    if (newEffPwdLen > VC_MAX_PWD_LEN) newEffPwdLen = VC_MAX_PWD_LEN;
-    memcpy(newEffPwd, newPassword.c_str(), (size_t)newEffPwdLen);
-    apply_keyfiles_to_password(newKeyfilePaths, newEffPwd, &newEffPwdLen);
-
-    off_t fileSzOff = lseek(fd, 0, SEEK_END);
-    if (fileSzOff < 0) {
-        secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
-        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
-        close(fd); return ERR_FILE;
-    }
-    uint64_t fileSize = (uint64_t)fileSzOff;
-
-    uint8_t masterKey[192] = {};
-    int mkLen = 0, algId = 0, hashId = 0;
-    uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
-    int rc = read_vc_header(fd, 0,
-                            (const char*)oldEffPwd, oldEffPwdLen,
-                            masterKey, &mkLen, &dataSz, &dataOff,
-                            &algId, &hashId, (int)oldPim, &hiddenVolSize);
-    secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
-    if (rc != ERR_OK) {
-        secure_memset(masterKey, 0, sizeof(masterKey));
-        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
-        close(fd); return ERR_WRONG_PASSWORD;
-    }
-
-    int passes  = (int)wipePassCount; if (passes < 1) passes = 1;
-    int newHash = (int)newHashAlg;    if (newHash < 0 || newHash > 4) newHash = hashId;
-    uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
-
-    /* oldPassword/newPassword contents are now in effPwd buffers; StringWiper
-     * (see declarations above) wipes the std::string storage at scope exit. */
-
-    /* Acquire entropy pin only after all validation passes. */
-    jbyte* entropyData = jExtraEntropy ? env->GetByteArrayElements(jExtraEntropy, nullptr) : nullptr;
-    jsize  entropyLen  = jExtraEntropy ? env->GetArrayLength(jExtraEntropy) : 0;
-
-    /* Wipe + rewrite primary header.
-     * If this fails the backup header is still intact with old credentials — container
-     * is recoverable. Bail immediately so we never touch the backup. */
-    int r1 = wipe_and_rewrite_header(fd, 0,
-                                      dataSz, dataOff, masterKey, algId, newHash,
-                                      (const char*)newEffPwd, newEffPwdLen,
-                                      (int)newPim, hiddenVolSize, passes,
-                                      (const uint8_t*)entropyData, (size_t)entropyLen);
-    if (r1 != 0) {
-        secure_memset(masterKey, 0, sizeof(masterKey));
-        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
-        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
-        close(fd); return ERR_FILE;
-    }
-
-    int r2 = wipe_and_rewrite_header(fd, backupAreaOff,
-                                      dataSz, dataOff, masterKey, algId, newHash,
-                                      (const char*)newEffPwd, newEffPwdLen,
-                                      (int)newPim, hiddenVolSize, passes,
-                                      (const uint8_t*)entropyData, (size_t)entropyLen);
-
-    secure_memset(masterKey, 0, sizeof(masterKey));
-    secure_memset(newEffPwd, 0, sizeof(newEffPwd));
-    if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
-    close(fd);
-    return r2 == 0 ? ERR_OK : ERR_FILE;
+    return do_change_password(env, fd,
+                              oldPassword, oldKeyfilePaths, oldPim,
+                              newPassword, newKeyfilePaths,
+                              newHashAlg, newPim, wipePassCount, jExtraEntropy);
 }
 
 
-/* ─── JNI: nativeChangeKeyfile ──────────────────────────────────────── */
+/* ─── Change-keyfile core ───────────────────────────────────────────── */
 /* Re-encrypts the container header with a new keyfile set (password unchanged).
-   extraEntropy: user-collected touch bytes XOR'd into the new salt. */
-
-extern "C" JNIEXPORT jint JNICALL
-Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfile(
-        JNIEnv *env, jobject /*thiz*/,
-        jstring jPath,
-        jstring jPassword, jobjectArray jOldKeyfilePaths, jint pim,
-        jobjectArray jNewKeyfilePaths, jint newHashAlg,
+   extraEntropy: user-collected touch bytes XOR'd into the new salt.
+   Shared by the path and SAF-fd JNI wrappers below. Takes ownership of fd. */
+static jint do_change_keyfile(
+        JNIEnv *env, int fd,
+        const std::string &password, const std::vector<std::string> &oldKeyfilePaths, jint pim,
+        const std::vector<std::string> &newKeyfilePaths, jint newHashAlg,
         jbyteArray jExtraEntropy)
 {
-    std::string path     = jstring_to_string(env, jPath);
-    std::string password = jstring_to_string(env, jPassword);
-    StringWiper _wipe_password(password);
-    auto oldKeyfilePaths = jstringArray_to_vector(env, jOldKeyfilePaths);
-    auto newKeyfilePaths = jstringArray_to_vector(env, jNewKeyfilePaths);
-
-    if (path.empty()) return ERR_FILE;
-
+    /* Pinned after fd acquisition so every exit path below releases it. */
     jbyte* entropyData = jExtraEntropy ? env->GetByteArrayElements(jExtraEntropy, nullptr) : nullptr;
     jsize  entropyLen  = jExtraEntropy ? env->GetArrayLength(jExtraEntropy) : 0;
 
@@ -3030,15 +2717,6 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfile(
     if (newEffPwdLen > VC_MAX_PWD_LEN) newEffPwdLen = VC_MAX_PWD_LEN;
     memcpy(newEffPwd, password.c_str(), (size_t)newEffPwdLen);
     apply_keyfiles_to_password(newKeyfilePaths, newEffPwd, &newEffPwdLen);
-
-
-    int fd = open(path.c_str(), O_RDWR);
-    if (fd < 0) {
-        secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
-        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
-        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
-        return ERR_FILE;
-    }
 
     off_t fileSzOff = lseek(fd, 0, SEEK_END);
     if (fileSzOff < 0) {
@@ -3092,47 +2770,94 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfile(
     return r2 == 0 ? ERR_OK : ERR_FILE;
 }
 
-/* ─── JNI: nativeBackupVolumeHeader ─────────────────────────────────── */
+/* ─── JNI: nativeChangeKeyfile ──────────────────────────────────────── */
 
 extern "C" JNIEXPORT jint JNICALL
-Java_zip_arcanum_crypto_VeraCryptEngine_nativeBackupVolumeHeader(
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfile(
         JNIEnv *env, jobject /*thiz*/,
-        jstring jVolumePath, jstring jPassword,
-        jobjectArray jKeyfilePaths, jint pim, jstring jOutputPath)
+        jstring jPath,
+        jstring jPassword, jobjectArray jOldKeyfilePaths, jint pim,
+        jobjectArray jNewKeyfilePaths, jint newHashAlg,
+        jbyteArray jExtraEntropy)
 {
-    std::string volumePath = jstring_to_string(env, jVolumePath);
-    std::string outputPath = jstring_to_string(env, jOutputPath);
-    std::string password   = jstring_to_string(env, jPassword);
+    std::string path     = jstring_to_string(env, jPath);
+    std::string password = jstring_to_string(env, jPassword);
     StringWiper _wipe_password(password);
-    auto keyfilePaths = jstringArray_to_vector(env, jKeyfilePaths);
+    auto oldKeyfilePaths = jstringArray_to_vector(env, jOldKeyfilePaths);
+    auto newKeyfilePaths = jstringArray_to_vector(env, jNewKeyfilePaths);
 
+    if (path.empty()) return ERR_FILE;
+
+    int fd = open(path.c_str(), O_RDWR);
+    if (fd < 0) return ERR_FILE;
+
+    return do_change_keyfile(env, fd, password, oldKeyfilePaths, pim,
+                             newKeyfilePaths, newHashAlg, jExtraEntropy);
+}
+
+/* ─── JNI: nativeChangeKeyfileFd ────────────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfileFd(
+        JNIEnv *env, jobject /*thiz*/,
+        jint safFd,
+        jstring jPassword, jobjectArray jOldKeyfilePaths, jint pim,
+        jobjectArray jNewKeyfilePaths, jint newHashAlg,
+        jbyteArray jExtraEntropy)
+{
+    std::string password = jstring_to_string(env, jPassword);
+    StringWiper _wipe_password(password);
+    auto oldKeyfilePaths = jstringArray_to_vector(env, jOldKeyfilePaths);
+    auto newKeyfilePaths = jstringArray_to_vector(env, jNewKeyfilePaths);
+
+    int fd = dup((int)safFd);
+    if (fd < 0) return ERR_FILE;
+
+    return do_change_keyfile(env, fd, password, oldKeyfilePaths, pim,
+                             newKeyfilePaths, newHashAlg, jExtraEntropy);
+}
+
+/* ─── Backup-header core ────────────────────────────────────────────── */
+/* Authenticates the volume via volFd (closed after the header read), then
+   writes a VeraCrypt-layout backup file: 128 KB of random data with the
+   re-encrypted header (fresh salt) at offset 0. The output is acquired only
+   AFTER successful authentication so a wrong password never creates or
+   truncates the destination — outputPath is non-null for the path wrapper,
+   otherwise safOutputFd is dup()ed. */
+static jint do_backup_volume_header(
+        JNIEnv * /*env*/, int volFd,
+        const std::string &password, const std::vector<std::string> &keyfilePaths, jint pim,
+        const char *outputPath, int safOutputFd)
+{
     uint8_t effPwd[VC_MAX_PWD_LEN] = {};
     int effPwdLen = (int)password.size();
     if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
     memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
     apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
 
-    int fd = open(volumePath.c_str(), O_RDONLY);
-    if (fd < 0) { secure_memset(effPwd, 0, sizeof(effPwd)); return ERR_FILE; }
-
     uint8_t masterKey[192] = {};
     int mkLen = 0, algId = 0, hashId = 0;
     uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
-    int rc = read_vc_header(fd, 0, (const char*)effPwd, effPwdLen,
+    int rc = read_vc_header(volFd, 0, (const char*)effPwd, effPwdLen,
                             masterKey, &mkLen, &dataSz, &dataOff,
                             &algId, &hashId, (int)pim, &hiddenVolSize);
-    close(fd);
+    close(volFd);
     if (rc != ERR_OK) {
         secure_memset(effPwd, 0, sizeof(effPwd));
         secure_memset(masterKey, 0, sizeof(masterKey));
         return ERR_WRONG_PASSWORD;
     }
 
-    int outFd = open(outputPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    int outFd = outputPath ? open(outputPath, O_WRONLY | O_CREAT | O_TRUNC, 0600)
+                           : dup(safOutputFd);
     if (outFd < 0) {
         secure_memset(effPwd, 0, sizeof(effPwd));
         secure_memset(masterKey, 0, sizeof(masterKey));
         return ERR_FILE;
+    }
+    if (!outputPath) {
+        ftruncate(outFd, 0);
+        lseek(outFd, 0, SEEK_SET);
     }
 
     // Fill 128 KB with random data (VeraCrypt backup file layout: two 64 KB slots)
@@ -3163,6 +2888,27 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeBackupVolumeHeader(
     return r == 0 ? ERR_OK : ERR_FILE;
 }
 
+/* ─── JNI: nativeBackupVolumeHeader ─────────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeBackupVolumeHeader(
+        JNIEnv *env, jobject /*thiz*/,
+        jstring jVolumePath, jstring jPassword,
+        jobjectArray jKeyfilePaths, jint pim, jstring jOutputPath)
+{
+    std::string volumePath = jstring_to_string(env, jVolumePath);
+    std::string outputPath = jstring_to_string(env, jOutputPath);
+    std::string password   = jstring_to_string(env, jPassword);
+    StringWiper _wipe_password(password);
+    auto keyfilePaths = jstringArray_to_vector(env, jKeyfilePaths);
+
+    int fd = open(volumePath.c_str(), O_RDONLY);
+    if (fd < 0) return ERR_FILE;
+
+    return do_backup_volume_header(env, fd, password, keyfilePaths, pim,
+                                   outputPath.c_str(), -1);
+}
+
 /* ─── JNI: nativeBackupVolumeHeaderFd ──────────────────────────────── */
 
 extern "C" JNIEXPORT jint JNICALL
@@ -3175,87 +2921,29 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeBackupVolumeHeaderFd(
     StringWiper _wipe_password(password);
     auto keyfilePaths = jstringArray_to_vector(env, jKeyfilePaths);
 
-    uint8_t effPwd[VC_MAX_PWD_LEN] = {};
-    int effPwdLen = (int)password.size();
-    if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
-    memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
-    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
-
     int fd = dup((int)safVolumeFd);
-    if (fd < 0) { secure_memset(effPwd, 0, sizeof(effPwd)); return ERR_FILE; }
+    if (fd < 0) return ERR_FILE;
 
-    uint8_t masterKey[192] = {};
-    int mkLen = 0, algId = 0, hashId = 0;
-    uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
-    int rc = read_vc_header(fd, 0, (const char*)effPwd, effPwdLen,
-                            masterKey, &mkLen, &dataSz, &dataOff,
-                            &algId, &hashId, (int)pim, &hiddenVolSize);
-    close(fd);
-    if (rc != ERR_OK) {
-        secure_memset(effPwd, 0, sizeof(effPwd));
-        secure_memset(masterKey, 0, sizeof(masterKey));
-        return ERR_WRONG_PASSWORD;
-    }
-
-    int outFd = dup((int)safOutputFd);
-    if (outFd < 0) {
-        secure_memset(effPwd, 0, sizeof(effPwd));
-        secure_memset(masterKey, 0, sizeof(masterKey));
-        return ERR_FILE;
-    }
-
-    ftruncate(outFd, 0);
-    lseek(outFd, 0, SEEK_SET);
-
-    uint8_t chunk2[4096];
-    bool prefixOk2 = true;
-    for (int i = 0; i < 32 && prefixOk2; i++) {
-        if (!read_urandom(chunk2, sizeof(chunk2)) ||
-            !write_all_at(outFd, chunk2, sizeof(chunk2), (long long)i * (long long)sizeof(chunk2)))
-            prefixOk2 = false;
-    }
-    secure_memset(chunk2, 0, sizeof(chunk2));
-    if (!prefixOk2) {
-        secure_memset(effPwd, 0, sizeof(effPwd));
-        secure_memset(masterKey, 0, sizeof(masterKey));
-        close(outFd);
-        return ERR_FILE;
-    }
-
-    int r = wipe_and_rewrite_header(outFd, 0,
-                                    dataSz, dataOff, masterKey, algId, hashId,
-                                    (const char*)effPwd, effPwdLen,
-                                    (int)pim, hiddenVolSize, /*wipePassCount=*/1,
-                                    nullptr, 0);
-    secure_memset(effPwd, 0, sizeof(effPwd));
-    secure_memset(masterKey, 0, sizeof(masterKey));
-    close(outFd);
-    return r == 0 ? ERR_OK : ERR_FILE;
+    return do_backup_volume_header(env, fd, password, keyfilePaths, pim,
+                                   nullptr, (int)safOutputFd);
 }
 
-/* ─── JNI: nativeRestoreVolumeHeader ───────────────────────────────── */
-
-extern "C" JNIEXPORT jint JNICALL
-Java_zip_arcanum_crypto_VeraCryptEngine_nativeRestoreVolumeHeader(
-        JNIEnv *env, jobject /*thiz*/,
-        jstring jVolumePath, jstring jPassword,
-        jobjectArray jKeyfilePaths, jint pim,
-        jboolean fromExternal, jstring jBackupPath)
+/* ─── Restore-header core ───────────────────────────────────────────── */
+/* Authenticates the source header (embedded backup at the file tail, or an
+   external backup file), then rewrites the primary header — and, when
+   restoring from external, the embedded backup too. Takes ownership of
+   volFd. backupPath is non-null for the path wrapper; the fd wrapper passes
+   safBackupFd instead. Both are ignored when fromExternal is false. */
+static jint do_restore_volume_header(
+        JNIEnv * /*env*/, int volFd,
+        const std::string &password, const std::vector<std::string> &keyfilePaths, jint pim,
+        jboolean fromExternal, const char *backupPath, int safBackupFd)
 {
-    std::string volumePath = jstring_to_string(env, jVolumePath);
-    std::string backupPath = jstring_to_string(env, jBackupPath);
-    std::string password   = jstring_to_string(env, jPassword);
-    StringWiper _wipe_password(password);
-    auto keyfilePaths = jstringArray_to_vector(env, jKeyfilePaths);
-
     uint8_t effPwd[VC_MAX_PWD_LEN] = {};
     int effPwdLen = (int)password.size();
     if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
     memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
     apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
-
-    int volFd = open(volumePath.c_str(), O_RDWR);
-    if (volFd < 0) { secure_memset(effPwd, 0, sizeof(effPwd)); return ERR_FILE; }
 
     off_t fileSzOff = lseek(volFd, 0, SEEK_END);
     if (fileSzOff < 0) {
@@ -3268,7 +2956,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRestoreVolumeHeader(
     uint64_t srcOffset;
     bool closeSrcFd = false;
     if ((bool)fromExternal) {
-        srcFd = open(backupPath.c_str(), O_RDONLY);
+        srcFd = backupPath ? open(backupPath, O_RDONLY) : dup(safBackupFd);
         if (srcFd < 0) {
             secure_memset(effPwd, 0, sizeof(effPwd));
             close(volFd); return ERR_FILE;
@@ -3323,6 +3011,28 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRestoreVolumeHeader(
     return r2 == 0 ? ERR_OK : ERR_FILE;
 }
 
+/* ─── JNI: nativeRestoreVolumeHeader ───────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeRestoreVolumeHeader(
+        JNIEnv *env, jobject /*thiz*/,
+        jstring jVolumePath, jstring jPassword,
+        jobjectArray jKeyfilePaths, jint pim,
+        jboolean fromExternal, jstring jBackupPath)
+{
+    std::string volumePath = jstring_to_string(env, jVolumePath);
+    std::string backupPath = jstring_to_string(env, jBackupPath);
+    std::string password   = jstring_to_string(env, jPassword);
+    StringWiper _wipe_password(password);
+    auto keyfilePaths = jstringArray_to_vector(env, jKeyfilePaths);
+
+    int volFd = open(volumePath.c_str(), O_RDWR);
+    if (volFd < 0) return ERR_FILE;
+
+    return do_restore_volume_header(env, volFd, password, keyfilePaths, pim,
+                                    fromExternal, backupPath.c_str(), -1);
+}
+
 /* ─── JNI: nativeRestoreVolumeHeaderFd ─────────────────────────────── */
 
 extern "C" JNIEXPORT jint JNICALL
@@ -3336,169 +3046,13 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRestoreVolumeHeaderFd(
     StringWiper _wipe_password(password);
     auto keyfilePaths = jstringArray_to_vector(env, jKeyfilePaths);
 
-    uint8_t effPwd[VC_MAX_PWD_LEN] = {};
-    int effPwdLen = (int)password.size();
-    if (effPwdLen > VC_MAX_PWD_LEN) effPwdLen = VC_MAX_PWD_LEN;
-    memcpy(effPwd, password.c_str(), (size_t)effPwdLen);
-    apply_keyfiles_to_password(keyfilePaths, effPwd, &effPwdLen);
-
     int volFd = dup((int)safVolumeFd);
-    if (volFd < 0) { secure_memset(effPwd, 0, sizeof(effPwd)); return ERR_FILE; }
+    if (volFd < 0) return ERR_FILE;
 
-    off_t fileSzOff = lseek(volFd, 0, SEEK_END);
-    if (fileSzOff < 0) {
-        secure_memset(effPwd, 0, sizeof(effPwd));
-        close(volFd); return ERR_FILE;
-    }
-    uint64_t fileSize = (uint64_t)fileSzOff;
-
-    int srcFd;
-    uint64_t srcOffset;
-    bool closeSrcFd = false;
-    if ((bool)fromExternal) {
-        srcFd = dup((int)safBackupFd);
-        if (srcFd < 0) {
-            secure_memset(effPwd, 0, sizeof(effPwd));
-            close(volFd); return ERR_FILE;
-        }
-        srcOffset  = 0;
-        closeSrcFd = true;
-    } else {
-        srcFd     = volFd;
-        srcOffset = fileSize - VC_BACKUP_AREA_SIZE;
-    }
-
-    uint8_t masterKey[192] = {};
-    int mkLen = 0, algId = 0, hashId = 0;
-    uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
-    int rc = read_vc_header(srcFd, srcOffset, (const char*)effPwd, effPwdLen,
-                            masterKey, &mkLen, &dataSz, &dataOff,
-                            &algId, &hashId, (int)pim, &hiddenVolSize);
-    if (closeSrcFd) close(srcFd);
-
-    if (rc != ERR_OK) {
-        secure_memset(effPwd, 0, sizeof(effPwd));
-        secure_memset(masterKey, 0, sizeof(masterKey));
-        close(volFd); return ERR_WRONG_PASSWORD;
-    }
-
-    int r1 = wipe_and_rewrite_header(volFd, 0,
-                                     dataSz, dataOff, masterKey, algId, hashId,
-                                     (const char*)effPwd, effPwdLen,
-                                     (int)pim, hiddenVolSize, /*wipePassCount=*/3,
-                                     nullptr, 0);
-    if (r1 != 0) {
-        secure_memset(effPwd, 0, sizeof(effPwd));
-        secure_memset(masterKey, 0, sizeof(masterKey));
-        close(volFd); return ERR_FILE;
-    }
-
-    int r2 = 0;
-    if ((bool)fromExternal) {
-        uint64_t backupAreaOff2 = fileSize - VC_BACKUP_AREA_SIZE;
-        r2 = wipe_and_rewrite_header(volFd, backupAreaOff2,
-                                     dataSz, dataOff, masterKey, algId, hashId,
-                                     (const char*)effPwd, effPwdLen,
-                                     (int)pim, hiddenVolSize, /*wipePassCount=*/3,
-                                     nullptr, 0);
-    }
-
-    secure_memset(effPwd, 0, sizeof(effPwd));
-    secure_memset(masterKey, 0, sizeof(masterKey));
-    close(volFd);
-    return r2 == 0 ? ERR_OK : ERR_FILE;
+    return do_restore_volume_header(env, volFd, password, keyfilePaths, pim,
+                                    fromExternal, nullptr, (int)safBackupFd);
 }
 
-/* ─── JNI: nativeChangeKeyfileFd ────────────────────────────────────── */
-
-extern "C" JNIEXPORT jint JNICALL
-Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfileFd(
-        JNIEnv *env, jobject /*thiz*/,
-        jint safFd,
-        jstring jPassword, jobjectArray jOldKeyfilePaths, jint pim,
-        jobjectArray jNewKeyfilePaths, jint newHashAlg,
-        jbyteArray jExtraEntropy)
-{
-    std::string password = jstring_to_string(env, jPassword);
-    StringWiper _wipe_password(password);
-    auto oldKeyfilePaths = jstringArray_to_vector(env, jOldKeyfilePaths);
-    auto newKeyfilePaths = jstringArray_to_vector(env, jNewKeyfilePaths);
-
-    jbyte* entropyData = jExtraEntropy ? env->GetByteArrayElements(jExtraEntropy, nullptr) : nullptr;
-    jsize  entropyLen  = jExtraEntropy ? env->GetArrayLength(jExtraEntropy) : 0;
-
-    uint8_t oldEffPwd[VC_MAX_PWD_LEN] = {};
-    int oldEffPwdLen = (int)password.size();
-    if (oldEffPwdLen > VC_MAX_PWD_LEN) oldEffPwdLen = VC_MAX_PWD_LEN;
-    memcpy(oldEffPwd, password.c_str(), (size_t)oldEffPwdLen);
-    apply_keyfiles_to_password(oldKeyfilePaths, oldEffPwd, &oldEffPwdLen);
-
-    uint8_t newEffPwd[VC_MAX_PWD_LEN] = {};
-    int newEffPwdLen = (int)password.size();
-    if (newEffPwdLen > VC_MAX_PWD_LEN) newEffPwdLen = VC_MAX_PWD_LEN;
-    memcpy(newEffPwd, password.c_str(), (size_t)newEffPwdLen);
-    apply_keyfiles_to_password(newKeyfilePaths, newEffPwd, &newEffPwdLen);
-
-
-    int fd = dup((int)safFd);
-    if (fd < 0) {
-        secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
-        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
-        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
-        return ERR_FILE;
-    }
-
-    off_t fileSzOff = lseek(fd, 0, SEEK_END);
-    if (fileSzOff < 0) {
-        secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
-        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
-        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
-        close(fd); return ERR_FILE;
-    }
-    uint64_t fileSize = (uint64_t)fileSzOff;
-
-    uint8_t masterKey[192] = {};
-    int mkLen = 0, algId = 0, hashId = 0;
-    uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
-    int rc = read_vc_header(fd, 0,
-                            (const char*)oldEffPwd, oldEffPwdLen,
-                            masterKey, &mkLen, &dataSz, &dataOff,
-                            &algId, &hashId, (int)pim, &hiddenVolSize);
-    secure_memset(oldEffPwd, 0, sizeof(oldEffPwd));
-    if (rc != ERR_OK) {
-        secure_memset(masterKey, 0, sizeof(masterKey));
-        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
-        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
-        close(fd); return ERR_WRONG_PASSWORD;
-    }
-
-    int newHash = (int)newHashAlg; if (newHash < 0 || newHash > 4) newHash = hashId;
-    uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
-
-    int r1 = wipe_and_rewrite_header(fd, 0,
-                                      dataSz, dataOff, masterKey, algId, newHash,
-                                      (const char*)newEffPwd, newEffPwdLen,
-                                      (int)pim, hiddenVolSize, /*wipePassCount=*/3,
-                                      (const uint8_t*)entropyData, (size_t)entropyLen);
-    if (r1 != 0) {
-        secure_memset(masterKey, 0, sizeof(masterKey));
-        secure_memset(newEffPwd, 0, sizeof(newEffPwd));
-        if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
-        close(fd); return ERR_FILE;
-    }
-
-    int r2 = wipe_and_rewrite_header(fd, backupAreaOff,
-                                      dataSz, dataOff, masterKey, algId, newHash,
-                                      (const char*)newEffPwd, newEffPwdLen,
-                                      (int)pim, hiddenVolSize, /*wipePassCount=*/3,
-                                      (const uint8_t*)entropyData, (size_t)entropyLen);
-
-    secure_memset(masterKey, 0, sizeof(masterKey));
-    secure_memset(newEffPwd, 0, sizeof(newEffPwd));
-    if (entropyData) env->ReleaseByteArrayElements(jExtraEntropy, entropyData, JNI_ABORT);
-    close(fd);
-    return r2 == 0 ? ERR_OK : ERR_FILE;
-}
 
 /* ─── Expand volume helpers ──────────────────────────────────────────── */
 
