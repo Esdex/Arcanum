@@ -213,8 +213,10 @@ fun ExpandVolumeScreen(
                 // ── Bottom button ──────────────────────────────────────────────
                 if (step < 3) {
                     val canProceed = when (step) {
-                        1    -> state.password.isNotEmpty()
-                        else -> state.newSizeInput.isNotEmpty() && state.isReady && !notEnoughSpace
+                        1    -> state.password.isNotEmpty() && !state.blockedByHidden
+                        // hiddenAnswer must be an explicit "no" — see ExpandVolumeViewModel guard
+                        else -> state.newSizeInput.isNotEmpty() && state.isReady && !notEnoughSpace &&
+                                !state.blockedByHidden && state.hiddenAnswer == false
                     }
                     Button(
                         onClick  = {
@@ -265,6 +267,31 @@ private fun ExpandStep1(
     var pimText      by remember { mutableStateOf(if (state.pim > 0) state.pim.toString() else "") }
 
     StepContent(title = stringResource(R.string.expand_step1_heading)) {
+        if (state.blockedByHidden) {
+            Card(
+                colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                shape    = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier              = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment     = Alignment.Top
+                ) {
+                    Icon(
+                        Icons.Outlined.Info, contentDescription = null,
+                        tint     = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.size(18.dp).padding(top = 2.dp)
+                    )
+                    Text(
+                        stringResource(R.string.expand_error_has_hidden),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
         OutlinedTextField(
             value         = state.password,
             onValueChange = { viewModel.update { copy(password = it) } },
@@ -431,6 +458,49 @@ private fun ExpandStep2(
                 )
             }
 
+            // VeraCrypt-style mandatory question — expansion destroys any hidden volume,
+            // and nothing persisted can tell us whether one exists (by design).
+            Card(
+                colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                shape    = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier            = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.expand_hidden_question),
+                        style      = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        stringResource(R.string.expand_hidden_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        SegmentedButton(
+                            selected = state.hiddenAnswer == true,
+                            onClick  = { viewModel.update { copy(hiddenAnswer = true) } },
+                            shape    = SegmentedButtonDefaults.itemShape(0, 2)
+                        ) { Text(stringResource(R.string.common_yes)) }
+                        SegmentedButton(
+                            selected = state.hiddenAnswer == false,
+                            onClick  = { viewModel.update { copy(hiddenAnswer = false) } },
+                            shape    = SegmentedButtonDefaults.itemShape(1, 2)
+                        ) { Text(stringResource(R.string.common_no)) }
+                    }
+                    if (state.hiddenAnswer == true) {
+                        Text(
+                            stringResource(R.string.expand_error_has_hidden),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+
             Card(
                 colors   = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
@@ -484,6 +554,7 @@ private fun ExpandStep3(
         when (err) {
             "WRONG_PASSWORD"        -> context.getString(R.string.expand_error_wrong_password)
             "UNSUPPORTED_ALGORITHM" -> context.getString(R.string.expand_error_has_hidden)
+            "expand_has_hidden"     -> context.getString(R.string.expand_error_has_hidden)
             "IO_ERROR"              -> context.getString(R.string.expand_error_io)
             "expand_too_small"      -> context.getString(R.string.expand_error_too_small)
             "expand_not_aligned"    -> context.getString(R.string.expand_error_not_aligned)

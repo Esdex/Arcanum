@@ -31,6 +31,13 @@ data class ExpandVolumeState(
     val newSizeInput: String = "",
     val sizeUnit: SizeUnit = SizeUnit.GB,
     val isReady: Boolean = false,   // M3: true once container info is loaded from DB
+    // Session knowledge says this container holds a hidden volume — expansion is blocked
+    // outright (it would overwrite the hidden volume's data and backup header).
+    val blockedByHidden: Boolean = false,
+    // User's answer to "does this container contain a hidden volume?" — VeraCrypt-style
+    // mandatory question; null = unanswered, true = yes (blocked), false = no (may proceed).
+    // Deliberately not persisted: see ContainerRepository.sessionHasHiddenVolume.
+    val hiddenAnswer: Boolean? = null,
     val availableSpaceMb: Long = Long.MAX_VALUE,
     val isRunning: Boolean = false,
     val progress: Float = 0f,
@@ -75,7 +82,11 @@ class ExpandVolumeViewModel @Inject constructor(
             val avail = statPath?.let {
                 try { StatFs(it).availableBytes / (1024L * 1024L) } catch (_: Exception) { Long.MAX_VALUE }
             } ?: Long.MAX_VALUE
-            _state.update { it.copy(isReady = true, availableSpaceMb = avail) }
+            _state.update { it.copy(
+                isReady          = true,
+                availableSpaceMb = avail,
+                blockedByHidden  = repo.isKnownToContainHiddenVolume(id)
+            ) }
         }
     }
 
@@ -104,6 +115,15 @@ class ExpandVolumeViewModel @Inject constructor(
         val current = _state.value
         if (current.isRunning) return
         if (!current.isReady) return  // M3: DB init not yet complete, size validation would be wrong
+
+        // Hidden-volume guard: expansion overwrites the file tail (encrypted fill + new
+        // backup header), destroying any hidden volume. Native detects only legacy
+        // containers that carry field28; for new-format containers we rely on session
+        // knowledge plus the user's explicit answer, so refuse unless the answer is "no".
+        if (current.blockedByHidden || current.hiddenAnswer != false) {
+            _state.update { it.copy(error = "expand_has_hidden") }
+            return
+        }
 
         val inputVal = current.newSizeInput.toLongOrNull() ?: 0L
         val newSizeBytes = when (current.sizeUnit) {
