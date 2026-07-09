@@ -12,7 +12,7 @@ class JniMediaDataSource(
     override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
         if (position >= fileSize) return -1
         val toRead = minOf(size, (fileSize - position).toInt())
-        val data = runCatching { engine.nativeReadFile(handle, path, position, toRead) }.getOrNull()
+        val data = runCatching { engine.readFile(handle, path, position, toRead) }.getOrNull()
             ?: return -1
         if (data.isEmpty()) return -1
         data.copyInto(buffer, offset, 0, data.size)

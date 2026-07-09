@@ -54,7 +54,7 @@ class MediaScanner @Inject constructor(
 
         suspend fun scanDir(path: String) {
             val entries = try {
-                engine.nativeListFiles(handle, path)
+                engine.listFiles(handle, path)
             } catch (_: Exception) {
                 return
             }
@@ -124,7 +124,7 @@ class MediaScanner @Inject constructor(
 
     private fun extractImageDate(handle: Long, path: String, fallback: Long): Long {
         val bytes = try {
-            engine.nativeReadFile(handle, path, 0L, 65_536) ?: return fallback
+            engine.readFile(handle, path, 0L, 65_536) ?: return fallback
         } catch (_: Exception) { return fallback }
         val exifDate = exifReader.readDate(bytes)
         return if (exifDate > 0L) exifDate else fallback

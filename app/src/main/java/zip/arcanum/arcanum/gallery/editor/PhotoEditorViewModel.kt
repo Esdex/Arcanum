@@ -136,7 +136,7 @@ class PhotoEditorViewModel @Inject constructor(
                 return@launch
             }
             val readSize = minOf(file.size, 50L * 1024 * 1024).toInt()
-            val bytes = engine.nativeReadFile(handle, file.relativePath, 0L, readSize) ?: run {
+            val bytes = engine.readFile(handle, file.relativePath, 0L, readSize) ?: run {
                 _state.update { it.copy(isLoading = false, error = "Failed to read file") }
                 return@launch
             }
@@ -438,7 +438,7 @@ class PhotoEditorViewModel @Inject constructor(
         var offset = 0L
         while (offset < bytes.size) {
             val end = minOf(offset + chunkSize, bytes.size.toLong()).toInt()
-            val result = engine.nativeWriteFile(handle, path, bytes.copyOfRange(offset.toInt(), end), offset)
+            val result = engine.writeFile(handle, path, bytes.copyOfRange(offset.toInt(), end), offset)
             if (result != 0) throw IOException("Write failed at offset $offset (error $result)")
             offset = end.toLong()
         }
@@ -456,10 +456,10 @@ class PhotoEditorViewModel @Inject constructor(
 
                 // Write to a temp path first; rename atomically so the original survives any mid-write failure
                 val tmpPath = file.relativePath + ".tmp"
-                engine.nativeDeleteFile(handle, tmpPath)
+                engine.deleteFile(handle, tmpPath)
                 writeChunked(handle, tmpPath, bytes)
-                engine.nativeDeleteFile(handle, file.relativePath)
-                val renameResult = engine.nativeRenameFile(handle, tmpPath, file.relativePath)
+                engine.deleteFile(handle, file.relativePath)
+                val renameResult = engine.renameFile(handle, tmpPath, file.relativePath)
                 if (renameResult != 0) throw IOException("Rename failed (error $renameResult)")
 
                 mediaFileDao.updateMediaFile(file.copy(size = bytes.size.toLong(), width = bmp.width, height = bmp.height))
@@ -493,7 +493,7 @@ class PhotoEditorViewModel @Inject constructor(
                 while (true) {
                     newFileName = if (hasExt) "${cleanBase}_$suffix.$rawExt" else "${cleanBase}_$suffix"
                     newPath = if (dir.isEmpty()) newFileName else "$dir/$newFileName"
-                    val probe = engine.nativeReadFile(handle, newPath, 0L, 1)
+                    val probe = engine.readFile(handle, newPath, 0L, 1)
                     if (probe == null || probe.isEmpty()) break
                     suffix++
                     if (suffix > 999) {

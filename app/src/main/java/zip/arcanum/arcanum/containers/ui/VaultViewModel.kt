@@ -284,12 +284,12 @@ class VaultViewModel @Inject constructor(
                         mountLogger.log("Header decrypted successfully.")
                         val isHidden  = cryptoEngine.getVolumeType(result.value) == 1
                         val hasHidden = !protectHiddenPassword.isNullOrBlank()
-                        val dataSize   = cryptoEngine.nativeGetDataSize(result.value).coerceAtLeast(0L)
-                        val algId      = cryptoEngine.nativeGetAlgorithmId(result.value)
-                        val hashId     = cryptoEngine.nativeGetHashId(result.value)
-                        val fsType     = cryptoEngine.nativeGetFilesystem(result.value)
-                        val keySize    = cryptoEngine.nativeGetKeySize(result.value)
-                        val iterations = cryptoEngine.nativeGetIterationCount(result.value)
+                        val dataSize   = cryptoEngine.getDataSize(result.value).coerceAtLeast(0L)
+                        val algId      = cryptoEngine.getAlgorithmId(result.value)
+                        val hashId     = cryptoEngine.getHashId(result.value)
+                        val fsType     = cryptoEngine.getFilesystem(result.value)
+                        val keySize    = cryptoEngine.getKeySize(result.value)
+                        val iterations = cryptoEngine.getIterationCount(result.value)
                         if (algId  >= 0) mountLogger.log("Cipher: ${VeraCryptEngine.algorithmIdToString(algId)}")
                         if (hashId >= 0) mountLogger.log("PRF: ${VeraCryptEngine.hashIdToString(hashId)}")
                         if (iterations > 0) mountLogger.log("PKCS-5 iterations: $iterations")
@@ -312,7 +312,10 @@ class VaultViewModel @Inject constructor(
                     is CryptoResult.Failure -> {
                         mountLogger.log("ERROR: ${result.error.name}")
                         _mountState.value = when (result.error) {
-                            CryptoError.IO_ERROR -> MountState.Error("Cannot open container file")
+                            CryptoError.IO_ERROR             -> MountState.Error("Cannot open container file")
+                            CryptoError.UNSUPPORTED_ALGORITHM -> MountState.Error("Unsupported container format")
+                            CryptoError.TOO_MANY_MOUNTED      -> MountState.Error("Too many containers mounted — unmount one and try again")
+                            CryptoError.CORRUPTED_CONTAINER   -> MountState.Error("Container filesystem could not be mounted")
                             else -> MountState.Error("Wrong password")
                         }
                     }

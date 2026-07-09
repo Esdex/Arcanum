@@ -116,7 +116,7 @@ class ThumbnailManager @Inject constructor(
         val bitmap = BitmapFactory.decodeStream(stream, null, opts) ?: return null
 
         // Read EXIF orientation from the first 64 KB — always within the initial APP1.
-        val exifBytes = engine.nativeReadFile(handle, relativePath, 0L, 65_536) ?: ByteArray(0)
+        val exifBytes = engine.readFile(handle, relativePath, 0L, 65_536) ?: ByteArray(0)
         val exifOrientation = exifReader.readOrientation(exifBytes)
 
         // Orientations 5-8 swap width↔height. On Android 12+ with hardware-accelerated
@@ -289,7 +289,7 @@ internal class NativeMediaDataSource(
     override fun readAt(position: Long, buffer: ByteArray?, offset: Int, size: Int): Int {
         if (buffer == null || position < 0 || position >= fileSize) return -1
         val toRead = minOf(size.toLong(), fileSize - position).toInt()
-        val chunk = engine.nativeReadFile(handle, filePath, position, toRead) ?: return -1
+        val chunk = engine.readFile(handle, filePath, position, toRead) ?: return -1
         chunk.copyInto(buffer, offset, 0, chunk.size)
         return chunk.size
     }
@@ -355,7 +355,7 @@ internal class NativeFileInputStream(
     private fun fillBuffer(): Boolean {
         if (position >= fileSize) return false
         val toRead = minOf(chunkSize.toLong(), fileSize - position).toInt()
-        val chunk = engine.nativeReadFile(handle, filePath, position, toRead) ?: return false
+        val chunk = engine.readFile(handle, filePath, position, toRead) ?: return false
         bufStart = position
         buf = chunk
         bufPos = 0

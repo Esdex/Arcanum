@@ -96,7 +96,7 @@ class MainActivity : AppCompatActivity() {
         // isFinishing is false on rotation — only close handles when the activity truly exits.
         if (isFinishing) {
             containerRepo.closeAllHandlesSync().forEach { handle ->
-                engine.nativeCloseContainer(handle)
+                engine.closeContainer(handle)
             }
         }
         super.onDestroy()

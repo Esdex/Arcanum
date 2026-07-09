@@ -46,17 +46,34 @@ target_include_directories(arcanum-native PRIVATE
 )
 
 # ── Compiler flags ────────────────────────────────────────────────────
+# -Wall applies project-wide, including to arcanum_jni.cpp/diskio.cpp (our
+# code); the VeraCrypt-era warning suppressions below are scoped ONLY to
+# ${VERACRYPT_SOURCES} (third-party, older C) via set_source_files_properties
+# so real warnings in our own sources stay visible.
 target_compile_options(arcanum-native PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-std=c11>
     $<$<COMPILE_LANGUAGE:CXX>:-std=c++17>
     -O2
+    -Wall
+    -fvisibility=hidden
     -fexceptions -frtti
-    # Silence warnings from VeraCrypt's older C code
-    -Wno-implicit-function-declaration
-    -Wno-unused-variable
-    -Wno-sign-compare
-    -Wno-macro-redefined
-    -Wno-deprecated-declarations
+)
+
+# Silence warnings from VeraCrypt's older C code — scoped to those sources
+# only (follows the same per-source-file pattern as the armeabi-v7a Xts.c
+# case below), not applied globally.
+set_source_files_properties(${VERACRYPT_SOURCES} PROPERTIES
+    COMPILE_OPTIONS "-Wno-implicit-function-declaration;-Wno-unused-variable;-Wno-sign-compare;-Wno-macro-redefined;-Wno-deprecated-declarations"
+)
+
+# arcanum_jni.cpp #includes veracrypt/Common/Xts.h, whose header declares
+# EncryptBufferXTS{Parallel,NonParallel}/DecryptBufferXTS{Parallel,NonParallel}
+# as `static` but arcanum_jni.cpp only calls the non-suffixed wrappers — under
+# -Wall that's 4 harmless -Wunused-function warnings from third-party header
+# content, not a real issue in our code. Scoped narrowly (unused-function
+# only) so -Wall still surfaces genuine warnings in this file.
+set_source_files_properties(arcanum_jni.cpp PROPERTIES
+    COMPILE_OPTIONS "-Wno-unused-function"
 )
 
 target_compile_definitions(arcanum-native PRIVATE

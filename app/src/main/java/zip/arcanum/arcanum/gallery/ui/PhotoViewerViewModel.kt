@@ -98,7 +98,7 @@ class PhotoViewerViewModel @Inject constructor(
         opts.inJustDecodeBounds = false
         opts.inPreferredConfig  = Bitmap.Config.ARGB_8888
         val decoded = BitmapFactory.decodeStream(stream, null, opts) ?: return null
-        val exifBytes = engine.nativeReadFile(handle, file.relativePath, 0L, 65_536) ?: ByteArray(0)
+        val exifBytes = engine.readFile(handle, file.relativePath, 0L, 65_536) ?: ByteArray(0)
         return applyExifOrientation(decoded, exifReader.readOrientation(exifBytes))
     }
 
@@ -191,7 +191,7 @@ class PhotoViewerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isExifLoading = true) }
             val readSize = minOf(file.size, 512L * 1024).toInt()
-            val bytes = engine.nativeReadFile(handle, file.relativePath, 0L, readSize)
+            val bytes = engine.readFile(handle, file.relativePath, 0L, readSize)
             val exif = if (bytes != null) exifReader.readExif(bytes) else MediaExifData()
             _uiState.update { it.copy(exifData = exif, isExifLoading = false) }
         }
@@ -211,10 +211,10 @@ class PhotoViewerViewModel @Inject constructor(
         val handle = repo.getContainerHandle(file.containerId) ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val headSize = minOf(file.size, 128L * 1024).toInt()
-            val head = engine.nativeReadFile(handle, file.relativePath, 0L, headSize)
+            val head = engine.readFile(handle, file.relativePath, 0L, headSize)
             if (head != null) {
                 ExifJpegPatcher.patchDateTime(head, newDateMillis)?.let { (app1Offset, modifiedApp1) ->
-                    engine.nativeWriteFile(handle, file.relativePath, modifiedApp1, app1Offset.toLong())
+                    engine.writeFile(handle, file.relativePath, modifiedApp1, app1Offset.toLong())
                 }
             }
             val updated = file.copy(dateCreated = newDateMillis, dateModified = newDateMillis)
@@ -237,10 +237,10 @@ class PhotoViewerViewModel @Inject constructor(
         val handle = repo.getContainerHandle(file.containerId) ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val headSize = minOf(file.size, 128L * 1024).toInt()
-            val head = engine.nativeReadFile(handle, file.relativePath, 0L, headSize)
+            val head = engine.readFile(handle, file.relativePath, 0L, headSize)
             if (head != null) {
                 ExifJpegPatcher.patchGps(head, lat, lng)?.let { (app1Offset, modifiedApp1) ->
-                    engine.nativeWriteFile(handle, file.relativePath, modifiedApp1, app1Offset.toLong())
+                    engine.writeFile(handle, file.relativePath, modifiedApp1, app1Offset.toLong())
                 }
             }
             _uiState.update { it.copy(
@@ -264,7 +264,7 @@ class PhotoViewerViewModel @Inject constructor(
             }
             val newPath = if (dir.isEmpty()) "/$finalName" else "$dir/$finalName"
             val result = try {
-                engine.nativeRenameFile(handle, file.relativePath, newPath)
+                engine.renameFile(handle, file.relativePath, newPath)
             } catch (_: Throwable) { VeraCryptEngine.ERR_FS }
             val success = result == VeraCryptEngine.ERR_OK
             if (success) {
@@ -286,7 +286,7 @@ class PhotoViewerViewModel @Inject constructor(
         val handle = repo.getContainerHandle(file.containerId)
         viewModelScope.launch(Dispatchers.IO) {
             if (handle != null) {
-                try { engine.nativeDeleteFile(handle, file.relativePath) } catch (_: Exception) {}
+                try { engine.deleteFile(handle, file.relativePath) } catch (_: Exception) {}
             }
             mediaFileDao.deleteMediaFile(file)
             thumbnailManager.clearFileCache(file.containerId, file.relativePath, file.id)
@@ -303,7 +303,7 @@ class PhotoViewerViewModel @Inject constructor(
                 val chunkSize = 1024 * 1024
                 context.contentResolver.openOutputStream(uri)?.use { out ->
                     while (true) {
-                        val chunk = engine.nativeReadFile(handle, file.relativePath, offset, chunkSize)
+                        val chunk = engine.readFile(handle, file.relativePath, offset, chunkSize)
                             ?: break
                         out.write(chunk)
                         offset += chunk.size

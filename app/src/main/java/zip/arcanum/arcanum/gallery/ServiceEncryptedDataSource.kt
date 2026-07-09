@@ -39,7 +39,7 @@ class ServiceEncryptedDataSource(
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (position >= fileSize) return C.RESULT_END_OF_INPUT
         val toRead = minOf(length.toLong(), fileSize - position, CHUNK_SIZE.toLong()).toInt()
-        val chunk = engine.nativeReadFile(handle, filePath, position, toRead)
+        val chunk = engine.readFile(handle, filePath, position, toRead)
             ?.takeIf { it.isNotEmpty() }
             ?: return C.RESULT_END_OF_INPUT
         chunk.copyInto(buffer, offset)

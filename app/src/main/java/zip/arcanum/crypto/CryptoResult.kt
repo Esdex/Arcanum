@@ -12,5 +12,13 @@ enum class CryptoError {
     IO_ERROR,
     RNG_FAILURE,
     NATIVE_LIBRARY_MISSING,
+    /** Native ERR_NO_SPACE: write/format ran out of disk space. */
+    NO_SPACE,
+    /** Native ERR_READ_ONLY: write blocked because the container is mounted read-only. */
+    READ_ONLY,
+    /** Native ERR_HIDDEN_BOUNDARY: write blocked by hidden-volume protection. */
+    HIDDEN_BOUNDARY_PROTECTED,
+    /** Native ERR_NO_SLOT: no free drive slot (MAX_DRIVES containers already mounted). */
+    TOO_MANY_MOUNTED,
     UNKNOWN
 }

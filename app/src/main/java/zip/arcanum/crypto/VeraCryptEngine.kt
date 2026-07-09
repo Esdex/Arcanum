@@ -346,9 +346,51 @@ class VeraCryptEngine @Inject constructor() {
     fun getVolumeType(handle: Long): Int = nativeGetVolumeType(handle)
     fun hasHiddenVolume(handle: Long): Boolean = nativeHasHiddenVolume(handle)
 
+    // ── Thin non-suspend wrappers ────────────────────────────────────────
+    // The `external fun native*` declarations below are private; callers outside
+    // this file (gallery/files packages, MainActivity, etc.) go through these.
+    // Non-suspend because every existing caller already runs on its own
+    // background dispatcher (ViewModel coroutine scope, MediaDataSource thread, …)
+    // and controlled its own threading before this wrapping was added.
+
+    fun listFiles(handle: Long, dirPath: String): Array<NativeFileInfo> =
+        nativeListFiles(handle, dirPath) ?: emptyArray()
+
+    fun readFile(handle: Long, filePath: String, offset: Long, length: Int): ByteArray? =
+        nativeReadFile(handle, filePath, offset, length)
+
+    fun writeFile(handle: Long, filePath: String, data: ByteArray, offset: Long): Int =
+        nativeWriteFile(handle, filePath, data, offset)
+
+    fun deleteFile(handle: Long, filePath: String): Int =
+        nativeDeleteFile(handle, filePath)
+
+    fun deleteDirectory(handle: Long, dirPath: String): Int =
+        nativeDeleteDirectory(handle, dirPath)
+
+    fun createDirectory(handle: Long, dirPath: String): Int =
+        nativeCreateDirectory(handle, dirPath)
+
+    fun renameFile(handle: Long, oldPath: String, newPath: String): Int =
+        nativeRenameFile(handle, oldPath, newPath)
+
+    /** Non-suspend close, for call sites that can't use the suspend [unmountContainer]
+     *  (e.g. MainActivity.onDestroy, which isn't a coroutine). */
+    fun closeContainer(handle: Long): Int = nativeCloseContainer(handle)
+
+    fun getDataSize(handle: Long): Long = nativeGetDataSize(handle)
+    fun getAlgorithmId(handle: Long): Int = nativeGetAlgorithmId(handle)
+    fun getHashId(handle: Long): Int = nativeGetHashId(handle)
+    fun getFilesystem(handle: Long): Int = nativeGetFilesystem(handle)
+    fun getKeySize(handle: Long): Int = nativeGetKeySize(handle)
+    fun getIterationCount(handle: Long): Int = nativeGetIterationCount(handle)
+
     // ── JNI external declarations ──────────────────────────────────────
+    // Private: nothing outside this class should call these directly — go
+    // through the suspend wrappers above (create/mount/change/etc.) or the
+    // thin non-suspend wrappers just above this block (readFile, listFiles, …).
 
-    external fun nativeCreateContainer(
+    private external fun nativeCreateContainer(
         path: String,
         sizeBytes: Long,
         password: String,
@@ -362,7 +404,7 @@ class VeraCryptEngine @Inject constructor() {
         pim: Int
     ): Int
 
-    external fun nativeCreateContainerFd(
+    private external fun nativeCreateContainerFd(
         fd: Int,
         sizeBytes: Long,
         password: String,
@@ -376,7 +418,7 @@ class VeraCryptEngine @Inject constructor() {
         pim: Int
     ): Int
 
-    external fun nativeOpenContainer(
+    private external fun nativeOpenContainer(
         path: String,
         password: String,
         keyfileData: Array<ByteArray>?,
@@ -390,7 +432,7 @@ class VeraCryptEngine @Inject constructor() {
         readOnly: Boolean
     ): Long
 
-    external fun nativeOpenContainerFd(
+    private external fun nativeOpenContainerFd(
         fd: Int,
         password: String,
         keyfileData: Array<ByteArray>?,
@@ -404,36 +446,36 @@ class VeraCryptEngine @Inject constructor() {
         readOnly: Boolean
     ): Long
 
-    external fun nativeListFiles(
+    private external fun nativeListFiles(
         handle: Long,
         dirPath: String
-    ): Array<NativeFileInfo>
+    ): Array<NativeFileInfo>?
 
-    external fun nativeReadFile(
+    private external fun nativeReadFile(
         handle: Long,
         filePath: String,
         offset: Long,
         length: Int
     ): ByteArray?
 
-    external fun nativeWriteFile(
+    private external fun nativeWriteFile(
         handle: Long,
         filePath: String,
         data: ByteArray,
         offset: Long
     ): Int
 
-    external fun nativeDeleteFile(handle: Long, filePath: String): Int
+    private external fun nativeDeleteFile(handle: Long, filePath: String): Int
 
-    external fun nativeDeleteDirectory(handle: Long, dirPath: String): Int
+    private external fun nativeDeleteDirectory(handle: Long, dirPath: String): Int
 
-    external fun nativeCreateDirectory(handle: Long, dirPath: String): Int
+    private external fun nativeCreateDirectory(handle: Long, dirPath: String): Int
 
-    external fun nativeRenameFile(handle: Long, oldPath: String, newPath: String): Int
+    private external fun nativeRenameFile(handle: Long, oldPath: String, newPath: String): Int
 
-    external fun nativeCloseContainer(handle: Long): Int
+    private external fun nativeCloseContainer(handle: Long): Int
 
-    external fun nativeCreateHiddenVolume(
+    private external fun nativeCreateHiddenVolume(
         path: String,
         hiddenSizeBytes: Long,
         outerPassword: String,
@@ -449,7 +491,7 @@ class VeraCryptEngine @Inject constructor() {
         progressListener: CreationProgressListener?
     ): Int
 
-    external fun nativeCreateHiddenVolumeFd(
+    private external fun nativeCreateHiddenVolumeFd(
         fd: Int,
         hiddenSizeBytes: Long,
         outerPassword: String,
@@ -465,7 +507,7 @@ class VeraCryptEngine @Inject constructor() {
         progressListener: CreationProgressListener?
     ): Int
 
-    external fun nativeChangePassword(
+    private external fun nativeChangePassword(
         path: String,
         oldPassword: String,
         oldKeyfilePaths: Array<String>?,
@@ -478,7 +520,7 @@ class VeraCryptEngine @Inject constructor() {
         extraEntropy: ByteArray
     ): Int
 
-    external fun nativeChangePasswordFd(
+    private external fun nativeChangePasswordFd(
         fd: Int,
         oldPassword: String,
         oldKeyfilePaths: Array<String>?,
@@ -491,7 +533,7 @@ class VeraCryptEngine @Inject constructor() {
         extraEntropy: ByteArray
     ): Int
 
-    external fun nativeChangeKeyfile(
+    private external fun nativeChangeKeyfile(
         path: String,
         password: String,
         oldKeyfilePaths: Array<String>?,
@@ -501,7 +543,7 @@ class VeraCryptEngine @Inject constructor() {
         extraEntropy: ByteArray
     ): Int
 
-    external fun nativeChangeKeyfileFd(
+    private external fun nativeChangeKeyfileFd(
         fd: Int,
         password: String,
         oldKeyfilePaths: Array<String>?,
@@ -511,7 +553,7 @@ class VeraCryptEngine @Inject constructor() {
         extraEntropy: ByteArray
     ): Int
 
-    external fun nativeBackupVolumeHeader(
+    private external fun nativeBackupVolumeHeader(
         volumePath: String,
         password: String,
         keyfilePaths: Array<String>?,
@@ -519,7 +561,7 @@ class VeraCryptEngine @Inject constructor() {
         outputPath: String
     ): Int
 
-    external fun nativeBackupVolumeHeaderFd(
+    private external fun nativeBackupVolumeHeaderFd(
         volumeFd: Int,
         password: String,
         keyfilePaths: Array<String>?,
@@ -527,7 +569,7 @@ class VeraCryptEngine @Inject constructor() {
         outputFd: Int
     ): Int
 
-    external fun nativeRestoreVolumeHeader(
+    private external fun nativeRestoreVolumeHeader(
         volumePath: String,
         password: String,
         keyfilePaths: Array<String>?,
@@ -536,7 +578,7 @@ class VeraCryptEngine @Inject constructor() {
         backupPath: String
     ): Int
 
-    external fun nativeRestoreVolumeHeaderFd(
+    private external fun nativeRestoreVolumeHeaderFd(
         volumeFd: Int,
         password: String,
         keyfilePaths: Array<String>?,
@@ -545,7 +587,7 @@ class VeraCryptEngine @Inject constructor() {
         backupFd: Int
     ): Int
 
-    external fun nativeExpandVolume(
+    private external fun nativeExpandVolume(
         path: String,
         password: String,
         keyfilePaths: Array<String>?,
@@ -554,7 +596,7 @@ class VeraCryptEngine @Inject constructor() {
         progressListener: CreationProgressListener?
     ): Int
 
-    external fun nativeExpandVolumeFd(
+    private external fun nativeExpandVolumeFd(
         fd: Int,
         password: String,
         keyfilePaths: Array<String>?,
@@ -563,21 +605,21 @@ class VeraCryptEngine @Inject constructor() {
         progressListener: CreationProgressListener?
     ): Int
 
-    external fun nativeGetVolumeType(handle: Long): Int
+    private external fun nativeGetVolumeType(handle: Long): Int
 
-    external fun nativeHasHiddenVolume(handle: Long): Boolean
+    private external fun nativeHasHiddenVolume(handle: Long): Boolean
 
-    external fun nativeGetAlgorithmId(handle: Long): Int
+    private external fun nativeGetAlgorithmId(handle: Long): Int
 
-    external fun nativeGetHashId(handle: Long): Int
+    private external fun nativeGetHashId(handle: Long): Int
 
-    external fun nativeGetFilesystem(handle: Long): Int
+    private external fun nativeGetFilesystem(handle: Long): Int
 
-    external fun nativeGetDataSize(handle: Long): Long
+    private external fun nativeGetDataSize(handle: Long): Long
 
-    external fun nativeGetKeySize(handle: Long): Int
+    private external fun nativeGetKeySize(handle: Long): Int
 
-    external fun nativeGetIterationCount(handle: Long): Int
+    private external fun nativeGetIterationCount(handle: Long): Int
 
     // ── Companion ──────────────────────────────────────────────────────
     companion object {
@@ -647,12 +689,17 @@ class VeraCryptEngine @Inject constructor() {
 // ── Result mapping helpers ─────────────────────────────────────────────
 
 private fun Int.toError(): CryptoError = when (this) {
-    VeraCryptEngine.ERR_WRONG_PASSWORD -> CryptoError.WRONG_PASSWORD
+    VeraCryptEngine.ERR_WRONG_PASSWORD  -> CryptoError.WRONG_PASSWORD
     VeraCryptEngine.ERR_FILE,
-    VeraCryptEngine.ERR_READ           -> CryptoError.IO_ERROR
-    VeraCryptEngine.ERR_RAND           -> CryptoError.RNG_FAILURE
-    VeraCryptEngine.ERR_UNSUPPORTED    -> CryptoError.UNSUPPORTED_ALGORITHM
-    else                               -> CryptoError.UNKNOWN
+    VeraCryptEngine.ERR_READ            -> CryptoError.IO_ERROR
+    VeraCryptEngine.ERR_RAND            -> CryptoError.RNG_FAILURE
+    VeraCryptEngine.ERR_UNSUPPORTED     -> CryptoError.UNSUPPORTED_ALGORITHM
+    VeraCryptEngine.ERR_FS              -> CryptoError.CORRUPTED_CONTAINER
+    VeraCryptEngine.ERR_NO_SPACE        -> CryptoError.NO_SPACE
+    VeraCryptEngine.ERR_READ_ONLY       -> CryptoError.READ_ONLY
+    VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> CryptoError.HIDDEN_BOUNDARY_PROTECTED
+    VeraCryptEngine.ERR_NO_SLOT         -> CryptoError.TOO_MANY_MOUNTED
+    else                                -> CryptoError.UNKNOWN
 }
 
 private fun Int.toResult(): CryptoResult<Unit> = when (this) {
