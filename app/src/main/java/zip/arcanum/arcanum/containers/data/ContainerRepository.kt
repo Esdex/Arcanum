@@ -37,6 +37,13 @@ class ContainerRepository @Inject constructor(
     private val mountedParcelFds    = mutableMapOf<String, ParcelFileDescriptor>()
     // In-memory read-only flag: containerId → isReadOnly
     private val mountedIsReadOnly   = mutableMapOf<String, Boolean>()
+    // Session-only knowledge that a container holds a hidden volume — observed when it
+    // was mounted as hidden / with hidden-volume protection, or when the hidden volume
+    // was created this session. Unlike the mounted* maps above this survives unmount,
+    // but it is NEVER persisted: recording hidden-volume existence in the DB would
+    // defeat plausible deniability (same reason field28 is no longer written to the
+    // outer header). Used by the expand-volume guard.
+    private val sessionHasHiddenVolume = mutableSetOf<String>()
 
     fun getAllContainers(): Flow<List<Container>> =
         dao.getAllContainers().map { list -> list.map { it.toDomain() } }
@@ -70,6 +77,7 @@ class ContainerRepository @Inject constructor(
         mountedIsHidden[id]   = isHidden
         mountedHasHidden[id]  = hasHidden
         mountedIsReadOnly[id] = isReadOnly
+        if (isHidden || hasHidden) sessionHasHiddenVolume += id
         if (dataSize > 0L) mountedDataSize[id] = dataSize else mountedDataSize.remove(id)
         parcelFd?.let { mountedParcelFds[id] = it }
         dao.setMounted(id, true)
@@ -77,6 +85,12 @@ class ContainerRepository @Inject constructor(
     }
 
     fun getPimForContainer(id: String): Int = mountedPims[id] ?: 0
+
+    /** Marks a container as known (this session) to contain a hidden volume. */
+    fun markSessionHasHiddenVolume(id: String) { sessionHasHiddenVolume += id }
+
+    /** Session-only: true if this container was observed to contain a hidden volume. */
+    fun isKnownToContainHiddenVolume(id: String): Boolean = id in sessionHasHiddenVolume
 
     suspend fun unmountContainer(id: String) {
         mountedHandles.remove(id)
@@ -103,6 +117,7 @@ class ContainerRepository @Inject constructor(
         mountedDataSize.clear()
         mountedParcelFds.values.forEach { runCatching { it.close() } }
         mountedParcelFds.clear()
+        sessionHasHiddenVolume.clear()
         return handles
     }
 

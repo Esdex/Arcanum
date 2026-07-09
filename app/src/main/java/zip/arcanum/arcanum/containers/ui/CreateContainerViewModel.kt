@@ -303,12 +303,17 @@ class CreateContainerViewModel @Inject constructor(
                 ) }
             }
             when (result) {
-                is CryptoResult.Success -> _state.update { it.copy(
-                    isCreating       = false,
-                    isHiddenCreated  = true,
-                    creationProgress = 1f,
-                    currentStep      = 16
-                ) }
+                is CryptoResult.Success -> {
+                    // Session-only knowledge for the expand-volume guard; never persisted
+                    // (would defeat plausible deniability).
+                    _createdContainerId.value?.let { repo.markSessionHasHiddenVolume(it) }
+                    _state.update { it.copy(
+                        isCreating       = false,
+                        isHiddenCreated  = true,
+                        creationProgress = 1f,
+                        currentStep      = 16
+                    ) }
+                }
                 is CryptoResult.Failure -> _state.update { it.copy(
                     isCreating = false,
                     error      = "Hidden volume creation failed: ${result.error}"
