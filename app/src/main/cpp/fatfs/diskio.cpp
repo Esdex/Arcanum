@@ -49,6 +49,13 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buf, LBA_t sector, UINT count) {
     if (pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return RES_NOTRDY;
     DriveContext *ctx = &g_drives[pdrv];
 
+    /* Read-only mount: refuse every write at the block layer. The underlying fd
+     * is already O_RDONLY (so pwrite would fail EBADF anyway), but returning
+     * RES_WRPRT here is the clean, explicit refusal and never touches the fd.
+     * FatFs does not issue writes during read-only use, so this normally never
+     * fires — it's a backstop, not a hot path. */
+    if (ctx->readOnly) return RES_WRPRT;
+
     /* Protect hidden volume area when outer volume is mounted — checked
      * before any write is attempted, exactly as before batching. */
     if (ctx->hiddenBoundary > 0) {
