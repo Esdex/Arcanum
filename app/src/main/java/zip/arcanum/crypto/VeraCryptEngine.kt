@@ -24,6 +24,47 @@ class VeraCryptEngine @Inject constructor() {
         fun onTrying(cipher: String, prf: String, attempt: Int, total: Int)
     }
 
+    // ── Password-bytes helpers ─────────────────────────────────────────
+    // The JNI boundary takes passwords as ByteArray (not String) so the
+    // transient UTF-8 copy can be zeroed once the native call returns —
+    // a Kotlin/Java String is immutable and cannot be wiped, so it stays on
+    // the JVM heap until GC. Converting at the boundary and wiping the copy
+    // in `finally` narrows the exposure window; it does NOT eliminate it —
+    // the original `password: String` parameter above still lives in the
+    // JVM heap, unwipeable, until garbage collected.
+
+    private inline fun <T> usePasswordBytes(password: String, block: (ByteArray) -> T): T {
+        val bytes = password.toByteArray(Charsets.UTF_8)
+        try {
+            return block(bytes)
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
+    /** Two-password variant (old/new, outer/hidden) — nests [usePasswordBytes] so both
+     *  transient copies are wiped in `finally`, innermost-first, regardless of outcome. */
+    private inline fun <T> usePasswordBytes(
+        password1: String,
+        password2: String,
+        block: (ByteArray, ByteArray) -> T
+    ): T = usePasswordBytes(password1) { bytes1 ->
+        usePasswordBytes(password2) { bytes2 ->
+            block(bytes1, bytes2)
+        }
+    }
+
+    /** Nullable variant for `protectHiddenPassword: String?` — null in, null out, no allocation. */
+    private inline fun <T> usePasswordBytesOrNull(password: String?, block: (ByteArray?) -> T): T {
+        if (password == null) return block(null)
+        val bytes = password.toByteArray(Charsets.UTF_8)
+        try {
+            return block(bytes)
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
     // ── High-level suspend API ─────────────────────────────────────────
 
     suspend fun createContainer(
@@ -39,12 +80,14 @@ class VeraCryptEngine @Inject constructor() {
         progressListener: CreationProgressListener? = null,
         pim: Int = 0
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        val rc = nativeCreateContainer(
-            path, sizeBytes, password,
-            keyfilePaths.toTypedArray().ifEmpty { null },
-            algorithm, hashAlgorithm, filesystem, quickFormat, entropyBytes,
-            progressListener, pim
-        )
+        val rc = usePasswordBytes(password) { passwordBytes ->
+            nativeCreateContainer(
+                path, sizeBytes, passwordBytes,
+                keyfilePaths.toTypedArray().ifEmpty { null },
+                algorithm, hashAlgorithm, filesystem, quickFormat, entropyBytes,
+                progressListener, pim
+            )
+        }
         rc.toResult()
     }
 
@@ -61,16 +104,20 @@ class VeraCryptEngine @Inject constructor() {
         mountProgressListener: MountProgressListener? = null,
         readOnly: Boolean = false
     ): CryptoResult<Long> = withContext(Dispatchers.IO) {
-        val handle = nativeOpenContainer(
-            path, password,
-            keyfileData.toTypedArray().ifEmpty { null },
-            pim, algorithm, hashAlgorithm,
-            protectHiddenPassword,
-            protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
-            protectHiddenPim,
-            mountProgressListener,
-            readOnly
-        )
+        val handle = usePasswordBytes(password) { passwordBytes ->
+            usePasswordBytesOrNull(protectHiddenPassword) { hiddenBytes ->
+                nativeOpenContainer(
+                    path, passwordBytes,
+                    keyfileData.toTypedArray().ifEmpty { null },
+                    pim, algorithm, hashAlgorithm,
+                    hiddenBytes,
+                    protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
+                    protectHiddenPim,
+                    mountProgressListener,
+                    readOnly
+                )
+            }
+        }
         if (handle >= 0) CryptoResult.Success(handle)
         else CryptoResult.Failure(handle.toInt().toError())
     }
@@ -88,12 +135,14 @@ class VeraCryptEngine @Inject constructor() {
         progressListener: CreationProgressListener? = null,
         pim: Int = 0
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        val rc = nativeCreateContainerFd(
-            fd, sizeBytes, password,
-            keyfilePaths.toTypedArray().ifEmpty { null },
-            algorithm, hashAlgorithm, filesystem, quickFormat, entropyBytes,
-            progressListener, pim
-        )
+        val rc = usePasswordBytes(password) { passwordBytes ->
+            nativeCreateContainerFd(
+                fd, sizeBytes, passwordBytes,
+                keyfilePaths.toTypedArray().ifEmpty { null },
+                algorithm, hashAlgorithm, filesystem, quickFormat, entropyBytes,
+                progressListener, pim
+            )
+        }
         rc.toResult()
     }
 
@@ -110,16 +159,20 @@ class VeraCryptEngine @Inject constructor() {
         mountProgressListener: MountProgressListener? = null,
         readOnly: Boolean = false
     ): CryptoResult<Long> = withContext(Dispatchers.IO) {
-        val handle = nativeOpenContainerFd(
-            fd, password,
-            keyfileData.toTypedArray().ifEmpty { null },
-            pim, algorithm, hashAlgorithm,
-            protectHiddenPassword,
-            protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
-            protectHiddenPim,
-            mountProgressListener,
-            readOnly
-        )
+        val handle = usePasswordBytes(password) { passwordBytes ->
+            usePasswordBytesOrNull(protectHiddenPassword) { hiddenBytes ->
+                nativeOpenContainerFd(
+                    fd, passwordBytes,
+                    keyfileData.toTypedArray().ifEmpty { null },
+                    pim, algorithm, hashAlgorithm,
+                    hiddenBytes,
+                    protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
+                    protectHiddenPim,
+                    mountProgressListener,
+                    readOnly
+                )
+            }
+        }
         if (handle >= 0) CryptoResult.Success(handle)
         else CryptoResult.Failure(handle.toInt().toError())
     }
@@ -139,13 +192,15 @@ class VeraCryptEngine @Inject constructor() {
         entropyBytes: ByteArray = ByteArray(0),
         progressListener: CreationProgressListener? = null
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        val rc = nativeCreateHiddenVolumeFd(
-            fd, hiddenSizeBytes,
-            outerPassword, outerKeyfilePaths.toTypedArray().ifEmpty { null }, outerPim,
-            hiddenPassword, hiddenKeyfilePaths.toTypedArray().ifEmpty { null }, hiddenPim,
-            hiddenAlgorithm, hiddenHashAlgorithm,
-            quickFormat, entropyBytes, progressListener
-        )
+        val rc = usePasswordBytes(outerPassword, hiddenPassword) { outerBytes, hiddenBytes ->
+            nativeCreateHiddenVolumeFd(
+                fd, hiddenSizeBytes,
+                outerBytes, outerKeyfilePaths.toTypedArray().ifEmpty { null }, outerPim,
+                hiddenBytes, hiddenKeyfilePaths.toTypedArray().ifEmpty { null }, hiddenPim,
+                hiddenAlgorithm, hiddenHashAlgorithm,
+                quickFormat, entropyBytes, progressListener
+            )
+        }
         rc.toResult()
     }
 
@@ -169,13 +224,15 @@ class VeraCryptEngine @Inject constructor() {
         entropyBytes: ByteArray = ByteArray(0),
         progressListener: CreationProgressListener? = null
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        val rc = nativeCreateHiddenVolume(
-            path, hiddenSizeBytes,
-            outerPassword, outerKeyfilePaths.toTypedArray().ifEmpty { null }, outerPim,
-            hiddenPassword, hiddenKeyfilePaths.toTypedArray().ifEmpty { null }, hiddenPim,
-            hiddenAlgorithm, hiddenHashAlgorithm,
-            quickFormat, entropyBytes, progressListener
-        )
+        val rc = usePasswordBytes(outerPassword, hiddenPassword) { outerBytes, hiddenBytes ->
+            nativeCreateHiddenVolume(
+                path, hiddenSizeBytes,
+                outerBytes, outerKeyfilePaths.toTypedArray().ifEmpty { null }, outerPim,
+                hiddenBytes, hiddenKeyfilePaths.toTypedArray().ifEmpty { null }, hiddenPim,
+                hiddenAlgorithm, hiddenHashAlgorithm,
+                quickFormat, entropyBytes, progressListener
+            )
+        }
         rc.toResult()
     }
 
@@ -191,13 +248,15 @@ class VeraCryptEngine @Inject constructor() {
         wipePassCount: Int = 3,
         extraEntropy: ByteArray = ByteArray(0)
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        nativeChangePassword(
-            path, oldPassword,
-            oldKeyfilePaths.toTypedArray().ifEmpty { null }, oldPim,
-            newPassword,
-            newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm, newPim,
-            wipePassCount, extraEntropy
-        ).toResult()
+        usePasswordBytes(oldPassword, newPassword) { oldBytes, newBytes ->
+            nativeChangePassword(
+                path, oldBytes,
+                oldKeyfilePaths.toTypedArray().ifEmpty { null }, oldPim,
+                newBytes,
+                newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm, newPim,
+                wipePassCount, extraEntropy
+            )
+        }.toResult()
     }
 
     suspend fun changePasswordFd(
@@ -212,13 +271,15 @@ class VeraCryptEngine @Inject constructor() {
         wipePassCount: Int = 3,
         extraEntropy: ByteArray = ByteArray(0)
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        nativeChangePasswordFd(
-            fd, oldPassword,
-            oldKeyfilePaths.toTypedArray().ifEmpty { null }, oldPim,
-            newPassword,
-            newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm, newPim,
-            wipePassCount, extraEntropy
-        ).toResult()
+        usePasswordBytes(oldPassword, newPassword) { oldBytes, newBytes ->
+            nativeChangePasswordFd(
+                fd, oldBytes,
+                oldKeyfilePaths.toTypedArray().ifEmpty { null }, oldPim,
+                newBytes,
+                newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm, newPim,
+                wipePassCount, extraEntropy
+            )
+        }.toResult()
     }
 
     suspend fun changeKeyfile(
@@ -230,12 +291,14 @@ class VeraCryptEngine @Inject constructor() {
         newHashAlgorithm: Int = HASH_AUTO,
         extraEntropy: ByteArray = ByteArray(0)
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        nativeChangeKeyfile(
-            path, password,
-            oldKeyfilePaths.toTypedArray().ifEmpty { null }, pim,
-            newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm,
-            extraEntropy
-        ).toResult()
+        usePasswordBytes(password) { passwordBytes ->
+            nativeChangeKeyfile(
+                path, passwordBytes,
+                oldKeyfilePaths.toTypedArray().ifEmpty { null }, pim,
+                newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm,
+                extraEntropy
+            )
+        }.toResult()
     }
 
     suspend fun changeKeyfileFd(
@@ -247,12 +310,14 @@ class VeraCryptEngine @Inject constructor() {
         newHashAlgorithm: Int = HASH_AUTO,
         extraEntropy: ByteArray = ByteArray(0)
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        nativeChangeKeyfileFd(
-            fd, password,
-            oldKeyfilePaths.toTypedArray().ifEmpty { null }, pim,
-            newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm,
-            extraEntropy
-        ).toResult()
+        usePasswordBytes(password) { passwordBytes ->
+            nativeChangeKeyfileFd(
+                fd, passwordBytes,
+                oldKeyfilePaths.toTypedArray().ifEmpty { null }, pim,
+                newKeyfilePaths.toTypedArray().ifEmpty { null }, newHashAlgorithm,
+                extraEntropy
+            )
+        }.toResult()
     }
 
     suspend fun backupVolumeHeader(
@@ -262,11 +327,13 @@ class VeraCryptEngine @Inject constructor() {
         pim: Int = 0,
         outputPath: String
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        nativeBackupVolumeHeader(
-            path, password,
-            keyfilePaths.toTypedArray().ifEmpty { null }, pim,
-            outputPath
-        ).toResult()
+        usePasswordBytes(password) { passwordBytes ->
+            nativeBackupVolumeHeader(
+                path, passwordBytes,
+                keyfilePaths.toTypedArray().ifEmpty { null }, pim,
+                outputPath
+            )
+        }.toResult()
     }
 
     suspend fun backupVolumeHeaderFd(
@@ -276,11 +343,13 @@ class VeraCryptEngine @Inject constructor() {
         pim: Int = 0,
         outputFd: Int
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        nativeBackupVolumeHeaderFd(
-            volumeFd, password,
-            keyfilePaths.toTypedArray().ifEmpty { null }, pim,
-            outputFd
-        ).toResult()
+        usePasswordBytes(password) { passwordBytes ->
+            nativeBackupVolumeHeaderFd(
+                volumeFd, passwordBytes,
+                keyfilePaths.toTypedArray().ifEmpty { null }, pim,
+                outputFd
+            )
+        }.toResult()
     }
 
     suspend fun restoreVolumeHeader(
@@ -291,11 +360,13 @@ class VeraCryptEngine @Inject constructor() {
         fromExternal: Boolean,
         backupPath: String = ""
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        nativeRestoreVolumeHeader(
-            path, password,
-            keyfilePaths.toTypedArray().ifEmpty { null }, pim,
-            fromExternal, backupPath
-        ).toResult()
+        usePasswordBytes(password) { passwordBytes ->
+            nativeRestoreVolumeHeader(
+                path, passwordBytes,
+                keyfilePaths.toTypedArray().ifEmpty { null }, pim,
+                fromExternal, backupPath
+            )
+        }.toResult()
     }
 
     suspend fun restoreVolumeHeaderFd(
@@ -306,11 +377,13 @@ class VeraCryptEngine @Inject constructor() {
         fromExternal: Boolean,
         backupFd: Int = -1
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        nativeRestoreVolumeHeaderFd(
-            volumeFd, password,
-            keyfilePaths.toTypedArray().ifEmpty { null }, pim,
-            fromExternal, backupFd
-        ).toResult()
+        usePasswordBytes(password) { passwordBytes ->
+            nativeRestoreVolumeHeaderFd(
+                volumeFd, passwordBytes,
+                keyfilePaths.toTypedArray().ifEmpty { null }, pim,
+                fromExternal, backupFd
+            )
+        }.toResult()
     }
 
     suspend fun expandVolume(
@@ -321,11 +394,13 @@ class VeraCryptEngine @Inject constructor() {
         newSizeBytes: Long,
         progressListener: CreationProgressListener? = null
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        nativeExpandVolume(
-            path, password,
-            keyfilePaths.toTypedArray().ifEmpty { null }, pim,
-            newSizeBytes, progressListener
-        ).toResult()
+        usePasswordBytes(password) { passwordBytes ->
+            nativeExpandVolume(
+                path, passwordBytes,
+                keyfilePaths.toTypedArray().ifEmpty { null }, pim,
+                newSizeBytes, progressListener
+            )
+        }.toResult()
     }
 
     suspend fun expandVolumeFd(
@@ -336,11 +411,13 @@ class VeraCryptEngine @Inject constructor() {
         newSizeBytes: Long,
         progressListener: CreationProgressListener? = null
     ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        nativeExpandVolumeFd(
-            fd, password,
-            keyfilePaths.toTypedArray().ifEmpty { null }, pim,
-            newSizeBytes, progressListener
-        ).toResult()
+        usePasswordBytes(password) { passwordBytes ->
+            nativeExpandVolumeFd(
+                fd, passwordBytes,
+                keyfilePaths.toTypedArray().ifEmpty { null }, pim,
+                newSizeBytes, progressListener
+            )
+        }.toResult()
     }
 
     fun getVolumeType(handle: Long): Int = nativeGetVolumeType(handle)
@@ -393,7 +470,7 @@ class VeraCryptEngine @Inject constructor() {
     private external fun nativeCreateContainer(
         path: String,
         sizeBytes: Long,
-        password: String,
+        password: ByteArray,
         keyfilePaths: Array<String>?,
         algorithm: Int,
         hashAlgorithm: Int,
@@ -407,7 +484,7 @@ class VeraCryptEngine @Inject constructor() {
     private external fun nativeCreateContainerFd(
         fd: Int,
         sizeBytes: Long,
-        password: String,
+        password: ByteArray,
         keyfilePaths: Array<String>?,
         algorithm: Int,
         hashAlgorithm: Int,
@@ -420,12 +497,12 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeOpenContainer(
         path: String,
-        password: String,
+        password: ByteArray,
         keyfileData: Array<ByteArray>?,
         pim: Int,
         algorithm: Int,
         hashAlgorithm: Int,
-        protectHiddenPassword: String?,
+        protectHiddenPassword: ByteArray?,
         protectHiddenKeyfileData: Array<ByteArray>?,
         protectHiddenPim: Int,
         mountProgressListener: MountProgressListener?,
@@ -434,12 +511,12 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeOpenContainerFd(
         fd: Int,
-        password: String,
+        password: ByteArray,
         keyfileData: Array<ByteArray>?,
         pim: Int,
         algorithm: Int,
         hashAlgorithm: Int,
-        protectHiddenPassword: String?,
+        protectHiddenPassword: ByteArray?,
         protectHiddenKeyfileData: Array<ByteArray>?,
         protectHiddenPim: Int,
         mountProgressListener: MountProgressListener?,
@@ -478,10 +555,10 @@ class VeraCryptEngine @Inject constructor() {
     private external fun nativeCreateHiddenVolume(
         path: String,
         hiddenSizeBytes: Long,
-        outerPassword: String,
+        outerPassword: ByteArray,
         outerKeyfilePaths: Array<String>?,
         outerPim: Int,
-        hiddenPassword: String,
+        hiddenPassword: ByteArray,
         hiddenKeyfilePaths: Array<String>?,
         hiddenPim: Int,
         hiddenAlgorithm: Int,
@@ -494,10 +571,10 @@ class VeraCryptEngine @Inject constructor() {
     private external fun nativeCreateHiddenVolumeFd(
         fd: Int,
         hiddenSizeBytes: Long,
-        outerPassword: String,
+        outerPassword: ByteArray,
         outerKeyfilePaths: Array<String>?,
         outerPim: Int,
-        hiddenPassword: String,
+        hiddenPassword: ByteArray,
         hiddenKeyfilePaths: Array<String>?,
         hiddenPim: Int,
         hiddenAlgorithm: Int,
@@ -509,10 +586,10 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeChangePassword(
         path: String,
-        oldPassword: String,
+        oldPassword: ByteArray,
         oldKeyfilePaths: Array<String>?,
         oldPim: Int,
-        newPassword: String,
+        newPassword: ByteArray,
         newKeyfilePaths: Array<String>?,
         newHashAlgorithm: Int,
         newPim: Int,
@@ -522,10 +599,10 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeChangePasswordFd(
         fd: Int,
-        oldPassword: String,
+        oldPassword: ByteArray,
         oldKeyfilePaths: Array<String>?,
         oldPim: Int,
-        newPassword: String,
+        newPassword: ByteArray,
         newKeyfilePaths: Array<String>?,
         newHashAlgorithm: Int,
         newPim: Int,
@@ -535,7 +612,7 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeChangeKeyfile(
         path: String,
-        password: String,
+        password: ByteArray,
         oldKeyfilePaths: Array<String>?,
         pim: Int,
         newKeyfilePaths: Array<String>?,
@@ -545,7 +622,7 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeChangeKeyfileFd(
         fd: Int,
-        password: String,
+        password: ByteArray,
         oldKeyfilePaths: Array<String>?,
         pim: Int,
         newKeyfilePaths: Array<String>?,
@@ -555,7 +632,7 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeBackupVolumeHeader(
         volumePath: String,
-        password: String,
+        password: ByteArray,
         keyfilePaths: Array<String>?,
         pim: Int,
         outputPath: String
@@ -563,7 +640,7 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeBackupVolumeHeaderFd(
         volumeFd: Int,
-        password: String,
+        password: ByteArray,
         keyfilePaths: Array<String>?,
         pim: Int,
         outputFd: Int
@@ -571,7 +648,7 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeRestoreVolumeHeader(
         volumePath: String,
-        password: String,
+        password: ByteArray,
         keyfilePaths: Array<String>?,
         pim: Int,
         fromExternal: Boolean,
@@ -580,7 +657,7 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeRestoreVolumeHeaderFd(
         volumeFd: Int,
-        password: String,
+        password: ByteArray,
         keyfilePaths: Array<String>?,
         pim: Int,
         fromExternal: Boolean,
@@ -589,7 +666,7 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeExpandVolume(
         path: String,
-        password: String,
+        password: ByteArray,
         keyfilePaths: Array<String>?,
         pim: Int,
         newSizeBytes: Long,
@@ -598,7 +675,7 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeExpandVolumeFd(
         fd: Int,
-        password: String,
+        password: ByteArray,
         keyfilePaths: Array<String>?,
         pim: Int,
         newSizeBytes: Long,
