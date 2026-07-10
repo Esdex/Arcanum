@@ -1,6 +1,8 @@
 package zip.arcanum.core.security
 
 import android.content.Context
+import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -16,6 +18,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import zip.arcanum.core.database.dao.CalculatorHistoryDao
 import zip.arcanum.core.database.dao.ContainerDao
+import zip.arcanum.core.database.entities.ContainerEntity
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -111,7 +114,7 @@ class PanicManager @Inject constructor(
         if (settings.fullWipe) {
             val all = containerDao.getAllContainersOnce()
             all.forEach { entity ->
-                secureDeleteFile(entity.path)
+                secureDeleteEntity(entity)
                 biometricCryptoManager.deleteCredentials(entity.id)
             }
             containerDao.deleteAll()
@@ -128,7 +131,7 @@ class PanicManager @Inject constructor(
                 when (action) {
                     VaultPanicAction.DELETE -> {
                         containerDao.getContainerById(containerId)?.let { entity ->
-                            secureDeleteFile(entity.path)
+                            secureDeleteEntity(entity)
                             containerDao.deleteContainer(entity)
                         }
                     }
@@ -145,11 +148,23 @@ class PanicManager @Inject constructor(
         executeWipe()
     }
 
-    private fun secureDeleteFile(path: String) {
-        // VeraCrypt containers are AES-256 encrypted — raw bytes are worthless without
-        // the container password. Multi-pass overwrite is also ineffective on eMMC/UFS
-        // (wear leveling redirects writes to different physical cells). Simple unlink is
-        // sufficient and keeps panic timing indistinguishable from a normal unlock.
-        File(path).delete()
+    // Deletes the backing container file for a vault. SAF-backed vaults store their real
+    // location in safUri with an empty path, so branching on safUri is mandatory — a plain
+    // File(path).delete() on those is File("").delete(), a silent no-op that would leave the
+    // encrypted container fully intact after a panic wipe. Mirrors VaultViewModel.deleteVaultFile.
+    //
+    // VeraCrypt containers are AES-256 encrypted — raw bytes are worthless without the
+    // container password. Multi-pass overwrite is also ineffective on eMMC/UFS (wear leveling
+    // redirects writes to different physical cells). Simple unlink is sufficient and keeps
+    // panic timing indistinguishable from a normal unlock.
+    //
+    // Returns true if the file was deleted (or nothing needed deleting); false signals the
+    // backing file may still be on disk.
+    private fun secureDeleteEntity(entity: ContainerEntity): Boolean = when {
+        entity.safUri.isNotEmpty() -> runCatching {
+            DocumentsContract.deleteDocument(context.contentResolver, Uri.parse(entity.safUri))
+        }.getOrDefault(false)
+        entity.path.isNotEmpty() -> runCatching { File(entity.path).delete() }.getOrDefault(false)
+        else -> false
     }
 }
