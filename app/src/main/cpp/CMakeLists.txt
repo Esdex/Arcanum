@@ -27,11 +27,21 @@ set(FATFS_SOURCES
     fatfs/diskio.cpp
 )
 
+# ── Arcanum native module sources (split from the former monolithic
+# arcanum_jni.cpp — see arcanum_internal.h for the cross-module contract) ──
+set(ARCANUM_SOURCES
+    crypto_core.cpp
+    kdf.cpp
+    vc_header.cpp
+    jni_volume.cpp
+    jni_files.cpp
+)
+
 # ── Main native library ───────────────────────────────────────────────
 add_library(
     arcanum-native
     SHARED
-    arcanum_jni.cpp
+    ${ARCANUM_SOURCES}
     ${VERACRYPT_SOURCES}
     ${FATFS_SOURCES}
 )
@@ -46,7 +56,7 @@ target_include_directories(arcanum-native PRIVATE
 )
 
 # ── Compiler flags ────────────────────────────────────────────────────
-# -Wall applies project-wide, including to arcanum_jni.cpp/diskio.cpp (our
+# -Wall applies project-wide, including to ${ARCANUM_SOURCES}/diskio.cpp (our
 # code); the VeraCrypt-era warning suppressions below are scoped ONLY to
 # ${VERACRYPT_SOURCES} (third-party, older C) via set_source_files_properties
 # so real warnings in our own sources stay visible.
@@ -66,13 +76,22 @@ set_source_files_properties(${VERACRYPT_SOURCES} PROPERTIES
     COMPILE_OPTIONS "-Wno-implicit-function-declaration;-Wno-unused-variable;-Wno-sign-compare;-Wno-macro-redefined;-Wno-deprecated-declarations"
 )
 
-# arcanum_jni.cpp #includes veracrypt/Common/Xts.h, whose header declares
-# EncryptBufferXTS{Parallel,NonParallel}/DecryptBufferXTS{Parallel,NonParallel}
-# as `static` but arcanum_jni.cpp only calls the non-suffixed wrappers — under
-# -Wall that's 4 harmless -Wunused-function warnings from third-party header
-# content, not a real issue in our code. Scoped narrowly (unused-function
-# only) so -Wall still surfaces genuine warnings in this file.
-set_source_files_properties(arcanum_jni.cpp PROPERTIES
+# crypto_core.cpp/jni_volume.cpp #include veracrypt/Common/Xts.h, whose header
+# declares EncryptBufferXTS{Parallel,NonParallel}/DecryptBufferXTS{Parallel,
+# NonParallel} as `static` but each of these TUs only calls the non-suffixed
+# wrappers it actually needs — under -Wall that's a handful of harmless
+# -Wunused-function warnings from third-party header content, not a real issue
+# in our code. This was scoped to arcanum_jni.cpp alone before the module
+# split; every .cpp that includes Xts.h directly needs the same suppression
+# now that the header's static wrappers are pulled in per-TU (vc_header.cpp
+# only calls xts_crypt_temp(), declared in arcanum_internal.h, and does not
+# include Xts.h itself, so it doesn't need this). Scoped narrowly
+# (unused-function only) so -Wall still surfaces genuine warnings in these
+# files.
+set_source_files_properties(
+    crypto_core.cpp
+    jni_volume.cpp
+    PROPERTIES
     COMPILE_OPTIONS "-Wno-unused-function"
 )
 
@@ -87,7 +106,8 @@ target_compile_definitions(arcanum-native PRIVATE
 # incorrect results even with __int64=long long, likely due to strict-aliasing
 # UB under -O2.  TC_NO_COMPILER_INT64 switches Xts.c to the uint32_t-based
 # EncryptDecryptBufferXTS32 which works correctly.  Applied per-source so
-# arcanum_jni.cpp retains UINT64_STRUCT::Value (guarded by the same #ifndef).
+# crypto_core.cpp/vc_header.cpp/jni_volume.cpp retain UINT64_STRUCT::Value
+# (guarded by the same #ifndef).
 if(ANDROID_ABI STREQUAL "armeabi-v7a")
     set_source_files_properties(veracrypt/Common/Xts.c PROPERTIES
         COMPILE_DEFINITIONS "TC_NO_COMPILER_INT64"
