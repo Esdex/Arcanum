@@ -1,0 +1,5 @@
+• Security: hardened the native crypto layer — wipeable passwords, full RAII, safer JNI
+• Read-only mounts are now enforced at the OS and block-device level
+• Fix: panic wipe now reliably deletes vaults stored via the app storage picker
+• Fix: vault filenames and thumbnails are no longer exposed to other apps during media playback
+• Fix: guard against destroying a hidden volume when expanding a vault
