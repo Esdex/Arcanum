@@ -39,6 +39,9 @@ typedef struct {
     int                  hashId;                /* PBKDF2 hash index (0=SHA-512, 1=SHA-256, 2=Whirlpool, 3=Streebog) */
     uint32_t             pkcs5Iterations;       /* PBKDF2 iteration count used to derive this volume's key */
     bool                 isHidden;              /* true if this slot holds a hidden volume */
+    bool                 readOnly;              /* true if mounted read-only; disk_write refuses at the block layer.
+                                                   Backstop to the O_RDONLY fd and the ctx->readOnly checks in the
+                                                   file-op JNI entry points — all three must agree. */
     uint64_t             hiddenBoundary;        /* absolute file offset; outer writes must not reach or exceed this (0 = no protection) */
     bool                 hiddenBoundaryTripped; /* set to true when disk_write blocks a write due to hiddenBoundary */
     struct GenCipherCtx *cipherCtx;             /* heap-allocated, null when !active */

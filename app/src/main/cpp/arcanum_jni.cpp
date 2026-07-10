@@ -401,7 +401,7 @@ void vc_crypt_sector(GenCipherCtx *ctx, uint8_t *buf, uint64_t sn, bool enc) {
 static int alloc_drive(int fd, uint64_t dataOff, uint64_t sectors,
                        const uint8_t *masterKey, int algId, int hashId = 0,
                        bool isHidden = false, uint64_t hiddenBoundary = 0,
-                       uint32_t iterCount = 0) {
+                       uint32_t iterCount = 0, bool readOnly = false) {
     if (algId < 0 || algId >= NUM_ALGORITHMS) return -1;
     for (int i = 0; i < MAX_DRIVES; i++) {
         if (!g_drives[i].active) {
@@ -413,6 +413,7 @@ static int alloc_drive(int fd, uint64_t dataOff, uint64_t sectors,
             g_drives[i].hashId           = hashId;
             g_drives[i].pkcs5Iterations  = iterCount;
             g_drives[i].isHidden         = isHidden;
+            g_drives[i].readOnly         = readOnly;
             g_drives[i].hiddenBoundary   = hiddenBoundary;
             /* generation was preserved (not zeroed) by the previous free_drive();
              * bump it now so a stale handle from that earlier occupant of this
@@ -1732,7 +1733,7 @@ static jlong do_open_container(
     {
         std::lock_guard<std::mutex> lock(g_fatfs_mutex);
         pdrv = alloc_drive(fd, dataOff, dataSz / VC_SECTOR_SIZE, masterKey, algId, hashId,
-                           authIsHidden, hiddenBoundary, iterCount);
+                           authIsHidden, hiddenBoundary, iterCount, (bool)readOnly);
         secure_memset(masterKey, 0, sizeof(masterKey));
         if (pdrv < 0) { close(fd); return (jlong)ERR_NO_SLOT; }
         gen = g_drives[pdrv].generation;
@@ -1793,7 +1794,10 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     std::string hiddenPassword = jProtectHiddenPassword ? jstring_to_string(env, jProtectHiddenPassword) : "";
     StringWiper _wipe_hiddenPassword(hiddenPassword);
 
-    int fd = open(path.c_str(), O_RDWR);
+    /* Open read-only at the OS level for read-only mounts so the kernel itself
+     * refuses any write, independent of the ctx->readOnly / disk_write guards.
+     * (The SAF variant gets an already-read-only fd: Kotlin opens the PFD "r".) */
+    int fd = open(path.c_str(), readOnly ? O_RDONLY : O_RDWR);
     if (fd < 0) { LOGE("[open] Cannot open: %s (errno=%d: %s)", path.c_str(), errno, strerror(errno)); return (jlong)ERR_FILE; }
 
     return do_open_container(env, fd, "open",
