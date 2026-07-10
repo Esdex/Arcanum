@@ -43,6 +43,10 @@ import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
 import kotlin.math.sqrt
 
+// Neutral title exposed to the shared MediaSession (notification / lockscreen / controllers).
+// Real tags stay in-app only — see loadTrackAt().
+private const val SESSION_TITLE = "Arcanum"
+
 @androidx.annotation.OptIn(UnstableApi::class)
 @HiltViewModel
 class AudioPlayerDirectViewModel @Inject constructor(
@@ -161,11 +165,15 @@ class AudioPlayerDirectViewModel @Inject constructor(
                 .build()
             mc.stop()
             mc.clearMediaItems()
+            // Generic session metadata ONLY. Real title/artist (from the file's tags) must not
+            // enter the shared MediaSession — Media3 mirrors it to the system notification, the
+            // lockscreen, any NotificationListenerService and every connected MediaController,
+            // bypassing the PIN/biometric/disguise/FLAG_SECURE. The in-app player shows the real
+            // metadata from _state.metadata, populated separately above.
             mc.setMediaItem(MediaItem.Builder()
                 .setUri(uri)
                 .setMediaMetadata(MediaMetadata.Builder()
-                    .setTitle(metadata.title)
-                    .setArtist(metadata.artist)
+                    .setTitle(SESSION_TITLE)
                     .build())
                 .build())
             mc.prepare()

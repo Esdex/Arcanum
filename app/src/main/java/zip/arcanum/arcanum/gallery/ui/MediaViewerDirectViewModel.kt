@@ -26,10 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import android.media.MediaMetadataRetriever
 import zip.arcanum.arcanum.containers.data.ContainerRepository
-import zip.arcanum.arcanum.gallery.JniMediaDataSource
 import zip.arcanum.arcanum.gallery.MediaViewerQueue
 import zip.arcanum.arcanum.gallery.ServiceEncryptedDataSource
 import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
@@ -40,6 +37,10 @@ import javax.inject.Inject
 
 private val IMAGE_EXTS = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif")
 private val VIDEO_EXTS = setOf("mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp")
+
+// Neutral title exposed to the shared MediaSession (notification / lockscreen / controllers).
+// Real filenames stay in-app only — see loadVideo().
+private const val SESSION_TITLE = "Arcanum"
 
 fun NativeFileInfo.isImage() = name.substringAfterLast('.', "").lowercase() in IMAGE_EXTS
 fun NativeFileInfo.isVideo() = name.substringAfterLast('.', "").lowercase() in VIDEO_EXTS
@@ -160,46 +161,20 @@ class MediaViewerDirectViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.Main) {
             mc.stop()
             mc.clearMediaItems()
+            // Generic session metadata ONLY. The real filename and a decrypted video frame must
+            // never enter the shared MediaSession: Media3 mirrors session MediaMetadata to the
+            // system media notification, the lockscreen, any NotificationListenerService, and
+            // every connected MediaController — bypassing the PIN, biometric, disguise and
+            // FLAG_SECURE. The in-app viewer renders the real name/frame from its own state.
             mc.setMediaItem(
                 MediaItem.Builder()
                     .setUri(uri)
-                    .setMediaMetadata(MediaMetadata.Builder().setTitle(file.name).build())
+                    .setMediaMetadata(MediaMetadata.Builder().setTitle(SESSION_TITLE).build())
                     .build()
             )
             mc.prepare()
             mc.playWhenReady = true
             _state.update { it.copy(positionMs = 0L, durationMs = 0L, isLoadingCurrent = false) }
-
-            // Extract thumbnail on IO and update notification artwork once ready
-            val h = handle
-            val thumb = withContext(Dispatchers.IO) {
-                try {
-                    val retriever = MediaMetadataRetriever()
-                    retriever.setDataSource(JniMediaDataSource(engine, h, path, file.size))
-                    val raw = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    retriever.release()
-                    raw ?: return@withContext null
-                    val maxDim = maxOf(raw.width, raw.height).coerceAtLeast(1)
-                    val bmp = if (maxDim > 512) {
-                        val s = 512f / maxDim
-                        Bitmap.createScaledBitmap(raw, (raw.width * s).toInt(), (raw.height * s).toInt(), true)
-                            .also { raw.recycle() }
-                    } else raw
-                    val baos = java.io.ByteArrayOutputStream()
-                    bmp.compress(Bitmap.CompressFormat.JPEG, 80, baos)
-                    bmp.recycle()
-                    baos.toByteArray()
-                } catch (_: Exception) { null }
-            }
-            if (thumb != null && mc.mediaItemCount > 0) {
-                mc.replaceMediaItem(0, MediaItem.Builder()
-                    .setUri(uri)
-                    .setMediaMetadata(MediaMetadata.Builder()
-                        .setTitle(file.name)
-                        .setArtworkData(thumb, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                        .build())
-                    .build())
-            }
         }
     }
 

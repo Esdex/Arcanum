@@ -2,6 +2,7 @@ package zip.arcanum.arcanum.gallery.service
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.Process
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
@@ -69,7 +70,16 @@ class ArcanumMediaService : MediaSessionService() {
         }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession = mediaSession
+    // The service is exported (required so Media3's own notification/media-button controller can
+    // bind), which means any installed app can reach it. Gate connections here: only our own app
+    // (this includes Media3's in-process media-notification controller, which binds under our own
+    // package) and trusted system UI may connect. Every third-party MediaController is rejected —
+    // an accepted controller can observe the session's MediaMetadata and hijack playback.
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
+        val isSelf   = controllerInfo.packageName == packageName
+        val isSystem = controllerInfo.uid == Process.SYSTEM_UID
+        return if (isSelf || isSystem) mediaSession else null
+    }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         if (!player.playWhenReady || player.mediaItemCount == 0) stopSelf()
