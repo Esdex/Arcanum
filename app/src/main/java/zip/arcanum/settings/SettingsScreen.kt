@@ -1708,6 +1708,66 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                     }
                 }
             }
+            // ── 1.3.1 entries ─────────────────────────────────────────────
+            // Security hardening
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Security,
+                    color    = Color(0xFF22C55E),
+                    title    = "Hardened native crypto layer",
+                    subtitle = "Passwords are now passed as wipeable buffers and cleared from memory, the native code uses full RAII for deterministic cleanup, and the JNI bridge received an extensive security and thread-safety audit."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.Security,
+                    color    = Color(0xFF22C55E),
+                    title    = "Stronger read-only mounts",
+                    subtitle = "Read-only mode is now enforced at the operating-system and block-device level, not just in the UI — a read-only vault cannot be modified even through lower-level access."
+                )
+            }
+            // Fixes
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.BugReport,
+                    color    = Color(0xFFEF4444),
+                    title    = "Fix: panic wipe deletes app-storage vaults",
+                    subtitle = "Vaults saved through the app storage / file picker were left on disk when a panic wipe ran, even though they vanished from the app. Panic now deletes them reliably — in both per-vault and full-wipe modes."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.BugReport,
+                    color    = Color(0xFFEF4444),
+                    title    = "Fix: vault media no longer leaks to other apps",
+                    subtitle = "During playback, real filenames and decrypted thumbnails could be read by other installed apps and shown on the lock screen. The shared media session now carries only a generic title — your filenames and thumbnails stay inside the app."
+                )
+            }
+            item {
+                WhatsNewEntry(
+                    icon     = Icons.Outlined.BugReport,
+                    color    = Color(0xFFEF4444),
+                    title    = "Fix: hidden volume protection when expanding",
+                    subtitle = "Expanding a vault now guards against overwriting a hidden volume that may exist inside it, preventing accidental destruction of hidden data."
+                )
+            }
+
+            // ── 1.3.0 section ─────────────────────────────────────────────
+            item {
+                Row(
+                    modifier          = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                    Text(
+                        text  = "Version 1.3.0",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                }
+            }
             // ── 1.3.0 entries ─────────────────────────────────────────────
             item {
                 WhatsNewEntry(
