@@ -799,6 +799,21 @@ static bool read_urandom(uint8_t *buf, size_t len) {
     return ok;
 }
 
+/* ─── Random Pool Enrichment (user-collected entropy) ───────────────── */
+/*
+ * XOR-folds caller-supplied entropy (e.g. touch/accelerometer samples
+ * collected by the UI during container creation) across a urandom-filled
+ * buffer. XOR of a uniform urandom stream with ANY independent byte stream
+ * stays uniform, so this can only add entropy, never subtract from it — even
+ * if the caller's entropy turns out to be low-quality or attacker-influenced.
+ * No-op when entropy is null/empty, matching the pre-existing behavior of
+ * silently ignoring the (until now unused) entropy parameter. */
+static void xor_fold_entropy(uint8_t *buf, size_t bufLen,
+                              const uint8_t *entropy, size_t entropyLen) {
+    if (!entropy || entropyLen == 0) return;
+    for (size_t i = 0; i < bufLen; i++) buf[i] ^= entropy[i % entropyLen];
+}
+
 /* ─── Bulk I/O helpers ───────────────────────────────────────────────── */
 /*
  * Loop over partial transfers, retry EINTR, false on error/EOF-short. Used
@@ -831,6 +846,42 @@ bool write_all_at(int fd, const void *buf, size_t len, long long off) {
     }
     return true;
 }
+
+/* ─── Progress throttling ────────────────────────────────────────────── */
+/*
+ * The create fill loops, preallocate_fd's zero-fill fallback, and
+ * fill_range_xts previously called report_progress() every 64/128 KB chunk —
+ * hundreds of thousands of JNI CallVoidMethod round-trips for a multi-GB
+ * container. monotonic_ms() (CLOCK_MONOTONIC, immune to wall-clock jumps)
+ * plus ProgressThrottle cap that to roughly 10 reports/sec while still
+ * letting the last chunk of each loop through unthrottled so the phase's
+ * progress fraction visibly reaches its target instead of stalling a few
+ * percent short. This does not touch the standalone frac=1.0 completion
+ * reports fired after these loops return — those remain unconditional.
+ */
+static uint64_t monotonic_ms() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)(ts.tv_nsec / 1000000L);
+}
+
+struct ProgressThrottle {
+    uint64_t lastReportMs = 0;
+    bool     reportedOnce = false;
+    static constexpr uint64_t MIN_INTERVAL_MS = 100;
+
+    /* force=true (e.g. the loop's final chunk) always reports, regardless of
+     * how recently the last report fired. */
+    bool should_report(bool force = false) {
+        uint64_t now = monotonic_ms();
+        if (force || !reportedOnce || (now - lastReportMs) >= MIN_INTERVAL_MS) {
+            lastReportMs = now;
+            reportedOnce = true;
+            return true;
+        }
+        return false;
+    }
+};
 
 /* ─── VeraCrypt header write ─────────────────────────────────────────── */
 /*
@@ -1031,64 +1082,88 @@ static int read_vc_header(int fd, uint64_t fileOff,
     bool hashHinted = (hintHashId >= 0 && hintHashId < NUM_HASHES);
     if (mountCb) { mountCb->attempt = 1; mountCb->total = hashHinted ? NUM_ALGORITHMS : NUM_HASHES * NUM_ALGORITHMS; }
 
+    /* allDerivedKeys is declared up front (rather than after the hint attempt,
+     * as before) so the hint fast-path below can derive straight into its
+     * slot instead of into a separate stack buffer — the full scan that
+     * follows a failed hint then reuses that derivation instead of redoing
+     * the same 500k-iteration PBKDF2 a second time. derivedFlags tracks which
+     * hash slots are already populated. */
+    uint8_t allDerivedKeys[NUM_HASHES][192];
+    memset(allDerivedKeys, 0, sizeof(allDerivedKeys));
+    bool derivedFlags[NUM_HASHES] = { false, false, false, false, false };
+
     /* ── Fast path: try hinted (hash, algorithm) combination first ── */
     bool hintTried = false;
     if (hintHashId >= 0 && hintHashId < NUM_HASHES &&
         hintAlgId  >= 0 && hintAlgId  < NUM_ALGORITHMS) {
         hintTried = true;
         report_trying(mountCb, hintAlgId, hintHashId);
-        uint8_t hintKey[192] = {};
-        derive_header_key(hintHashId, (const uint8_t*)password, pwd_len, salt, pim, hintKey);
+        derive_header_key(hintHashId, (const uint8_t*)password, pwd_len, salt, pim,
+                          allDerivedKeys[hintHashId]);
+        derivedFlags[hintHashId] = true;
 
         uint8_t body[VC_HEADER_BODY_SIZE];
-        bool ok = try_decrypt_header(rawBody, hintKey, hintAlgId, body);
+        bool ok = try_decrypt_header(rawBody, allDerivedKeys[hintHashId], hintAlgId, body);
         if (ok) {
             int n = ALGORITHMS[hintAlgId].n;
             int mkLen = n * 64;
             if (!extract_header_geometry(body, outHiddenVolSize, dataSz, dataOff)) {
-                secure_memset((volatile uint8_t *)body,    0, sizeof(body));
-                secure_memset((volatile uint8_t *)hintKey, 0, sizeof(hintKey));
+                secure_memset((volatile uint8_t *)body, 0, sizeof(body));
+                secure_memset((volatile uint8_t *)allDerivedKeys, 0, sizeof(allDerivedKeys));
                 return ERR_UNSUPPORTED;
             }
             memcpy(masterKey, body + VC_MASTER_KEY_OFFSET, (size_t)mkLen);
             if (outMkLen)  *outMkLen  = mkLen;
             if (outAlgId)  *outAlgId  = hintAlgId;
             if (outHashId) *outHashId = hintHashId;
-            secure_memset((volatile uint8_t *)body,    0, sizeof(body));
-            secure_memset((volatile uint8_t *)hintKey, 0, sizeof(hintKey));
+            secure_memset((volatile uint8_t *)body, 0, sizeof(body));
+            secure_memset((volatile uint8_t *)allDerivedKeys, 0, sizeof(allDerivedKeys));
             return ERR_OK;
         }
-        secure_memset((volatile uint8_t *)body,    0, sizeof(body));
-        secure_memset((volatile uint8_t *)hintKey, 0, sizeof(hintKey));
+        /* Wrong cipher guess — allDerivedKeys[hintHashId] stays populated
+         * (and NOT wiped here) so the full scan below can reuse it. */
+        secure_memset((volatile uint8_t *)body, 0, sizeof(body));
     }
 
-    /* ── Full scan: derive keys (1 if hash hinted, 5 in parallel otherwise), then check ciphers ── */
-    uint8_t allDerivedKeys[NUM_HASHES][192];
-    memset(allDerivedKeys, 0, sizeof(allDerivedKeys));
-
+    /* ── Full scan: derive remaining keys (1 if hash hinted, up to 5 in
+     * parallel otherwise), skipping any hash already derived by the hint
+     * fast-path above, then check ciphers. ── */
     bool singleHashHint = hashHinted;
     if (singleHashHint) {
-        /* Hash hint: one derivation instead of five — mirrors VeraCrypt selected_pkcs5_prf */
-        derive_header_key(hintHashId, (const uint8_t*)password, pwd_len,
-                          salt, pim, allDerivedKeys[hintHashId]);
+        /* Hash hint: one derivation instead of five — mirrors VeraCrypt selected_pkcs5_prf.
+         * Skip if the hint fast-path already derived this exact hash (hintAlgId
+         * was valid too, so derivedFlags[hintHashId] is already true). */
+        if (!derivedFlags[hintHashId]) {
+            derive_header_key(hintHashId, (const uint8_t*)password, pwd_len,
+                              salt, pim, allDerivedKeys[hintHashId]);
+            derivedFlags[hintHashId] = true;
+        }
     } else {
-        /* No hash hint: run all 5 derivations concurrently (matches VeraCrypt thread pool).
-         * Exception safety: if thread creation fails (EAGAIN), join started threads then fall
-         * back to sequential for the remainder so allDerivedKeys is always fully populated. */
+        /* No hash hint: run all NOT-YET-derived hashes concurrently (matches
+         * VeraCrypt thread pool); a hash already derived by the hint fast-path
+         * is skipped entirely — no thread spawned, no redundant PBKDF2.
+         * Exception safety: if thread creation fails (EAGAIN) partway through,
+         * the threads that did start are still joined, and every hash that
+         * ended up neither pre-derived nor thread-started falls back to
+         * sequential derivation, so allDerivedKeys is always fully populated. */
         std::thread kdfThreads[NUM_HASHES];
-        int threadsStarted = 0;
+        bool threadStarted[NUM_HASHES] = { false, false, false, false, false };
         try {
             for (int hi = 0; hi < NUM_HASHES; hi++) {
+                if (derivedFlags[hi]) continue;
                 kdfThreads[hi] = std::thread([hi, password, pwd_len, salt, pim, &allDerivedKeys]() {
                     derive_header_key(hi, (const uint8_t*)password, pwd_len,
                                       salt, pim, allDerivedKeys[hi]);
                 });
-                threadsStarted++;
+                threadStarted[hi] = true;
             }
         } catch (...) {}
-        for (int hi = 0; hi < threadsStarted; hi++) kdfThreads[hi].join();
-        for (int hi = threadsStarted; hi < NUM_HASHES; hi++)
-            derive_header_key(hi, (const uint8_t*)password, pwd_len, salt, pim, allDerivedKeys[hi]);
+        for (int hi = 0; hi < NUM_HASHES; hi++)
+            if (threadStarted[hi]) kdfThreads[hi].join();
+        for (int hi = 0; hi < NUM_HASHES; hi++) {
+            if (!derivedFlags[hi] && !threadStarted[hi])
+                derive_header_key(hi, (const uint8_t*)password, pwd_len, salt, pim, allDerivedKeys[hi]);
+        }
     }
 
     /* Check cipher combinations — restrict to hinted hash if one was given */
@@ -1132,6 +1207,58 @@ static int read_vc_header(int fd, uint64_t fileOff,
 
     secure_memset((volatile uint8_t*)allDerivedKeys, 0, sizeof(allDerivedKeys));
     return ERR_WRONG_PASSWORD;
+}
+
+/* ─── JNI_OnLoad: cached classes / method IDs ───────────────────────── */
+/*
+ * nativeListFiles previously did FindClass("zip/arcanum/crypto/NativeFileInfo")
+ * + GetMethodID on every call, and utf8_to_jstring's non-BMP fallback path
+ * looked up java/lang/String the same way (via a function-local static, so
+ * only the FIRST call paid for it, but that lookup pattern is redundant with
+ * this one). Both classes are resolved once here, at load time, and held as
+ * GlobalRefs for the life of the process. Call sites fall back to a per-call
+ * lookup if the cache failed to populate (e.g. a JNI_OnLoad edge case) so
+ * behavior is identical either way, just slower on the fallback path. */
+struct JniCache {
+    jclass    fileInfoCls  = nullptr;
+    jmethodID fileInfoCtor = nullptr;   /* NativeFileInfo(String,String,J,Z,J) */
+    jclass    stringCls    = nullptr;
+    jmethodID stringCtor   = nullptr;   /* String(byte[], String) */
+    jstring   utf8Name     = nullptr;   /* "UTF-8", interned as a GlobalRef */
+};
+static JniCache g_jniCache;
+
+extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void * /*reserved*/) {
+    JNIEnv *env;
+    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK)
+        return JNI_ERR;
+
+    jclass localFileInfo = env->FindClass("zip/arcanum/crypto/NativeFileInfo");
+    if (localFileInfo) {
+        g_jniCache.fileInfoCls = (jclass)env->NewGlobalRef(localFileInfo);
+        g_jniCache.fileInfoCtor = env->GetMethodID(g_jniCache.fileInfoCls, "<init>",
+                                       "(Ljava/lang/String;Ljava/lang/String;JZJ)V");
+        env->DeleteLocalRef(localFileInfo);
+    }
+    if (env->ExceptionCheck()) env->ExceptionClear();
+
+    jclass localString = env->FindClass("java/lang/String");
+    if (localString) {
+        g_jniCache.stringCls = (jclass)env->NewGlobalRef(localString);
+        g_jniCache.stringCtor = env->GetMethodID(g_jniCache.stringCls, "<init>",
+                                     "([BLjava/lang/String;)V");
+        env->DeleteLocalRef(localString);
+    }
+    if (env->ExceptionCheck()) env->ExceptionClear();
+
+    jstring localUtf8 = env->NewStringUTF("UTF-8");
+    if (localUtf8) {
+        g_jniCache.utf8Name = (jstring)env->NewGlobalRef(localUtf8);
+        env->DeleteLocalRef(localUtf8);
+    }
+    if (env->ExceptionCheck()) env->ExceptionClear();
+
+    return JNI_VERSION_1_6;
 }
 
 /* ─── JNI helpers ────────────────────────────────────────────────────── */
@@ -1242,15 +1369,30 @@ static jstring utf8_to_jstring(JNIEnv *env, const char *s) {
     }
     if (!hasNonBmp) return env->NewStringUTF(s);
 
-    /* Thread-safe one-time init (C++11 function-local static "magic statics"). */
-    static const Utf8JStringCache cache = make_utf8_jstring_cache(env);
-    if (!cache.stringCls || !cache.ctor || !cache.utf8Name) return env->NewStringUTF("?");
+    /* Fast path: JNI_OnLoad already resolved these. Fall back to the
+     * per-call (but still one-time-per-process, via a function-local static)
+     * lookup if the cache didn't populate for some reason. */
+    jclass    stringCls;
+    jmethodID ctor;
+    jstring   utf8Name;
+    if (g_jniCache.stringCls && g_jniCache.stringCtor && g_jniCache.utf8Name) {
+        stringCls = g_jniCache.stringCls;
+        ctor      = g_jniCache.stringCtor;
+        utf8Name  = g_jniCache.utf8Name;
+    } else {
+        /* Thread-safe one-time init (C++11 function-local static "magic statics"). */
+        static const Utf8JStringCache cache = make_utf8_jstring_cache(env);
+        if (!cache.stringCls || !cache.ctor || !cache.utf8Name) return env->NewStringUTF("?");
+        stringCls = cache.stringCls;
+        ctor      = cache.ctor;
+        utf8Name  = cache.utf8Name;
+    }
 
     size_t len = strlen(s);
     jbyteArray bytes = env->NewByteArray((jsize)len);
     if (!bytes) return nullptr;
     env->SetByteArrayRegion(bytes, 0, (jsize)len, (const jbyte*)s);
-    auto result = (jstring)env->NewObject(cache.stringCls, cache.ctor, bytes, cache.utf8Name);
+    auto result = (jstring)env->NewObject(stringCls, ctor, bytes, utf8Name);
     env->DeleteLocalRef(bytes);
     return result;
 }
@@ -1333,7 +1475,8 @@ static bool preallocate_fd(
 
     lseek(fd, 0, SEEK_SET);
     uint64_t remaining = fileSize;
-    auto t0 = (uint64_t)time(nullptr);
+    uint64_t t0 = monotonic_ms();
+    ProgressThrottle throttle;
 
     while (remaining > 0) {
         size_t sz = (remaining > CHUNK) ? CHUNK : (size_t)remaining;
@@ -1349,10 +1492,11 @@ static bool preallocate_fd(
         remaining -= (uint64_t)w;
         uint64_t allocated = fileSize - remaining;
         float frac = (float)allocated / (float)fileSize * allocWeight;
-        uint64_t el = (uint64_t)time(nullptr) - t0;
-        float speed = el > 0 ? (float)(allocated / 1048576ULL) / (float)el : 0.f;
+        uint64_t elMs = monotonic_ms() - t0;
+        float speed = elMs > 0 ? (float)(allocated / 1048576ULL) / ((float)elMs / 1000.f) : 0.f;
         jlong pseudo = (jlong)((double)frac / (double)allocWeight * (double)dataSize);
-        report_progress(env, progressListener, progressMid, frac, speed, pseudo);
+        if (throttle.should_report(remaining == 0))
+            report_progress(env, progressListener, progressMid, frac, speed, pseudo);
     }
 
     free(zeros);
@@ -1381,7 +1525,8 @@ static jint do_create_container(
         jlong sizeBytes, const std::string &password,
         const std::vector<std::string> &keyfilePaths,
         jint algorithm, jint hashAlg, jint filesystem,
-        jboolean quickFormat, jobject progressListener, jint pim)
+        jboolean quickFormat, jobject progressListener, jint pim,
+        const uint8_t *entropy, size_t entropyLen)
 {
     auto fail_cleanup = [&]() {
         if (unlinkPathOnFail) { close(fd); unlink(unlinkPathOnFail); }
@@ -1433,13 +1578,38 @@ static jint do_create_container(
         secure_memset(effPwd, 0, sizeof(effPwd));
         fail_cleanup(); return ERR_RAND;
     }
+    /* Random Pool Enrichment: fold user-collected entropy into the urandom
+     * master key. XOR with a uniform urandom stream can only add entropy. */
+    xor_fold_entropy(masterKey, (size_t)(n * 64), entropy, entropyLen);
+
+    /* Primary and backup headers must never share a salt — each gets its own
+     * fresh urandom salt, with the SAME user entropy XOR'd into both (mirrors
+     * wipe_and_rewrite_header's extraEntropy handling for changePassword). */
+    uint8_t primarySalt[VC_HEADER_SALT_SIZE], backupSalt[VC_HEADER_SALT_SIZE];
+    const uint8_t *primarySaltPtr = nullptr, *backupSaltPtr = nullptr;
+    if (entropy && entropyLen > 0) {
+        if (!read_urandom(primarySalt, sizeof(primarySalt)) ||
+            !read_urandom(backupSalt, sizeof(backupSalt))) {
+            LOGE("[%s] /dev/urandom failed for header salt - aborting", logTag);
+            secure_memset(effPwd, 0, sizeof(effPwd));
+            secure_memset((volatile uint8_t*)masterKey, 0, sizeof(masterKey));
+            fail_cleanup(); return ERR_RAND;
+        }
+        xor_fold_entropy(primarySalt, sizeof(primarySalt), entropy, entropyLen);
+        xor_fold_entropy(backupSalt,  sizeof(backupSalt),  entropy, entropyLen);
+        primarySaltPtr = primarySalt;
+        backupSaltPtr  = backupSalt;
+    }
 
     if (write_vc_header(fd, 0, dataSize, VC_DATA_OFFSET,
                         masterKey, algId, (int)hashAlg,
-                        (const char*)effPwd, pbkdf2PwdLen, (int)pim) != 0) {
+                        (const char*)effPwd, pbkdf2PwdLen, (int)pim,
+                        /*hiddenVolSize=*/0, primarySaltPtr) != 0) {
         LOGE("[%s] Primary header write failed", logTag);
         secure_memset(effPwd, 0, sizeof(effPwd));
         secure_memset((volatile uint8_t*)masterKey, 0, sizeof(masterKey));
+        secure_memset(primarySalt, 0, sizeof(primarySalt));
+        secure_memset(backupSalt,  0, sizeof(backupSalt));
         fail_cleanup(); return ERR_FILE;
     }
 
@@ -1447,13 +1617,18 @@ static jint do_create_container(
     uint64_t backupOff = fileSize - VC_BACKUP_AREA_SIZE;
     if (write_vc_header(fd, backupOff, dataSize, VC_DATA_OFFSET,
                         masterKey, algId, (int)hashAlg,
-                        (const char*)effPwd, pbkdf2PwdLen, (int)pim) != 0) {
+                        (const char*)effPwd, pbkdf2PwdLen, (int)pim,
+                        /*hiddenVolSize=*/0, backupSaltPtr) != 0) {
         LOGE("[%s] Backup header write failed", logTag);
         secure_memset(effPwd, 0, sizeof(effPwd));
         secure_memset((volatile uint8_t*)masterKey, 0, sizeof(masterKey));
+        secure_memset(primarySalt, 0, sizeof(primarySalt));
+        secure_memset(backupSalt,  0, sizeof(backupSalt));
         fail_cleanup(); return ERR_FILE;
     }
     secure_memset(effPwd, 0, sizeof(effPwd));
+    secure_memset(primarySalt, 0, sizeof(primarySalt));
+    secure_memset(backupSalt,  0, sizeof(backupSalt));
 
     /* Fill data area */
     if (!quickFormat) {
@@ -1464,7 +1639,8 @@ static jint do_create_container(
             uint64_t remaining = dataSize, offset = VC_DATA_OFFSET;
             int rfd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
             bool rng_ok = true, write_ok = true;
-            auto t0 = (uint64_t)time(nullptr);
+            uint64_t t0 = monotonic_ms();
+            ProgressThrottle throttle;
             while (remaining > 0) {
                 size_t sz = (remaining > CHUNK) ? CHUNK : (size_t)remaining;
                 if (rfd >= 0) {
@@ -1482,10 +1658,11 @@ static jint do_create_container(
                 uint64_t written = dataSize - remaining;
                 float fillFrac = (float)written / (float)dataSize;
                 float frac     = allocWeight + fillFrac * (fillEnd - allocWeight);
-                uint64_t el    = (uint64_t)time(nullptr) - t0;
-                float speed    = el > 0 ? (float)(written/1048576UL)/(float)el : 10.f;
-                report_progress(env, progressListener, progressMid, frac, speed,
-                                (jlong)((double)frac * (double)dataSize));
+                uint64_t elMs  = monotonic_ms() - t0;
+                float speed    = elMs > 0 ? (float)(written/1048576UL)/((float)elMs/1000.f) : 10.f;
+                if (throttle.should_report(remaining == 0))
+                    report_progress(env, progressListener, progressMid, frac, speed,
+                                    (jlong)((double)frac * (double)dataSize));
             }
             if (rfd >= 0) close(rfd);
             secure_memset(rnd, 0, CHUNK);
@@ -1552,7 +1729,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
         jstring jPassword, jobjectArray jKeyfilePaths,
         jint algorithm, jint hashAlg, jint filesystem,
         jboolean quickFormat,
-        jbyteArray /*entropyBytes*/,
+        jbyteArray jEntropyBytes,
         jobject progressListener,
         jint pim)
 {
@@ -1567,10 +1744,24 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
     int fd = open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0600);
     if (fd < 0) { LOGE("[create] Cannot open/create: %s (errno=%d: %s)", path.c_str(), errno, strerror(errno)); return ERR_FILE; }
 
-    return do_create_container(env, fd, path.c_str(), "create",
-                               sizeBytes, password, keyfilePaths,
-                               algorithm, hashAlg, filesystem, quickFormat,
-                               progressListener, pim);
+    /* Copy (never pin) caller-provided entropy into a local buffer; null/empty
+     * jEntropyBytes yields an empty vector, which xor_fold_entropy no-ops on. */
+    std::vector<uint8_t> entropy;
+    if (jEntropyBytes) {
+        jsize elen = env->GetArrayLength(jEntropyBytes);
+        if (elen > 0) {
+            entropy.resize((size_t)elen);
+            env->GetByteArrayRegion(jEntropyBytes, 0, elen, (jbyte*)entropy.data());
+        }
+    }
+
+    jint rc = do_create_container(env, fd, path.c_str(), "create",
+                                  sizeBytes, password, keyfilePaths,
+                                  algorithm, hashAlg, filesystem, quickFormat,
+                                  progressListener, pim,
+                                  entropy.empty() ? nullptr : entropy.data(), entropy.size());
+    if (!entropy.empty()) secure_memset(entropy.data(), 0, entropy.size());
+    return rc;
 }
 
 /* ─── JNI: nativeCreateContainerFd ──────────────────────────────────── */
@@ -1584,7 +1775,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
         jstring jPassword, jobjectArray jKeyfilePaths,
         jint algorithm, jint hashAlg, jint filesystem,
         jboolean quickFormat,
-        jbyteArray /*entropyBytes*/,
+        jbyteArray jEntropyBytes,
         jobject progressListener,
         jint pim)
 {
@@ -1598,10 +1789,22 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
     int fd = dup((int)safFd);
     if (fd < 0) { LOGE("[fd/create] dup failed: errno=%d", errno); return ERR_FILE; }
 
-    return do_create_container(env, fd, nullptr, "fd/create",
-                               sizeBytes, password, keyfilePaths,
-                               algorithm, hashAlg, filesystem, quickFormat,
-                               progressListener, pim);
+    std::vector<uint8_t> entropy;
+    if (jEntropyBytes) {
+        jsize elen = env->GetArrayLength(jEntropyBytes);
+        if (elen > 0) {
+            entropy.resize((size_t)elen);
+            env->GetByteArrayRegion(jEntropyBytes, 0, elen, (jbyte*)entropy.data());
+        }
+    }
+
+    jint rc = do_create_container(env, fd, nullptr, "fd/create",
+                                  sizeBytes, password, keyfilePaths,
+                                  algorithm, hashAlg, filesystem, quickFormat,
+                                  progressListener, pim,
+                                  entropy.empty() ? nullptr : entropy.data(), entropy.size());
+    if (!entropy.empty()) secure_memset(entropy.data(), 0, entropy.size());
+    return rc;
 }
 
 /* ─── Open-container core ───────────────────────────────────────────── */
@@ -1831,11 +2034,19 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
         JNIEnv *env, jobject /*thiz*/,
         jlong handle, jstring jDirPath)
 {
-    jclass infoCls = env->FindClass("zip/arcanum/crypto/NativeFileInfo");
-    if (!infoCls) return nullptr;
-    jmethodID ctor = env->GetMethodID(infoCls, "<init>",
-                         "(Ljava/lang/String;Ljava/lang/String;JZJ)V");
-    if (!ctor) return env->NewObjectArray(0, infoCls, nullptr);
+    jclass infoCls;
+    jmethodID ctor;
+    if (g_jniCache.fileInfoCls && g_jniCache.fileInfoCtor) {
+        /* Fast path: resolved once in JNI_OnLoad instead of on every call. */
+        infoCls = g_jniCache.fileInfoCls;
+        ctor    = g_jniCache.fileInfoCtor;
+    } else {
+        infoCls = env->FindClass("zip/arcanum/crypto/NativeFileInfo");
+        if (!infoCls) return nullptr;
+        ctor = env->GetMethodID(infoCls, "<init>",
+                                "(Ljava/lang/String;Ljava/lang/String;JZJ)V");
+        if (!ctor) return env->NewObjectArray(0, infoCls, nullptr);
+    }
 
     if (decode_handle(handle) < 0) return env->NewObjectArray(0, infoCls, nullptr);
     std::string dirPath = jstring_to_string(env, jDirPath);
@@ -1928,41 +2139,36 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
 
     std::string path = jstring_to_string(env, jFilePath);
 
+    // f_read into a malloc'd native buffer instead of a pinned Java array:
+    // avoids GetByteArrayElements' pin/copy plus the old trim path's second
+    // NewByteArray + re-pin when br < length. One JNI copy (SetByteArrayRegion
+    // below), sized to exactly what was read.
+    auto *nativeBuf = static_cast<uint8_t*>(malloc((size_t)length));
+    if (!nativeBuf) return env->NewByteArray(0);
+
     FIL fil;
     std::lock_guard<std::mutex> lock(g_fatfs_mutex);
     int pdrv = decode_handle(handle);
-    if (pdrv < 0) return env->NewByteArray(0);
+    if (pdrv < 0) { free(nativeBuf); return env->NewByteArray(0); }
 
     char fullPath[512];
     int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
-    if (n < 0 || n >= (int)sizeof(fullPath)) return env->NewByteArray(0);
+    if (n < 0 || n >= (int)sizeof(fullPath)) { free(nativeBuf); return env->NewByteArray(0); }
 
-    if (f_open(&fil, fullPath, FA_READ) != FR_OK) return env->NewByteArray(0);
-    if (f_lseek(&fil, (FSIZE_t)offset) != FR_OK) { f_close(&fil); return env->NewByteArray(0); }
-
-    jbyteArray result = env->NewByteArray(length);
-    jbyte *buf = env->GetByteArrayElements(result, nullptr);
-    if (!buf) { f_close(&fil); return env->NewByteArray(0); }
+    if (f_open(&fil, fullPath, FA_READ) != FR_OK) { free(nativeBuf); return env->NewByteArray(0); }
+    if (f_lseek(&fil, (FSIZE_t)offset) != FR_OK) {
+        f_close(&fil); free(nativeBuf); return env->NewByteArray(0);
+    }
 
     UINT br = 0;
-    f_read(&fil, buf, (UINT)length, &br);
-    env->ReleaseByteArrayElements(result, buf, 0);
+    f_read(&fil, nativeBuf, (UINT)length, &br);
     f_close(&fil);
 
-    if ((jint)br < length) {
-        // Return a trimmed array sized to actual bytes read.
-        // Re-pin result to copy, then release and delete the original local ref.
-        jbyteArray trimmed = env->NewByteArray((jsize)br);
-        if (trimmed && br > 0) {
-            jbyte *src = env->GetByteArrayElements(result, nullptr);
-            if (src) {
-                env->SetByteArrayRegion(trimmed, 0, (jsize)br, src);
-                env->ReleaseByteArrayElements(result, src, JNI_ABORT);
-            }
-        }
-        env->DeleteLocalRef(result);
-        return trimmed;
+    jbyteArray result = env->NewByteArray((jsize)br);
+    if (result && br > 0) {
+        env->SetByteArrayRegion(result, 0, (jsize)br, (const jbyte*)nativeBuf);
     }
+    free(nativeBuf);
     return result;
 }
 
@@ -2270,7 +2476,8 @@ static jint do_create_hidden_volume(
         const std::string &outerPassword, const std::vector<std::string> &outerKeyfilePaths, jint outerPim,
         const std::string &hiddenPassword, const std::vector<std::string> &hiddenKeyfilePaths, jint hiddenPim,
         jint hiddenAlgorithm, jint hiddenHashAlg,
-        jobject progressListener)
+        jobject progressListener,
+        const uint8_t *entropy, size_t entropyLen)
 {
     jmethodID progressMid = resolve_progress_mid(env, progressListener);
 
@@ -2341,15 +2548,41 @@ static jint do_create_hidden_volume(
         close(fd);
         return ERR_RAND;
     }
+    /* Random Pool Enrichment for the hidden volume's master key (same
+     * treatment as the outer/standard create path). */
+    xor_fold_entropy(hiddenMasterKey, (size_t)(hiddenN * 64), entropy, entropyLen);
+
+    /* Hidden primary and hidden backup headers each get their own fresh salt
+     * (never shared), with the same user entropy XOR'd into both. This does
+     * NOT touch the outer volume's headers — see the deniability note above;
+     * the outer headers are never rewritten by this function. */
+    uint8_t hiddenPrimarySalt[VC_HEADER_SALT_SIZE], hiddenBackupSalt[VC_HEADER_SALT_SIZE];
+    const uint8_t *hiddenPrimarySaltPtr = nullptr, *hiddenBackupSaltPtr = nullptr;
+    if (entropy && entropyLen > 0) {
+        if (!read_urandom(hiddenPrimarySalt, sizeof(hiddenPrimarySalt)) ||
+            !read_urandom(hiddenBackupSalt,  sizeof(hiddenBackupSalt))) {
+            LOGE("[%s] /dev/urandom failed for hidden header salt - aborting", logTag);
+            secure_memset((volatile uint8_t*)hiddenMasterKey, 0, sizeof(hiddenMasterKey));
+            secure_memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
+            close(fd);
+            return ERR_RAND;
+        }
+        xor_fold_entropy(hiddenPrimarySalt, sizeof(hiddenPrimarySalt), entropy, entropyLen);
+        xor_fold_entropy(hiddenBackupSalt,  sizeof(hiddenBackupSalt),  entropy, entropyLen);
+        hiddenPrimarySaltPtr = hiddenPrimarySalt;
+        hiddenBackupSaltPtr  = hiddenBackupSalt;
+    }
 
     /* Primary hidden header at VC_HIDDEN_HEADER_OFFSET; field28 = 0 in hidden headers */
     if (write_vc_header(fd, VC_HIDDEN_HEADER_OFFSET,
                         hidSz, hiddenDataOff,
                         hiddenMasterKey, hiddenAlgId, (int)hiddenHashAlg,
                         (const char*)hiddenEffPwd, hiddenEffPwdLen,
-                        (int)hiddenPim, 0, nullptr) != 0) {
+                        (int)hiddenPim, 0, hiddenPrimarySaltPtr) != 0) {
         secure_memset((volatile uint8_t*)hiddenMasterKey, 0, sizeof(hiddenMasterKey));
         secure_memset(hiddenEffPwd,    0, sizeof(hiddenEffPwd));
+        secure_memset(hiddenPrimarySalt, 0, sizeof(hiddenPrimarySalt));
+        secure_memset(hiddenBackupSalt,  0, sizeof(hiddenBackupSalt));
         close(fd);
         return ERR_FILE;
     }
@@ -2358,13 +2591,17 @@ static jint do_create_hidden_volume(
                         hidSz, hiddenDataOff,
                         hiddenMasterKey, hiddenAlgId, (int)hiddenHashAlg,
                         (const char*)hiddenEffPwd, hiddenEffPwdLen,
-                        (int)hiddenPim, 0, nullptr) != 0) {
+                        (int)hiddenPim, 0, hiddenBackupSaltPtr) != 0) {
         secure_memset((volatile uint8_t*)hiddenMasterKey, 0, sizeof(hiddenMasterKey));
         secure_memset(hiddenEffPwd,    0, sizeof(hiddenEffPwd));
+        secure_memset(hiddenPrimarySalt, 0, sizeof(hiddenPrimarySalt));
+        secure_memset(hiddenBackupSalt,  0, sizeof(hiddenBackupSalt));
         close(fd);
         return ERR_FILE;
     }
     secure_memset(hiddenEffPwd, 0, sizeof(hiddenEffPwd));
+    secure_memset(hiddenPrimarySalt, 0, sizeof(hiddenPrimarySalt));
+    secure_memset(hiddenBackupSalt,  0, sizeof(hiddenBackupSalt));
 
     /* ── Format hidden area as FAT32 ── */
     char drvPath[8];
@@ -2401,7 +2638,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
         jstring jHiddenPassword, jobjectArray jHiddenKeyfilePaths, jint hiddenPim,
         jint hiddenAlgorithm, jint hiddenHashAlg,
         jboolean /*quickFormat*/,
-        jbyteArray /*entropyBytes*/,
+        jbyteArray jEntropyBytes,
         jobject progressListener)
 {
     if (hiddenAlgorithm < 0 || hiddenAlgorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
@@ -2420,10 +2657,22 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
     int fd = open(path.c_str(), O_RDWR);
     if (fd < 0) { LOGE("[hidden] cannot open %s", path.c_str()); return ERR_FILE; }
 
-    return do_create_hidden_volume(env, fd, "hidden", hiddenSizeBytes,
-                                   outerPassword, outerKeyfilePaths, outerPim,
-                                   hiddenPassword, hiddenKeyfilePaths, hiddenPim,
-                                   hiddenAlgorithm, hiddenHashAlg, progressListener);
+    std::vector<uint8_t> entropy;
+    if (jEntropyBytes) {
+        jsize elen = env->GetArrayLength(jEntropyBytes);
+        if (elen > 0) {
+            entropy.resize((size_t)elen);
+            env->GetByteArrayRegion(jEntropyBytes, 0, elen, (jbyte*)entropy.data());
+        }
+    }
+
+    jint rc = do_create_hidden_volume(env, fd, "hidden", hiddenSizeBytes,
+                                      outerPassword, outerKeyfilePaths, outerPim,
+                                      hiddenPassword, hiddenKeyfilePaths, hiddenPim,
+                                      hiddenAlgorithm, hiddenHashAlg, progressListener,
+                                      entropy.empty() ? nullptr : entropy.data(), entropy.size());
+    if (!entropy.empty()) secure_memset(entropy.data(), 0, entropy.size());
+    return rc;
 }
 
 /* ─── JNI: nativeCreateHiddenVolumeFd ───────────────────────────────── */
@@ -2439,7 +2688,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeFd(
         jstring jHiddenPassword, jobjectArray jHiddenKeyfilePaths, jint hiddenPim,
         jint hiddenAlgorithm, jint hiddenHashAlg,
         jboolean /*quickFormat*/,
-        jbyteArray /*entropyBytes*/,
+        jbyteArray jEntropyBytes,
         jobject progressListener)
 {
     if (hiddenAlgorithm < 0 || hiddenAlgorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
@@ -2457,10 +2706,22 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeFd(
     int fd = dup((int)safFd);
     if (fd < 0) { LOGE("[fd/hidden] dup failed: errno=%d", errno); return ERR_FILE; }
 
-    return do_create_hidden_volume(env, fd, "fd/hidden", hiddenSizeBytes,
-                                   outerPassword, outerKeyfilePaths, outerPim,
-                                   hiddenPassword, hiddenKeyfilePaths, hiddenPim,
-                                   hiddenAlgorithm, hiddenHashAlg, progressListener);
+    std::vector<uint8_t> entropy;
+    if (jEntropyBytes) {
+        jsize elen = env->GetArrayLength(jEntropyBytes);
+        if (elen > 0) {
+            entropy.resize((size_t)elen);
+            env->GetByteArrayRegion(jEntropyBytes, 0, elen, (jbyte*)entropy.data());
+        }
+    }
+
+    jint rc = do_create_hidden_volume(env, fd, "fd/hidden", hiddenSizeBytes,
+                                      outerPassword, outerKeyfilePaths, outerPim,
+                                      hiddenPassword, hiddenKeyfilePaths, hiddenPim,
+                                      hiddenAlgorithm, hiddenHashAlg, progressListener,
+                                      entropy.empty() ? nullptr : entropy.data(), entropy.size());
+    if (!entropy.empty()) secure_memset(entropy.data(), 0, entropy.size());
+    return rc;
 }
 
 /* ─── JNI: nativeGetVolumeType ──────────────────────────────────────── */
@@ -2531,10 +2792,7 @@ static int wipe_and_rewrite_header(int fd, uint64_t fileOff,
     /* Generate new salt; XOR in user entropy if provided */
     uint8_t newSalt[VC_HEADER_SALT_SIZE] = {};
     if (!read_urandom(newSalt, sizeof(newSalt))) return ERR_RAND;
-    if (extraEntropy && extraEntropyLen > 0) {
-        for (size_t i = 0; i < VC_HEADER_SALT_SIZE; i++)
-            newSalt[i] ^= extraEntropy[i % extraEntropyLen];
-    }
+    xor_fold_entropy(newSalt, sizeof(newSalt), extraEntropy, extraEntropyLen);
     int ret = write_vc_header(fd, fileOff, dataSz, dataOff,
                               masterKey, algId, newHashAlg,
                               newPwd, newPwdLen, newPim, hiddenVolSize, newSalt);
@@ -3087,7 +3345,8 @@ static int fill_range_xts(int fd, uint64_t startByte, uint64_t endByte,
 
     uint64_t remaining = endByte - startByte;
     uint64_t offset    = startByte;
-    auto t0 = (uint64_t)time(nullptr);
+    uint64_t t0 = monotonic_ms();
+    ProgressThrottle throttle;
 
     while (remaining > 0) {
         size_t sz = (remaining > CHUNK) ? CHUNK : (size_t)remaining;
@@ -3113,12 +3372,13 @@ static int fill_range_xts(int fd, uint64_t startByte, uint64_t endByte,
         remaining -= sz;
         offset    += sz;
 
-        uint64_t done    = offset - startByte;
-        uint64_t elapsed = (uint64_t)time(nullptr) - t0;
-        float    speed   = elapsed > 0 ? (float)(done >> 20) / (float)elapsed : 50.f;
-        float    lFrac   = totalFillBytes > 0 ? (float)done / (float)totalFillBytes : 1.f;
-        float    frac    = progressBase + lFrac * progressRange;
-        report_progress(env, listener, progressMid, frac, speed, (jlong)done);
+        uint64_t done     = offset - startByte;
+        uint64_t elapsdMs = monotonic_ms() - t0;
+        float    speed    = elapsdMs > 0 ? (float)(done >> 20) / ((float)elapsdMs / 1000.f) : 50.f;
+        float    lFrac    = totalFillBytes > 0 ? (float)done / (float)totalFillBytes : 1.f;
+        float    frac     = progressBase + lFrac * progressRange;
+        if (throttle.should_report(remaining == 0))
+            report_progress(env, listener, progressMid, frac, speed, (jlong)done);
     }
 
     free(buf);
