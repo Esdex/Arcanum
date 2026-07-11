@@ -2,6 +2,7 @@ package zip.arcanum.core.security
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.SystemClock
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -86,15 +87,13 @@ class PinManager @Inject constructor(
 
     /** Returns remaining lockout time in ms, or 0 if not locked. */
     suspend fun lockoutRemainingMs(): Long = withContext(Dispatchers.IO) {
-        val lockUntil = prefsDeferred.await().getLong(KEY_LOCK_UNTIL_MS, 0L)
-        maxOf(0L, lockUntil - System.currentTimeMillis())
+        remainingLockMs(prefsDeferred.await())
     }
 
     suspend fun verifyPin(pin: String): PinResult = withContext(Dispatchers.IO) {
         val prefs = prefsDeferred.await()
 
-        val lockUntil = prefs.getLong(KEY_LOCK_UNTIL_MS, 0L)
-        if (System.currentTimeMillis() < lockUntil) return@withContext PinResult.LOCKED
+        if (remainingLockMs(prefs) > 0L) return@withContext PinResult.LOCKED
 
         val pinHash   = prefs.getString(KEY_PIN_HASH, null)
         val panicHash = prefs.getString(KEY_PANIC_PIN_HASH, null)
@@ -123,11 +122,20 @@ class PinManager @Inject constructor(
             else -> {
                 val newCount = prefs.getInt(KEY_FAIL_COUNT, 0) + 1
                 val lockDuration = lockoutDuration(newCount)
-                val newLockUntil = if (lockDuration > 0L) System.currentTimeMillis() + lockDuration else 0L
-                prefs.edit()
-                    .putInt(KEY_FAIL_COUNT, newCount)
-                    .putLong(KEY_LOCK_UNTIL_MS, newLockUntil)
-                    .apply()
+                val editor = prefs.edit().putInt(KEY_FAIL_COUNT, newCount)
+                if (lockDuration > 0L) {
+                    val nowElapsed = SystemClock.elapsedRealtime()
+                    editor.putLong(KEY_LOCK_SET_ELAPSED, nowElapsed)
+                        .putLong(KEY_LOCK_UNTIL_ELAPSED, nowElapsed + lockDuration)
+                        .putLong(KEY_LOCK_UNTIL_WALL, System.currentTimeMillis() + lockDuration)
+                } else {
+                    editor.putLong(KEY_LOCK_SET_ELAPSED, 0L)
+                        .putLong(KEY_LOCK_UNTIL_ELAPSED, 0L)
+                        .putLong(KEY_LOCK_UNTIL_WALL, 0L)
+                }
+                // commit() not apply(): a process kill right after a failed attempt must
+                // not drop the fail-count increment or the lockout deadline.
+                editor.commit()
                 PinResult.WRONG
             }
         }
@@ -172,7 +180,9 @@ class PinManager @Inject constructor(
             .remove(KEY_PANIC_PIN_HASH)
             .remove(KEY_PANIC_HASH_VERSION)
             .remove(KEY_FAIL_COUNT)
-            .remove(KEY_LOCK_UNTIL_MS)
+            .remove(KEY_LOCK_SET_ELAPSED)
+            .remove(KEY_LOCK_UNTIL_ELAPSED)
+            .remove(KEY_LOCK_UNTIL_WALL)
             .apply()
         _isPinSet.value      = false
         _isPanicPinSet.value = false
@@ -240,8 +250,37 @@ class PinManager @Inject constructor(
     private fun resetFailCount(prefs: SharedPreferences) {
         prefs.edit()
             .putInt(KEY_FAIL_COUNT, 0)
-            .putLong(KEY_LOCK_UNTIL_MS, 0L)
+            .putLong(KEY_LOCK_SET_ELAPSED, 0L)
+            .putLong(KEY_LOCK_UNTIL_ELAPSED, 0L)
+            .putLong(KEY_LOCK_UNTIL_WALL, 0L)
             .apply()
+    }
+
+    /**
+     * Remaining lockout in ms, evaluated against both a monotonic clock
+     * (SystemClock.elapsedRealtime) and the wall clock, fail-closed. 0 = unlocked.
+     *
+     * elapsedRealtime can't be moved forward from Settings, so it defeats the
+     * "advance the system clock past the deadline" bypass. It does reset to 0 on
+     * reboot, so the wall-clock deadline is kept as a reboot fallback: the vault
+     * stays locked while EITHER clock still says locked. Moving the wall clock
+     * forward zeroes only the wall term (monotonic still governs); moving it
+     * backward can only over-lock. The residual gap (reboot AND clock-forward)
+     * is bounded by Argon2id making each guess expensive.
+     */
+    private fun remainingLockMs(prefs: SharedPreferences): Long {
+        val untilElapsed = prefs.getLong(KEY_LOCK_UNTIL_ELAPSED, 0L)
+        val untilWall    = prefs.getLong(KEY_LOCK_UNTIL_WALL, 0L)
+        if (untilElapsed == 0L && untilWall == 0L) return 0L
+
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val setElapsed = prefs.getLong(KEY_LOCK_SET_ELAPSED, 0L)
+        // If "now" precedes when the lock was set, elapsedRealtime has reset (reboot),
+        // so the monotonic deadline is meaningless — drop it and rely on the wall clock.
+        val remElapsed = if (nowElapsed < setElapsed) 0L else untilElapsed - nowElapsed
+        val remWall    = untilWall - System.currentTimeMillis()
+
+        return maxOf(0L, remElapsed, remWall)
     }
 
     private fun lockoutDuration(failCount: Int): Long = when {
@@ -258,7 +297,10 @@ class PinManager @Inject constructor(
         private const val KEY_PANIC_PIN_HASH     = "panic_pin_hash"
         private const val KEY_PANIC_HASH_VERSION = "panic_pin_hash_v"
         private const val KEY_FAIL_COUNT         = "pin_fail_count"
-        private const val KEY_LOCK_UNTIL_MS      = "pin_lock_until_ms"
+        // Lockout deadlines: monotonic (elapsedRealtime) primary + wall-clock reboot fallback.
+        private const val KEY_LOCK_SET_ELAPSED   = "pin_lock_set_elapsed"
+        private const val KEY_LOCK_UNTIL_ELAPSED = "pin_lock_until_elapsed"
+        private const val KEY_LOCK_UNTIL_WALL    = "pin_lock_until_wall"
 
         private const val VERSION_SHA256 = 1
         private const val VERSION_ARGON2 = 2
