@@ -16,6 +16,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
+    <!-- Strip ACCESS_NETWORK_STATE, merged in transitively by WorkManager/Media3.
+         The app references no connectivity APIs, and the offline guarantee depends on
+         no network permission being present in the installed manifest. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
+
     <!-- USB host (for USB container support — future) -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
