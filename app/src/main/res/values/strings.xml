@@ -483,6 +483,8 @@
     <string name="settings_panic_vault_keep">Keep</string>
     <string name="settings_appearance_title">Appearance</string>
     <string name="settings_appearance_theme_section">THEME MODE</string>
+    <string name="settings_appearance_default_tab_section">DEFAULT VAULT TAB</string>
+    <string name="settings_appearance_default_tab_desc">Which tab a vault opens on after unlocking.</string>
     <string name="settings_appearance_language_section">LANGUAGE</string>
     <string name="settings_appearance_language">App Language</string>
     <string name="settings_appearance_language_system">System default</string>

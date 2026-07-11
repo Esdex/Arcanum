@@ -85,8 +85,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 
 private val containerTabs = listOf(
-    BottomNavItem.ContainerGallery,
     BottomNavItem.ContainerFiles,
+    BottomNavItem.ContainerGallery,
     BottomNavItem.ContainerInfo
 )
 
@@ -111,9 +111,20 @@ fun ContainerScreen(
     val fileManagerState       by fileManagerViewModel.state.collectAsState()
     val isAmoled               = LocalAmoledMode.current
     val hazeState              = remember { HazeState() }
-    var selectedTab          by rememberSaveable { mutableStateOf(BottomNavItem.ContainerGallery.route) }
+    var selectedTab          by rememberSaveable { mutableStateOf(BottomNavItem.ContainerFiles.route) }
+    var defaultTabApplied      by rememberSaveable { mutableStateOf(false) }
     var notification           by remember { mutableStateOf<InAppNotification?>(null) }
     var showUnmountConfirm     by remember { mutableStateOf(false) }
+
+    // Open on the user's preferred tab the first time this screen is shown. Guarded
+    // so it never overrides a manual tab switch or a restored tab after process death.
+    val defaultTabRoute by viewModel.defaultTabRoute.collectAsState()
+    LaunchedEffect(defaultTabRoute) {
+        if (!defaultTabApplied && defaultTabRoute != null) {
+            selectedTab = defaultTabRoute!!
+            defaultTabApplied = true
+        }
+    }
 
     val gallerySelectionMode = gallerySelectedIds.isNotEmpty()
 

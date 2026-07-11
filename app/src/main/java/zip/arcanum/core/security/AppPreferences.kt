@@ -12,6 +12,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import zip.arcanum.core.navigation_components.DefaultContainerTab
 import zip.arcanum.core.theme.ThemeMode
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -38,6 +39,7 @@ class AppPreferences @Inject constructor(
         val LAST_SEEN_VERSION_CODE    = intPreferencesKey("last_seen_version_code")
         val UNMOUNT_ON_AUTO_LOCK      = booleanPreferencesKey("unmount_on_auto_lock")
         val GALLERY_RESYNC_BUTTON     = booleanPreferencesKey("gallery_resync_button")
+        val DEFAULT_CONTAINER_TAB     = stringPreferencesKey("default_container_tab")
     }
 
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
@@ -150,5 +152,16 @@ class AppPreferences @Inject constructor(
 
     suspend fun setGalleryResyncButton(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.GALLERY_RESYNC_BUTTON] = enabled }
+    }
+
+    val defaultContainerTab: Flow<DefaultContainerTab> = context.appPrefsDataStore.data
+        .map { prefs ->
+            prefs[Keys.DEFAULT_CONTAINER_TAB]
+                ?.let { runCatching { DefaultContainerTab.valueOf(it) }.getOrNull() }
+                ?: DefaultContainerTab.FILES
+        }
+
+    suspend fun setDefaultContainerTab(tab: DefaultContainerTab) {
+        context.appPrefsDataStore.edit { it[Keys.DEFAULT_CONTAINER_TAB] = tab.name }
     }
 }

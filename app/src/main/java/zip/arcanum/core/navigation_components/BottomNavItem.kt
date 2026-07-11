@@ -25,3 +25,9 @@ sealed class BottomNavItem(
     object ContainerFiles   : BottomNavItem("ct_files",   R.string.nav_files,    Icons.Outlined.Folder)
     object ContainerInfo    : BottomNavItem("ct_info",    R.string.nav_info,                Icons.Outlined.Info)
 }
+
+/** Tab a mounted container opens on. Configurable in settings; defaults to [FILES]. */
+enum class DefaultContainerTab(val route: String) {
+    FILES(BottomNavItem.ContainerFiles.route),
+    GALLERY(BottomNavItem.ContainerGallery.route)
+}

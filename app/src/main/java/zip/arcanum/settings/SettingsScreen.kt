@@ -155,6 +155,7 @@ import zip.arcanum.core.theme.ArcanumHazeStyle
 import zip.arcanum.core.theme.LocalAmoledMode
 import zip.arcanum.core.theme.LocalDarkMode
 import zip.arcanum.core.theme.LocalDynamicColor
+import zip.arcanum.core.navigation_components.DefaultContainerTab
 import zip.arcanum.core.theme.ThemeMode
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatDelegate
@@ -202,6 +203,7 @@ fun SettingsScreen(
     val themeMode               by viewModel.themeMode.collectAsState()
     val isAmoledGlass           by viewModel.isAmoledGlass.collectAsState()
     val isDynamicColor          by viewModel.isDynamicColor.collectAsState()
+    val defaultContainerTab     by viewModel.defaultContainerTab.collectAsState()
     val screenCaptureProtection by viewModel.screenCaptureProtection.collectAsState()
     val disguiseApplied         by viewModel.disguiseApplied.collectAsState()
     val debugMode               by viewModel.debugMode.collectAsState()
@@ -257,14 +259,16 @@ fun SettingsScreen(
                 }
             )
             SubScreen.APPEARANCE -> AppearanceSubScreen(
-                themeMode      = themeMode,
-                isAmoledGlass  = isAmoledGlass,
-                isDynamicColor = isDynamicColor,
-                isPro          = isPro,
-                onThemeMode    = { viewModel.setThemeMode(it) },
-                onAmoledGlass  = { viewModel.setAmoledGlass(it) },
-                onDynamicColor = { viewModel.setDynamicColor(it) },
-                onBack         = { subScreen = null }
+                themeMode          = themeMode,
+                isAmoledGlass      = isAmoledGlass,
+                isDynamicColor     = isDynamicColor,
+                defaultContainerTab = defaultContainerTab,
+                isPro              = isPro,
+                onThemeMode        = { viewModel.setThemeMode(it) },
+                onAmoledGlass      = { viewModel.setAmoledGlass(it) },
+                onDynamicColor     = { viewModel.setDynamicColor(it) },
+                onDefaultContainerTab = { viewModel.setDefaultContainerTab(it) },
+                onBack             = { subScreen = null }
             )
             SubScreen.CHANGE_PIN -> ChangePinScreen(onBack = { subScreen = null })
             SubScreen.ABOUT     -> AboutSubScreen(
@@ -1094,10 +1098,12 @@ private fun AppearanceSubScreen(
     themeMode: ThemeMode,
     isAmoledGlass: Boolean,
     isDynamicColor: Boolean,
+    defaultContainerTab: DefaultContainerTab,
     isPro: Boolean,
     onThemeMode: (ThemeMode) -> Unit,
     onAmoledGlass: (Boolean) -> Unit,
     onDynamicColor: (Boolean) -> Unit,
+    onDefaultContainerTab: (DefaultContainerTab) -> Unit,
     onBack: () -> Unit
 ) {
     var showUpgradeDialog by remember { mutableStateOf(false) }
@@ -1207,6 +1213,35 @@ private fun AppearanceSubScreen(
                 subtitle  = currentLanguageName,
                 onClick   = { showLanguagePicker = true }
             )
+
+            PanicSectionLabel(stringResource(R.string.settings_appearance_default_tab_section))
+            Text(
+                text     = stringResource(R.string.settings_appearance_default_tab_desc),
+                style    = MaterialTheme.typography.bodySmall,
+                color    = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                val tabs = DefaultContainerTab.entries
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    tabs.forEachIndexed { index, tab ->
+                        SegmentedButton(
+                            selected = defaultContainerTab == tab,
+                            onClick  = { onDefaultContainerTab(tab) },
+                            shape    = SegmentedButtonDefaults.itemShape(index = index, count = tabs.size),
+                            label    = {
+                                Text(
+                                    when (tab) {
+                                        DefaultContainerTab.FILES   -> stringResource(R.string.nav_files)
+                                        DefaultContainerTab.GALLERY -> stringResource(R.string.nav_gallery)
+                                    },
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                        )
+                    }
+                }
+            }
         }
 
         // Inside SubScreenScaffold lambda so LocalHazeState from SubScreenScaffold is in scope
