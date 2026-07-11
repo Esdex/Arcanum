@@ -502,6 +502,7 @@
     <string name="settings_about_whats_new">What\'s new</string>
     <string name="settings_about_whats_new_desc">See what changed in this version</string>
     <string name="settings_whats_new_current">Current</string>
+    <string name="settings_whats_new_show_older">Show older versions</string>
     <string name="settings_about_licenses">Open-source licenses</string>
     <string name="settings_about_connect_section">Connect</string>
     <string name="settings_about_source_code">Source code</string>

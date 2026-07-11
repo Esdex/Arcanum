@@ -119,6 +119,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Contrast
@@ -1673,6 +1674,22 @@ private fun PremiumSubScreen(onBack: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun WhatsNewSubScreen(onBack: () -> Unit) {
+    val context   = LocalContext.current
+    val changelog = remember { loadWhatsNew(context) }
+    var showOlder by remember { mutableStateOf(false) }
+
+    val currentVersion = remember(changelog) {
+        changelog.versions.firstOrNull { it.versionCode == BuildConfig.VERSION_CODE }
+    }
+    // Strictly-older only: a not-yet-released block (e.g. the next version being
+    // filled in ahead of the version bump) has a versionCode above this build and
+    // must stay hidden until the build catches up to it.
+    val olderVersions = remember(changelog) {
+        changelog.versions
+            .filter { it.versionCode < BuildConfig.VERSION_CODE }
+            .sortedByDescending { it.versionCode }
+    }
+
     SubScreenScaffold(
         title  = stringResource(R.string.settings_about_whats_new),
         onBack = onBack
@@ -1684,6 +1701,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                 bottom = innerPadding.calculateBottomPadding() + 16.dp
             )
         ) {
+            // ── Current version header ────────────────────────────────────
             item {
                 Row(
                     modifier              = Modifier.fillMaxWidth().padding(vertical = 20.dp),
@@ -1708,481 +1726,57 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                     }
                 }
             }
-            // ── 1.3.1 entries ─────────────────────────────────────────────
-            // Security hardening
-            item {
+
+            // ── Current version entries ───────────────────────────────────
+            items(currentVersion?.entries ?: emptyList()) { entry ->
+                val (icon, color) = whatsNewVisualsFor(entry.type)
                 WhatsNewEntry(
-                    icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF22C55E),
-                    title    = "Hardened native crypto layer",
-                    subtitle = "Passwords are now passed as wipeable buffers and cleared from memory, the native code uses full RAII for deterministic cleanup, and the JNI bridge received an extensive security and thread-safety audit."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF22C55E),
-                    title    = "Stronger read-only mounts",
-                    subtitle = "Read-only mode is now enforced at the operating-system and block-device level, not just in the UI — a read-only vault cannot be modified even through lower-level access."
-                )
-            }
-            // Fixes
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.BugReport,
-                    color    = Color(0xFFEF4444),
-                    title    = "Fix: panic wipe deletes app-storage vaults",
-                    subtitle = "Vaults saved through the app storage / file picker were left on disk when a panic wipe ran, even though they vanished from the app. Panic now deletes them reliably — in both per-vault and full-wipe modes."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.BugReport,
-                    color    = Color(0xFFEF4444),
-                    title    = "Fix: vault media no longer leaks to other apps",
-                    subtitle = "During playback, real filenames and decrypted thumbnails could be read by other installed apps and shown on the lock screen. The shared media session now carries only a generic title — your filenames and thumbnails stay inside the app."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.BugReport,
-                    color    = Color(0xFFEF4444),
-                    title    = "Fix: hidden volume protection when expanding",
-                    subtitle = "Expanding a vault now guards against overwriting a hidden volume that may exist inside it, preventing accidental destruction of hidden data."
+                    icon     = icon,
+                    color    = color,
+                    title    = entry.title,
+                    subtitle = entry.description
                 )
             }
 
-            // ── 1.3.0 section ─────────────────────────────────────────────
-            item {
-                Row(
-                    modifier          = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    HorizontalDivider(modifier = Modifier.weight(1f))
-                    Text(
-                        text  = "Version 1.3.0",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(modifier = Modifier.weight(1f))
+            // ── Older versions (behind a "Show older versions" button) ────
+            if (olderVersions.isNotEmpty()) {
+                if (!showOlder) {
+                    item {
+                        TextButton(
+                            onClick  = { showOlder = true },
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                        ) {
+                            Text(stringResource(R.string.settings_whats_new_show_older))
+                        }
+                    }
+                } else {
+                    olderVersions.forEach { version ->
+                        item {
+                            Row(
+                                modifier              = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
+                                verticalAlignment     = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                HorizontalDivider(modifier = Modifier.weight(1f))
+                                Text(
+                                    text  = "Version ${version.version}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                HorizontalDivider(modifier = Modifier.weight(1f))
+                            }
+                        }
+                        items(version.entries) { entry ->
+                            val (icon, color) = whatsNewVisualsFor(entry.type)
+                            WhatsNewEntry(
+                                icon     = icon,
+                                color    = color,
+                                title    = entry.title,
+                                subtitle = entry.description
+                            )
+                        }
+                    }
                 }
-            }
-            // ── 1.3.0 entries ─────────────────────────────────────────────
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Gallery",
-                    subtitle = "A new Gallery tab gives you a timeline view of all photos and videos inside your vaults. Multi-select, swipe between items, and pinch-to-zoom — all without decrypting to disk."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Photo editor",
-                    subtitle = "Edit photos directly inside the vault — crop, rotate, adjust brightness and contrast — without ever writing the decrypted image to external storage."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Background audio playback",
-                    subtitle = "Audio files from your vaults now play in the background with a media notification and playback controls. Lock the screen and keep listening."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Media thumbnails in Files tab",
-                    subtitle = "Photos and videos now show thumbnails directly in the file browser, decoded on demand and cached for smooth scrolling."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Read-only mount mode",
-                    subtitle = "Vaults can now be mounted in read-only mode — useful for viewing sensitive files without any risk of accidental modification."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Import folder",
-                    subtitle = "Import an entire folder into a vault in one tap. The app copies all files recursively, preserving the folder structure."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Open existing vault from app storage",
-                    subtitle = "A new picker lets you select an existing vault file from app storage without knowing its exact path."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Refresh,
-                    color    = Color(0xFF3B82F6),
-                    title    = "Gallery stays in sync with file operations",
-                    subtitle = "Importing or deleting files in the Files tab now automatically refreshes the Gallery — no manual resync needed."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.BugReport,
-                    color    = Color(0xFFEF4444),
-                    title    = "Fix: SD card container creation hang",
-                    subtitle = "Creating a container on an external SD card caused the device to freeze, left a 0-byte file, and made deletion freeze the device again. File allocation is now done incrementally with live progress, and failed attempts are cleaned up instantly."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.BugReport,
-                    color    = Color(0xFFEF4444),
-                    title    = "Fix: hidden volume detection",
-                    subtitle = "Mounting an outer volume without hidden volume protection active incorrectly reported a hidden volume present in some configurations."
-                )
-            }
-
-            // ── 1.2.0 section ─────────────────────────────────────────────
-            item {
-                Row(
-                    modifier          = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    HorizontalDivider(modifier = Modifier.weight(1f))
-                    Text(
-                        text  = "Version 1.2.0",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(modifier = Modifier.weight(1f))
-                }
-            }
-            // ── 1.2.0 entries ─────────────────────────────────────────────
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Expand Volume",
-                    subtitle = "Resize an existing vault to any larger size without recreating it or touching your data. Progress runs as a foreground service — you can leave the screen and come back."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Change Password & Keyfiles",
-                    subtitle = "Change your vault password or swap keyfiles at any time from the vault configuration screen. A guided wizard re-encrypts only the volume header — your data is never re-written."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Backup & Restore Volume Header",
-                    subtitle = "Export an encrypted backup of your vault header and restore it later if it ever becomes damaged or corrupted. Fully compatible with VeraCrypt desktop backups."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Vault configuration screen",
-                    subtitle = "Each vault now has a dedicated configuration screen — a single hub for mount/unmount, auto-unmount, change password, change keyfiles, header backup, and expand. Tap any vault to open it."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Refresh,
-                    color    = Color(0xFF3B82F6),
-                    title    = "Detailed vault info",
-                    subtitle = "The Info tab now shows a full breakdown of your vault's encryption parameters: cipher, key size, hash algorithm, PKCS-5 iteration count, VeraCrypt format version, and header modification date."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Refresh,
-                    color    = Color(0xFF3B82F6),
-                    title    = "Smarter hash selection when mounting",
-                    subtitle = "If your vault's hash algorithm is known, Arcanum now passes it as a hint and tries only 1 KDF instead of 5, making the mount significantly faster. The Algorithm dropdown is removed — VeraCrypt always tries all ciphers automatically."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Refresh,
-                    color    = Color(0xFF3B82F6),
-                    title    = "Faster wrong-password detection",
-                    subtitle = "The mount logic was rewritten to match VeraCrypt's internal algorithm exactly — same header scan order, same KDF scheduling, same early-exit conditions. Both header copies are now tried in parallel, so wrong credentials are detected and reported significantly faster."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF22C55E),
-                    title    = "Unmount all vaults on auto-lock",
-                    subtitle = "A new toggle in Security settings automatically unmounts all open vaults when the app auto-locks. Keeps your data inaccessible while the screen is off."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF22C55E),
-                    title    = "Encrypted app database",
-                    subtitle = "The internal database storing vault metadata is now encrypted with SQLCipher — vault names, paths, and settings are no longer readable from the device filesystem."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.BugReport,
-                    color    = Color(0xFFEF4444),
-                    title    = "Fix: hidden volume creation with outer keyfile",
-                    subtitle = "Creating a hidden volume inside an outer volume that used a keyfile failed silently and left the hidden volume unusable. The outer keyfile is now correctly applied when writing the hidden volume header."
-                )
-            }
-
-            // ── 1.1.1 section ─────────────────────────────────────────────
-            item {
-                Row(
-                    modifier          = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    HorizontalDivider(modifier = Modifier.weight(1f))
-                    Text(
-                        text  = "Version 1.1.1",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(modifier = Modifier.weight(1f))
-                }
-            }
-            // ── 1.1.1 entries ─────────────────────────────────────────────
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Password manager autofill",
-                    subtitle = "Password fields now show suggestions from your autofill service (e.g. KeePassDX). Selecting a credential automatically fills the Confirm Password field too."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF22C55E),
-                    title    = "Keyfiles never touch disk",
-                    subtitle = "Keyfiles are now read directly into memory and never written to the app's cache. Previous builds left a temporary plaintext copy on disk during mounting."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Biometric unlock remembers keyfiles",
-                    subtitle = "Containers protected with a keyfile can now be unlocked with biometrics. If a keyfile is later moved or deleted, a clear error screen guides you back to manual mounting."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Refresh,
-                    color    = Color(0xFF3B82F6),
-                    title    = "Biometric credentials auto-update",
-                    subtitle = "Manually mounting a container with the biometric toggle on now refreshes the saved credentials — useful when changing your password or keyfiles."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Hidden volume protection confirmed",
-                    subtitle = "When mounting an outer volume with hidden volume protection enabled, a confirmation screen now appears to confirm that protection is active."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.BugReport,
-                    color    = Color(0xFFEF4444),
-                    title    = "Fix: container creation on 32-bit devices",
-                    subtitle = "Creating containers on arm32 (armeabi-v7a) devices produced a broken, unreadable container. The XTS encryption layer silently operated as 32-bit due to a type definition issue, corrupting the header."
-                )
-            }
-
-            // ── 1.1.0 section ─────────────────────────────────────────────
-            item {
-                Row(
-                    modifier          = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    HorizontalDivider(modifier = Modifier.weight(1f))
-                    Text(
-                        text  = "Version 1.1.0",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(modifier = Modifier.weight(1f))
-                }
-            }
-            // ── 1.1.0 entries ─────────────────────────────────────────────
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Live mount log",
-                    subtitle = "Enable in debug settings to watch every cipher and PRF combination tried in real time as your container is being unlocked."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Update notifications",
-                    subtitle = "A banner appears the first time you open the app after an update. Tap it to open the What's New screen."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Container rename",
-                    subtitle = "Rename your containers directly from the container config sheet."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Refresh,
-                    color    = Color(0xFF3B82F6),
-                    title    = "Smoother UI",
-                    subtitle = "Tab switches are now animated, and password fields no longer show IME suggestions for better privacy."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.BugReport,
-                    color    = Color(0xFFEF4444),
-                    title    = "Bug fixes",
-                    subtitle = "• Containers with a custom PIM now open correctly — the iteration formula didn't match the VeraCrypt spec (#48)\n• Keyboard and text cursor now close when tapping the mount button\n• Swipe-dismissing the update banner no longer permanently marks it as seen\n• Biometric prompt now reappears correctly after the app auto-locks in the background"
-                )
-            }
-
-            // ── 1.0.0 section ─────────────────────────────────────────────
-            item {
-                Row(
-                    modifier          = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    HorizontalDivider(modifier = Modifier.weight(1f))
-                    Text(
-                        text  = "Version 1.0.0",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(modifier = Modifier.weight(1f))
-                }
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF22C55E),
-                    title    = "Full VeraCrypt compatibility",
-                    subtitle = "Open containers created on Windows, macOS, or Linux — no conversion needed. AES, Twofish, Serpent and all cascades supported."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF22C55E),
-                    title    = "All hash algorithms",
-                    subtitle = "BLAKE2s-256, SHA-512, and Whirlpool — fully compatible with VeraCrypt 1.26+."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF22C55E),
-                    title    = "Hidden volumes",
-                    subtitle = "Two passwords, two independent datasets. Plausible deniability under coercion — mathematically impossible to prove the hidden volume exists."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF22C55E),
-                    title    = "Keyfile support",
-                    subtitle = "Add one or more keyfiles as a second authentication factor — required alongside the password to open the vault."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF22C55E),
-                    title    = "PIM support",
-                    subtitle = "Personal Iterations Multiplier for fine-tuned key derivation strength and unlock time."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF22C55E),
-                    title    = "Panic mode",
-                    subtitle = "Duress PIN silently wipes vaults, settings, and biometrics — timing-indistinguishable from a normal unlock."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Security,
-                    color    = Color(0xFF22C55E),
-                    title    = "Calculator disguise",
-                    subtitle = "Arcanum looks like a regular calculator app. Your secret PIN is the only way in."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Biometric unlock",
-                    subtitle = "Save vault credentials to the hardware Keystore and unlock with fingerprint."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Encrypted gallery",
-                    subtitle = "Browse photos and videos directly inside mounted vaults without extracting them."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "File manager",
-                    subtitle = "Import, export, copy, move, and manage files inside encrypted vaults."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "Audio player",
-                    subtitle = "Stream audio from encrypted vaults without writing decrypted copies to disk."
-                )
-            }
-            item {
-                WhatsNewEntry(
-                    icon     = Icons.Outlined.Stars,
-                    color    = Color(0xFFFFC107),
-                    title    = "AMOLED glass mode",
-                    subtitle = "Pure-black backgrounds with frosted-glass blur throughout the app."
-                )
             }
         }
     }

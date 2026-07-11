@@ -1,0 +1,95 @@
+{
+  "versions": [
+    {
+      "version": "1.4.0",
+      "versionCode": 7,
+      "entries": [
+        { "type": "improvement", "title": "Streamlined What's New", "description": "The What's New screen now shows the current release up front, with earlier versions tucked behind a Show older versions button for a cleaner view. (#80)" }
+      ]
+    },
+    {
+      "version": "1.3.1",
+      "versionCode": 6,
+      "entries": [
+        { "type": "security", "title": "Hardened native crypto layer", "description": "Passwords are now passed as wipeable buffers and cleared from memory, the native code uses full RAII for deterministic cleanup, and the JNI bridge received an extensive security and thread-safety audit." },
+        { "type": "security", "title": "Stronger read-only mounts", "description": "Read-only mode is now enforced at the operating-system and block-device level, not just in the UI — a read-only vault cannot be modified even through lower-level access." },
+        { "type": "fix", "title": "Panic wipe deletes app-storage vaults", "description": "Vaults saved through the app storage / file picker were left on disk when a panic wipe ran, even though they vanished from the app. Panic now deletes them reliably — in both per-vault and full-wipe modes." },
+        { "type": "fix", "title": "Vault media no longer leaks to other apps", "description": "During playback, real filenames and decrypted thumbnails could be read by other installed apps and shown on the lock screen. The shared media session now carries only a generic title — your filenames and thumbnails stay inside the app." },
+        { "type": "fix", "title": "Hidden volume protection when expanding", "description": "Expanding a vault now guards against overwriting a hidden volume that may exist inside it, preventing accidental destruction of hidden data." }
+      ]
+    },
+    {
+      "version": "1.3.0",
+      "versionCode": 5,
+      "entries": [
+        { "type": "new", "title": "Gallery", "description": "A new Gallery tab gives you a timeline view of all photos and videos inside your vaults. Multi-select, swipe between items, and pinch-to-zoom — all without decrypting to disk." },
+        { "type": "new", "title": "Photo editor", "description": "Edit photos directly inside the vault — crop, rotate, adjust brightness and contrast — without ever writing the decrypted image to external storage." },
+        { "type": "new", "title": "Background audio playback", "description": "Audio files from your vaults now play in the background with a media notification and playback controls. Lock the screen and keep listening." },
+        { "type": "new", "title": "Media thumbnails in Files tab", "description": "Photos and videos now show thumbnails directly in the file browser, decoded on demand and cached for smooth scrolling." },
+        { "type": "new", "title": "Read-only mount mode", "description": "Vaults can now be mounted in read-only mode — useful for viewing sensitive files without any risk of accidental modification." },
+        { "type": "new", "title": "Import folder", "description": "Import an entire folder into a vault in one tap. The app copies all files recursively, preserving the folder structure." },
+        { "type": "new", "title": "Open existing vault from app storage", "description": "A new picker lets you select an existing vault file from app storage without knowing its exact path." },
+        { "type": "improvement", "title": "Gallery stays in sync with file operations", "description": "Importing or deleting files in the Files tab now automatically refreshes the Gallery — no manual resync needed." },
+        { "type": "fix", "title": "SD card container creation hang", "description": "Creating a container on an external SD card caused the device to freeze, left a 0-byte file, and made deletion freeze the device again. File allocation is now done incrementally with live progress, and failed attempts are cleaned up instantly." },
+        { "type": "fix", "title": "Hidden volume detection", "description": "Mounting an outer volume without hidden volume protection active incorrectly reported a hidden volume present in some configurations." }
+      ]
+    },
+    {
+      "version": "1.2.0",
+      "versionCode": 4,
+      "entries": [
+        { "type": "new", "title": "Expand Volume", "description": "Resize an existing vault to any larger size without recreating it or touching your data. Progress runs as a foreground service — you can leave the screen and come back." },
+        { "type": "new", "title": "Change Password & Keyfiles", "description": "Change your vault password or swap keyfiles at any time from the vault configuration screen. A guided wizard re-encrypts only the volume header — your data is never re-written." },
+        { "type": "new", "title": "Backup & Restore Volume Header", "description": "Export an encrypted backup of your vault header and restore it later if it ever becomes damaged or corrupted. Fully compatible with VeraCrypt desktop backups." },
+        { "type": "new", "title": "Vault configuration screen", "description": "Each vault now has a dedicated configuration screen — a single hub for mount/unmount, auto-unmount, change password, change keyfiles, header backup, and expand. Tap any vault to open it." },
+        { "type": "improvement", "title": "Detailed vault info", "description": "The Info tab now shows a full breakdown of your vault's encryption parameters: cipher, key size, hash algorithm, PKCS-5 iteration count, VeraCrypt format version, and header modification date." },
+        { "type": "improvement", "title": "Smarter hash selection when mounting", "description": "If your vault's hash algorithm is known, Arcanum now passes it as a hint and tries only 1 KDF instead of 5, making the mount significantly faster. The Algorithm dropdown is removed — VeraCrypt always tries all ciphers automatically." },
+        { "type": "improvement", "title": "Faster wrong-password detection", "description": "The mount logic was rewritten to match VeraCrypt's internal algorithm exactly — same header scan order, same KDF scheduling, same early-exit conditions. Both header copies are now tried in parallel, so wrong credentials are detected and reported significantly faster." },
+        { "type": "security", "title": "Unmount all vaults on auto-lock", "description": "A new toggle in Security settings automatically unmounts all open vaults when the app auto-locks. Keeps your data inaccessible while the screen is off." },
+        { "type": "security", "title": "Encrypted app database", "description": "The internal database storing vault metadata is now encrypted with SQLCipher — vault names, paths, and settings are no longer readable from the device filesystem." },
+        { "type": "fix", "title": "Hidden volume creation with outer keyfile", "description": "Creating a hidden volume inside an outer volume that used a keyfile failed silently and left the hidden volume unusable. The outer keyfile is now correctly applied when writing the hidden volume header." }
+      ]
+    },
+    {
+      "version": "1.1.1",
+      "versionCode": 3,
+      "entries": [
+        { "type": "new", "title": "Password manager autofill", "description": "Password fields now show suggestions from your autofill service (e.g. KeePassDX). Selecting a credential automatically fills the Confirm Password field too." },
+        { "type": "security", "title": "Keyfiles never touch disk", "description": "Keyfiles are now read directly into memory and never written to the app's cache. Previous builds left a temporary plaintext copy on disk during mounting." },
+        { "type": "new", "title": "Biometric unlock remembers keyfiles", "description": "Containers protected with a keyfile can now be unlocked with biometrics. If a keyfile is later moved or deleted, a clear error screen guides you back to manual mounting." },
+        { "type": "improvement", "title": "Biometric credentials auto-update", "description": "Manually mounting a container with the biometric toggle on now refreshes the saved credentials — useful when changing your password or keyfiles." },
+        { "type": "new", "title": "Hidden volume protection confirmed", "description": "When mounting an outer volume with hidden volume protection enabled, a confirmation screen now appears to confirm that protection is active." },
+        { "type": "fix", "title": "Container creation on 32-bit devices", "description": "Creating containers on arm32 (armeabi-v7a) devices produced a broken, unreadable container. The XTS encryption layer silently operated as 32-bit due to a type definition issue, corrupting the header." }
+      ]
+    },
+    {
+      "version": "1.1.0",
+      "versionCode": 2,
+      "entries": [
+        { "type": "new", "title": "Live mount log", "description": "Enable in debug settings to watch every cipher and PRF combination tried in real time as your container is being unlocked." },
+        { "type": "new", "title": "Update notifications", "description": "A banner appears the first time you open the app after an update. Tap it to open the What's New screen." },
+        { "type": "new", "title": "Container rename", "description": "Rename your containers directly from the container config sheet." },
+        { "type": "improvement", "title": "Smoother UI", "description": "Tab switches are now animated, and password fields no longer show IME suggestions for better privacy." },
+        { "type": "fix", "title": "Bug fixes", "description": "• Containers with a custom PIM now open correctly — the iteration formula didn't match the VeraCrypt spec (#48)\n• Keyboard and text cursor now close when tapping the mount button\n• Swipe-dismissing the update banner no longer permanently marks it as seen\n• Biometric prompt now reappears correctly after the app auto-locks in the background" }
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "versionCode": 1,
+      "entries": [
+        { "type": "security", "title": "Full VeraCrypt compatibility", "description": "Open containers created on Windows, macOS, or Linux — no conversion needed. AES, Twofish, Serpent and all cascades supported." },
+        { "type": "security", "title": "All hash algorithms", "description": "BLAKE2s-256, SHA-512, and Whirlpool — fully compatible with VeraCrypt 1.26+." },
+        { "type": "security", "title": "Hidden volumes", "description": "Two passwords, two independent datasets. Plausible deniability under coercion — mathematically impossible to prove the hidden volume exists." },
+        { "type": "security", "title": "Keyfile support", "description": "Add one or more keyfiles as a second authentication factor — required alongside the password to open the vault." },
+        { "type": "security", "title": "PIM support", "description": "Personal Iterations Multiplier for fine-tuned key derivation strength and unlock time." },
+        { "type": "security", "title": "Panic mode", "description": "Duress PIN silently wipes vaults, settings, and biometrics — timing-indistinguishable from a normal unlock." },
+        { "type": "security", "title": "Calculator disguise", "description": "Arcanum looks like a regular calculator app. Your secret PIN is the only way in." },
+        { "type": "new", "title": "Biometric unlock", "description": "Save vault credentials to the hardware Keystore and unlock with fingerprint." },
+        { "type": "new", "title": "Encrypted gallery", "description": "Browse photos and videos directly inside mounted vaults without extracting them." },
+        { "type": "new", "title": "File manager", "description": "Import, export, copy, move, and manage files inside encrypted vaults." },
+        { "type": "new", "title": "Audio player", "description": "Stream audio from encrypted vaults without writing decrypted copies to disk." },
+        { "type": "new", "title": "AMOLED glass mode", "description": "Pure-black backgrounds with frosted-glass blur throughout the app." }
+      ]
+    }
+  ]
+}
