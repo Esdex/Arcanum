@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.billing.BillingManagerInterface
+import zip.arcanum.core.navigation_components.DefaultContainerTab
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.DisguiseManager
@@ -125,6 +126,16 @@ class SettingsViewModel @Inject constructor(
 
     fun setGalleryResyncButton(enabled: Boolean) {
         viewModelScope.launch { prefs.setGalleryResyncButton(enabled) }
+    }
+
+    val defaultContainerTab = prefs.defaultContainerTab.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = DefaultContainerTab.FILES
+    )
+
+    fun setDefaultContainerTab(tab: DefaultContainerTab) {
+        viewModelScope.launch { prefs.setDefaultContainerTab(tab) }
     }
 
     fun setDebugMode(enabled: Boolean) {
