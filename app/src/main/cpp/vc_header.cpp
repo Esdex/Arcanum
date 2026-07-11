@@ -147,14 +147,17 @@ void apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
  * algId     : algorithm index into ALGORITHMS[]
  * hashAlg   : 0=SHA-512, 1=SHA-256, 2=Whirlpool, 3=Streebog
  */
-int write_vc_header(int fd, uint64_t fileOff,
-                     uint64_t dataSz, uint64_t dataOff,
-                     const uint8_t *masterKey,
-                     int algId, int hashAlg,
-                     const char *password, int pwd_len,
-                     int pim,
-                     uint64_t hiddenVolSize,
-                     const uint8_t *existingSalt) {
+/* Builds the 512-byte header into outHeader without touching disk, so a caller
+ * that must destroy an existing header first (wipe_and_rewrite_header) can build
+ * and validate the replacement BEFORE the old one is gone. */
+static int build_vc_header(uint8_t outHeader[VC_HEADER_SIZE],
+                           uint64_t dataSz, uint64_t dataOff,
+                           const uint8_t *masterKey,
+                           int algId, int hashAlg,
+                           const char *password, int pwd_len,
+                           int pim,
+                           uint64_t hiddenVolSize,
+                           const uint8_t *existingSalt) {
     if (algId < 0 || algId >= NUM_ALGORITHMS) return ERR_FS;
 
     uint8_t salt[VC_HEADER_SALT_SIZE];
@@ -204,11 +207,26 @@ int write_vc_header(int fd, uint64_t fileOff,
         xts_crypt_temp(ALGORITHMS[algId].c[i], ck.data(), body.data(), VC_HEADER_BODY_SIZE, 0, true);
     }
 
-    uint8_t rawHeader[VC_HEADER_SIZE] = {};
-    memcpy(rawHeader, salt, VC_HEADER_SALT_SIZE);
-    memcpy(rawHeader + VC_HEADER_BODY_OFFSET, body.data(), VC_HEADER_BODY_SIZE);
+    memcpy(outHeader, salt, VC_HEADER_SALT_SIZE);
+    memcpy(outHeader + VC_HEADER_BODY_OFFSET, body.data(), VC_HEADER_BODY_SIZE);
+    return 0;
+}
 
+/* Thin wrapper: build the header in memory, then write it at fileOff. */
+int write_vc_header(int fd, uint64_t fileOff,
+                     uint64_t dataSz, uint64_t dataOff,
+                     const uint8_t *masterKey,
+                     int algId, int hashAlg,
+                     const char *password, int pwd_len,
+                     int pim,
+                     uint64_t hiddenVolSize,
+                     const uint8_t *existingSalt) {
+    uint8_t rawHeader[VC_HEADER_SIZE] = {};
+    int r = build_vc_header(rawHeader, dataSz, dataOff, masterKey, algId, hashAlg,
+                            password, pwd_len, pim, hiddenVolSize, existingSalt);
+    if (r != 0) return r;
     ssize_t w = pwrite(fd, rawHeader, VC_HEADER_SIZE, (off_t)fileOff);
+    secure_memset(rawHeader, 0, sizeof(rawHeader));   /* carries the encrypted master key */
     return (w == VC_HEADER_SIZE) ? 0 : -1;
 }
 
@@ -437,6 +455,21 @@ int wipe_and_rewrite_header(int fd, uint64_t fileOff,
                              uint64_t hiddenVolSize, int wipePassCount,
                              const uint8_t* extraEntropy,
                              size_t extraEntropyLen) {
+    /* Build and validate the full replacement header in memory BEFORE the old one
+     * is destroyed. If salt RNG or key derivation fails, we return here with the
+     * existing header still intact — the failure can no longer leave the sector as
+     * garbage with no valid replacement (recoverability on removable/SAF media). */
+    SecureBuffer<VC_HEADER_SALT_SIZE> newSalt;
+    if (!read_urandom(newSalt.data(), newSalt.size())) return ERR_RAND;
+    xor_fold_entropy(newSalt.data(), newSalt.size(), extraEntropy, extraEntropyLen);
+
+    uint8_t newHeader[VC_HEADER_SIZE] = {};
+    int built = build_vc_header(newHeader, dataSz, dataOff,
+                                masterKey, algId, newHashAlg,
+                                newPwd, newPwdLen, newPim, hiddenVolSize, newSalt.data());
+    if (built != 0) { secure_memset(newHeader, 0, sizeof(newHeader)); return built; }
+
+    /* Old header may now be destroyed: a validated replacement already exists. */
     uint8_t wipeBuf[VC_HEADER_SIZE];
     /* Random-fill filler for the wipe passes, not secret material (nor is the
      * 0xAA no-urandom fallback), so this stays a plain buffer with the
@@ -458,25 +491,21 @@ int wipe_and_rewrite_header(int fd, uint64_t fileOff,
         ssize_t written = pwrite(fd, wipeBuf, VC_HEADER_SIZE, (off_t)fileOff);
         if (written != VC_HEADER_SIZE) {
             memset(wipeBuf, 0, sizeof(wipeBuf));
+            secure_memset(newHeader, 0, sizeof(newHeader));
             return ERR_FILE;   /* rfd closed by UniqueFd's destructor */
         }
         fdatasync(fd);
     }
     memset(wipeBuf, 0, sizeof(wipeBuf));
-    rfd.reset();   /* explicit: done with /dev/urandom before the (possibly slow) header write below */
+    rfd.reset();   /* explicit: done with /dev/urandom before the header write below */
 
-    /* Generate new salt; XOR in user entropy if provided */
-    SecureBuffer<VC_HEADER_SALT_SIZE> newSalt;
-    if (!read_urandom(newSalt.data(), newSalt.size())) return ERR_RAND;
-    xor_fold_entropy(newSalt.data(), newSalt.size(), extraEntropy, extraEntropyLen);
-    int ret = write_vc_header(fd, fileOff, dataSz, dataOff,
-                              masterKey, algId, newHashAlg,
-                              newPwd, newPwdLen, newPim, hiddenVolSize, newSalt.data());
-    /* Stage 2d: fdatasync the replacement header too (the wipe passes above
-     * already do). Without this, a power cut between the write() returning
-     * and the data actually reaching disk could leave the header wiped
-     * (random garbage) with no valid replacement — the container becomes
-     * unrecoverable even though write_vc_header() reported success. */
-    if (ret == 0) fdatasync(fd);
-    return ret;
+    /* Final write: the pre-validated replacement header. */
+    ssize_t w = pwrite(fd, newHeader, VC_HEADER_SIZE, (off_t)fileOff);
+    secure_memset(newHeader, 0, sizeof(newHeader));   /* carries the encrypted master key */
+    if (w != VC_HEADER_SIZE) return ERR_FILE;
+    /* fdatasync the replacement too (the wipe passes above already do). Without it,
+     * a power cut between write() returning and the data reaching disk could leave
+     * the header wiped with no durable replacement. */
+    fdatasync(fd);
+    return 0;
 }
