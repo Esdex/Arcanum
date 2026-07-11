@@ -4,7 +4,8 @@
       "version": "1.4.0",
       "versionCode": 7,
       "entries": [
-        { "type": "improvement", "title": "Streamlined What's New", "description": "The What's New screen now shows the current release up front, with earlier versions tucked behind a Show older versions button for a cleaner view. (#80)" }
+        { "type": "improvement", "title": "Streamlined What's New", "description": "The What's New screen now shows the current release up front, with earlier versions tucked behind a Show older versions button for a cleaner view. (#80)" },
+        { "type": "fix", "title": "Grid view previews and in-app open", "description": "In the file browser's grid layout, photos and videos now show thumbnails and open inside the app instead of only opening externally - matching the list layout. (#90)" }
       ]
     },
     {

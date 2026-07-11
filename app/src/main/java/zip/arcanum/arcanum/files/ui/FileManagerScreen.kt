@@ -362,11 +362,13 @@ fun FileManagerScreen(
                     }
                     else -> {
                         FileGridContent(
-                            files           = state.files,
-                            selectedItems   = state.selectedItems,
-                            isSelectionMode = state.isSelectionMode,
-                            topPadding      = topPadding,
-                            bottomPadding   = bottomPadding + if (state.isSelectionMode) 72.dp else 80.dp,
+                            files              = state.files,
+                            selectedItems      = state.selectedItems,
+                            isSelectionMode    = state.isSelectionMode,
+                            thumbnails         = state.thumbnails,
+                            topPadding         = topPadding,
+                            bottomPadding      = bottomPadding + if (state.isSelectionMode) 72.dp else 80.dp,
+                            onThumbnailRequest = viewModel::requestThumbnail,
                             onFileClick     = { file ->
                                 if (state.isSelectionMode) viewModel.toggleSelection(file.path)
                                 else if (file.isDirectory) viewModel.navigateTo(file.path)
@@ -374,6 +376,10 @@ fun FileManagerScreen(
                                          file.name.substringAfterLast('.', "").lowercase() in AUDIO_EXTENSIONS) {
                                     viewModel.setAudioQueue(file)
                                     onAudioFileClick(file.path, file.name, file.size)
+                                } else if (onMediaFileClick != null &&
+                                           file.name.substringAfterLast('.', "").lowercase() in MEDIA_EXTENSIONS) {
+                                    viewModel.setMediaQueue(file)
+                                    onMediaFileClick(file.path, file.name, file.size)
                                 } else { openWithTarget = file; showOpenWithWarning = true }
                             },
                             onFileLongClick = { file ->
@@ -1135,8 +1141,10 @@ private fun FileGridContent(
     files: List<NativeFileInfo>,
     selectedItems: Set<String>,
     isSelectionMode: Boolean,
+    thumbnails: Map<String, android.graphics.Bitmap>,
     topPadding: Dp = 0.dp,
     bottomPadding: Dp,
+    onThumbnailRequest: (NativeFileInfo) -> Unit,
     onFileClick: (NativeFileInfo) -> Unit,
     onFileLongClick: (NativeFileInfo) -> Unit
 ) {
@@ -1154,6 +1162,8 @@ private fun FileGridContent(
         items(folders + nonFolders, key = { it.path }) { file ->
             val isSelected = file.path in selectedItems
             val (icon, iconColor) = fileTypeIconAndColor(file.name, file.isDirectory)
+            val thumbnail = thumbnails[file.path]
+            LaunchedEffect(file.path) { if (thumbnail == null && !file.isDirectory) onThumbnailRequest(file) }
             val bgColor by animateColorAsState(
                 targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                               else MaterialTheme.colorScheme.surfaceVariant,
@@ -1180,7 +1190,28 @@ private fun FileGridContent(
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(iconColor.copy(alpha = 0.15f))
                         ) {
-                            Icon(icon, null, tint = iconColor, modifier = Modifier.size(28.dp))
+                            if (thumbnail != null) {
+                                val isVideo = file.name.substringAfterLast('.', "").lowercase() in
+                                    setOf("mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp")
+                                Box(Modifier.fillMaxSize()) {
+                                    Box(
+                                        Modifier.fillMaxSize().paint(
+                                            painter      = BitmapPainter(thumbnail.asImageBitmap()),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    )
+                                    if (isVideo) {
+                                        Icon(
+                                            Icons.Filled.PlayArrow,
+                                            contentDescription = null,
+                                            tint     = Color.White,
+                                            modifier = Modifier.size(22.dp).align(Alignment.Center)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Icon(icon, null, tint = iconColor, modifier = Modifier.size(28.dp))
+                            }
                         }
                         if (isSelected) {
                             Icon(
