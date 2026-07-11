@@ -753,8 +753,12 @@ static jlong do_open_container(
      * geometry that would cause out-of-bounds I/O (e.g. a corrupted or
      * maliciously crafted header). alloc_drive()/diskio.cpp trust dataOff/dataSz
      * unconditionally, so validate before handing them off. */
+    /* dataSz > fileSize - dataOff (not dataOff + dataSz > fileSize): the additive
+       form wraps in uint64 for crafted header geometry, letting an out-of-range
+       region slip past. Guard dataOff first so the subtraction can't underflow. */
     if (dataSz == 0 || dataSz % VC_SECTOR_SIZE != 0 ||
-        dataOff % VC_SECTOR_SIZE != 0 || dataOff + dataSz > fileSize) {
+        dataOff % VC_SECTOR_SIZE != 0 ||
+        dataOff > fileSize || dataSz > fileSize - dataOff) {
         LOGE("[%s] header geometry out of range (dataOff=%llu dataSz=%llu fileSize=%llu)",
              logTag, (unsigned long long)dataOff, (unsigned long long)dataSz, (unsigned long long)fileSize);
         return (jlong)ERR_UNSUPPORTED;

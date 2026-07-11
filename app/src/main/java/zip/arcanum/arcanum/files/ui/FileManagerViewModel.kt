@@ -767,6 +767,11 @@ class FileManagerViewModel @Inject constructor(
         }
     }
 
+    // Reduces an untrusted SAF display name to a bare filename, rejecting empty,
+    // "." and ".." so it can never be used to climb out of the destination folder.
+    private fun sanitizeEntryName(name: String): String? =
+        File(name).name.takeUnless { it.isEmpty() || it == "." || it == ".." }
+
     private suspend fun importFolderRecursive(
         context: Context,
         handle: Long,
@@ -795,7 +800,11 @@ class FileManagerViewModel @Inject constructor(
                 val childDocId  = cursor.getString(idCol) ?: continue
                 val childName   = cursor.getString(nameCol) ?: continue
                 val childMime   = cursor.getString(mimeCol) ?: continue
-                val childDest   = buildDestinationPath(destPath, childName)
+                // Strip any path components a hostile DocumentsProvider might smuggle in
+                // COLUMN_DISPLAY_NAME before using it as an in-vault path (defense-in-depth;
+                // the single-file import path sanitizes the same way).
+                val safeName    = sanitizeEntryName(childName) ?: continue
+                val childDest   = buildDestinationPath(destPath, safeName)
 
                 try {
                     if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
