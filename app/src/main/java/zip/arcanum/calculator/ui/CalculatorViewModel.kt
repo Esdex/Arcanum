@@ -10,7 +10,6 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -162,21 +161,13 @@ class CalculatorViewModel @Inject constructor(
                     withContext(Dispatchers.Main) { _isVerifying.value = false }
                     _events.emit(CalculatorEvent.NavigateToArcanum)
                 }
-                PinResult.WRONG  -> {
+                // Locked out is handled identically to a wrong PIN: the calculator surface
+                // must never reveal an auth/lockout state, or an observer could confirm the
+                // "calculator" is a vault by long-pressing = until a lockout string appeared.
+                // The lockout is still enforced internally - verifyPin() returns LOCKED first,
+                // so we simply don't navigate.
+                PinResult.WRONG, PinResult.LOCKED -> {
                     withContext(Dispatchers.Main) { _isVerifying.value = false }
-                }
-                PinResult.LOCKED -> {
-                    val remainingSec = (pinManager.lockoutRemainingMs() / 1000L).coerceAtLeast(1L)
-                    withContext(Dispatchers.Main) {
-                        _isVerifying.value = false
-                        _displayUiState.value = DisplayUiState(
-                            expressionText = "Locked ${remainingSec}s",
-                            resultText     = "",
-                            isResult       = false
-                        )
-                    }
-                    delay(3_000L)
-                    withContext(Dispatchers.Main) { pushDisplayState() }
                 }
             }
         }
