@@ -49,6 +49,20 @@ class BiometricAuth @Inject constructor(
         BiometricPrompt(activity, executor, callback).authenticate(promptInfo)
     }
 
+    /**
+     * App-entry biometric unlock. Gated on the success callback of a bare
+     * BiometricPrompt, NOT bound to a CryptoObject / keystore operation.
+     *
+     * Limitation (documented, accepted): on a rooted or instrumented device the
+     * success callback can be driven directly without a real biometric match,
+     * bypassing this gate. Non-root devices are unaffected. This is bounded on
+     * purpose — passing this gate only reveals the vault *list*; each vault is
+     * separately encrypted and mounting it requires the vault password or the
+     * per-vault biometric, which IS CryptoObject-bound (Keystore key with
+     * setUserAuthenticationRequired). So no plaintext vault data is exposed by a
+     * spoofed app-entry unlock. Binding app entry to a keystore-unwrapped token
+     * would close the residual gap; deferred (see issue #88 item 6).
+     */
     fun authenticate(
         activity: FragmentActivity,
         title: String = "Biometric Authentication",
