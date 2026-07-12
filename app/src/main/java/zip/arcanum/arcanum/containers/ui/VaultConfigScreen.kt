@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Eject
 import androidx.compose.material.icons.outlined.Lock
@@ -57,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -72,7 +74,9 @@ import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.launch
 import zip.arcanum.R
+import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.AppSheet
@@ -115,6 +119,8 @@ fun VaultConfigScreen(
     var showDeleteDialog     by remember { mutableStateOf(false) }
     var showUnmountDialog    by remember { mutableStateOf(false) }
     var renameText           by remember { mutableStateOf("") }
+    var detailsContainer     by remember { mutableStateOf<Container?>(null) }
+    val scope                = rememberCoroutineScope()
 
     LaunchedEffect(renameResult) {
         if (renameResult is VaultViewModel.RenameResult.Success) {
@@ -286,6 +292,18 @@ fun VaultConfigScreen(
                         onClick   = { onExpandVolume(containerId) }
                     )
 
+                    // General + Encryption details — only meaningful while mounted
+                    // (algorithm, key size, PIM etc. are read from the volume header).
+                    VaultOperationItem(
+                        icon      = Icons.Outlined.Info,
+                        rawColor  = Color(0xFF5C6BC0),
+                        title     = stringResource(R.string.vault_details_title),
+                        subtitle  = stringResource(if (isMounted) R.string.vault_details_desc else R.string.vault_details_mount_first),
+                        isDynamic = isDynamic,
+                        enabled   = isMounted,
+                        onClick   = { scope.launch { detailsContainer = viewModel.getContainerDomain(containerId) } }
+                    )
+
                     Spacer(Modifier.navigationBarsPadding())
                     Spacer(Modifier.height(8.dp))
                 }
@@ -432,6 +450,14 @@ fun VaultConfigScreen(
                     )
                 }
             }
+        }
+
+        // ── Vault details sheet (General + Encryption) ────────────────────────────
+        detailsContainer?.let { details ->
+            VaultDetailsSheet(
+                container = details,
+                onDismiss = { detailsContainer = null }
+            )
         }
     }
 }

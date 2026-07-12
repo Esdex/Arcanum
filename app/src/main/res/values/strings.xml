@@ -743,6 +743,16 @@
     <string name="vault_info_section_storage">Storage</string>
     <string name="vault_info_section_dates">Dates</string>
     <string name="vault_info_section_operations">Operations</string>
+    <string name="storage_cat_photos">Photos</string>
+    <string name="storage_cat_videos">Videos</string>
+    <string name="storage_cat_music">Music</string>
+    <string name="storage_cat_files">Files</string>
+    <string name="storage_cat_free_space">Free space</string>
+    <string name="vault_storage_filesystem_caption">Vault filesystem: %1$s</string>
+    <string name="nav_storage">Storage</string>
+    <string name="vault_details_title">Vault details</string>
+    <string name="vault_details_desc">General and encryption information</string>
+    <string name="vault_details_mount_first">Mount the vault to view</string>
     <string name="vault_info_op_change_password">Change Password</string>
     <string name="vault_info_op_expand_volume">Expand Volume</string>
     <string name="vault_info_op_backup_header">Backup Header</string>

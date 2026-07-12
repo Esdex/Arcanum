@@ -36,6 +36,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.BuildConfig
 import zip.arcanum.core.database.entities.ContainerEntity
@@ -433,6 +434,9 @@ class VaultViewModel @Inject constructor(
             onDone()
         }
     }
+
+    /** Enriched domain container (mount-only fields resolved) for the details sheet. */
+    suspend fun getContainerDomain(id: String): Container? = repo.getContainerById(id)
 
     fun deleteContainers(ids: Set<String>) {
         viewModelScope.launch {
