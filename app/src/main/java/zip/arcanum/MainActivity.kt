@@ -12,7 +12,10 @@ import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import android.content.Intent
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.share.ShareIntake
+import zip.arcanum.arcanum.share.ShareReceiver
 import zip.arcanum.core.navigation.AppNavigation
 import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.core.security.PinManager
@@ -29,11 +32,13 @@ class MainActivity : AppCompatActivity() {
     @Inject lateinit var containerRepo: ContainerRepository
     @Inject lateinit var engine: VeraCryptEngine
     @Inject lateinit var idleMonitor: IdleMonitor
+    @Inject lateinit var shareIntake: ShareIntake
 
     private val settingsViewModel: SettingsViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleShareIntent(intent)
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.setFlags(
@@ -99,6 +104,23 @@ class MainActivity : AppCompatActivity() {
     override fun onUserInteraction() {
         super.onUserInteraction()
         idleMonitor.recordInteraction()
+    }
+
+    // A share can arrive while the activity is already running (warm start).
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShareIntent(intent)
+    }
+
+    // Files shared into Arcanum are stashed until the user unlocks and picks a destination.
+    // The read grant lives with this activity's task, so the URIs stay readable through that flow.
+    // AppNavigation routes to the share destination once the authenticated area is reached.
+    private fun handleShareIntent(intent: Intent?) {
+        if (intent == null) return
+        if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE) {
+            shareIntake.offer(ShareReceiver.extractSharedUris(intent))
+        }
     }
 
     override fun onDestroy() {

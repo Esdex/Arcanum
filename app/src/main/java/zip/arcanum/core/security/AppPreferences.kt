@@ -40,6 +40,7 @@ class AppPreferences @Inject constructor(
         val UNMOUNT_ON_AUTO_LOCK      = booleanPreferencesKey("unmount_on_auto_lock")
         val GALLERY_RESYNC_BUTTON     = booleanPreferencesKey("gallery_resync_button")
         val DEFAULT_CONTAINER_TAB     = stringPreferencesKey("default_container_tab")
+        val RECEIVE_SHARES            = booleanPreferencesKey("receive_shares")
     }
 
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
@@ -145,6 +146,13 @@ class AppPreferences @Inject constructor(
 
     suspend fun setUnmountOnAutoLock(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.UNMOUNT_ON_AUTO_LOCK] = enabled }
+    }
+
+    val receiveShares: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.RECEIVE_SHARES] ?: false }
+
+    suspend fun setReceiveShares(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.RECEIVE_SHARES] = enabled }
     }
 
     val galleryResyncButton: Flow<Boolean> = context.appPrefsDataStore.data

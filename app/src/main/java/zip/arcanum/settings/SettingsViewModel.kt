@@ -1,9 +1,15 @@
 package zip.arcanum.settings
 
+import android.content.Context
+import android.net.Uri
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.StateFlow
+import zip.arcanum.arcanum.share.ShareIntake
+import zip.arcanum.arcanum.share.ShareReceiver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,10 +37,30 @@ class SettingsViewModel @Inject constructor(
     private val pinManager: PinManager,
     private val disguiseManager: DisguiseManager,
     private val billingManager: BillingManagerInterface,
-    private val idleMonitor: IdleMonitor
+    private val idleMonitor: IdleMonitor,
+    private val shareIntake: ShareIntake,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     val isPro = billingManager.isPro
+
+    val receiveShares = prefs.receiveShares.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = false
+    )
+
+    fun setReceiveShares(enabled: Boolean) {
+        viewModelScope.launch { prefs.setReceiveShares(enabled) }
+        // Enable/disable the disabled-by-default share-sheet alias so Arcanum only appears as a
+        // share target when the user opts in - keeps the app out of every share sheet otherwise.
+        ShareReceiver.setEnabled(appContext, enabled)
+    }
+
+    /** Files handed to the app via the share sheet, pending a destination. Drives routing in AppNavigation. */
+    val pendingShare: StateFlow<List<Uri>> = shareIntake.pending
+
+    fun clearPendingShare() = shareIntake.clear()
 
     /** Monotonic timestamp (elapsedRealtime) of the last user interaction - drives idle auto-lock. */
     fun lastInteractionAtMs(): Long = idleMonitor.lastInteractionAtMs

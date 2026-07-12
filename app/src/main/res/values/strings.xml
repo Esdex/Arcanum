@@ -431,6 +431,18 @@
         <item quantity="one">1 more tap to unlock</item>
         <item quantity="other">%d more taps to unlock</item>
     </plurals>
+    <plurals name="share_target_pick_vault">
+        <item quantity="one">Choose a vault to save the file into</item>
+        <item quantity="other">Choose a vault to save the %d files into</item>
+    </plurals>
+    <plurals name="share_target_save_here">
+        <item quantity="one">Save file here</item>
+        <item quantity="other">Save %d files here</item>
+    </plurals>
+    <plurals name="share_saved_toast">
+        <item quantity="one">Saved 1 file to the vault</item>
+        <item quantity="other">Saved %d files to the vault</item>
+    </plurals>
     <string name="settings_security_title">Security</string>
     <string name="settings_security_change_pin">Change PIN</string>
     <string name="settings_security_auto_lock">Auto-lock</string>
@@ -443,6 +455,12 @@
     <string name="settings_auto_lock_hour">hour</string>
     <string name="settings_security_unmount_on_auto_lock">Unmount all vaults on auto-lock</string>
     <string name="settings_security_unmount_on_auto_lock_desc">All mounted vaults will be locked when auto-lock triggers</string>
+    <string name="settings_security_receive_shares">Receive shared files</string>
+    <string name="settings_security_receive_shares_desc">Add Arcanum to the Android share sheet so other apps can send files into a mounted vault. Off by default - while off, Arcanum never appears as a share target.</string>
+    <string name="share_target_title">Save to vault</string>
+    <string name="share_target_no_vaults">No vault is ready to receive files. Mount a vault and turn on External app access for it, then try sharing again.</string>
+    <string name="share_target_change_vault">Change</string>
+    <string name="share_target_no_subfolders">No subfolders here.</string>
     <string name="settings_security_screen_capture">Screen Capture Protection</string>
     <string name="settings_security_screen_capture_desc">Blocks screenshots and screen recording. Disabling exposes vault contents to any app that requests screen capture — strongly recommended to keep enabled.</string>
     <string name="settings_security_screenshot_warn_title">Disable Screen Protection?</string>

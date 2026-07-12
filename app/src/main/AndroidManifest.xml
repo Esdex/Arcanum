@@ -107,6 +107,7 @@
             android:name=".MainActivity"
             android:exported="false"
             android:label="@string/app_name"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.Arcanum"
             android:windowSoftInputMode="adjustResize"/>
 
@@ -137,6 +138,25 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Share-sheet receiver. Disabled by default so Arcanum does not appear in any share
+             sheet (disguise). The "Receive shared files" setting toggles it via the package
+             manager. Launches MainActivity, which routes the files through the lock gate. -->
+        <activity-alias
+            android:name=".ShareReceiverAlias"
+            android:targetActivity=".MainActivity"
+            android:label="@string/app_name"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
             </intent-filter>
         </activity-alias>
     </application>
