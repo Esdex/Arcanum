@@ -4,6 +4,7 @@
       "version": "1.4.0",
       "versionCode": 7,
       "entries": [
+        { "type": "new", "title": "Vault storage usage", "description": "The container's Info tab is now a Storage tab with a breakdown donut showing how much space photos, videos, music, other files, and free space each take up. Tap a category to include or exclude it, or press and hold a slice to peek at its size. General and encryption details moved to a Vault details sheet in vault configuration. (#87)" },
         { "type": "new", "title": "Choose the default vault tab", "description": "Vaults now open on the Files tab by default instead of the Gallery, so previews of sensitive photos no longer show on unlock. You can switch the default back to Gallery in Appearance settings. (#85)" },
         { "type": "improvement", "title": "Streamlined What's New", "description": "The What's New screen now shows the current release up front, with earlier versions tucked behind a Show older versions button for a cleaner view. (#80)" },
         { "type": "fix", "title": "Grid view previews and in-app open", "description": "In the file browser's grid layout, photos and videos now show thumbnails and open inside the app instead of only opening externally - matching the list layout. (#90)" },

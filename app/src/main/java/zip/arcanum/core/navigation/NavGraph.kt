@@ -69,7 +69,8 @@ import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import zip.arcanum.core.theme.ArcanumHazeStyle
 import zip.arcanum.arcanum.containers.ui.ContainerScreenViewModel
-import zip.arcanum.arcanum.containers.ui.VaultInfoScreen
+import zip.arcanum.arcanum.containers.ui.VaultStorageScreen
+import zip.arcanum.arcanum.containers.ui.VaultStorageViewModel
 import zip.arcanum.arcanum.files.ui.FileManagerScreen
 import zip.arcanum.arcanum.files.ui.FileManagerViewModel
 import zip.arcanum.arcanum.gallery.ui.GalleryScreen
@@ -102,9 +103,11 @@ fun ContainerScreen(
     onMediaFileClick: (containerId: String, path: String, name: String, size: Long) -> Unit = { _, _, _, _ -> },
     viewModel: ContainerScreenViewModel = hiltViewModel(),
     galleryViewModel: GalleryViewModel = hiltViewModel(),
-    fileManagerViewModel: FileManagerViewModel = hiltViewModel()
+    fileManagerViewModel: FileManagerViewModel = hiltViewModel(),
+    storageViewModel: VaultStorageViewModel = hiltViewModel()
 ) {
     val container              by viewModel.container.collectAsState()
+    val storageBreakdown       by storageViewModel.breakdown.collectAsState()
     val galleryState           by galleryViewModel.uiState.collectAsState()
     val gallerySelectedIds     by galleryViewModel.selectedIds.collectAsState()
     val galleryShowResync      by galleryViewModel.showResyncButton.collectAsState()
@@ -179,7 +182,7 @@ fun ContainerScreen(
                     )
                     BottomNavItem.ContainerFiles.route -> {} // FileManagerScreen owns its top bar
                     else -> TopAppBar(
-                        title          = { Text(stringResource(R.string.nav_info)) },
+                        title          = { Text(stringResource(R.string.nav_storage)) },
                         navigationIcon = { BackIconButton(onBack) },
                         actions        = {
                             IconButton(onClick = { showUnmountConfirm = true }) {
@@ -246,9 +249,11 @@ fun ContainerScreen(
                                     },
                                     viewModel        = fileManagerViewModel
                                 )
-                                BottomNavItem.ContainerInfo -> VaultInfoScreen(
-                                    container      = container,
-                                    contentPadding = PaddingValues(bottom = 60.dp + navBarPadding)
+                                BottomNavItem.ContainerInfo -> VaultStorageScreen(
+                                    container        = container,
+                                    breakdown        = storageBreakdown,
+                                    contentPadding   = PaddingValues(bottom = 60.dp + navBarPadding),
+                                    storageTabActive = active
                                 )
                                 else -> Box(Modifier.fillMaxSize())
                             }
