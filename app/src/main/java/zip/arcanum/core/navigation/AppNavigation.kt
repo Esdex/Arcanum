@@ -27,10 +27,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import android.os.SystemClock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import zip.arcanum.arcanum.containers.ui.MountCoordinator
@@ -63,6 +66,8 @@ import zip.arcanum.setup.PinEntryScreen
 import zip.arcanum.setup.SetupPinScreen
 
 // 0=Immediately(1.5s grace) 1=30s 2=1m 3=2m 4=5m 5=10m 6=30m 7=1h
+// Index 0 is a background-only "lock the moment you leave" grace period; indices >= 1 are
+// inactivity windows enforced by the idle loop in AppNavigation (foreground and background).
 fun autoLockDelayMillis(index: Int): Long = when (index) {
     0    -> 1_500L
     1    -> 30_000L
@@ -113,27 +118,50 @@ fun AppNavigation(pinManager: PinManager) {
     val lockedRoutes = remember(lockScreenRoute) {
         setOf(Screen.Onboarding.route, Screen.SetupPin.route, Screen.Calculator.route, Screen.PinEntry.route)
     }
+    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+    val isUnlockedArea = currentRoute != null && currentRoute !in lockedRoutes
     val autoLockScope = rememberCoroutineScope()
+
+    fun lockNow() {
+        if (unmountOnAutoLock) mountCoordinator.unmountAll()
+        navController.navigate(lockScreenRoute) {
+            popUpTo(0) { inclusive = true }
+            launchSingleTop = true
+        }
+    }
+
+    // Index 0 ("Immediately") keeps the original background-only behavior: lock shortly after
+    // the app leaves the foreground. Indices >= 1 are handled by the idle loop below instead,
+    // so this observer only arms for index 0.
     DisposableEffect(lifecycleOwner, autoLockEnabled, autoLockDelayIndex, unmountOnAutoLock, lockScreenRoute) {
         var lockJob: Job? = null
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
-                    if (autoLockEnabled) {
+                    if (autoLockEnabled && autoLockDelayIndex == 0) {
                         val current = navController.currentDestination?.route ?: return@LifecycleEventObserver
                         if (current !in lockedRoutes) {
                             lockJob = autoLockScope.launch {
-                                delay(autoLockDelayMillis(autoLockDelayIndex))
-                                if (unmountOnAutoLock) mountCoordinator.unmountAll()
-                                navController.navigate(lockScreenRoute) {
-                                    popUpTo(0) { inclusive = true }
-                                    launchSingleTop = true
-                                }
+                                delay(autoLockDelayMillis(0))
+                                lockNow()
                             }
                         }
                     }
                 }
-                Lifecycle.Event.ON_START -> lockJob?.cancel()
+                Lifecycle.Event.ON_START -> {
+                    lockJob?.cancel()
+                    // Idle windows (index >= 1): if the app was backgrounded long enough that the
+                    // inactivity window already elapsed, lock immediately on return - before the
+                    // resume touch can reset the timer. Covers Doze deferring the idle loop's
+                    // wake-ups while the process was in the background.
+                    if (autoLockEnabled && autoLockDelayIndex >= 1) {
+                        val current = navController.currentDestination?.route
+                        if (current != null && current !in lockedRoutes) {
+                            val idleMs = SystemClock.elapsedRealtime() - settingsViewModel.lastInteractionAtMs()
+                            if (idleMs >= autoLockDelayMillis(autoLockDelayIndex)) lockNow()
+                        }
+                    }
+                }
                 else -> Unit
             }
         }
@@ -141,6 +169,28 @@ fun AppNavigation(pinManager: PinManager) {
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             lockJob?.cancel()
+        }
+    }
+
+    // Idle auto-lock (index >= 1): lock once the time since the last user interaction reaches
+    // the configured window. Interaction time is monotonic and untouched by backgrounding, so a
+    // vault left mounted ages out whether the app is in the foreground or the background. Idle is
+    // measured from the last *real* interaction (never reset on ON_START), so a long background
+    // can't be "forgiven" by returning to the app.
+    LaunchedEffect(autoLockEnabled, autoLockDelayIndex, isUnlockedArea) {
+        if (!autoLockEnabled || autoLockDelayIndex == 0 || !isUnlockedArea) return@LaunchedEffect
+        // Fresh baseline for the unlock we just entered.
+        settingsViewModel.recordInteraction()
+        val windowMs = autoLockDelayMillis(autoLockDelayIndex)
+        while (isActive) {
+            val idleMs = SystemClock.elapsedRealtime() - settingsViewModel.lastInteractionAtMs()
+            val remaining = windowMs - idleMs
+            if (remaining <= 0L) {
+                lockNow()
+                break
+            }
+            // Re-check at least every 20s so a late interaction is picked up promptly.
+            delay(remaining.coerceIn(500L, 20_000L))
         }
     }
 

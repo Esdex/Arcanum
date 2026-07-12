@@ -18,6 +18,7 @@ import zip.arcanum.core.navigation_components.DefaultContainerTab
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.DisguiseManager
+import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.security.PinResult
 import zip.arcanum.core.theme.ThemeMode
@@ -29,10 +30,17 @@ class SettingsViewModel @Inject constructor(
     private val biometricAuth: BiometricAuth,
     private val pinManager: PinManager,
     private val disguiseManager: DisguiseManager,
-    private val billingManager: BillingManagerInterface
+    private val billingManager: BillingManagerInterface,
+    private val idleMonitor: IdleMonitor
 ) : ViewModel() {
 
     val isPro = billingManager.isPro
+
+    /** Monotonic timestamp (elapsedRealtime) of the last user interaction - drives idle auto-lock. */
+    fun lastInteractionAtMs(): Long = idleMonitor.lastInteractionAtMs
+
+    /** Reset the inactivity timer, e.g. when the authenticated area is (re)entered. */
+    fun recordInteraction() = idleMonitor.recordInteraction()
 
     val autoLockEnabled = prefs.autoLockEnabled.stateIn(
         scope        = viewModelScope,
