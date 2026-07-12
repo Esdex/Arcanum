@@ -1,6 +1,7 @@
 package zip.arcanum.core.security
 
 import android.content.Context
+import android.os.Build
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -13,6 +14,26 @@ import javax.inject.Singleton
 class BiometricAuth @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    /**
+     * Authenticator set for "prove you're the device owner" prompts that must offer a
+     * device-credential (PIN/pattern/password) fallback.
+     *
+     * AndroidX BiometricPrompt only accepts BIOMETRIC_STRONG|DEVICE_CREDENTIAL on API < 28
+     * or API >= 30 - on API 28/29 PromptInfo.Builder.build() throws IllegalArgumentException
+     * ("Authenticator combination is unsupported"), which crashes the caller synchronously.
+     * On those two API levels the only supported credential-fallback combination is
+     * BIOMETRIC_WEAK|DEVICE_CREDENTIAL, so use it there. These prompts are ownership gates,
+     * not CryptoObject-bound vault unlocks, so allowing a Class-2 biometric is acceptable.
+     */
+    private fun ownershipAuthenticators(): Int =
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.P..Build.VERSION_CODES.Q) {
+            BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        } else {
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        }
+
     fun isAvailable(): Boolean {
         val manager = BiometricManager.from(context)
         return manager.canAuthenticate(
@@ -38,15 +59,19 @@ class BiometricAuth @Inject constructor(
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) = onError(errorCode, errString)
             override fun onAuthenticationFailed() {}
         }
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Debug Mode")
-            .setSubtitle("Authenticate to access developer tools")
-            .setAllowedAuthenticators(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                BiometricManager.Authenticators.DEVICE_CREDENTIAL
-            )
-            .build()
-        BiometricPrompt(activity, executor, callback).authenticate(promptInfo)
+        // Build + authenticate can throw synchronously (unsupported authenticator combination,
+        // no enrolled credential on some OEM builds). Route any failure to onError instead of
+        // letting it crash the caller.
+        runCatching {
+            val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                .setTitle("Debug Mode")
+                .setSubtitle("Authenticate to access developer tools")
+                .setAllowedAuthenticators(ownershipAuthenticators())
+                .build()
+            BiometricPrompt(activity, executor, callback).authenticate(promptInfo)
+        }.onFailure { e ->
+            onError(BiometricPrompt.ERROR_HW_UNAVAILABLE, e.message ?: "Authentication unavailable")
+        }
     }
 
     /**
@@ -100,14 +125,15 @@ class BiometricAuth @Inject constructor(
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) = onError(errorCode, errString)
             override fun onAuthenticationFailed() {}
         }
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(title)
-            .setSubtitle(subtitle)
-            .setAllowedAuthenticators(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                BiometricManager.Authenticators.DEVICE_CREDENTIAL
-            )
-            .build()
-        BiometricPrompt(activity, executor, callback).authenticate(promptInfo)
+        runCatching {
+            val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                .setTitle(title)
+                .setSubtitle(subtitle)
+                .setAllowedAuthenticators(ownershipAuthenticators())
+                .build()
+            BiometricPrompt(activity, executor, callback).authenticate(promptInfo)
+        }.onFailure { e ->
+            onError(BiometricPrompt.ERROR_HW_UNAVAILABLE, e.message ?: "Authentication unavailable")
+        }
     }
 }

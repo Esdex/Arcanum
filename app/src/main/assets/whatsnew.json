@@ -11,7 +11,8 @@
         { "type": "security", "title": "Calculator disguise hides PIN lockout", "description": "After too many wrong PINs the calculator disguise no longer shows a lockout message - a locked-out attempt now looks exactly like a wrong PIN, so the disguise can't be confirmed. The lockout still applies internally. (#88)" },
         { "type": "security", "title": "Tamper-proof PIN lockout timing", "description": "The PIN lockout can no longer be bypassed by changing the device clock - it uses a monotonic timer with a reboot fallback and stays locked while either clock still says so. (#88)" },
         { "type": "security", "title": "Stronger offline and import hardening", "description": "Removed a leftover network-state permission so the app requests no network access at all, sanitized folder names during import, and fixed a bounds check when mounting a vault. (#88)" },
-        { "type": "fix", "title": "Safer password and keyfile changes", "description": "Changing a vault's password or keyfiles now builds and verifies the new header before removing the old one, so an interrupted or failed change can't leave the vault without a valid header. (#88)" }
+        { "type": "fix", "title": "Safer password and keyfile changes", "description": "Changing a vault's password or keyfiles now builds and verifies the new header before removing the old one, so an interrupted or failed change can't leave the vault without a valid header. (#88)" },
+        { "type": "fix", "title": "Crash confirming with device credential on Android 9-10", "description": "On Android 9 and 10, enabling the diagnostic logger or turning off screenshot protection crashed the app - the authentication prompt asked for a fingerprint-or-PIN combination the OS rejects on those versions. It now falls back to a supported prompt and can no longer crash. (#92)" }
       ]
     },
     {
