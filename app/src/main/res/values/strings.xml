@@ -434,7 +434,7 @@
     <string name="settings_security_title">Security</string>
     <string name="settings_security_change_pin">Change PIN</string>
     <string name="settings_security_auto_lock">Auto-lock</string>
-    <string name="settings_security_auto_lock_desc">Lock when app goes to background</string>
+    <string name="settings_security_auto_lock_desc">Lock after a period of inactivity</string>
     <string name="settings_auto_lock_delay">Lock after</string>
     <string name="settings_auto_lock_immediately">Immediately</string>
     <string name="settings_auto_lock_seconds">sec</string>

@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.core.navigation.AppNavigation
+import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.theme.AppTheme
 import zip.arcanum.crypto.VeraCryptEngine
@@ -27,6 +28,7 @@ class MainActivity : AppCompatActivity() {
     @Inject lateinit var pinManager: PinManager
     @Inject lateinit var containerRepo: ContainerRepository
     @Inject lateinit var engine: VeraCryptEngine
+    @Inject lateinit var idleMonitor: IdleMonitor
 
     private val settingsViewModel: SettingsViewModel by viewModels()
 
@@ -90,6 +92,13 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    // Every touch / key event dispatched to the activity resets the inactivity timer that
+    // drives idle auto-lock (consumed by AppNavigation).
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        idleMonitor.recordInteraction()
     }
 
     override fun onDestroy() {
