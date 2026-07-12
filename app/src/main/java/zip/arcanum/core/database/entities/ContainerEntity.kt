@@ -20,6 +20,7 @@ data class ContainerEntity(
     @ColumnInfo(defaultValue = "0") val hasBiometric: Boolean = false,
     @ColumnInfo(defaultValue = "0") val unmountOnLock: Boolean = false,
     @ColumnInfo(defaultValue = "0") val unmountOnBackground: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val externalAccessEnabled: Boolean = false,
     @ColumnInfo(defaultValue = "") val safUri: String = "",
     @ColumnInfo(defaultValue = "0") val keySize: Int = 0,
     @ColumnInfo(defaultValue = "XTS") val encryptionMode: String = "XTS",

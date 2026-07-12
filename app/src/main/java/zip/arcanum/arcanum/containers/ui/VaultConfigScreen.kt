@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Eject
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -116,6 +117,7 @@ fun VaultConfigScreen(
     var showRenameDialog     by remember { mutableStateOf(false) }
     var showMoveSheet        by remember { mutableStateOf(false) }
     var showAutoUnmountSheet by remember { mutableStateOf(false) }
+    var showExternalAccessSheet by remember { mutableStateOf(false) }
     var showDeleteDialog     by remember { mutableStateOf(false) }
     var showUnmountDialog    by remember { mutableStateOf(false) }
     var renameText           by remember { mutableStateOf("") }
@@ -243,6 +245,14 @@ fun VaultConfigScreen(
                         subtitle  = stringResource(R.string.vault_config_op_auto_unmount_desc),
                         isDynamic = isDynamic,
                         onClick   = { showAutoUnmountSheet = true }
+                    )
+                    VaultOperationItem(
+                        icon      = Icons.Outlined.Share,
+                        rawColor  = Color(0xFF0E7490),
+                        title     = stringResource(R.string.vault_config_op_external_access),
+                        subtitle  = stringResource(R.string.vault_config_op_external_access_desc),
+                        isDynamic = isDynamic,
+                        onClick   = { showExternalAccessSheet = true }
                     )
 
                     VaultOperationItem(
@@ -447,6 +457,36 @@ fun VaultConfigScreen(
                         subtitle        = stringResource(R.string.vault_config_unmount_on_background_desc),
                         checked         = container.unmountOnBackground,
                         onCheckedChange = { viewModel.updateUnmountOnBackground(containerId, it) }
+                    )
+                }
+            }
+        }
+
+        // ── External app access bottom sheet ──────────────────────────────────────
+        if (showExternalAccessSheet && container != null) {
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            AppSheet(
+                onDismissRequest = { showExternalAccessSheet = false },
+                sheetState       = sheetState
+            ) {
+                Column(modifier = Modifier.padding(bottom = 32.dp)) {
+                    Text(
+                        text       = stringResource(R.string.vault_config_external_access_title),
+                        style      = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier   = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                    Text(
+                        text     = stringResource(R.string.vault_config_external_access_warning),
+                        style    = MaterialTheme.typography.bodySmall,
+                        color    = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                    SettingsSwitch(
+                        title           = stringResource(R.string.vault_config_external_access_switch),
+                        subtitle        = stringResource(R.string.vault_config_external_access_switch_desc),
+                        checked         = container.externalAccessEnabled,
+                        onCheckedChange = { viewModel.updateExternalAccessEnabled(containerId, it) }
                     )
                 }
             }

@@ -89,6 +89,20 @@
                 android:resource="@xml/file_provider_paths" />
         </provider>
 
+        <!-- Read-only SAF access to opted-in, mounted vaults. Exported so the system DocumentsUI
+             can bind, but guarded by MANAGE_DOCUMENTS (held only by the system); other apps reach
+             a file only through a user-granted URI from the picker. -->
+        <provider
+            android:name=".arcanum.saf.VaultDocumentsProvider"
+            android:authorities="${applicationId}.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+
         <activity
             android:name=".MainActivity"
             android:exported="false"

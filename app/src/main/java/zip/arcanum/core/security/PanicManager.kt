@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import zip.arcanum.arcanum.saf.VaultDocumentsProvider
 import zip.arcanum.core.database.dao.CalculatorHistoryDao
 import zip.arcanum.core.database.dao.ContainerDao
 import zip.arcanum.core.database.entities.ContainerEntity
@@ -141,6 +142,14 @@ class PanicManager @Inject constructor(
             }
         }
         context.panicDataStore.edit { it.clear() }
+        // Drop any lingering SAF root from other apps' pickers. Access is already dead - the DB
+        // rows are gone, so VaultDocumentsProvider denies every query - this just refreshes the UI.
+        runCatching {
+            context.contentResolver.notifyChange(
+                DocumentsContract.buildRootsUri(VaultDocumentsProvider.authority(context)),
+                null
+            )
+        }
     }
 
     suspend fun executePanic() {

@@ -62,6 +62,9 @@ interface ContainerDao {
     @Query("UPDATE containers SET unmountOnBackground = :value WHERE id = :id")
     suspend fun updateUnmountOnBackground(id: String, value: Boolean)
 
+    @Query("UPDATE containers SET externalAccessEnabled = :value WHERE id = :id")
+    suspend fun updateExternalAccessEnabled(id: String, value: Boolean)
+
     @Query("SELECT * FROM containers")
     suspend fun getAllContainersOnce(): List<ContainerEntity>
 

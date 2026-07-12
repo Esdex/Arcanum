@@ -439,6 +439,11 @@ class VeraCryptEngine @Inject constructor() {
     fun writeFile(handle: Long, filePath: String, data: ByteArray, offset: Long): Int =
         nativeWriteFile(handle, filePath, data, offset)
 
+    /** Non-truncating positional write (creates the file if absent). Safe for random-access
+     *  writes from the SAF provider - a write at offset 0 does not discard the rest of the file. */
+    fun writeAt(handle: Long, filePath: String, data: ByteArray, offset: Long): Int =
+        nativeWriteAt(handle, filePath, data, offset)
+
     fun deleteFile(handle: Long, filePath: String): Int =
         nativeDeleteFile(handle, filePath)
 
@@ -536,6 +541,13 @@ class VeraCryptEngine @Inject constructor() {
     ): ByteArray?
 
     private external fun nativeWriteFile(
+        handle: Long,
+        filePath: String,
+        data: ByteArray,
+        offset: Long
+    ): Int
+
+    private external fun nativeWriteAt(
         handle: Long,
         filePath: String,
         data: ByteArray,
