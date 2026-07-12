@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import zip.arcanum.arcanum.containers.ui.MountCoordinator
 import zip.arcanum.arcanum.containers.ui.MountScreen
+import zip.arcanum.arcanum.share.ShareTargetScreen
 import zip.arcanum.arcanum.containers.ui.MountSuccessOverlay
 import zip.arcanum.arcanum.containers.ui.UnmountAnimationOverlay
 import zip.arcanum.arcanum.containers.ui.VaultConfigScreen
@@ -191,6 +192,16 @@ fun AppNavigation(pinManager: PinManager) {
             }
             // Re-check at least every 20s so a late interaction is picked up promptly.
             delay(remaining.coerceIn(500L, 20_000L))
+        }
+    }
+
+    // A file shared into Arcanum waits in ShareIntake until the user is in the authenticated area
+    // (any unlocked screen - MainActivity is singleTask, so a share reuses the live session rather
+    // than spawning a fresh, locked instance). Never fires while locked or already on the picker.
+    val pendingShare by settingsViewModel.pendingShare.collectAsState()
+    LaunchedEffect(pendingShare.isNotEmpty(), isUnlockedArea, currentRoute) {
+        if (pendingShare.isNotEmpty() && isUnlockedArea && currentRoute != Screen.ShareTarget.route) {
+            navController.navigate(Screen.ShareTarget.route)
         }
     }
 
@@ -473,6 +484,20 @@ fun AppNavigation(pinManager: PinManager) {
                 onBack       = { navController.popBackStack() },
                 viewModel    = settingsViewModel,
                 openWhatsNew = true
+            )
+        }
+
+        // ── Share destination picker (files received from the Android share sheet) ─
+        composable(Screen.ShareTarget.route) {
+            val backToVault: () -> Unit = {
+                navController.navigate(Screen.VaultScreen.route) {
+                    popUpTo(Screen.VaultScreen.route) { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
+            ShareTargetScreen(
+                onDone   = backToVault,
+                onCancel = { settingsViewModel.clearPendingShare(); backToVault() }
             )
         }
 

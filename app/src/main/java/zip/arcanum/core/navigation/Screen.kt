@@ -113,4 +113,7 @@ sealed class Screen(val route: String) {
         const val ARG = "mediaId"
         fun buildRoute(mediaId: String) = "photo_editor/$mediaId"
     }
+
+    // Destination picker for files received from the Android Share sheet.
+    object ShareTarget : Screen("share_target")
 }
