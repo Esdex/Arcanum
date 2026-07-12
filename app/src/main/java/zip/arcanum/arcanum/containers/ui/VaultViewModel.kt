@@ -456,6 +456,10 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch { repo.updateUnmountOnBackground(id, value) }
     }
 
+    fun updateExternalAccessEnabled(id: String, value: Boolean) {
+        viewModelScope.launch { repo.updateExternalAccessEnabled(id, value) }
+    }
+
     fun unmountContainersOnStop(isLocked: Boolean) {
         // Skip background unmounting if a container was just mounted — ProcessLifecycleOwner.onStop
         // can fire during the mount animation or navigation transition, causing the freshly-mounted

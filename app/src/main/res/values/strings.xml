@@ -953,6 +953,12 @@
     <string name="vault_config_unmount_first">Unmount vault first</string>
     <string name="vault_config_move_sheet_title">Move</string>
     <string name="vault_config_auto_unmount_title">Auto-unmount</string>
+    <string name="vault_config_op_external_access">External app access</string>
+    <string name="vault_config_op_external_access_desc">Let other apps open files from this vault</string>
+    <string name="vault_config_external_access_title">External app access</string>
+    <string name="vault_config_external_access_warning">While this vault is mounted, other apps can open and edit its files through the system file picker - but only files and folders you explicitly pick and grant. Nothing is decrypted to disk, and access ends the moment the vault is unmounted.</string>
+    <string name="vault_config_external_access_switch">Allow external app access</string>
+    <string name="vault_config_external_access_switch_desc">Expose this vault in the system file picker while mounted</string>
     <string name="vault_config_title">Vault Config</string>
 
     <!-- Expand Volume screen -->

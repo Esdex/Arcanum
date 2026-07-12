@@ -230,6 +230,52 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteFile(
     return tripped ? ERR_HIDDEN_BOUNDARY : ERR_FS;
 }
 
+/* ─── JNI: nativeWriteAt ─────────────────────────────────────────────── */
+
+/* Non-truncating positional write for the SAF DocumentsProvider. Unlike nativeWriteFile,
+ * a write at offset 0 does NOT discard the rest of the file (FA_OPEN_ALWAYS, not
+ * FA_CREATE_ALWAYS), so an external app that seeks backwards to patch a header can't
+ * accidentally truncate the file. The file is created if it does not exist; an empty data
+ * array just touches it into existence. Truncation semantics ("w" open) are handled on the
+ * Kotlin side by deleting the file before the write session begins. */
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteAt(
+        JNIEnv *env, jobject /*thiz*/,
+        jlong handle, jstring jFilePath,
+        jbyteArray jData, jlong offset)
+{
+    if (decode_handle(handle) < 0) return ERR_NO_SLOT;
+    std::string path = jstring_to_string(env, jFilePath);
+
+    FIL fil;
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    int pdrv = decode_handle(handle);
+    if (pdrv < 0) return ERR_NO_SLOT;
+    { auto it = g_ctxMap.find(pdrv); if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY; }
+
+    char fullPath[512];
+    int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+    if (n < 0 || n >= (int)sizeof(fullPath)) return ERR_FILE;
+
+    if (f_open(&fil, fullPath, FA_WRITE | FA_OPEN_ALWAYS) != FR_OK) return ERR_FILE;
+
+    jsize len = env->GetArrayLength(jData);
+    if (len == 0) { f_close(&fil); return ERR_OK; }   // touch / ensure-exists only
+
+    if (f_lseek(&fil, (FSIZE_t)offset) != FR_OK) { f_close(&fil); return ERR_FS; }
+
+    jbyte *data = env->GetByteArrayElements(jData, nullptr);
+    if (!data) { f_close(&fil); return ERR_FS; }
+    UINT   bw  = 0;
+    FRESULT fr = f_write(&fil, data, (UINT)len, &bw);
+    env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
+    f_close(&fil);
+    if (fr == FR_OK && (jint)bw == len) return ERR_OK;
+    bool tripped = g_drives[pdrv].hiddenBoundaryTripped;
+    g_drives[pdrv].hiddenBoundaryTripped = false;
+    return tripped ? ERR_HIDDEN_BOUNDARY : ERR_FS;
+}
+
 /* ─── JNI: nativeGetAlgorithmId ─────────────────────────────────────── */
 
 extern "C" JNIEXPORT jint JNICALL

@@ -1,6 +1,10 @@
 package zip.arcanum.arcanum.containers.data
 
+import android.content.Context
+import android.content.Intent
 import android.os.ParcelFileDescriptor
+import android.provider.DocumentsContract
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -9,6 +13,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.arcanum.gallery.ThumbnailManager
+import zip.arcanum.arcanum.saf.VaultDocumentsProvider
 import zip.arcanum.core.database.dao.ContainerDao
 import zip.arcanum.core.database.entities.ContainerEntity
 import java.util.UUID
@@ -17,6 +22,7 @@ import javax.inject.Singleton
 
 @Singleton
 class ContainerRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val dao: ContainerDao,
     private val thumbnailManager: ThumbnailManager
 ) {
@@ -102,6 +108,10 @@ class ContainerRepository @Inject constructor(
         mountedDataSize.remove(id)
         mountedParcelFds.remove(id)?.close()
         dao.setMounted(id, false)
+        // The SAF root vanishes once the container is no longer mounted; refresh the picker and
+        // drop any URI grants. Reads already fail on their own - the JNI handle is gone above.
+        revokeExternalAccess(id)
+        notifyExternalRootsChanged()
     }
 
     // Synchronous — safe to call from onDestroy without a coroutine.
@@ -159,6 +169,37 @@ class ContainerRepository @Inject constructor(
     suspend fun updateUnmountOnBackground(id: String, value: Boolean) =
         dao.updateUnmountOnBackground(id, value)
 
+    suspend fun updateExternalAccessEnabled(id: String, value: Boolean) {
+        dao.updateExternalAccessEnabled(id, value)
+        // Turning access off must immediately drop existing grants and hide the root.
+        if (!value) revokeExternalAccess(id)
+        notifyExternalRootsChanged()
+    }
+
+    // ── SAF DocumentsProvider coordination ─────────────────────────────────────
+    // Tell the system file picker that the set of exposed roots changed (mount/unmount,
+    // opt-in toggled, panic wipe), so a stale Arcanum root can't linger in other apps' pickers.
+    fun notifyExternalRootsChanged() {
+        runCatching {
+            context.contentResolver.notifyChange(
+                DocumentsContract.buildRootsUri(VaultDocumentsProvider.authority(context)),
+                null
+            )
+        }
+    }
+
+    // Best-effort revoke of the container's tree grant. The hard guarantee is the missing JNI
+    // handle (openDocument then fails); this just cleans up the picker's persisted permission.
+    fun revokeExternalAccess(id: String) {
+        runCatching {
+            val treeUri = DocumentsContract.buildTreeDocumentUri(
+                VaultDocumentsProvider.authority(context),
+                VaultDocumentsProvider.rootDocumentId(id)
+            )
+            context.revokeUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+
     suspend fun updateContainerPath(id: String, newPath: String) =
         dao.updatePath(id, newPath)
 
@@ -202,8 +243,10 @@ class ContainerRepository @Inject constructor(
             mountedDataSize.remove(id)
             mountedParcelFds.remove(id)?.close()
             thumbnailManager.clearCache(id)
+            revokeExternalAccess(id)
             dao.deleteContainerById(id)
         }
+        notifyExternalRootsChanged()
     }
 
     suspend fun addContainerFromPath(path: String, algorithm: String = "AES-256-XTS", safUri: String = "", name: String? = null, size: Long? = null): String {
