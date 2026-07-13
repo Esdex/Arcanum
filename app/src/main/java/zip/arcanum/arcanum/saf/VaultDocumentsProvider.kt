@@ -150,7 +150,11 @@ class VaultDocumentsProvider : DocumentsProvider() {
         // "w"/"wt" mean truncate-on-open; "wa" (append) and "rw" do NOT. We have no in-place
         // truncate, so for a truncating open we drop the file first and rebuild it from the incoming
         // writes - all non-truncating (writeAt), so a later backward seek to offset 0 can't wipe it.
-        val truncate = mode.contains('t') || (mode.contains('w') && !mode.contains('a'))
+        // ParcelFileDescriptor.parseMode only sets TRUNCATE for "w"/"wt"/"rwt": a bare 'w' with no
+        // 'r' and no 'a', or an explicit 't'. "rw" (read-write, edit-in-place) must be preserved, so
+        // the 'r' guard is mandatory - without it "rw" would delete the file and lose its contents.
+        val truncate = mode.contains('t') ||
+            (mode.contains('w') && !mode.contains('a') && !mode.contains('r'))
         if (truncate) runCatching { engine.deleteFile(handle, path) }
         // Make sure the document exists so onGetSize/onRead are well-defined even before any write.
         engine.writeAt(handle, path, EMPTY, 0L)
