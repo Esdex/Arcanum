@@ -301,7 +301,12 @@ int alloc_drive(int fd, uint64_t dataOff, uint64_t sectors,
         if (!g_drives[i].active) {
             g_drives[i].fd               = fd;
             g_drives[i].dataOffset       = dataOff;
-            g_drives[i].sectorCount      = sectors;
+            /* When protect-hidden is active, cap visible sectors to the usable
+             * outer area so FatFs never allocates clusters past hiddenBoundary.
+             * Hidden volumes use their own dataOff/sectors and are unaffected. */
+            g_drives[i].sectorCount      = (!isHidden && hiddenBoundary > 0)
+                ? (hiddenBoundary - dataOff) / VC_SECTOR_SIZE
+                : sectors;
             g_drives[i].active           = true;
             g_drives[i].algId            = algId;
             g_drives[i].hashId           = hashId;
