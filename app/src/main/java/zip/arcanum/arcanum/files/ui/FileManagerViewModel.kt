@@ -17,7 +17,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapMerge
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -114,6 +117,7 @@ class FileManagerViewModel @Inject constructor(
         private val SHOW_HIDDEN_KEY  = booleanPreferencesKey("show_hidden")
         private val FOLDERS_FIRST_KEY = booleanPreferencesKey("folders_first")
         private val VIEW_MODE_KEY    = stringPreferencesKey("view_mode")
+        private const val MAX_FM_THUMBNAILS = 80
     }
 
     fun requestThumbnail(file: NativeFileInfo) {
@@ -130,12 +134,17 @@ class FileManagerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             thumbnailSemaphore.withPermit {
                 val bitmap = thumbnailManager.getThumbnail(engine, handle, containerId, file.path, type, file.size)
-                if (bitmap != null) {
-                    withContext(Dispatchers.Main) {
-                        _state.update { it.copy(thumbnails = it.thumbnails + (file.path to bitmap)) }
+                withContext(Dispatchers.Main) {
+                    if (bitmap != null) {
+                        _state.update { s ->
+                            val map = LinkedHashMap(s.thumbnails)
+                            map[file.path] = bitmap
+                            while (map.size > MAX_FM_THUMBNAILS) map.iterator().also { it.next(); it.remove() }
+                            s.copy(thumbnails = map)
+                        }
+                    } else {
+                        loadingThumbnails.remove(file.path)
                     }
-                } else {
-                    loadingThumbnails.remove(file.path)
                 }
             }
         }
@@ -216,36 +225,44 @@ class FileManagerViewModel @Inject constructor(
     }
 
     fun setSortBy(sortBy: SortBy) {
-        _state.update { s ->
+        _state.update { it.copy(sortBy = sortBy) }
+        viewModelScope.launch(Dispatchers.Default) {
+            val s = _state.value
             val files = applyFiltersAndSort(s.rawFiles, sortBy, s.sortAscending, s.showHidden, s.foldersFirst, s.searchQuery)
-            s.copy(sortBy = sortBy, files = files)
+            _state.update { it.copy(files = files) }
         }
         savePrefs()
     }
 
     fun toggleSortDirection() {
-        _state.update { s ->
-            val asc = !s.sortAscending
+        val asc = !_state.value.sortAscending
+        _state.update { it.copy(sortAscending = asc) }
+        viewModelScope.launch(Dispatchers.Default) {
+            val s = _state.value
             val files = applyFiltersAndSort(s.rawFiles, s.sortBy, asc, s.showHidden, s.foldersFirst, s.searchQuery)
-            s.copy(sortAscending = asc, files = files)
+            _state.update { it.copy(files = files) }
         }
         savePrefs()
     }
 
     fun toggleFoldersFirst() {
-        _state.update { s ->
-            val ff = !s.foldersFirst
+        val ff = !_state.value.foldersFirst
+        _state.update { it.copy(foldersFirst = ff) }
+        viewModelScope.launch(Dispatchers.Default) {
+            val s = _state.value
             val files = applyFiltersAndSort(s.rawFiles, s.sortBy, s.sortAscending, s.showHidden, ff, s.searchQuery)
-            s.copy(foldersFirst = ff, files = files)
+            _state.update { it.copy(files = files) }
         }
         savePrefs()
     }
 
     fun toggleShowHidden() {
-        _state.update { s ->
-            val sh = !s.showHidden
+        val sh = !_state.value.showHidden
+        _state.update { it.copy(showHidden = sh) }
+        viewModelScope.launch(Dispatchers.Default) {
+            val s = _state.value
             val files = applyFiltersAndSort(s.rawFiles, s.sortBy, s.sortAscending, sh, s.foldersFirst, s.searchQuery)
-            s.copy(showHidden = sh, files = files)
+            _state.update { it.copy(files = files) }
         }
         savePrefs()
     }
@@ -254,18 +271,23 @@ class FileManagerViewModel @Inject constructor(
 
     fun toggleSearch() {
         val active = !_state.value.isSearchActive
-        _state.update { s ->
-            val files = if (!active) applyFiltersAndSort(s.rawFiles, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, "")
-                        else s.files
-            s.copy(isSearchActive = active, searchQuery = if (!active) "" else s.searchQuery, files = files)
+        _state.update { it.copy(isSearchActive = active, searchQuery = if (!active) "" else it.searchQuery) }
+        if (!active) {
+            viewModelScope.launch(Dispatchers.Default) {
+                val s = _state.value
+                val files = applyFiltersAndSort(s.rawFiles, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, "")
+                _state.update { it.copy(files = files) }
+            }
         }
     }
 
     fun setSearchActive(active: Boolean) {
         if (!active) {
-            _state.update { s ->
+            _state.update { it.copy(isSearchActive = false, searchQuery = "") }
+            viewModelScope.launch(Dispatchers.Default) {
+                val s = _state.value
                 val files = applyFiltersAndSort(s.rawFiles, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, "")
-                s.copy(isSearchActive = false, searchQuery = "", files = files)
+                _state.update { it.copy(files = files) }
             }
         } else {
             _state.update { it.copy(isSearchActive = true) }
@@ -273,9 +295,11 @@ class FileManagerViewModel @Inject constructor(
     }
 
     fun setSearchQuery(query: String) {
-        _state.update { s ->
+        _state.update { it.copy(searchQuery = query) }
+        viewModelScope.launch(Dispatchers.Default) {
+            val s = _state.value
             val files = applyFiltersAndSort(s.rawFiles, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, query)
-            s.copy(searchQuery = query, files = files)
+            _state.update { it.copy(files = files) }
         }
     }
 
@@ -510,8 +534,8 @@ class FileManagerViewModel @Inject constructor(
         val handle = repo.getContainerHandle(containerId) ?: run { onResult(emptyList()); return }
         viewModelScope.launch(Dispatchers.IO) {
             val dirs = runCatching {
-                engine.listFiles(handle, path).toList().filter { it.isDirectory }
-            }.getOrDefault(emptyList())
+                engine.listFilesOrNull(handle, path)?.toList()?.filter { it.isDirectory }
+            }.getOrNull() ?: emptyList()
             withContext(Dispatchers.Main) { onResult(dirs) }
         }
     }
@@ -534,16 +558,16 @@ class FileManagerViewModel @Inject constructor(
         thumbnailManager.notifyFilesImported(containerId)
 
         // Phase 2: generate thumbnails concurrently (slow — image decode + cache write).
-        coroutineScope {
-            val sem = Semaphore(3)
-            entities.forEach { entity ->
-                launch {
-                    sem.withPermit {
-                        thumbnailManager.getThumbnail(engine, handle, entity)
-                    }
+        // flatMapMerge bounds both coroutine count AND concurrency to 3; a raw forEach+launch
+        // with a Semaphore would spawn entities.size coroutines immediately regardless of cap.
+        entities.asFlow()
+            .flatMapMerge(concurrency = 3) { entity ->
+                flow {
+                    thumbnailManager.getThumbnail(engine, handle, entity)
+                    emit(Unit)
                 }
             }
-        }
+            .collect {}
     }
 
     // ── File operations ───────────────────────────────────────────────────
@@ -558,14 +582,13 @@ class FileManagerViewModel @Inject constructor(
             _state.update { it.copy(isOperationInProgress = true) }
             var count = 0
             for (file in toDelete) {
-                runCatching {
-                    if (file.isDirectory) {
-                        engine.deleteDirectory(handle, file.path)
-                        cleanupDirectoryMedia(s.containerId, file.path)
-                    } else {
-                        engine.deleteFile(handle, file.path)
-                        cleanupFileMedia(s.containerId, file.path)
-                    }
+                val rc = runCatching {
+                    if (file.isDirectory) engine.deleteDirectory(handle, file.path)
+                    else engine.deleteFile(handle, file.path)
+                }.getOrDefault(VeraCryptEngine.ERR_FS)
+                if (rc == VeraCryptEngine.ERR_OK) {
+                    if (file.isDirectory) cleanupDirectoryMedia(s.containerId, file.path)
+                    else cleanupFileMedia(s.containerId, file.path)
                     count++
                 }
             }
@@ -997,7 +1020,8 @@ class FileManagerViewModel @Inject constructor(
             context.contentResolver, parentDocUri,
             DocumentsContract.Document.MIME_TYPE_DIR, dirName
         ) ?: return false
-        val entries = runCatching { engine.listFiles(handle, srcPath).toList() }.getOrDefault(emptyList())
+        val entries = runCatching { engine.listFilesOrNull(handle, srcPath)?.toList() }.getOrNull()
+            ?: return false
         val chunkSize = 1 * 1024 * 1024
         var allOk = true
         for (entry in entries) {
@@ -1032,7 +1056,8 @@ class FileManagerViewModel @Inject constructor(
     ): Boolean {
         return try {
             runCatching { engine.createDirectory(destHandle, destPath) }
-            val entries = engine.listFiles(srcHandle, srcPath).toList()
+            val entries = engine.listFilesOrNull(srcHandle, srcPath)?.toList()
+                ?: return false
             var allCopied = true
             val chunkSize = 1 * 1024 * 1024
             for (entry in entries) {
@@ -1066,7 +1091,8 @@ class FileManagerViewModel @Inject constructor(
     ): Boolean {
         return try {
             runCatching { engine.createDirectory(destHandle, destPath) }
-            val entries = engine.listFiles(srcHandle, srcPath).toList()
+            val entries = engine.listFilesOrNull(srcHandle, srcPath)?.toList()
+                ?: return false
             var allMoved = true
             for (entry in entries) {
                 val srcEntry  = if (srcPath  == "/") "/${entry.name}" else "$srcPath/${entry.name}"
@@ -1093,10 +1119,11 @@ class FileManagerViewModel @Inject constructor(
         val s = _state.value
         val handle = repo.getContainerHandle(s.containerId) ?: return
         runCatching {
-            val rawFiles = engine.listFiles(handle, s.currentPath).toList()
+            val rawFiles = engine.listFilesOrNull(handle, s.currentPath)
+                ?: return  // null = disk error, not empty dir
             _state.update { st ->
-                val files = applyFiltersAndSort(rawFiles, st.sortBy, st.sortAscending, st.showHidden, st.foldersFirst, st.searchQuery)
-                st.copy(rawFiles = rawFiles, files = files)
+                val files = applyFiltersAndSort(rawFiles.toList(), st.sortBy, st.sortAscending, st.showHidden, st.foldersFirst, st.searchQuery)
+                st.copy(rawFiles = rawFiles.toList(), files = files)
             }
         }
     }
@@ -1110,11 +1137,16 @@ class FileManagerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isLoading = true, error = null) }
             try {
-                val rawFiles = engine.listFiles(handle, path).toList()
+                val rawFiles = engine.listFilesOrNull(handle, path)
+                if (rawFiles == null) {
+                    _state.update { it.copy(isLoading = false, error = "Failed to list directory") }
+                    return@launch
+                }
+                val rawList = rawFiles.toList()
                 _state.update { s ->
-                    val files = applyFiltersAndSort(rawFiles, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, s.searchQuery)
+                    val files = applyFiltersAndSort(rawList, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, s.searchQuery)
                     s.copy(
-                        rawFiles        = rawFiles,
+                        rawFiles        = rawList,
                         files           = files,
                         isLoading       = false,
                         currentPath     = path,

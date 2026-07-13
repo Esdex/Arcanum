@@ -4,14 +4,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapMerge
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.crypto.VeraCryptEngine
@@ -33,9 +34,8 @@ class ThumbnailPreloader @Inject constructor(
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val semaphore = Semaphore(2)
-    private var currentJob: Job? = null
-    private var activeGeneration = 0
+    @Volatile private var currentJob: Job? = null
+    @Volatile private var activeGeneration = 0
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
@@ -59,21 +59,16 @@ class ThumbnailPreloader @Inject constructor(
 
         currentJob = scope.launch {
             try {
-                coroutineScope {
-                    preloadFiles.forEach { file ->
-                        launch {
-                            semaphore.withPermit {
-                                try {
-                                    thumbnailManager.getThumbnail(engine, handle, file)
-                                } catch (_: Exception) {}
-                            }
-                            _state.update { it.copy(done = it.done + 1) }
+                preloadFiles.asFlow()
+                    .flatMapMerge(concurrency = 2) { file ->
+                        flow {
+                            try { thumbnailManager.getThumbnail(engine, handle, file) } catch (_: Exception) {}
+                            emit(Unit)
                         }
                     }
-                }
+                    .onEach { if (activeGeneration == gen) _state.update { it.copy(done = it.done + 1) } }
+                    .collect {}
             } finally {
-                // Guard against a stale finally block from a cancelled job overwriting the
-                // new state when start() is called again before cancellation completes.
                 if (activeGeneration == gen) _state.update { it.copy(isRunning = false) }
             }
         }

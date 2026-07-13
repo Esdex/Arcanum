@@ -9,6 +9,8 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.SecureRandom
@@ -21,6 +23,7 @@ class DatabaseKeyManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val mutex   = Mutex()
 
     private val prefsDeferred: Deferred<EncryptedSharedPreferences> = ioScope.async {
         val masterKey = MasterKey.Builder(context)
@@ -37,11 +40,16 @@ class DatabaseKeyManager @Inject constructor(
 
     suspend fun getPassphrase(): ByteArray = withContext(Dispatchers.IO) {
         val prefs = prefsDeferred.await()
-        val stored = prefs.getString(KEY_PASSPHRASE, null)
-        if (stored != null) return@withContext Base64.getDecoder().decode(stored)
-        val passphrase = ByteArray(32).also { SecureRandom().nextBytes(it) }
-        prefs.edit().putString(KEY_PASSPHRASE, Base64.getEncoder().encodeToString(passphrase)).apply()
-        passphrase
+        mutex.withLock {
+            val stored = prefs.getString(KEY_PASSPHRASE, null)
+            if (stored != null) return@withLock Base64.getDecoder().decode(stored)
+            val passphrase = ByteArray(32).also { SecureRandom().nextBytes(it) }
+            val ok = prefs.edit()
+                .putString(KEY_PASSPHRASE, Base64.getEncoder().encodeToString(passphrase))
+                .commit()
+            check(ok) { "Failed to persist DB passphrase" }
+            passphrase
+        }
     }
 
     // Plaintext DB from older app versions cannot be opened by SupportFactory.

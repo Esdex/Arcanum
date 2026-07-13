@@ -1,8 +1,10 @@
 package zip.arcanum.arcanum.gallery
 
 import android.media.MediaMetadataRetriever
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
@@ -54,7 +56,7 @@ class MediaScanner @Inject constructor(
 
         suspend fun scanDir(path: String) {
             val entries = try {
-                engine.listFiles(handle, path)
+                engine.listFilesOrNull(handle, path) ?: return  // null = disk error, not empty dir
             } catch (_: Exception) {
                 return
             }
@@ -106,7 +108,7 @@ class MediaScanner @Inject constructor(
             .forEach { dao.deleteMediaFile(it) }
 
         emit(ScanProgress(scanned, found.size, "", true, found.toList()))
-    }
+    }.flowOn(Dispatchers.IO)
 
     private fun extractDate(
         handle: Long,
@@ -133,10 +135,13 @@ class MediaScanner @Inject constructor(
     private fun extractMediaDate(handle: Long, path: String, size: Long, fallback: Long): Long {
         return try {
             val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(NativeMediaDataSource(engine, handle, path, size))
-            val dateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
-            retriever.release()
-            parseMediaDate(dateStr).takeIf { it > 0L } ?: fallback
+            try {
+                retriever.setDataSource(NativeMediaDataSource(engine, handle, path, size))
+                val dateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
+                parseMediaDate(dateStr).takeIf { it > 0L } ?: fallback
+            } finally {
+                retriever.release()
+            }
         } catch (_: Exception) { fallback }
     }
 

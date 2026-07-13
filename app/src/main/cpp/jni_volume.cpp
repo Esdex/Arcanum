@@ -225,7 +225,7 @@ jstring utf8_to_jstring(JNIEnv *env, const char *s) {
 
     size_t len = strlen(s);
     jbyteArray bytes = env->NewByteArray((jsize)len);
-    if (!bytes) return nullptr;
+    if (!bytes) return env->NewStringUTF("?");
     env->SetByteArrayRegion(bytes, 0, (jsize)len, (const jbyte*)s);
     auto result = (jstring)env->NewObject(stringCls, ctor, bytes, utf8Name);
     env->DeleteLocalRef(bytes);
@@ -410,7 +410,7 @@ static jint do_create_container(
     SecureBuffer<VC_MAX_PWD_LEN> effPwd;
     int effPwdLen = pwdLen;
     memcpy(effPwd.data(), pwd, (size_t)effPwdLen);
-    apply_keyfiles_to_password(keyfilePaths, effPwd.data(), &effPwdLen);
+    if (!apply_keyfiles_to_password(keyfilePaths, effPwd.data(), &effPwdLen)) return ERR_RAND;
     const int pbkdf2PwdLen = effPwdLen;
 
     int algId = (int)algorithm;
@@ -693,14 +693,14 @@ static jlong do_open_container(
     SecureBuffer<VC_MAX_PWD_LEN> effPwd;
     int effPwdLen = pwdLen;
     memcpy(effPwd.data(), pwd, (size_t)effPwdLen);
-    apply_keyfile_buffers(env, jKeyfileData, effPwd.data(), &effPwdLen);
+    if (!apply_keyfile_buffers(env, jKeyfileData, effPwd.data(), &effPwdLen)) return (jlong)ERR_RAND;
 
     /* Prepare hidden-volume credentials for boundary derivation */
     SecureBuffer<VC_MAX_PWD_LEN> hidEffPwd;
     int hidEffPwdLen = hiddenPwdLen;
     if (hidEffPwdLen > 0) {
         memcpy(hidEffPwd.data(), hiddenPwd, (size_t)hidEffPwdLen);
-        apply_keyfile_buffers(env, jProtectHiddenKeyfileData, hidEffPwd.data(), &hidEffPwdLen);
+        if (!apply_keyfile_buffers(env, jProtectHiddenKeyfileData, hidEffPwd.data(), &hidEffPwdLen)) return (jlong)ERR_RAND;
     }
 
     struct stat st{};
@@ -969,13 +969,13 @@ static jint do_create_hidden_volume(
     SecureBuffer<VC_MAX_PWD_LEN> outerEffPwd;
     int outerEffPwdLen = outerPwdLen;
     memcpy(outerEffPwd.data(), outerPwd, (size_t)outerEffPwdLen);
-    apply_keyfiles_to_password(outerKeyfilePaths, outerEffPwd.data(), &outerEffPwdLen);
+    if (!apply_keyfiles_to_password(outerKeyfilePaths, outerEffPwd.data(), &outerEffPwdLen)) return ERR_RAND;
 
     /* ── Hidden effective password ── */
     SecureBuffer<VC_MAX_PWD_LEN> hiddenEffPwd;
     int hiddenEffPwdLen = hiddenPwdLen;
     memcpy(hiddenEffPwd.data(), hiddenPwd, (size_t)hiddenEffPwdLen);
-    apply_keyfiles_to_password(hiddenKeyfilePaths, hiddenEffPwd.data(), &hiddenEffPwdLen);
+    if (!apply_keyfiles_to_password(hiddenKeyfilePaths, hiddenEffPwd.data(), &hiddenEffPwdLen)) return ERR_RAND;
 
     /* ── Authenticate outer volume (primary header) ── */
     /* Outer headers are never rewritten (see deniability note above) — this
@@ -1192,13 +1192,13 @@ static jint do_change_password(
     SecureBuffer<VC_MAX_PWD_LEN> oldEffPwd;
     int oldEffPwdLen = oldPwdLen;
     memcpy(oldEffPwd.data(), oldPwd, (size_t)oldEffPwdLen);
-    apply_keyfiles_to_password(oldKeyfilePaths, oldEffPwd.data(), &oldEffPwdLen);
+    if (!apply_keyfiles_to_password(oldKeyfilePaths, oldEffPwd.data(), &oldEffPwdLen)) return ERR_RAND;
 
     /* Build new effective password */
     SecureBuffer<VC_MAX_PWD_LEN> newEffPwd;
     int newEffPwdLen = newPwdLen;
     memcpy(newEffPwd.data(), newPwd, (size_t)newEffPwdLen);
-    apply_keyfiles_to_password(newKeyfilePaths, newEffPwd.data(), &newEffPwdLen);
+    if (!apply_keyfiles_to_password(newKeyfilePaths, newEffPwd.data(), &newEffPwdLen)) return ERR_RAND;
 
     off_t fileSzOff = lseek(fd.get(), 0, SEEK_END);
     if (fileSzOff < 0) {
@@ -1339,12 +1339,12 @@ static jint do_change_keyfile(
     SecureBuffer<VC_MAX_PWD_LEN> oldEffPwd;
     int oldEffPwdLen = pwdLen;
     memcpy(oldEffPwd.data(), pwd, (size_t)oldEffPwdLen);
-    apply_keyfiles_to_password(oldKeyfilePaths, oldEffPwd.data(), &oldEffPwdLen);
+    if (!apply_keyfiles_to_password(oldKeyfilePaths, oldEffPwd.data(), &oldEffPwdLen)) return ERR_RAND;
 
     SecureBuffer<VC_MAX_PWD_LEN> newEffPwd;
     int newEffPwdLen = pwdLen;
     memcpy(newEffPwd.data(), pwd, (size_t)newEffPwdLen);
-    apply_keyfiles_to_password(newKeyfilePaths, newEffPwd.data(), &newEffPwdLen);
+    if (!apply_keyfiles_to_password(newKeyfilePaths, newEffPwd.data(), &newEffPwdLen)) return ERR_RAND;
 
     off_t fileSzOff = lseek(fd.get(), 0, SEEK_END);
     if (fileSzOff < 0) {
@@ -1453,7 +1453,7 @@ static jint do_backup_volume_header(
     SecureBuffer<VC_MAX_PWD_LEN> effPwd;
     int effPwdLen = pwdLen;
     memcpy(effPwd.data(), pwd, (size_t)effPwdLen);
-    apply_keyfiles_to_password(keyfilePaths, effPwd.data(), &effPwdLen);
+    if (!apply_keyfiles_to_password(keyfilePaths, effPwd.data(), &effPwdLen)) return ERR_RAND;
 
     SecureBuffer<192> masterKey;
     int mkLen = 0, algId = 0, hashId = 0;
@@ -1562,7 +1562,7 @@ static jint do_restore_volume_header(
     SecureBuffer<VC_MAX_PWD_LEN> effPwd;
     int effPwdLen = pwdLen;
     memcpy(effPwd.data(), pwd, (size_t)effPwdLen);
-    apply_keyfiles_to_password(keyfilePaths, effPwd.data(), &effPwdLen);
+    if (!apply_keyfiles_to_password(keyfilePaths, effPwd.data(), &effPwdLen)) return ERR_RAND;
 
     off_t fileSzOff = lseek(volFd.get(), 0, SEEK_END);
     if (fileSzOff < 0) {
@@ -1828,7 +1828,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeExpandVolume(
 
     SecureBuffer<VC_MAX_PWD_LEN> effPwd;
     int effPwdLen = get_password_bytes(env, jPassword, effPwd);
-    apply_keyfiles_to_password(keyfilePaths, effPwd.data(), &effPwdLen);
+    if (!apply_keyfiles_to_password(keyfilePaths, effPwd.data(), &effPwdLen)) return ERR_RAND;
 
     UniqueFd fd(open(path.c_str(), O_RDWR | O_CLOEXEC));
     if (!fd.ok()) return ERR_FILE;
@@ -1850,7 +1850,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeExpandVolumeFd(
 
     SecureBuffer<VC_MAX_PWD_LEN> effPwd;
     int effPwdLen = get_password_bytes(env, jPassword, effPwd);
-    apply_keyfiles_to_password(keyfilePaths, effPwd.data(), &effPwdLen);
+    if (!apply_keyfiles_to_password(keyfilePaths, effPwd.data(), &effPwdLen)) return ERR_RAND;
 
     UniqueFd fd(dup((int)safFd));
     if (!fd.ok()) return ERR_FILE;

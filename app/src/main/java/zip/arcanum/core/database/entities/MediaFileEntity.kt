@@ -6,7 +6,13 @@ import androidx.room.PrimaryKey
 
 enum class MediaFileType { IMAGE, VIDEO, AUDIO }
 
-@Entity(tableName = "media_files", indices = [Index(value = ["containerId"])])
+@Entity(
+    tableName = "media_files",
+    indices = [
+        Index(value = ["containerId"]),
+        Index(value = ["containerId", "relativePath"], unique = true)
+    ]
+)
 data class MediaFileEntity(
     @PrimaryKey val id: String,
     val containerId: String,

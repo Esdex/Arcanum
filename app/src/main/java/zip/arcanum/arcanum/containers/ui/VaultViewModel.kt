@@ -283,19 +283,29 @@ class VaultViewModel @Inject constructor(
                 when (result) {
                     is CryptoResult.Success -> {
                         mountLogger.log("Header decrypted successfully.")
-                        val isHidden  = cryptoEngine.getVolumeType(result.value) == 1
+                        val handle     = result.value
+                        var isHidden   = false
+                        var dataSize   = 0L
+                        var algId      = -1
+                        var hashId     = -1
+                        var fsType     = -1
+                        var keySize    = 0
+                        var iterations = 0
+                        withContext(Dispatchers.IO) {
+                            isHidden   = cryptoEngine.getVolumeType(handle) == 1
+                            dataSize   = cryptoEngine.getDataSize(handle).coerceAtLeast(0L)
+                            algId      = cryptoEngine.getAlgorithmId(handle)
+                            hashId     = cryptoEngine.getHashId(handle)
+                            fsType     = cryptoEngine.getFilesystem(handle)
+                            keySize    = cryptoEngine.getKeySize(handle)
+                            iterations = cryptoEngine.getIterationCount(handle)
+                        }
                         val hasHidden = !protectHiddenPassword.isNullOrBlank()
-                        val dataSize   = cryptoEngine.getDataSize(result.value).coerceAtLeast(0L)
-                        val algId      = cryptoEngine.getAlgorithmId(result.value)
-                        val hashId     = cryptoEngine.getHashId(result.value)
-                        val fsType     = cryptoEngine.getFilesystem(result.value)
-                        val keySize    = cryptoEngine.getKeySize(result.value)
-                        val iterations = cryptoEngine.getIterationCount(result.value)
                         if (algId  >= 0) mountLogger.log("Cipher: ${VeraCryptEngine.algorithmIdToString(algId)}")
                         if (hashId >= 0) mountLogger.log("PRF: ${VeraCryptEngine.hashIdToString(hashId)}")
                         if (iterations > 0) mountLogger.log("PKCS-5 iterations: $iterations")
                         mountLogger.log("Mounting FatFs virtual filesystem...")
-                        repo.mountContainer(container.id, result.value, pim,
+                        repo.mountContainer(container.id, handle, pim,
                             isHidden = isHidden, hasHidden = hasHidden,
                             dataSize = dataSize, parcelFd = pfd,
                             isReadOnly = readOnly)

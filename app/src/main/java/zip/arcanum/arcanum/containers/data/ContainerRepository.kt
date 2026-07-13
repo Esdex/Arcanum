@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
+import java.util.concurrent.ConcurrentHashMap
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,27 +30,24 @@ class ContainerRepository @Inject constructor(
     private val _mountedContainerIds = MutableStateFlow<Set<String>>(emptySet())
     val mountedContainerIds: StateFlow<Set<String>> = _mountedContainerIds.asStateFlow()
 
-    // In-memory handle map: containerId → JNI handle
-    private val mountedHandles      = mutableMapOf<String, Long>()
-    // In-memory PIM map: containerId → PIM (0 = default)
-    private val mountedPims         = mutableMapOf<String, Int>()
-    // In-memory volume type: containerId → isHidden (null = unknown/not mounted)
-    private val mountedIsHidden     = mutableMapOf<String, Boolean>()
-    // In-memory hidden-present flag: containerId → hasHiddenVolume
-    private val mountedHasHidden    = mutableMapOf<String, Boolean>()
-    // In-memory data-area size: containerId → bytes (overrides DB size when mounted)
-    private val mountedDataSize     = mutableMapOf<String, Long>()
-    // SAF file descriptor kept open for the duration the container is mounted
-    private val mountedParcelFds    = mutableMapOf<String, ParcelFileDescriptor>()
-    // In-memory read-only flag: containerId → isReadOnly
-    private val mountedIsReadOnly   = mutableMapOf<String, Boolean>()
+    private data class MountState(
+        val handle: Long,
+        val pim: Int,
+        val isHidden: Boolean,
+        val hasHidden: Boolean,
+        val dataSize: Long,
+        val parcelFd: ParcelFileDescriptor?,
+        val isReadOnly: Boolean
+    )
+    private val mounted = ConcurrentHashMap<String, MountState>()
+
     // Session-only knowledge that a container holds a hidden volume — observed when it
     // was mounted as hidden / with hidden-volume protection, or when the hidden volume
-    // was created this session. Unlike the mounted* maps above this survives unmount,
+    // was created this session. Unlike the mounted map above this survives unmount,
     // but it is NEVER persisted: recording hidden-volume existence in the DB would
     // defeat plausible deniability (same reason field28 is no longer written to the
     // outer header). Used by the expand-volume guard.
-    private val sessionHasHiddenVolume = mutableSetOf<String>()
+    private val sessionHasHiddenVolume: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     fun getAllContainers(): Flow<List<Container>> =
         dao.getAllContainers().map { list -> list.map { it.toDomain() } }
@@ -77,20 +75,22 @@ class ContainerRepository @Inject constructor(
         parcelFd: ParcelFileDescriptor? = null,
         isReadOnly: Boolean = false
     ) {
-        mountedHandles[id] = handle
+        mounted[id] = MountState(
+            handle = handle,
+            pim = pim,
+            isHidden = isHidden,
+            hasHidden = hasHidden,
+            dataSize = dataSize,
+            parcelFd = parcelFd,
+            isReadOnly = isReadOnly
+        )
         _mountedContainerIds.update { it + id }
-        if (pim > 0) mountedPims[id] = pim else mountedPims.remove(id)
-        mountedIsHidden[id]   = isHidden
-        mountedHasHidden[id]  = hasHidden
-        mountedIsReadOnly[id] = isReadOnly
         if (isHidden || hasHidden) sessionHasHiddenVolume += id
-        if (dataSize > 0L) mountedDataSize[id] = dataSize else mountedDataSize.remove(id)
-        parcelFd?.let { mountedParcelFds[id] = it }
         dao.setMounted(id, true)
         dao.updateLastAccessed(id, System.currentTimeMillis())
     }
 
-    fun getPimForContainer(id: String): Int = mountedPims[id] ?: 0
+    fun getPimForContainer(id: String): Int = mounted[id]?.pim ?: 0
 
     /** Marks a container as known (this session) to contain a hidden volume. */
     fun markSessionHasHiddenVolume(id: String) { sessionHasHiddenVolume += id }
@@ -99,14 +99,8 @@ class ContainerRepository @Inject constructor(
     fun isKnownToContainHiddenVolume(id: String): Boolean = id in sessionHasHiddenVolume
 
     suspend fun unmountContainer(id: String) {
-        mountedHandles.remove(id)
+        mounted.remove(id)?.parcelFd?.close()
         _mountedContainerIds.update { it - id }
-        mountedPims.remove(id)
-        mountedIsHidden.remove(id)
-        mountedHasHidden.remove(id)
-        mountedIsReadOnly.remove(id)
-        mountedDataSize.remove(id)
-        mountedParcelFds.remove(id)?.close()
         dao.setMounted(id, false)
         // The SAF root vanishes once the container is no longer mounted; refresh the picker and
         // drop any URI grants. Reads already fail on their own - the JNI handle is gone above.
@@ -117,26 +111,20 @@ class ContainerRepository @Inject constructor(
     // Synchronous — safe to call from onDestroy without a coroutine.
     // Returns all active JNI handles so the caller can close them via VeraCryptEngine.closeContainer.
     fun closeAllHandlesSync(): List<Long> {
-        val handles = mountedHandles.values.toList()
-        mountedHandles.clear()
+        val snapshot = mounted.values.toList()
+        mounted.clear()
         _mountedContainerIds.value = emptySet()
-        mountedPims.clear()
-        mountedIsHidden.clear()
-        mountedHasHidden.clear()
-        mountedIsReadOnly.clear()
-        mountedDataSize.clear()
-        mountedParcelFds.values.forEach { runCatching { it.close() } }
-        mountedParcelFds.clear()
         sessionHasHiddenVolume.clear()
-        return handles
+        snapshot.forEach { runCatching { it.parcelFd?.close() } }
+        return snapshot.map { it.handle }
     }
 
     // Reset isMounted flags that may have been left true after a crash or force-kill.
     suspend fun resetMountedState() = dao.setAllUnmounted()
 
-    fun getContainerHandle(id: String): Long? = mountedHandles[id]
+    fun getContainerHandle(id: String): Long? = mounted[id]?.handle
 
-    fun isContainerReadOnly(id: String): Boolean = mountedIsReadOnly[id] ?: false
+    fun isContainerReadOnly(id: String): Boolean = mounted[id]?.isReadOnly ?: false
 
     suspend fun containsPath(path: String): Boolean = dao.countByPath(path) > 0
 
@@ -235,13 +223,7 @@ class ContainerRepository @Inject constructor(
 
     suspend fun deleteContainersById(ids: Set<String>) {
         ids.forEach { id ->
-            mountedHandles.remove(id)
-            mountedPims.remove(id)
-            mountedIsHidden.remove(id)
-            mountedHasHidden.remove(id)
-            mountedIsReadOnly.remove(id)
-            mountedDataSize.remove(id)
-            mountedParcelFds.remove(id)?.close()
+            mounted.remove(id)?.parcelFd?.close()
             thumbnailManager.clearCache(id)
             revokeExternalAccess(id)
             dao.deleteContainerById(id)
@@ -280,31 +262,34 @@ class ContainerRepository @Inject constructor(
         return id
     }
 
-    private fun ContainerEntity.toDomain() = Container(
-        id              = id,
-        name            = name,
-        path            = path,
-        size            = mountedDataSize[id] ?: size,
-        algorithm       = algorithm,
-        prf             = prf,
-        filesystem      = filesystem,
-        pim             = mountedPims[id] ?: 0,
-        createdAt       = createdAt,
-        lastAccessedAt  = lastAccessedAt,
-        isFavorite      = isFavorite,
-        isMounted       = isMounted,
-        isHiddenVolume  = mountedIsHidden[id] ?: false,
-        hasHiddenVolume = mountedHasHidden[id] ?: false,
-        safUri          = safUri,
-        keySize         = keySize,
-        encryptionMode  = encryptionMode,
-        blockSize       = blockSize,
-        formatVersion   = formatVersion,
-        hasBackupHeader = hasBackupHeader,
-        pkcs5Iterations = pkcs5Iterations,
-        headerModifiedAt = headerModifiedAt,
-        isReadOnly      = mountedIsReadOnly[id] ?: false
-    )
+    private fun ContainerEntity.toDomain(): Container {
+        val ms = mounted[id]
+        return Container(
+            id              = id,
+            name            = name,
+            path            = path,
+            size            = ms?.dataSize ?: size,
+            algorithm       = algorithm,
+            prf             = prf,
+            filesystem      = filesystem,
+            pim             = ms?.pim ?: 0,
+            createdAt       = createdAt,
+            lastAccessedAt  = lastAccessedAt,
+            isFavorite      = isFavorite,
+            isMounted       = isMounted,
+            isHiddenVolume  = ms?.isHidden ?: false,
+            hasHiddenVolume = ms?.hasHidden ?: false,
+            safUri          = safUri,
+            keySize         = keySize,
+            encryptionMode  = encryptionMode,
+            blockSize       = blockSize,
+            formatVersion   = formatVersion,
+            hasBackupHeader = hasBackupHeader,
+            pkcs5Iterations = pkcs5Iterations,
+            headerModifiedAt = headerModifiedAt,
+            isReadOnly      = ms?.isReadOnly ?: false
+        )
+    }
 
     private fun Container.toEntity() = ContainerEntity(
         id               = id,

@@ -87,7 +87,7 @@ class PhotoViewerViewModel @Inject constructor(
     }
 
     // Loads the bitmap for a single image file. Returns null on error. Must be called on IO dispatcher.
-    private fun loadBitmapForFile(file: MediaFileEntity, handle: Long): Bitmap? {
+    private fun loadBitmapForFile(file: MediaFileEntity, handle: Long): Bitmap? { return try {
         val stream = NativeFileInputStream(engine, handle, file.relativePath, file.size)
         stream.mark(0)
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -99,8 +99,10 @@ class PhotoViewerViewModel @Inject constructor(
         opts.inPreferredConfig  = Bitmap.Config.ARGB_8888
         val decoded = BitmapFactory.decodeStream(stream, null, opts) ?: return null
         val exifBytes = engine.readFile(handle, file.relativePath, 0L, 65_536) ?: ByteArray(0)
-        return applyExifOrientation(decoded, exifReader.readOrientation(exifBytes))
-    }
+        applyExifOrientation(decoded, exifReader.readOrientation(exifBytes))
+    } catch (_: Throwable) {
+        null
+    } }
 
     // Loads current page first, then ±1 neighbors. Cancels any prior load.
     private fun loadBitmapRange(centerIndex: Int) {
@@ -208,13 +210,23 @@ class PhotoViewerViewModel @Inject constructor(
 
     fun updateDateTime(newDateMillis: Long) {
         val file = _uiState.value.currentFile ?: return
+        if (repo.isContainerReadOnly(file.containerId)) {
+            _uiState.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+            return
+        }
         val handle = repo.getContainerHandle(file.containerId) ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val headSize = minOf(file.size, 128L * 1024).toInt()
             val head = engine.readFile(handle, file.relativePath, 0L, headSize)
             if (head != null) {
-                ExifJpegPatcher.patchDateTime(head, newDateMillis)?.let { (app1Offset, modifiedApp1) ->
-                    engine.writeFile(handle, file.relativePath, modifiedApp1, app1Offset.toLong())
+                val patch = ExifJpegPatcher.patchDateTime(head, newDateMillis)
+                if (patch != null) {
+                    val (app1Offset, modifiedApp1) = patch
+                    val rc = engine.writeFile(handle, file.relativePath, modifiedApp1, app1Offset.toLong())
+                    if (rc != 0) {
+                        _uiState.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+                        return@launch
+                    }
                 }
             }
             val updated = file.copy(dateCreated = newDateMillis, dateModified = newDateMillis)
@@ -234,13 +246,23 @@ class PhotoViewerViewModel @Inject constructor(
 
     fun updateGps(lat: Double, lng: Double) {
         val file = _uiState.value.currentFile ?: return
+        if (repo.isContainerReadOnly(file.containerId)) {
+            _uiState.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+            return
+        }
         val handle = repo.getContainerHandle(file.containerId) ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val headSize = minOf(file.size, 128L * 1024).toInt()
             val head = engine.readFile(handle, file.relativePath, 0L, headSize)
             if (head != null) {
-                ExifJpegPatcher.patchGps(head, lat, lng)?.let { (app1Offset, modifiedApp1) ->
-                    engine.writeFile(handle, file.relativePath, modifiedApp1, app1Offset.toLong())
+                val patch = ExifJpegPatcher.patchGps(head, lat, lng)
+                if (patch != null) {
+                    val (app1Offset, modifiedApp1) = patch
+                    val rc = engine.writeFile(handle, file.relativePath, modifiedApp1, app1Offset.toLong())
+                    if (rc != 0) {
+                        _uiState.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+                        return@launch
+                    }
                 }
             }
             _uiState.update { it.copy(
@@ -285,12 +307,16 @@ class PhotoViewerViewModel @Inject constructor(
         val file = _uiState.value.currentFile ?: return
         val handle = repo.getContainerHandle(file.containerId)
         viewModelScope.launch(Dispatchers.IO) {
-            if (handle != null) {
-                try { engine.deleteFile(handle, file.relativePath) } catch (_: Exception) {}
+            val rc = if (handle != null) {
+                try { engine.deleteFile(handle, file.relativePath) } catch (_: Exception) { VeraCryptEngine.ERR_FS }
+            } else VeraCryptEngine.ERR_OK
+            if (rc == VeraCryptEngine.ERR_OK) {
+                mediaFileDao.deleteMediaFile(file)
+                thumbnailManager.clearFileCache(file.containerId, file.relativePath, file.id)
+                launch(Dispatchers.Main) { onDone() }
+            } else {
+                _uiState.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
             }
-            mediaFileDao.deleteMediaFile(file)
-            thumbnailManager.clearFileCache(file.containerId, file.relativePath, file.id)
-            launch(Dispatchers.Main) { onDone() }
         }
     }
 
