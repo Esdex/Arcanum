@@ -1548,7 +1548,7 @@ static DWORD create_chain (	/* 0:No free cluster, 1:Internal error, 0xFFFFFFFF:D
 
 	if (clst == 0) {	/* Create a new chain */
 		scl = fs->last_clst;				/* Suggested cluster to start to find */
-		if (scl == 0 || scl >= fs->n_fatent) scl = 1;
+		if (scl == 0 || scl >= fs->alloc_fatent) scl = 1;	/* Arcanum #51: keep the start within the allocatable range */
 	}
 	else {				/* Stretch a chain */
 		cs = get_fat(obj, clst);			/* Check the cluster status */
@@ -1589,12 +1589,12 @@ static DWORD create_chain (	/* 0:No free cluster, 1:Internal error, 0xFFFFFFFF:D
 		ncl = 0;
 		if (scl == clst) {						/* Stretching an existing chain? */
 			ncl = scl + 1;						/* Test if next cluster is free */
-			if (ncl >= fs->n_fatent) ncl = 2;
+			if (ncl >= fs->alloc_fatent) ncl = 2;	/* Arcanum #51: wrap at the allocation ceiling */
 			cs = get_fat(obj, ncl);				/* Get next cluster status */
 			if (cs == 1 || cs == 0xFFFFFFFF) return cs;	/* Test for error */
 			if (cs != 0) {						/* Not free? */
 				cs = fs->last_clst;				/* Start at suggested cluster if it is valid */
-				if (cs >= 2 && cs < fs->n_fatent) scl = cs;
+				if (cs >= 2 && cs < fs->alloc_fatent) scl = cs;	/* Arcanum #51: allocatable range */
 				ncl = 0;
 			}
 		}
@@ -1602,7 +1602,7 @@ static DWORD create_chain (	/* 0:No free cluster, 1:Internal error, 0xFFFFFFFF:D
 			ncl = scl;	/* Start cluster */
 			for (;;) {
 				ncl++;							/* Next cluster */
-				if (ncl >= fs->n_fatent) {		/* Check wrap-around */
+				if (ncl >= fs->alloc_fatent) {	/* Arcanum #51: wrap at the allocation ceiling, not n_fatent */
 					ncl = 2;
 					if (ncl > scl) return 0;	/* No free cluster found? */
 				}
@@ -3547,6 +3547,9 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 		ncl = ld_32(fs->win + BPB_NumClusEx);			/* Number of clusters */
 		if (ncl > MAX_EXFAT) return FR_NO_FILESYSTEM;	/* (Too many clusters) */
 		fs->n_fatent = ncl + 2;
+		fs->alloc_fatent = fs->n_fatent;				/* Arcanum #51: exFAT allocates via the
+														   bitmap (find_bitmap), not the FAT ceiling;
+														   keep this in sync but uncapped. */
 
 		/* Boundaries and Limits */
 		fs->volbase = bsect;
@@ -3612,18 +3615,6 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 		sysect = nrsv + fasize + fs->n_rootdir / (SS(fs) / SZDIRE);	/* RSV + FAT + DIR */
 		if (tsect < sysect) return FR_NO_FILESYSTEM;	/* (Invalid volume size) */
 		nclst = (tsect - sysect) / fs->csize;			/* Number of clusters */
-		/* Arcanum #51: cap nclst to the physical drive capacity so FatFs never
-		 * allocates clusters past a hidden-volume boundary. The BPB declares the
-		 * full outer-volume size; alloc_drive reduces sectorCount to the usable
-		 * area, so GET_SECTOR_COUNT now returns the capped value. */
-		{
-			LBA_t sz_disk;
-			if (disk_ioctl(fs->pdrv, GET_SECTOR_COUNT, &sz_disk) == RES_OK
-					&& sz_disk > (LBA_t)(bsect + sysect)) {
-				DWORD phys_nclst = ((DWORD)(sz_disk - bsect) - sysect) / fs->csize;
-				if (phys_nclst < nclst) nclst = phys_nclst;
-			}
-		}
 		if (nclst == 0) return FR_NO_FILESYSTEM;		/* (Invalid volume size) */
 		fmt = 0;
 		if (nclst <= MAX_FAT32) fmt = FS_FAT32;
@@ -3633,6 +3624,22 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 
 		/* Boundaries and Limits */
 		fs->n_fatent = nclst + 2;						/* Number of FAT entries */
+		/* Arcanum #51: cap the allocation ceiling (NOT the FAT type) to the physical
+		 * usable area, so the allocator never hands out a data cluster that overlaps a
+		 * hidden volume. GET_SECTOR_COUNT returns the hidden-boundary-capped sector count
+		 * on a protect-hidden outer mount (see alloc_drive in crypto_core.cpp); on every
+		 * other mount it returns the full size, leaving alloc_fatent == n_fatent (inert).
+		 * n_fatent stays full so the FAT sub-type and all FAT reads/writes still match the
+		 * on-disk geometry. */
+		fs->alloc_fatent = fs->n_fatent;
+		{
+			LBA_t sz_disk;
+			if (disk_ioctl(fs->pdrv, GET_SECTOR_COUNT, &sz_disk) == RES_OK
+					&& sz_disk > (LBA_t)(bsect + sysect)) {
+				DWORD phys_fatent = ((DWORD)(sz_disk - bsect) - sysect) / fs->csize + 2;
+				if (phys_fatent < fs->alloc_fatent) fs->alloc_fatent = phys_fatent;
+			}
+		}
 		fs->volbase = bsect;							/* Volume start sector */
 		fs->fatbase = bsect + nrsv; 					/* FAT start sector */
 		fs->database = bsect + sysect;					/* Data start sector */
@@ -4984,7 +4991,7 @@ FRESULT f_getfree (
 						res = FR_INT_ERR; break;
 					}
 					if (stat == 0) nfree++;
-				} while (++clst < fs->n_fatent);
+				} while (++clst < fs->alloc_fatent);	/* Arcanum #51: only count allocatable clusters */
 			} else {
 #if FF_FS_EXFAT
 				if (fs->fs_type == FS_EXFAT) {	/* exFAT: Scan allocation bitmap */
@@ -5008,7 +5015,7 @@ FRESULT f_getfree (
 				} else
 #endif
 				{	/* FAT16/32: Scan WORD/DWORD FAT entries */
-					clst = fs->n_fatent;	/* Number of entries */
+					clst = fs->alloc_fatent;	/* Arcanum #51: only count allocatable clusters */
 					sect = fs->fatbase;		/* Top of the FAT */
 					i = 0;					/* Offset in the sector */
 					do {	/* Counts numbuer of entries with zero in the FAT */
