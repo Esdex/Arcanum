@@ -61,9 +61,9 @@ static void vc_process_keyfile_buf(const uint8_t *data, size_t size,
  *   - The combined pool is applied to the password via byte addition once after all files.
  *   - Password is zero-extended to POOL_SIZE before pool application.
  */
-void apply_keyfiles_to_password(const std::vector<std::string>& paths,
+bool apply_keyfiles_to_password(const std::vector<std::string>& paths,
                                  uint8_t *pwd_buf, int *pwd_len) {
-    if (paths.empty()) return;
+    if (paths.empty()) return true;
 
     uint8_t pool[VC_KEYFILE_POOL_SIZE] = {};   /* accumulates across all keyfiles */
 
@@ -72,7 +72,12 @@ void apply_keyfiles_to_password(const std::vector<std::string>& paths,
         if (!f) { LOGE("Keyfile: cannot open '%s'", path.c_str()); continue; }
 
         auto *kfData = static_cast<uint8_t*>(malloc(VC_KEYFILE_MAX_READ));
-        if (!kfData) { fclose(f); LOGE("Keyfile: OOM"); continue; }
+        if (!kfData) {
+            fclose(f);
+            secure_memset(pool, 0, sizeof(pool));
+            LOGE("Keyfile: OOM");
+            return false;
+        }
         size_t total = fread(kfData, 1, (size_t)VC_KEYFILE_MAX_READ, f);
         fclose(f);
 
@@ -92,15 +97,17 @@ void apply_keyfiles_to_password(const std::vector<std::string>& paths,
         pwd_buf[i] = (uint8_t)((uint8_t)pwd_buf[i] + pool[i]);
 
     secure_memset(pool, 0, sizeof(pool));
+    return true;
 }
 
 /* Same as apply_keyfiles_to_password but reads from JNI byte arrays (no disk access).
- * jKeyfileData is an Array<ByteArray>? — null or empty means no-op. */
-void apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
+ * jKeyfileData is an Array<ByteArray>? — null or empty means no-op.
+ * Returns false on OOM. */
+bool apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
                             uint8_t *pwd_buf, int *pwd_len) {
-    if (!jKeyfileData) return;
+    if (!jKeyfileData) return true;
     jsize count = env->GetArrayLength(jKeyfileData);
-    if (count == 0) return;
+    if (count == 0) return true;
 
     uint8_t pool[VC_KEYFILE_POOL_SIZE] = {};
 
@@ -112,8 +119,11 @@ void apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
      * Instead copy into a local heap buffer, process that, and wipe the copy.
      * Kotlin owns zeroing its own copies (see KeyfileEntry.zero()). */
     auto *local = static_cast<uint8_t*>(malloc((size_t)VC_KEYFILE_MAX_READ));
-    if (!local) LOGE("apply_keyfile_buffers: OOM, keyfiles not applied");
-    for (jsize i = 0; i < count && local; i++) {
+    if (!local) {
+        LOGE("apply_keyfile_buffers: OOM");
+        return false;
+    }
+    for (jsize i = 0; i < count; i++) {
         auto jBuf = (jbyteArray)env->GetObjectArrayElement(jKeyfileData, i);
         if (!jBuf) continue;
         jsize len = env->GetArrayLength(jBuf);
@@ -128,7 +138,7 @@ void apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
         secure_memset((volatile uint8_t*)local, 0, lim);
         env->DeleteLocalRef(jBuf);
     }
-    if (local) free(local);
+    free(local);
 
     if (*pwd_len < VC_KEYFILE_POOL_SIZE) {
         memset(pwd_buf + *pwd_len, 0, (size_t)(VC_KEYFILE_POOL_SIZE - *pwd_len));
@@ -138,6 +148,7 @@ void apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
         pwd_buf[i] = (uint8_t)((uint8_t)pwd_buf[i] + pool[i]);
 
     secure_memset(pool, 0, sizeof(pool));
+    return true;
 }
 
 /* ─── VeraCrypt header write ─────────────────────────────────────────── */

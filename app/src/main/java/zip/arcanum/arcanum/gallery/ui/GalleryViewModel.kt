@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -99,6 +100,7 @@ class GalleryViewModel @Inject constructor(
     private val failedThumbnails = mutableSetOf<String>()
 
     private var currentContainerId: String? = null
+    private var scanJob: Job? = null
     private val _filter = MutableStateFlow(MediaFilter.ALL)
     private val _allFiles = MutableStateFlow<List<MediaFileEntity>>(emptyList())
 
@@ -142,7 +144,7 @@ class GalleryViewModel @Inject constructor(
         currentContainerId = containerId
         clearThumbnailState()
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Default) {
             combine(
                 mediaFileDao.getMediaForContainer(containerId),
                 _filter
@@ -168,8 +170,9 @@ class GalleryViewModel @Inject constructor(
 
     fun scanContainer(containerId: String) {
         val handle = repo.getContainerHandle(containerId) ?: return
+        scanJob?.cancel()
         clearThumbnailState()
-        viewModelScope.launch {
+        scanJob = viewModelScope.launch {
             _uiState.update { it.copy(isScanning = true, isEmpty = false) }
             mediaScanner.scanContainer(handle, containerId).collect { progress ->
                 _uiState.update {
@@ -188,16 +191,22 @@ class GalleryViewModel @Inject constructor(
     fun setFilter(filter: MediaFilter) {
         _filter.value = filter
         _uiState.update { it.copy(selectedFilter = filter) }
-        val filtered = applyFilter(_allFiles.value, filter)
-        _uiState.update { it.copy(monthGroups = groupByMonthAndDay(filtered)) }
+        viewModelScope.launch(Dispatchers.Default) {
+            val filtered = applyFilter(_allFiles.value, filter)
+            val groups = groupByMonthAndDay(filtered)
+            _uiState.update { it.copy(monthGroups = groups) }
+        }
     }
 
     fun setSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
-        val files = if (query.isBlank()) _allFiles.value
-        else _allFiles.value.filter { it.fileName.contains(query, ignoreCase = true) }
-        val filtered = applyFilter(files, _filter.value)
-        _uiState.update { it.copy(monthGroups = groupByMonthAndDay(filtered)) }
+        viewModelScope.launch(Dispatchers.Default) {
+            val files = if (query.isBlank()) _allFiles.value
+                        else _allFiles.value.filter { it.fileName.contains(query, ignoreCase = true) }
+            val filtered = applyFilter(files, _filter.value)
+            val groups = groupByMonthAndDay(filtered)
+            _uiState.update { it.copy(monthGroups = groups) }
+        }
     }
 
     fun setSearchActive(active: Boolean) {
@@ -247,15 +256,19 @@ class GalleryViewModel @Inject constructor(
         val files = _allFiles.value.filter { it.id in toDelete }
         _uiState.update { it.copy(showDeleteConfirm = false) }
         viewModelScope.launch(Dispatchers.IO) {
+            var count = 0
             files.forEach { file ->
-                runCatching { engine.deleteFile(handle, file.relativePath) }
-                mediaFileDao.deleteMediaFile(file)
-                thumbnailManager.deleteFileCacheEntry(file.containerId, file.relativePath)
+                val rc = runCatching { engine.deleteFile(handle, file.relativePath) }.getOrDefault(VeraCryptEngine.ERR_FS)
+                if (rc == VeraCryptEngine.ERR_OK) {
+                    mediaFileDao.deleteMediaFile(file)
+                    thumbnailManager.deleteFileCacheEntry(file.containerId, file.relativePath)
+                    count++
+                }
             }
             withContext(Dispatchers.Main) {
                 toDelete.forEach { evictThumbnail(it) }
                 _selectedIds.value = emptySet()
-                _uiState.update { it.copy(pendingNotification = InAppNotification.FilesDeleted(files.size)) }
+                _uiState.update { it.copy(pendingNotification = if (count > 0) InAppNotification.FilesDeleted(count) else null) }
             }
         }
     }
@@ -324,10 +337,12 @@ class GalleryViewModel @Inject constructor(
         val containerId = currentContainerId ?: return
         val handle = repo.getContainerHandle(containerId) ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { engine.deleteFile(handle, file.relativePath) }
-            mediaFileDao.deleteMediaFile(file)
-            thumbnailManager.deleteFileCacheEntry(file.containerId, file.relativePath)
-            withContext(Dispatchers.Main) { evictThumbnail(file.id) }
+            val rc = runCatching { engine.deleteFile(handle, file.relativePath) }.getOrDefault(VeraCryptEngine.ERR_FS)
+            if (rc == VeraCryptEngine.ERR_OK) {
+                mediaFileDao.deleteMediaFile(file)
+                thumbnailManager.deleteFileCacheEntry(file.containerId, file.relativePath)
+                withContext(Dispatchers.Main) { evictThumbnail(file.id) }
+            }
         }
     }
 

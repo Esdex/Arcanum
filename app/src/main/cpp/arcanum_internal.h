@@ -381,13 +381,15 @@ int wipe_and_rewrite_header(int fd, uint64_t fileOff,
                              size_t extraEntropyLen = 0);
 
 /* Apply one or more keyfiles (read from disk paths) to the password buffer.
- * Matches VeraCrypt KeyFilesApply() exactly. */
-void apply_keyfiles_to_password(const std::vector<std::string>& paths,
+ * Matches VeraCrypt KeyFilesApply() exactly.
+ * Returns false on OOM — caller must propagate as a hard error. */
+bool apply_keyfiles_to_password(const std::vector<std::string>& paths,
                                  uint8_t *pwd_buf, int *pwd_len);
 
 /* Same as apply_keyfiles_to_password but reads from JNI byte arrays (no disk
- * access). jKeyfileData is an Array<ByteArray>? — null or empty means no-op. */
-void apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
+ * access). jKeyfileData is an Array<ByteArray>? — null or empty means no-op.
+ * Returns false on OOM. */
+bool apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
                             uint8_t *pwd_buf, int *pwd_len);
 
 /* ─── jni_volume.cpp / jni_files.cpp shared JNI utilities ───────────── */

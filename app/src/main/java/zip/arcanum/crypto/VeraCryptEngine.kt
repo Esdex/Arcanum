@@ -430,6 +430,11 @@ class VeraCryptEngine @Inject constructor() {
     // background dispatcher (ViewModel coroutine scope, MediaDataSource thread, …)
     // and controlled its own threading before this wrapping was added.
 
+    /** Returns null on native read error (mid-listing disk failure), empty array for a genuinely
+     *  empty directory.  Callers that need to distinguish the two should use this overload. */
+    fun listFilesOrNull(handle: Long, dirPath: String): Array<NativeFileInfo>? =
+        nativeListFiles(handle, dirPath)
+
     fun listFiles(handle: Long, dirPath: String): Array<NativeFileInfo> =
         nativeListFiles(handle, dirPath) ?: emptyArray()
 

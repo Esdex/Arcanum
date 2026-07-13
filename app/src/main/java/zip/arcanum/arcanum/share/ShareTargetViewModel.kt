@@ -76,7 +76,7 @@ class ShareTargetViewModel @Inject constructor(
         val cid = _state.value.selectedVaultId ?: return
         val handle = repo.getContainerHandle(cid) ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val dirs = engine.listFiles(handle, path)
+            val dirs = (engine.listFilesOrNull(handle, path) ?: emptyArray())
                 .filter { it.isDirectory }
                 .map { it.name }
                 .sortedBy { it.lowercase() }
@@ -109,7 +109,7 @@ class ShareTargetViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isSaving = true, error = null) }
             var saved = 0
-            val existing = engine.listFiles(handle, s.currentPath).map { it.name }.toMutableSet()
+            val existing = (engine.listFilesOrNull(handle, s.currentPath) ?: emptyArray()).map { it.name }.toMutableSet()
             for (uri in uris) {
                 val rawName = fileNameOf(uri) ?: continue
                 val name = uniqueName(File(rawName).name.ifEmpty { "file" }, existing)

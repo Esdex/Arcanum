@@ -62,7 +62,7 @@ class VaultStorageViewModel @Inject constructor(
         while (stack.isNotEmpty()) {
             val dir = stack.removeLast()
             val entries = try {
-                engine.listFiles(handle, dir)
+                engine.listFilesOrNull(handle, dir) ?: continue  // null = disk error
             } catch (_: Exception) {
                 continue
             }

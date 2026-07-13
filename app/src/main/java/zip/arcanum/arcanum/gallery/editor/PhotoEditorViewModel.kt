@@ -119,6 +119,7 @@ class PhotoEditorViewModel @Inject constructor(
 
     companion object {
         private val bitmapEffectKeys = setOf("sharpness", "posterize", "edges")
+        private const val UNDO_BYTE_BUDGET = 150L * 1024 * 1024
     }
 
     init {
@@ -127,37 +128,41 @@ class PhotoEditorViewModel @Inject constructor(
 
     private fun loadBitmap() {
         viewModelScope.launch(Dispatchers.IO) {
-            val file = mediaFileDao.getMediaById(mediaId) ?: run {
-                _state.update { it.copy(isLoading = false, error = "File not found") }
-                return@launch
-            }
-            val handle = repo.getContainerHandle(file.containerId) ?: run {
-                _state.update { it.copy(isLoading = false, error = "Vault not mounted") }
-                return@launch
-            }
-            val readSize = minOf(file.size, 50L * 1024 * 1024).toInt()
-            val bytes = engine.readFile(handle, file.relativePath, 0L, readSize) ?: run {
-                _state.update { it.copy(isLoading = false, error = "Failed to read file") }
-                return@launch
-            }
-            // Pre-pass: check dimensions and choose inSampleSize to stay within 4096×4096
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            try {
+                val file = mediaFileDao.getMediaById(mediaId) ?: run {
+                    _state.update { it.copy(isLoading = false, error = "File not found") }
+                    return@launch
+                }
+                val handle = repo.getContainerHandle(file.containerId) ?: run {
+                    _state.update { it.copy(isLoading = false, error = "Vault not mounted") }
+                    return@launch
+                }
+                val readSize = minOf(file.size, 50L * 1024 * 1024).toInt()
+                val bytes = engine.readFile(handle, file.relativePath, 0L, readSize) ?: run {
+                    _state.update { it.copy(isLoading = false, error = "Failed to read file") }
+                    return@launch
+                }
+                // Pre-pass: check dimensions and choose inSampleSize to stay within 4096×4096
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                    _state.update { it.copy(isLoading = false, error = "Cannot decode image") }
+                    return@launch
+                }
+                var sample = 1
+                while (bounds.outWidth / sample > 4096 || bounds.outHeight / sample > 4096) sample *= 2
+                val opts = BitmapFactory.Options().apply {
+                    inSampleSize      = sample
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }
+                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: run {
+                    _state.update { it.copy(isLoading = false, error = "Cannot decode image") }
+                    return@launch
+                }
+                _state.update { it.copy(isLoading = false, originalBitmap = bitmap, workBitmap = bitmap) }
+            } catch (_: Throwable) {
                 _state.update { it.copy(isLoading = false, error = "Cannot decode image") }
-                return@launch
             }
-            var sample = 1
-            while (bounds.outWidth / sample > 4096 || bounds.outHeight / sample > 4096) sample *= 2
-            val opts = BitmapFactory.Options().apply {
-                inSampleSize      = sample
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            }
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: run {
-                _state.update { it.copy(isLoading = false, error = "Cannot decode image") }
-                return@launch
-            }
-            _state.update { it.copy(isLoading = false, originalBitmap = bitmap, workBitmap = bitmap) }
         }
     }
 
@@ -298,7 +303,13 @@ class PhotoEditorViewModel @Inject constructor(
 
     private fun pushUndo(bmp: Bitmap) {
         _state.update { s ->
-            val stack = (s.undoStack + bmp).takeLast(10)
+            var stack = s.undoStack + bmp
+            // Evict oldest bitmaps until total retained bytes stay under budget.
+            var bytes = stack.sumOf { it.byteCount.toLong() }
+            while (bytes > UNDO_BYTE_BUDGET && stack.size > 1) {
+                bytes -= stack.first().byteCount.toLong()
+                stack = stack.drop(1)
+            }
             s.copy(undoStack = stack)
         }
     }
@@ -454,13 +465,21 @@ class PhotoEditorViewModel @Inject constructor(
                 val bmp = bakeEdits() ?: return@launch
                 val bytes = bmp.compress(file.fileName)
 
-                // Write to a temp path first; rename atomically so the original survives any mid-write failure
+                // Backup-swap: write tmp → rename original to .bak → swap tmp → delete .bak
+                // Crash at any step leaves either original or .bak intact; never leaves both gone.
                 val tmpPath = file.relativePath + ".tmp"
+                val bakPath = file.relativePath + ".bak"
                 engine.deleteFile(handle, tmpPath)
                 writeChunked(handle, tmpPath, bytes)
-                engine.deleteFile(handle, file.relativePath)
-                val renameResult = engine.renameFile(handle, tmpPath, file.relativePath)
-                if (renameResult != 0) throw IOException("Rename failed (error $renameResult)")
+                engine.deleteFile(handle, bakPath)
+                val bakResult = engine.renameFile(handle, file.relativePath, bakPath)
+                if (bakResult != 0) throw IOException("Backup rename failed (error $bakResult)")
+                val swapResult = engine.renameFile(handle, tmpPath, file.relativePath)
+                if (swapResult != 0) {
+                    engine.renameFile(handle, bakPath, file.relativePath)
+                    throw IOException("Swap rename failed (error $swapResult)")
+                }
+                engine.deleteFile(handle, bakPath)
 
                 mediaFileDao.updateMediaFile(file.copy(size = bytes.size.toLong(), width = bmp.width, height = bmp.height))
                 thumbnailManager.clearFileCache(file.containerId, file.relativePath, file.id)

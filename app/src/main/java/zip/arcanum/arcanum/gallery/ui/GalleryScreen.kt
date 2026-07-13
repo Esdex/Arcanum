@@ -9,6 +9,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.runtime.remember
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
@@ -375,15 +376,15 @@ private fun GalleryContent(
         }
 
         uiState.monthGroups.forEach { monthGroup ->
-            val monthAllIds = monthGroup.days.flatMap { it.photos }.map { it.id }.toSet()
-            val monthSelectedCount = monthAllIds.count { it in selectedIds }
-            val monthSelState = when {
-                monthSelectedCount == 0               -> TriState.NONE
-                monthSelectedCount == monthAllIds.size -> TriState.ALL
-                else                                  -> TriState.PARTIAL
-            }
-
             item(key = "month_${monthGroup.month}") {
+                // Compute tri-state inside item{} so it only runs for visible month headers.
+                val monthAllIds = remember(monthGroup) { monthGroup.days.flatMap { it.photos }.map { it.id }.toSet() }
+                val monthSelectedCount = monthAllIds.count { it in selectedIds }
+                val monthSelState = when {
+                    monthSelectedCount == 0               -> TriState.NONE
+                    monthSelectedCount == monthAllIds.size -> TriState.ALL
+                    else                                  -> TriState.PARTIAL
+                }
                 MonthHeader(
                     title      = monthGroup.month,
                     triState   = monthSelState,
@@ -392,15 +393,14 @@ private fun GalleryContent(
             }
 
             monthGroup.days.forEach { dayGroup ->
-                val dayAllIds = dayGroup.photos.map { it.id }.toSet()
-                val daySelectedCount = dayAllIds.count { it in selectedIds }
-                val daySelState = when {
-                    daySelectedCount == 0             -> TriState.NONE
-                    daySelectedCount == dayAllIds.size -> TriState.ALL
-                    else                              -> TriState.PARTIAL
-                }
-
                 item(key = "day_${monthGroup.month}_${dayGroup.date}") {
+                    val dayAllIds = remember(dayGroup) { dayGroup.photos.map { it.id }.toSet() }
+                    val daySelectedCount = dayAllIds.count { it in selectedIds }
+                    val daySelState = when {
+                        daySelectedCount == 0             -> TriState.NONE
+                        daySelectedCount == dayAllIds.size -> TriState.ALL
+                        else                              -> TriState.PARTIAL
+                    }
                     DayHeader(
                         date       = dayGroup.displayDate,
                         triState   = daySelState,
@@ -408,18 +408,22 @@ private fun GalleryContent(
                     )
                 }
 
-                item(key = "photos_${monthGroup.month}_${dayGroup.date}") {
-                    DayPhotosGrid(
-                        photos         = dayGroup.photos,
-                        thumbnails     = thumbnails,
-                        selectedIds    = selectedIds,
-                        selectionMode  = selectionMode,
-                        onVisible      = onThumbnailRequest,
-                        onClick        = { file ->
-                            if (selectionMode) onPhotoSelect(file) else onMediaClick(file)
-                        },
-                        onLongPress    = { file -> onPhotoSelect(file) }
-                    )
+                // Each row of 3 photos is a separate lazy item so only visible rows compose.
+                val rows = dayGroup.photos.chunked(3)
+                rows.forEachIndexed { rowIdx, rowPhotos ->
+                    item(key = "row_${monthGroup.month}_${dayGroup.date}_$rowIdx") {
+                        PhotoRow(
+                            photos        = rowPhotos,
+                            thumbnails    = thumbnails,
+                            selectedIds   = selectedIds,
+                            selectionMode = selectionMode,
+                            onVisible     = onThumbnailRequest,
+                            onClick       = { file ->
+                                if (selectionMode) onPhotoSelect(file) else onMediaClick(file)
+                            },
+                            onLongPress   = { file -> onPhotoSelect(file) }
+                        )
+                    }
                 }
             }
         }
@@ -548,7 +552,7 @@ private fun SelectionCircle(
 // ── Day photo grid ────────────────────────────────────────────────────────────
 
 @Composable
-private fun DayPhotosGrid(
+private fun PhotoRow(
     photos: List<MediaFileEntity>,
     thumbnails: Map<String, android.graphics.Bitmap?>,
     selectedIds: Set<String>,
@@ -557,25 +561,20 @@ private fun DayPhotosGrid(
     onClick: (MediaFileEntity) -> Unit,
     onLongPress: (MediaFileEntity) -> Unit
 ) {
-    val rows = photos.chunked(3)
-    Column(modifier = Modifier.fillMaxWidth()) {
-        rows.forEach { rowPhotos ->
-            Row(modifier = Modifier.fillMaxWidth()) {
-                rowPhotos.forEach { file ->
-                    MediaGridItem(
-                        file         = file,
-                        thumbnail    = thumbnails[file.id],
-                        isSelected   = file.id in selectedIds,
-                        selectionMode = selectionMode,
-                        modifier     = Modifier.weight(1f),
-                        onVisible    = { onVisible(file) },
-                        onClick      = { onClick(file) },
-                        onLongPress  = { onLongPress(file) }
-                    )
-                }
-                repeat(3 - rowPhotos.size) { Spacer(Modifier.weight(1f)) }
-            }
+    Row(modifier = Modifier.fillMaxWidth()) {
+        photos.forEach { file ->
+            MediaGridItem(
+                file         = file,
+                thumbnail    = thumbnails[file.id],
+                isSelected   = file.id in selectedIds,
+                selectionMode = selectionMode,
+                modifier     = Modifier.weight(1f),
+                onVisible    = { onVisible(file) },
+                onClick      = { onClick(file) },
+                onLongPress  = { onLongPress(file) }
+            )
         }
+        repeat(3 - photos.size) { Spacer(Modifier.weight(1f)) }
     }
 }
 

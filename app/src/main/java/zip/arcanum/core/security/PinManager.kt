@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -31,6 +33,7 @@ class PinManager @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
     private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val failCountMutex = Mutex()
 
     private val prefsDeferred: Deferred<EncryptedSharedPreferences> = ioScope.async {
         val masterKey = MasterKey.Builder(context)
@@ -61,19 +64,21 @@ class PinManager @Inject constructor(
 
     suspend fun savePin(pin: String) = withContext(Dispatchers.IO) {
         val encoded = hashArgon2(pin)
-        prefsDeferred.await().edit()
+        val ok = prefsDeferred.await().edit()
             .putString(KEY_PIN_HASH, encoded)
             .putInt(KEY_PIN_HASH_VERSION, VERSION_ARGON2)
-            .apply()
+            .commit()
+        check(ok) { "Failed to persist PIN" }
         _isPinSet.value = true
     }
 
     suspend fun savePanicPin(pin: String) = withContext(Dispatchers.IO) {
         val encoded = hashArgon2(pin)
-        prefsDeferred.await().edit()
+        val ok = prefsDeferred.await().edit()
             .putString(KEY_PANIC_PIN_HASH, encoded)
             .putInt(KEY_PANIC_HASH_VERSION, VERSION_ARGON2)
-            .apply()
+            .commit()
+        check(ok) { "Failed to persist panic PIN" }
         _isPanicPinSet.value = true
     }
 
@@ -120,22 +125,22 @@ class PinManager @Inject constructor(
                 PinResult.PANIC
             }
             else -> {
-                val newCount = prefs.getInt(KEY_FAIL_COUNT, 0) + 1
-                val lockDuration = lockoutDuration(newCount)
-                val editor = prefs.edit().putInt(KEY_FAIL_COUNT, newCount)
-                if (lockDuration > 0L) {
-                    val nowElapsed = SystemClock.elapsedRealtime()
-                    editor.putLong(KEY_LOCK_SET_ELAPSED, nowElapsed)
-                        .putLong(KEY_LOCK_UNTIL_ELAPSED, nowElapsed + lockDuration)
-                        .putLong(KEY_LOCK_UNTIL_WALL, System.currentTimeMillis() + lockDuration)
-                } else {
-                    editor.putLong(KEY_LOCK_SET_ELAPSED, 0L)
-                        .putLong(KEY_LOCK_UNTIL_ELAPSED, 0L)
-                        .putLong(KEY_LOCK_UNTIL_WALL, 0L)
+                failCountMutex.withLock {
+                    val newCount = prefs.getInt(KEY_FAIL_COUNT, 0) + 1
+                    val lockDuration = lockoutDuration(newCount)
+                    val editor = prefs.edit().putInt(KEY_FAIL_COUNT, newCount)
+                    if (lockDuration > 0L) {
+                        val nowElapsed = SystemClock.elapsedRealtime()
+                        editor.putLong(KEY_LOCK_SET_ELAPSED, nowElapsed)
+                            .putLong(KEY_LOCK_UNTIL_ELAPSED, nowElapsed + lockDuration)
+                            .putLong(KEY_LOCK_UNTIL_WALL, System.currentTimeMillis() + lockDuration)
+                    } else {
+                        editor.putLong(KEY_LOCK_SET_ELAPSED, 0L)
+                            .putLong(KEY_LOCK_UNTIL_ELAPSED, 0L)
+                            .putLong(KEY_LOCK_UNTIL_WALL, 0L)
+                    }
+                    editor.commit()
                 }
-                // commit() not apply(): a process kill right after a failed attempt must
-                // not drop the fail-count increment or the lockout deadline.
-                editor.commit()
                 PinResult.WRONG
             }
         }

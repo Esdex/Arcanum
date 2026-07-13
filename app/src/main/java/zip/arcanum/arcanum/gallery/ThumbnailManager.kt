@@ -98,7 +98,7 @@ class ThumbnailManager @Inject constructor(
         relativePath: String,
         fileSize: Long,
         cacheFile: File
-    ): Bitmap? {
+    ): Bitmap? { return try {
         val stream = NativeFileInputStream(engine, handle, relativePath, fileSize)
 
         // Pass 1: bounds-only scan. BitmapFactory stops as soon as it finds the SOF marker,
@@ -132,8 +132,10 @@ class ThumbnailManager @Inject constructor(
         }
         val thumb = centerCrop(oriented, 256)
         saveToCacheFile(thumb, cacheFile)
-        return thumb
-    }
+        thumb
+    } catch (_: Throwable) {
+        null
+    } }
 
     private fun generateVideoThumbnail(
         engine: VeraCryptEngine,
@@ -145,15 +147,18 @@ class ThumbnailManager @Inject constructor(
         // NativeMediaDataSource lets MediaMetadataRetriever seek anywhere on demand —
         // correctly handles MP4 moov at end-of-file without pre-reading the whole file.
         val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(NativeMediaDataSource(engine, handle, relativePath, fileSize))
-        val frame = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-        retriever.release()
-        frame?.let {
-            val thumb = centerCrop(it, 256)
-            saveToCacheFile(thumb, cacheFile)
-            thumb
+        try {
+            retriever.setDataSource(NativeMediaDataSource(engine, handle, relativePath, fileSize))
+            val frame = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            frame?.let {
+                val thumb = centerCrop(it, 256)
+                saveToCacheFile(thumb, cacheFile)
+                thumb
+            }
+        } finally {
+            retriever.release()
         }
-    } catch (_: Exception) {
+    } catch (_: Throwable) {
         null
     }
 
@@ -165,17 +170,20 @@ class ThumbnailManager @Inject constructor(
         cacheFile: File
     ): Bitmap? = try {
         val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(NativeMediaDataSource(engine, handle, relativePath, fileSize))
-        val artBytes = retriever.embeddedPicture
-        retriever.release()
-        // Returns null if no embedded art → UI will show the music note icon instead
-        artBytes?.let { bytes ->
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-            val thumb = centerCrop(bitmap, 256)
-            saveToCacheFile(thumb, cacheFile)
-            thumb
+        try {
+            retriever.setDataSource(NativeMediaDataSource(engine, handle, relativePath, fileSize))
+            // Returns null if no embedded art → UI will show the music note icon instead
+            val artBytes = retriever.embeddedPicture
+            artBytes?.let { bytes ->
+                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+                val thumb = centerCrop(bitmap, 256)
+                saveToCacheFile(thumb, cacheFile)
+                thumb
+            }
+        } finally {
+            retriever.release()
         }
-    } catch (_: Exception) {
+    } catch (_: Throwable) {
         null
     }
 

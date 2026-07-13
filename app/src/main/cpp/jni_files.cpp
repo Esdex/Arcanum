@@ -61,7 +61,6 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
         if (!ctor) return env->NewObjectArray(0, infoCls, nullptr);
     }
 
-    if (decode_handle(handle) < 0) return env->NewObjectArray(0, infoCls, nullptr);
     std::string dirPath = jstring_to_string(env, jDirPath);
 
     /* Single f_readdir pass collecting into a JNI-free vector, entirely under
@@ -93,7 +92,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
         if (f_opendir(&dir, fullPath) != FR_OK)
             return env->NewObjectArray(0, infoCls, nullptr);
 
-        while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0]) {
+        FRESULT fr;
+        while ((fr = f_readdir(&dir, &fno)) == FR_OK && fno.fname[0]) {
             char ep[512];
             if (dirPath.empty() || dirPath == "/") {
                 snprintf(ep, sizeof(ep), "/%s", fno.fname);
@@ -114,6 +114,12 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
             });
         }
         f_closedir(&dir);
+        /* Distinguish mid-listing disk error from true EOF (fno.fname[0]=='\0').
+         * Return nullptr so the caller can tell "failed" from "empty directory". */
+        if (fr != FR_OK) {
+            LOGE("nativeListFiles: f_readdir error %d", (int)fr);
+            return nullptr;
+        }
     }
 
     jobjectArray result = env->NewObjectArray((jsize)entries.size(), infoCls, nullptr);
@@ -143,8 +149,6 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
         JNIEnv *env, jobject /*thiz*/,
         jlong handle, jstring jFilePath, jlong offset, jint length)
 {
-    if (decode_handle(handle) < 0) return env->NewByteArray(0);
-
     // Reject non-positive or unreasonably large requests.
     // A negative length would wrap to ~4 GB when cast to UINT, causing a buffer overflow.
     if (length <= 0 || length > 16 * 1024 * 1024)
@@ -174,8 +178,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
     }
 
     UINT br = 0;
-    f_read(&fil, nativeBuf, (UINT)length, &br);
+    FRESULT fr = f_read(&fil, nativeBuf, (UINT)length, &br);
     f_close(&fil);
+    if (fr != FR_OK) { free(nativeBuf); return nullptr; }
 
     jbyteArray result = env->NewByteArray((jsize)br);
     if (result && br > 0) {
@@ -193,7 +198,6 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteFile(
         jlong handle, jstring jFilePath,
         jbyteArray jData, jlong offset)
 {
-    if (decode_handle(handle) < 0) return ERR_NO_SLOT;
     std::string path = jstring_to_string(env, jFilePath);
 
     FIL fil;
@@ -244,7 +248,6 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteAt(
         jlong handle, jstring jFilePath,
         jbyteArray jData, jlong offset)
 {
-    if (decode_handle(handle) < 0) return ERR_NO_SLOT;
     std::string path = jstring_to_string(env, jFilePath);
 
     FIL fil;
@@ -361,11 +364,6 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeDeleteFile(
         JNIEnv *env, jobject /*thiz*/,
         jlong handle, jstring jFilePath)
 {
-    /* Cheap unlocked pre-check to fail fast on an obviously bad handle before
-     * doing string work; the authoritative check (decode_handle + readOnly)
-     * happens under the lock immediately before the f_* call, in one scope,
-     * so a concurrent close/free can't race between the check and the op. */
-    if (decode_handle(handle) < 0) return ERR_NO_SLOT;
     std::string path = jstring_to_string(env, jFilePath);
 
     std::lock_guard<std::mutex> lock(g_fatfs_mutex);
@@ -389,7 +387,6 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRenameFile(
         JNIEnv *env, jobject /*thiz*/,
         jlong handle, jstring jOldPath, jstring jNewPath)
 {
-    if (decode_handle(handle) < 0) return ERR_NO_SLOT;
     std::string oldPath = jstring_to_string(env, jOldPath);
     std::string newPath = jstring_to_string(env, jNewPath);
 
@@ -417,7 +414,6 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateDirectory(
         JNIEnv *env, jobject /*thiz*/,
         jlong handle, jstring jDirPath)
 {
-    if (decode_handle(handle) < 0) return ERR_NO_SLOT;
     std::string path = jstring_to_string(env, jDirPath);
 
     std::lock_guard<std::mutex> lock(g_fatfs_mutex);
@@ -463,7 +459,6 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeDeleteDirectory(
         JNIEnv *env, jobject /*thiz*/,
         jlong handle, jstring jDirPath)
 {
-    if (decode_handle(handle) < 0) return ERR_NO_SLOT;
     std::string path = jstring_to_string(env, jDirPath);
 
     std::lock_guard<std::mutex> lock(g_fatfs_mutex);
