@@ -3612,6 +3612,18 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 		sysect = nrsv + fasize + fs->n_rootdir / (SS(fs) / SZDIRE);	/* RSV + FAT + DIR */
 		if (tsect < sysect) return FR_NO_FILESYSTEM;	/* (Invalid volume size) */
 		nclst = (tsect - sysect) / fs->csize;			/* Number of clusters */
+		/* Arcanum #51: cap nclst to the physical drive capacity so FatFs never
+		 * allocates clusters past a hidden-volume boundary. The BPB declares the
+		 * full outer-volume size; alloc_drive reduces sectorCount to the usable
+		 * area, so GET_SECTOR_COUNT now returns the capped value. */
+		{
+			LBA_t sz_disk;
+			if (disk_ioctl(fs->pdrv, GET_SECTOR_COUNT, &sz_disk) == RES_OK
+					&& sz_disk > (LBA_t)(bsect + sysect)) {
+				DWORD phys_nclst = ((DWORD)(sz_disk - bsect) - sysect) / fs->csize;
+				if (phys_nclst < nclst) nclst = phys_nclst;
+			}
+		}
 		if (nclst == 0) return FR_NO_FILESYSTEM;		/* (Invalid volume size) */
 		fmt = 0;
 		if (nclst <= MAX_FAT32) fmt = FS_FAT32;
