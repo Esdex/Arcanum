@@ -171,6 +171,11 @@ typedef struct {
 	DWORD	cdir;		/* Current directory start cluster (0:root) */
 #endif
 	DWORD	n_fatent;	/* Number of FAT entries (number of clusters + 2) */
+	DWORD	alloc_fatent;	/* Arcanum #51: allocation ceiling. The FAT allocator never hands out a
+							   cluster >= this value, so data never lands past a hidden-volume
+							   boundary. Equals n_fatent when unrestricted; only smaller on a
+							   protect-hidden outer mount. FAT type and all FAT I/O still use
+							   n_fatent, so on-disk interpretation is unchanged. */
 	DWORD	fsize;		/* Number of sectors per FAT */
 	LBA_t	winsect;	/* Current sector appearing in the win[] */
 	LBA_t	volbase;	/* Volume base sector */
