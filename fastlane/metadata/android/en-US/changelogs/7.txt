@@ -1,0 +1,7 @@
+- New: Vault storage usage
+- Security: Tamper-proof PIN lockout timing
+- Improvement: Auto-lock now counts inactivity
+- New: Open and edit vault files in other apps
+- New: Share files straight into a vault
+- Fix: Stability and data-integrity overhaul
+- Fix: No FAT corruption when writing near a hidden volume
