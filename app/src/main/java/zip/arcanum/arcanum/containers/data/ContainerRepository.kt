@@ -119,8 +119,17 @@ class ContainerRepository @Inject constructor(
         return snapshot.map { it.handle }
     }
 
-    // Reset isMounted flags that may have been left true after a crash or force-kill.
-    suspend fun resetMountedState() = dao.setAllUnmounted()
+    // Reconcile the DB isMounted flags against the live in-memory handles. A container is really
+    // mounted only while we hold its JNI handle in THIS process, so [mounted] is the ground truth.
+    // Clear only flags the DB still has set for containers we do NOT hold - those are stale (left
+    // after a crash/kill, or from a fresh MainActivity created while the process and its mounts are
+    // still alive, e.g. a share intent that spawns a new activity). Never clear a live mount, or a
+    // still-mounted vault would wrongly show as unmounted while its handle stays open.
+    suspend fun resetMountedState() {
+        dao.getAllContainersOnce()
+            .filter { it.isMounted && !mounted.containsKey(it.id) }
+            .forEach { dao.setMounted(it.id, false) }
+    }
 
     fun getContainerHandle(id: String): Long? = mounted[id]?.handle
 
