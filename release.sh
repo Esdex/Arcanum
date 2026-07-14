@@ -46,6 +46,7 @@ BLOCK_COUNT=$(jq --argjson vc "$VERSION_CODE" '[.versions[] | select(.versionCod
 log "Generating $CHANGELOG_FILE..."
 jq -r --argjson vc "$VERSION_CODE" '
     .versions[] | select(.versionCode == $vc) | .entries[]
+    | select(.fdroid != false)
     | "- \((.type[0:1] | ascii_upcase) + .type[1:]): \(.title)"
 ' "$WHATSNEW_JSON" > "$CHANGELOG_FILE"
 
