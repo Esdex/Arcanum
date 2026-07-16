@@ -908,6 +908,10 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCloseContainer(
         if (it == g_ctxMap.end()) return ERR_NO_SLOT;
         ctx.reset(it->second);
 
+        // Close any cached streaming read handle on this drive before unmounting -
+        // f_close must run while the filesystem is still valid.
+        invalidate_read_cache_for_pdrv(pdrv);
+
         char drvPath[8];
         snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
         f_unmount(drvPath);

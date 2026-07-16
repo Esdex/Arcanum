@@ -438,3 +438,9 @@ struct ContainerCtx {
     bool  readOnly;
 };
 extern std::unordered_map<int, ContainerCtx*> g_ctxMap;
+
+/* Drops the streaming read cache (jni_files.cpp) if it holds an open handle on
+ * this pdrv. Called from every drive mutation and from nativeCloseContainer so
+ * a delete/rename/unmount can never leave a dangling cached FIL (FF_FS_LOCK 0).
+ * CALLER MUST HOLD g_fatfs_mutex. */
+void invalidate_read_cache_for_pdrv(int pdrv);
