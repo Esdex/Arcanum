@@ -1,6 +1,16 @@
 {
   "versions": [
     {
+      "version": "1.4.1",
+      "versionCode": 8,
+      "entries": [
+        { "type": "fix", "title": "Calculator disguise shows at launch", "description": "With the calculator disguise enabled, a cold start sometimes showed the PIN screen instead of the calculator. The lock screen now waits for the disguise setting to load before choosing, so the calculator always appears on launch. (#97)" },
+        { "type": "fix", "title": "Calculator disguise respects 3-button navigation", "description": "The bottom row of the disguise calculator could hide behind the navigation bar under 3-button navigation. The buttons now stay clear of the navigation bar in every mode. (#98)" },
+        { "type": "fix", "title": "Gallery videos play on first open", "description": "A video opened from the Gallery could show a black screen and only start playing after swiping to another item and back. Videos now begin playing immediately on first open. (#100)" },
+        { "type": "fix", "title": "No stale mounted state after a background kill", "description": "If Android closed the app in the background to free memory, a vault could still show as mounted while its files were gone. The app now rechecks on every start, so the vault correctly shows as unmounted and can be remounted with one tap. (#101)" }
+      ]
+    },
+    {
       "version": "1.4.0",
       "versionCode": 7,
       "entries": [
