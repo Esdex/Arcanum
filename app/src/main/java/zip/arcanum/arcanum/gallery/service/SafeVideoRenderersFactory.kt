@@ -96,6 +96,12 @@ private class FrameRateTolerantVideoRenderer(
         // are left untouched; NO_VALUE (-1, unknown) never trips it either.
         if (format.frameRate > MAX_PLAUSIBLE_FRAME_RATE) {
             mediaFormat.setFloat(MediaFormat.KEY_FRAME_RATE, FALLBACK_FRAME_RATE)
+            // super derives KEY_OPERATING_RATE from the same bogus rate, which otherwise drives
+            // the decoder clock at (e.g.) ~1324 - wasteful and, on stricter hardware, risky.
+            // Bring it down to the same sane value when it was actually set.
+            if (mediaFormat.containsKey(MediaFormat.KEY_OPERATING_RATE)) {
+                mediaFormat.setFloat(MediaFormat.KEY_OPERATING_RATE, FALLBACK_FRAME_RATE)
+            }
         }
         return mediaFormat
     }
