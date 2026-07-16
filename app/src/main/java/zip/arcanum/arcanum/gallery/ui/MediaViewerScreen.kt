@@ -13,7 +13,6 @@ import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -136,6 +135,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -276,7 +276,10 @@ fun MediaViewerScreen(
     }
 
     var showBars by remember { mutableStateOf(true) }
-    LaunchedEffect(showBars) {
+    // Bump to restart the 3s auto-hide countdown while the bars are already visible - e.g. when
+    // the user taps or drags the seek bar, which shouldn't let the controls vanish under them.
+    var barsPokeToken by remember { mutableStateOf(0) }
+    LaunchedEffect(showBars, barsPokeToken) {
         val window = (context as? Activity)?.window ?: return@LaunchedEffect
         val wic = WindowCompat.getInsetsController(window, view)
         if (showBars) {
@@ -576,8 +579,8 @@ fun MediaViewerScreen(
                         sliderValue            = sliderValue,
                         positionMs             = if (isScrubbing) scrubMs else positionMs,
                         durationMs             = durationMs,
-                        onSliderChange         = { f -> val ms = (f * durationMs).toLong(); isScrubbing = true; scrubMs = ms; mc?.seekTo(ms) },
-                        onSliderChangeFinished = { mc?.seekTo(scrubMs); isScrubbing = false }
+                        onSliderChange         = { f -> val ms = (f * durationMs).toLong(); isScrubbing = true; scrubMs = ms; mc?.seekTo(ms); showBars = true; barsPokeToken++ },
+                        onSliderChangeFinished = { mc?.seekTo(scrubMs); isScrubbing = false; showBars = true; barsPokeToken++ }
                     )
                 } else {
                     Box(
@@ -789,6 +792,10 @@ private fun VideoBottomBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.75f))))
+            // Swallow taps that miss the slider so they don't fall through to the full-screen
+            // video surface below and toggle the controls off - which made a tap near the seek
+            // bar hide the controls instead of seeking. The Slider (a child) still gets taps first.
+            .pointerInput(Unit) { detectTapGestures {} }
     ) {
         Row(
             modifier          = Modifier
@@ -801,12 +808,40 @@ private fun VideoBottomBar(
                 value                 = sliderValue,
                 onValueChange         = onSliderChange,
                 onValueChangeFinished = onSliderChangeFinished,
-                colors                = SliderDefaults.colors(
-                    thumbColor         = Color.White,
-                    activeTrackColor   = Color.White,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.35f)
-                ),
-                thumb    = { _ -> Spacer(Modifier.size(12.dp).background(Color.White, CircleShape)) },
+                thumb = { _ ->
+                    // Box height matches the track's 24dp box so the dot and the 3dp line share the
+                    // same vertical center (the Slider centers thumb and track by their own heights).
+                    Box(
+                        modifier         = Modifier.height(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Small white handle with a soft shadow so it stands out against the track.
+                        Spacer(
+                            Modifier
+                                .size(12.dp)
+                                .shadow(elevation = 4.dp, shape = CircleShape)
+                                .background(Color.White, CircleShape)
+                        )
+                    }
+                },
+                track = { _ ->
+                    // Thin, full-width track: no stop-indicator dot, no thumb gap, no side inset.
+                    // The 24dp box only widens the touch strip; the visible line stays 3dp.
+                    val fraction = sliderValue.coerceIn(0f, 1f)
+                    Box(
+                        modifier         = Modifier.fillMaxWidth().height(24.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Spacer(
+                            Modifier.fillMaxWidth().height(3.dp)
+                                .clip(CircleShape).background(Color.White.copy(alpha = 0.35f))
+                        )
+                        Spacer(
+                            Modifier.fillMaxWidth(fraction).height(3.dp)
+                                .clip(CircleShape).background(Color.White)
+                        )
+                    }
+                },
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(10.dp))
