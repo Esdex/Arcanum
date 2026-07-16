@@ -9,6 +9,7 @@
         { "type": "fix", "title": "Gallery videos play on first open", "description": "A video opened from the Gallery could show a black screen and only start playing after swiping to another item and back. Videos now begin playing immediately on first open. (#100)" },
         { "type": "fix", "title": "Large videos open instantly", "description": "Opening a big video from the gallery no longer stalls. The player kept re-reading the file from the start on every chunk, so long videos could take a very long time to begin; it now keeps the file open and seeks directly, so they start right away. (#96)" },
         { "type": "fix", "title": "Clear message for unplayable videos", "description": "A video the built-in player can't decode now shows a short message instead of an endless black screen." },
+        { "type": "fix", "title": "Play videos with broken frame-rate metadata", "description": "Some videos declare a nonsensical frame rate that made the built-in player reject them with a black screen, even though they play elsewhere. The player now ignores an implausible declared rate, so these videos play normally. (#104)" },
         { "type": "fix", "title": "No stale mounted state after a background kill", "description": "If Android closed the app in the background to free memory, a vault could still show as mounted while its files were gone. The app now rechecks on every start, so the vault correctly shows as unmounted and can be remounted with one tap. (#101)" }
       ]
     },
