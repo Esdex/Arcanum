@@ -178,7 +178,7 @@ fun FileManagerScreen(
     onNotification: ((InAppNotification) -> Unit)? = null,
     bottomPadding: Dp = 0.dp,
     onAudioFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
-    onMediaFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
+    onMediaFileClick: ((fileId: String) -> Unit)? = null,
     viewModel: FileManagerViewModel = hiltViewModel()
 ) {
     val context          = LocalContext.current
@@ -346,8 +346,11 @@ fun FileManagerScreen(
                                         onAudioFileClick(file.path, file.name, file.size)
                                     } else if (onMediaFileClick != null &&
                                                file.name.substringAfterLast('.', "").lowercase() in MEDIA_EXTENSIONS) {
-                                        viewModel.setMediaQueue(file)
-                                        onMediaFileClick(file.path, file.name, file.size)
+                                        val open = onMediaFileClick
+                                        viewModel.openMediaFile(file) { fileId ->
+                                            if (fileId != null) open(fileId)
+                                            else { openWithTarget = file; showOpenWithWarning = true }
+                                        }
                                     } else { openWithTarget = file; showOpenWithWarning = true }
                                 },
                                 onFileLongClick      = { file ->
@@ -378,8 +381,11 @@ fun FileManagerScreen(
                                     onAudioFileClick(file.path, file.name, file.size)
                                 } else if (onMediaFileClick != null &&
                                            file.name.substringAfterLast('.', "").lowercase() in MEDIA_EXTENSIONS) {
-                                    viewModel.setMediaQueue(file)
-                                    onMediaFileClick(file.path, file.name, file.size)
+                                    val open = onMediaFileClick
+                                    viewModel.openMediaFile(file) { fileId ->
+                                        if (fileId != null) open(fileId)
+                                        else { openWithTarget = file; showOpenWithWarning = true }
+                                    }
                                 } else { openWithTarget = file; showOpenWithWarning = true }
                             },
                             onFileLongClick = { file ->

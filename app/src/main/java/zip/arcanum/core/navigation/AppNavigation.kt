@@ -45,10 +45,8 @@ import zip.arcanum.arcanum.containers.ui.VaultConfigScreen
 import zip.arcanum.arcanum.containers.ui.VaultScreen
 import zip.arcanum.arcanum.containers.ui.VaultViewModel
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerDirectScreen
-import zip.arcanum.arcanum.gallery.ui.MediaViewerDirectScreen
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerScreen
 import zip.arcanum.arcanum.gallery.ui.MediaViewerScreen
-import zip.arcanum.arcanum.gallery.ui.VideoPlayerScreen
 import zip.arcanum.arcanum.gallery.editor.PhotoEditorScreen
 import zip.arcanum.calculator.ui.CalculatorScreen
 import zip.arcanum.core.security.AppPreferences
@@ -372,8 +370,8 @@ fun AppNavigation(pinManager: PinManager) {
                 onAudioFileClick   = { containerId, path, name, size ->
                     navController.navigate(Screen.AudioPlayerDirect.buildRoute(containerId, path, name, size))
                 },
-                onMediaFileClick   = { containerId, path, name, size ->
-                    navController.navigate(Screen.MediaViewerDirect.buildRoute(containerId, path, name, size))
+                onMediaFileClick   = { fileId ->
+                    navController.navigate(Screen.PhotoViewer.buildRoute(fileId, folderScope = true))
                 }
             )
         }
@@ -381,7 +379,10 @@ fun AppNavigation(pinManager: PinManager) {
         // ── Photo / image viewer ─────────────────────────────────────────
         composable(
             route     = Screen.PhotoViewer.route,
-            arguments = listOf(navArgument(Screen.PhotoViewer.ARG) { type = NavType.StringType })
+            arguments = listOf(
+                navArgument(Screen.PhotoViewer.ARG) { type = NavType.StringType },
+                navArgument(Screen.PhotoViewer.ARG_FOLDER_SCOPE) { type = NavType.BoolType; defaultValue = false }
+            )
         ) { backStackEntry ->
             val photoId = backStackEntry.arguments?.getString(Screen.PhotoViewer.ARG) ?: ""
             MediaViewerScreen(
@@ -410,21 +411,6 @@ fun AppNavigation(pinManager: PinManager) {
             })
         }
 
-        // ── Video player ─────────────────────────────────────────────────
-        // TODO(refactor): VideoPlayerScreen and Screen.VideoPlayer are unused — video is opened
-        //  via Screen.PhotoViewer → MediaViewerScreen which now routes through ArcanumMediaService.
-        //  Remove VideoPlayerScreen, Screen.VideoPlayer, and this route during the next cleanup pass.
-        composable(
-            route     = Screen.VideoPlayer.route,
-            arguments = listOf(navArgument(Screen.VideoPlayer.ARG) { type = NavType.StringType })
-        ) { backStackEntry ->
-            val fileId = backStackEntry.arguments?.getString(Screen.VideoPlayer.ARG) ?: ""
-            VideoPlayerScreen(
-                fileId = fileId,
-                onBack = { navController.popBackStack() }
-            )
-        }
-
         // ── Audio player (gallery) ────────────────────────────────────────
         composable(
             route     = Screen.AudioPlayer.route,
@@ -448,19 +434,6 @@ fun AppNavigation(pinManager: PinManager) {
             )
         ) {
             AudioPlayerDirectScreen(onBack = { navController.popBackStack() })
-        }
-
-        // ── Media viewer direct (images + videos from Files tab) ─────────
-        composable(
-            route     = Screen.MediaViewerDirect.route,
-            arguments = listOf(
-                navArgument(Screen.MediaViewerDirect.ARG_CONTAINER) { type = NavType.StringType },
-                navArgument(Screen.MediaViewerDirect.ARG_PATH)      { type = NavType.StringType },
-                navArgument(Screen.MediaViewerDirect.ARG_NAME)      { type = NavType.StringType },
-                navArgument(Screen.MediaViewerDirect.ARG_SIZE)      { type = NavType.StringType }
-            )
-        ) {
-            MediaViewerDirectScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Move vault ────────────────────────────────────────────────────

@@ -32,7 +32,7 @@ class MediaScanner @Inject constructor(
 
     companion object {
         val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp")
-        val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "mov", "3gp", "webm")
+        val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "mov", "3gp", "webm", "m4v")
         val AUDIO_EXTENSIONS = setOf("mp3", "flac", "aac", "ogg", "wav", "m4a")
 
         // Formats returned by MediaMetadataRetriever.METADATA_KEY_DATE

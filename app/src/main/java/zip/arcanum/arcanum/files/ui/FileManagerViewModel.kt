@@ -32,7 +32,6 @@ import zip.arcanum.arcanum.files.domain.ClipboardItem
 import zip.arcanum.arcanum.files.domain.FileClipboard
 import zip.arcanum.arcanum.gallery.AudioPlayerQueue
 import zip.arcanum.arcanum.gallery.MediaScanner
-import zip.arcanum.arcanum.gallery.MediaViewerQueue
 import zip.arcanum.arcanum.gallery.ThumbnailManager
 import kotlinx.coroutines.coroutineScope
 import zip.arcanum.core.database.dao.MediaFileDao
@@ -52,7 +51,6 @@ private val Context.fileManagerPrefs: DataStore<Preferences> by preferencesDataS
 private val AUDIO_EXTENSIONS_VM  = setOf("mp3", "m4a", "aac", "ogg", "flac", "wav", "opus")
 private val IMAGE_EXTENSIONS_VM  = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif")
 private val VIDEO_EXTENSIONS_VM  = setOf("mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp")
-private val MEDIA_EXTENSIONS_VM  = IMAGE_EXTENSIONS_VM + VIDEO_EXTENSIONS_VM
 
 @HiltViewModel
 class FileManagerViewModel @Inject constructor(
@@ -61,7 +59,6 @@ class FileManagerViewModel @Inject constructor(
     private val clipboard: FileClipboard,
     private val repo: ContainerRepository,
     private val audioQueue: AudioPlayerQueue,
-    private val mediaQueue: MediaViewerQueue,
     private val thumbnailManager: ThumbnailManager,
     private val mediaScanner: MediaScanner,
     private val mediaFileDao: MediaFileDao
@@ -169,12 +166,20 @@ class FileManagerViewModel @Inject constructor(
         }
     }
 
-    fun setMediaQueue(clickedFile: NativeFileInfo) {
-        val mediaFiles = _state.value.files.filter {
-            !it.isDirectory && it.name.substringAfterLast('.', "").lowercase() in MEDIA_EXTENSIONS_VM
+    // Resolves a tapped media file to its Gallery DB id so the Files browser can open the shared
+    // media viewer (MediaViewerScreen). Falls back to indexing the file on the spot if the gallery
+    // scan hasn't reached it yet. Result is delivered on the main thread; null means unresolvable.
+    fun openMediaFile(clickedFile: NativeFileInfo, onResult: (String?) -> Unit) {
+        val cid = _state.value.containerId
+        viewModelScope.launch {
+            val id = withContext(Dispatchers.IO) {
+                mediaFileDao.getByPath(cid, clickedFile.path)?.id
+                    ?: repo.getContainerHandle(cid)?.let { handle ->
+                        mediaScanner.indexFile(handle, cid, clickedFile.path, clickedFile.size)?.id
+                    }
+            }
+            onResult(id)
         }
-        val index = mediaFiles.indexOfFirst { it.path == clickedFile.path }.coerceAtLeast(0)
-        mediaQueue.set(_state.value.containerId, mediaFiles, index)
     }
 
     fun setAudioQueue(clickedFile: NativeFileInfo) {
