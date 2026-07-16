@@ -36,6 +36,9 @@ class ArcanumMediaService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         player = ExoPlayer.Builder(this)
+            // Tolerates files with a bogus declared frame rate (e.g. 720p @ ~1324 fps) that
+            // would otherwise fail decoder init and show a black screen (#104).
+            .setRenderersFactory(SafeVideoRenderersFactory(this))
             .setMediaSourceFactory(DefaultMediaSourceFactory(ServiceEncryptedDataSourceFactory(engine, repo)))
             .setAudioAttributes(
                 AudioAttributes.Builder()
