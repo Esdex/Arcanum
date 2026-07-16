@@ -142,6 +142,103 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
     return result;
 }
 
+/* ─── Streaming read cache ───────────────────────────────────────────── */
+/*
+ * nativeReadFile is called once per media chunk (~1 MB) while a video or audio
+ * file plays. Re-opening the FIL and seeking from the start of the cluster
+ * chain on every call made large-file reads O(n^2): a 2-hour video could take
+ * minutes to start, or effectively never start when its MP4 moov index sits at
+ * the end of the file, which the player must read before the first frame (#96).
+ * Instead we keep the most-recently-read FIL open and reuse it:
+ *   - a sequential read (offset == the current file pointer) skips the seek;
+ *   - a random seek uses FatFs fast-seek (a cluster-map table) so it is O(1)
+ *     instead of a full cluster-chain walk.
+ * One cached handle is enough - media plays a single file at a time - and it is
+ * safe because every f_* call already runs under g_fatfs_mutex. FF_FS_LOCK is 0,
+ * so FatFs will happily free the clusters of an open file on delete/rename;
+ * every mutation of the drive, and its unmount, therefore drops the cache
+ * (invalidate_read_cache_for_pdrv, called from the mutating ops below and from
+ * nativeCloseContainer).
+ */
+namespace {
+
+struct ReadCache {
+    bool        valid = false;
+    int         pdrv  = -1;
+    std::string path;
+    FIL         fil{};
+    DWORD*      clmt  = nullptr;   /* fast-seek table; null = fall back to slow seeks */
+};
+
+ReadCache g_readCache;   /* guarded by g_fatfs_mutex */
+
+/* Caller holds g_fatfs_mutex. Closes the cached FIL and frees its table. Must
+ * run while the drive is still mounted (f_close validates the filesystem). */
+void close_read_cache() {
+    if (g_readCache.valid) {
+        f_close(&g_readCache.fil);
+        /* Wipe the plaintext read window - the file object is a long-lived
+         * global here, not a stack local that dies at return. */
+        secure_memset((volatile uint8_t*)g_readCache.fil.buf, 0, FF_MAX_SS);
+        g_readCache.valid = false;
+    }
+    free(g_readCache.clmt);
+    g_readCache.clmt = nullptr;
+    g_readCache.pdrv = -1;
+    g_readCache.path.clear();
+}
+
+/* Builds a fast-seek cluster map for fp. Best effort: on OOM, or a file too
+ * fragmented for a sane table, fp keeps working through slow (still correct)
+ * seeks with cltbl left null. */
+void build_fast_seek(FIL* fp) {
+    DWORD cap = 64;   /* DWORDs: 1 header + 2 per contiguous fragment; grows if needed */
+    auto* tbl = static_cast<DWORD*>(malloc((size_t)cap * sizeof(DWORD)));
+    if (!tbl) { fp->cltbl = nullptr; g_readCache.clmt = nullptr; return; }
+    tbl[0] = cap;
+    fp->cltbl = tbl;
+    FRESULT fr = f_lseek(fp, CREATE_LINKMAP);
+    if (fr == FR_NOT_ENOUGH_CORE) {          /* tbl[0] now holds the size required */
+        DWORD need = tbl[0];
+        auto* grown = static_cast<DWORD*>(realloc(tbl, (size_t)need * sizeof(DWORD)));
+        if (!grown) { free(tbl); fp->cltbl = nullptr; g_readCache.clmt = nullptr; return; }
+        tbl = grown;
+        tbl[0] = need;
+        fp->cltbl = tbl;
+        fr = f_lseek(fp, CREATE_LINKMAP);
+    }
+    if (fr != FR_OK) { free(tbl); fp->cltbl = nullptr; g_readCache.clmt = nullptr; return; }
+    g_readCache.clmt = tbl;
+}
+
+/* Caller holds g_fatfs_mutex. Returns the cached FIL for (pdrv, path), opening
+ * it (read-only, with a fast-seek table) when the cache holds a different file.
+ * Returns null if the file cannot be opened. */
+FIL* acquire_read_file(int pdrv, const std::string& path) {
+    if (g_readCache.valid && g_readCache.pdrv == pdrv && g_readCache.path == path)
+        return &g_readCache.fil;
+
+    close_read_cache();
+
+    char fullPath[512];
+    int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+    if (n < 0 || n >= (int)sizeof(fullPath)) return nullptr;
+    if (f_open(&g_readCache.fil, fullPath, FA_READ) != FR_OK) return nullptr;
+
+    g_readCache.valid = true;
+    g_readCache.pdrv  = pdrv;
+    g_readCache.path  = path;
+    build_fast_seek(&g_readCache.fil);       /* leaves fptr at 0 (post-open) */
+    return &g_readCache.fil;
+}
+
+} // namespace
+
+/* Exposed to jni_volume.cpp's nativeCloseContainer. Caller holds g_fatfs_mutex. */
+void invalidate_read_cache_for_pdrv(int pdrv) {
+    if (g_readCache.valid && g_readCache.pdrv == pdrv) close_read_cache();
+}
+
 /* ─── JNI: nativeReadFile ────────────────────────────────────────────── */
 
 extern "C" JNIEXPORT jbyteArray JNICALL
@@ -151,7 +248,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
 {
     // Reject non-positive or unreasonably large requests.
     // A negative length would wrap to ~4 GB when cast to UINT, causing a buffer overflow.
-    if (length <= 0 || length > 16 * 1024 * 1024)
+    if (length <= 0 || length > 16 * 1024 * 1024 || offset < 0)
         return env->NewByteArray(0);
 
     std::string path = jstring_to_string(env, jFilePath);
@@ -163,24 +260,29 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
     auto *nativeBuf = static_cast<uint8_t*>(malloc((size_t)length));
     if (!nativeBuf) return env->NewByteArray(0);
 
-    FIL fil;
     std::lock_guard<std::mutex> lock(g_fatfs_mutex);
     int pdrv = decode_handle(handle);
     if (pdrv < 0) { free(nativeBuf); return env->NewByteArray(0); }
 
-    char fullPath[512];
-    int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
-    if (n < 0 || n >= (int)sizeof(fullPath)) { free(nativeBuf); return env->NewByteArray(0); }
+    // Reuse the cached open handle (or open + build a fast-seek table on a miss).
+    FIL* fp = acquire_read_file(pdrv, path);
+    if (!fp) { free(nativeBuf); return env->NewByteArray(0); }
 
-    if (f_open(&fil, fullPath, FA_READ) != FR_OK) { free(nativeBuf); return env->NewByteArray(0); }
-    if (f_lseek(&fil, (FSIZE_t)offset) != FR_OK) {
-        f_close(&fil); free(nativeBuf); return env->NewByteArray(0);
+    // Only seek when the read is non-sequential; back-to-back playback reads land
+    // exactly on the current file pointer and skip it entirely.
+    if ((FSIZE_t)offset != fp->fptr && f_lseek(fp, (FSIZE_t)offset) != FR_OK) {
+        close_read_cache();                  // FIL may be left mid-seek - drop it
+        free(nativeBuf);
+        return env->NewByteArray(0);
     }
 
     UINT br = 0;
-    FRESULT fr = f_read(&fil, nativeBuf, (UINT)length, &br);
-    f_close(&fil);
-    if (fr != FR_OK) { free(nativeBuf); return nullptr; }
+    FRESULT fr = f_read(fp, nativeBuf, (UINT)length, &br);
+    if (fr != FR_OK) {
+        close_read_cache();
+        free(nativeBuf);
+        return nullptr;
+    }
 
     jbyteArray result = env->NewByteArray((jsize)br);
     if (result && br > 0) {
@@ -209,6 +311,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteFile(
     int pdrv = decode_handle(handle);
     if (pdrv < 0) return ERR_NO_SLOT;
     { auto it = g_ctxMap.find(pdrv); if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY; }
+    invalidate_read_cache_for_pdrv(pdrv);   // this write may reallocate the cached file's clusters
 
     char fullPath[512];
     int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
@@ -255,6 +358,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteAt(
     int pdrv = decode_handle(handle);
     if (pdrv < 0) return ERR_NO_SLOT;
     { auto it = g_ctxMap.find(pdrv); if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY; }
+    invalidate_read_cache_for_pdrv(pdrv);   // this write may reallocate the cached file's clusters
 
     char fullPath[512];
     int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
@@ -371,6 +475,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeDeleteFile(
     if (pdrv < 0) return ERR_NO_SLOT;
     auto it = g_ctxMap.find(pdrv);
     if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY;
+    invalidate_read_cache_for_pdrv(pdrv);   // deleting frees clusters a cached read may still hold
 
     char fullPath[512];
     int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
@@ -395,6 +500,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRenameFile(
     if (pdrv < 0) return ERR_NO_SLOT;
     auto it = g_ctxMap.find(pdrv);
     if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY;
+    invalidate_read_cache_for_pdrv(pdrv);   // rename can relocate the cached file's directory entry
 
     char fullOldPath[512];
     char fullNewPath[512];
@@ -466,6 +572,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeDeleteDirectory(
     if (pdrv < 0) return ERR_NO_SLOT;
     auto it = g_ctxMap.find(pdrv);
     if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY;
+    invalidate_read_cache_for_pdrv(pdrv);   // recursive delete frees clusters a cached read may hold
 
     char fullPath[512];
     int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
