@@ -46,11 +46,13 @@ class MainActivity : AppCompatActivity() {
             android.view.WindowManager.LayoutParams.FLAG_SECURE
         )
 
-        // On fresh process start, correct any mounted flags left in the DB after a crash or kill.
-        // JNI handles never survive process death, so no container is actually mounted.
-        if (savedInstanceState == null) {
-            lifecycleScope.launch(Dispatchers.IO) { containerRepo.resetMountedState() }
-        }
+        // Reconcile the DB's mounted flags against the live in-memory handles on every start.
+        // JNI handles never survive process death, so after a background kill + restore - which
+        // recreates the activity with a non-null savedInstanceState - the DB can still claim a
+        // vault is mounted while no handle exists, leaving it shown as mounted but empty (#101).
+        // resetMountedState only clears flags for containers this process does not hold, so it
+        // preserves live mounts and is safe on a config change (e.g. rotation) too.
+        lifecycleScope.launch(Dispatchers.IO) { containerRepo.resetMountedState() }
 
         setContent {
             val themeMode               by settingsViewModel.themeMode.collectAsStateWithLifecycle()
