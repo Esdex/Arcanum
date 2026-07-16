@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -85,6 +86,10 @@ fun CalculatorScreen(
         modifier            = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            // Keep the bottom button row clear of the navigation bar. Under 3-button nav the
+            // bar is opaque and tall and would otherwise overlap it (#98); the background still
+            // draws edge-to-edge behind the bar since it precedes this padding.
+            .navigationBarsPadding()
             .padding(start = 2.dp, end = 2.dp, top = 24.dp, bottom = 1.dp),
         verticalArrangement = Arrangement.Bottom
     ) {
