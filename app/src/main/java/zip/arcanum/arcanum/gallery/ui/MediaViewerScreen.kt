@@ -140,6 +140,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.app.Activity
+import android.view.WindowManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -231,6 +232,16 @@ fun MediaViewerScreen(
             positionMs = mc?.currentPosition ?: 0L
             delay(200)
         }
+    }
+
+    // Keep the screen awake while a video is actually playing (#105) so long videos aren't cut off
+    // by the display timeout. The flag is released on pause/stop and when leaving the viewer, so the
+    // screen never stays on longer than needed. FLAG_SECURE (set on the Activity) is unaffected.
+    DisposableEffect(isPlaying) {
+        val window = (context as? Activity)?.window
+        if (isPlaying) window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
     val exportLauncher = rememberLauncherForActivityResult(
