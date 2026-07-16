@@ -313,6 +313,15 @@ fun MediaViewerScreen(
         val file = uiState.currentFile ?: return@LaunchedEffect
         if (file.fileType == MediaFileType.VIDEO) {
             val controller = mc ?: return@LaunchedEffect
+            // Reset the playback UI state for the new item BEFORE starting playback. The controller's
+            // start events (onIsPlayingChanged / duration) arrive asynchronously while this effect is
+            // suspended on the thumbnail extraction below; resetting here instead of after that await
+            // avoids clobbering isPlaying=true and the duration once they land - which otherwise froze
+            // the seek bar at 0:00 until the user tapped it.
+            positionMs  = 0L
+            durationMs  = 0L
+            isPlaying   = false
+            isScrubbing = false
             val serviceUri = Uri.Builder()
                 .scheme(ServiceEncryptedDataSource.URI_SCHEME)
                 .authority("media")
@@ -347,10 +356,6 @@ fun MediaViewerScreen(
                         .build())
                 }
             }
-            positionMs  = 0L
-            durationMs  = 0L
-            isPlaying   = false
-            isScrubbing = false
         } else if (file.fileType != MediaFileType.VIDEO) {
             mc?.pause()
         }
