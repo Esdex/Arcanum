@@ -16,6 +16,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import android.content.ComponentName
@@ -81,6 +82,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Edit
@@ -130,6 +132,7 @@ import androidx.compose.ui.platform.toClipEntry
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
@@ -201,6 +204,10 @@ fun MediaViewerScreen(
     var isBuffering by remember { mutableStateOf(false) }
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubMs     by remember { mutableStateOf(0L)    }
+    // Non-null once playback fails - surfaces a message instead of an endless black screen.
+    // The code name (e.g. ERROR_CODE_IO_FILE_NOT_FOUND vs ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)
+    // distinguishes a read/source failure from a decoder one.
+    var playbackError by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(mc) {
         val controller = mc ?: return@DisposableEffect onDispose {}
@@ -209,6 +216,10 @@ fun MediaViewerScreen(
             override fun onPlaybackStateChanged(state: Int) {
                 isBuffering = state == Player.STATE_BUFFERING
                 controller.duration.takeIf { it > 0L }?.let { durationMs = it }
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                isBuffering   = false
+                playbackError = error.errorCodeName
             }
         }
         controller.addListener(listener)
@@ -295,6 +306,7 @@ fun MediaViewerScreen(
     LaunchedEffect(uiState.currentFile?.id, mc) {
         userInteracted = false
         showBars = true
+        playbackError = null
         val file = uiState.currentFile ?: return@LaunchedEffect
         if (file.fileType == MediaFileType.VIDEO) {
             val controller = mc ?: return@LaunchedEffect
@@ -456,6 +468,38 @@ fun MediaViewerScreen(
                             )
                         }
                     }
+                }
+            }
+
+            // ── Playback error — shown instead of an endless black screen ──
+            if (uiState.currentFile?.fileType == MediaFileType.VIDEO && playbackError != null) {
+                Column(
+                    modifier            = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector        = Icons.Outlined.ErrorOutline,
+                        contentDescription = null,
+                        tint               = Color.White.copy(alpha = 0.85f),
+                        modifier           = Modifier.size(48.dp)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text      = stringResource(R.string.viewer_playback_error),
+                        style     = MaterialTheme.typography.bodyLarge,
+                        color     = Color.White,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    // Raw error code - lets us tell a read/source failure from a decoder one.
+                    Text(
+                        text      = playbackError ?: "",
+                        style     = MaterialTheme.typography.labelSmall,
+                        color     = Color.White.copy(alpha = 0.6f),
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
 

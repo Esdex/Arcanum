@@ -207,6 +207,7 @@
     <string name="viewer_seek_forward">+10s</string>
     <string name="viewer_cd_pause">Pause</string>
     <string name="viewer_cd_play">Play</string>
+    <string name="viewer_playback_error">Can\'t play this video</string>
 
     <!-- File manager screen -->
     <string name="files_title">Files</string>
