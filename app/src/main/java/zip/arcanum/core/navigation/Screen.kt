@@ -19,32 +19,18 @@ sealed class Screen(val route: String) {
         fun buildRoute(containerId: String) = "gallery/$containerId"
     }
 
-    object PhotoViewer : Screen("photo_viewer/{photoId}") {
-        const val ARG = "photoId"
-        fun buildRoute(photoId: String) = "photo_viewer/$photoId"
-    }
-
-    object VideoPlayer : Screen("video_player/{fileId}") {
-        const val ARG = "fileId"
-        fun buildRoute(fileId: String) = "video_player/$fileId"
+    object PhotoViewer : Screen("photo_viewer/{photoId}?folderScope={folderScope}") {
+        const val ARG              = "photoId"
+        const val ARG_FOLDER_SCOPE = "folderScope"
+        // folderScope = true limits the swipe siblings to the opened file's folder (used when
+        // opening from the Files browser); false swipes all vault media (the Gallery timeline).
+        fun buildRoute(photoId: String, folderScope: Boolean = false) =
+            "photo_viewer/$photoId?folderScope=$folderScope"
     }
 
     object AudioPlayer : Screen("audio_player/{fileId}") {
         const val ARG = "fileId"
         fun buildRoute(fileId: String) = "audio_player/$fileId"
-    }
-
-    object MediaViewerDirect : Screen("media_viewer_direct?cid={cid}&path={path}&name={name}&size={size}") {
-        const val ARG_CONTAINER = "cid"
-        const val ARG_PATH      = "path"
-        const val ARG_NAME      = "name"
-        const val ARG_SIZE      = "size"
-
-        fun buildRoute(containerId: String, path: String, name: String, size: Long): String {
-            val encodedPath = android.net.Uri.encode(path)
-            val encodedName = android.net.Uri.encode(name)
-            return "media_viewer_direct?cid=$containerId&path=$encodedPath&name=$encodedName&size=$size"
-        }
     }
 
     object AudioPlayerDirect : Screen("audio_player_direct?cid={cid}&path={path}&name={name}&size={size}") {

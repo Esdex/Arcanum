@@ -100,7 +100,7 @@ fun ContainerScreen(
     onVideoClick: (fileId: String) -> Unit = {},
     onAudioClick: (fileId: String) -> Unit = {},
     onAudioFileClick: (containerId: String, path: String, name: String, size: Long) -> Unit = { _, _, _, _ -> },
-    onMediaFileClick: (containerId: String, path: String, name: String, size: Long) -> Unit = { _, _, _, _ -> },
+    onMediaFileClick: (fileId: String) -> Unit = {},
     viewModel: ContainerScreenViewModel = hiltViewModel(),
     galleryViewModel: GalleryViewModel = hiltViewModel(),
     fileManagerViewModel: FileManagerViewModel = hiltViewModel(),
@@ -244,9 +244,7 @@ fun ContainerScreen(
                                     onAudioFileClick = { path, name, size ->
                                         onAudioFileClick(viewModel.containerId, path, name, size)
                                     },
-                                    onMediaFileClick = { path, name, size ->
-                                        onMediaFileClick(viewModel.containerId, path, name, size)
-                                    },
+                                    onMediaFileClick = { fileId -> onMediaFileClick(fileId) },
                                     viewModel        = fileManagerViewModel
                                 )
                                 BottomNavItem.ContainerInfo -> VaultStorageScreen(

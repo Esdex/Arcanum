@@ -22,10 +22,8 @@ class MediaPlayerViewModel @Inject constructor(
     val engine: VeraCryptEngine
 ) : ViewModel() {
 
-    // Works for both VideoPlayer and AudioPlayer routes (same arg name "fileId")
-    private val fileId: String = savedStateHandle[Screen.VideoPlayer.ARG]
-        ?: savedStateHandle[Screen.AudioPlayer.ARG]
-        ?: ""
+    // Backs the gallery AudioPlayer route.
+    private val fileId: String = savedStateHandle[Screen.AudioPlayer.ARG] ?: ""
 
     private val _file = MutableStateFlow<MediaFileEntity?>(null)
     val file = _file.asStateFlow()

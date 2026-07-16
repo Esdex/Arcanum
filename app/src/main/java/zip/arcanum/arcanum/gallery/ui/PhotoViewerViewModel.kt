@@ -44,6 +44,10 @@ class PhotoViewerViewModel @Inject constructor(
 
     private val fileId: String = savedStateHandle[Screen.PhotoViewer.ARG] ?: ""
 
+    // When true, the swipe siblings are limited to the opened file's folder (entry from the Files
+    // browser); when false, they span all visual media in the vault (the Gallery timeline).
+    private val folderScope: Boolean = savedStateHandle[Screen.PhotoViewer.ARG_FOLDER_SCOPE] ?: false
+
     data class UiState(
         val currentFile: MediaFileEntity? = null,
         val siblings: List<MediaFileEntity> = emptyList(),
@@ -71,7 +75,7 @@ class PhotoViewerViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, error = "File not found") }
                 return@launch
             }
-            val siblings = mediaFileDao.getVisualMediaOnce(file.containerId)
+            val siblings = loadSiblings(file)
             val idx = siblings.indexOfFirst { it.id == fileId }.coerceAtLeast(0)
             _uiState.update {
                 it.copy(
@@ -84,6 +88,18 @@ class PhotoViewerViewModel @Inject constructor(
             loadBitmapRange(idx)
         }
 
+    }
+
+    // Parent directory of a container-relative path ("/a/b/c.jpg" -> "/a/b", "/c.jpg" -> "").
+    private fun parentDir(path: String) = path.substringBeforeLast('/', "")
+
+    // All visual media in the container, narrowed to [file]'s folder when folderScope is on.
+    private suspend fun loadSiblings(file: MediaFileEntity): List<MediaFileEntity> {
+        val all = mediaFileDao.getVisualMediaOnce(file.containerId)
+        return if (folderScope) {
+            val dir = parentDir(file.relativePath)
+            all.filter { parentDir(it.relativePath) == dir }
+        } else all
     }
 
     // Loads the bitmap for a single image file. Returns null on error. Must be called on IO dispatcher.
@@ -231,7 +247,7 @@ class PhotoViewerViewModel @Inject constructor(
             }
             val updated = file.copy(dateCreated = newDateMillis, dateModified = newDateMillis)
             mediaFileDao.updateMediaFile(updated)
-            val siblings = mediaFileDao.getVisualMediaOnce(file.containerId)
+            val siblings = loadSiblings(updated)
             val idx = siblings.indexOfFirst { it.id == file.id }.coerceAtLeast(0)
             _uiState.update { it.copy(
                 currentFile = updated,
