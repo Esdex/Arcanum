@@ -88,14 +88,18 @@ fun AppNavigation(pinManager: PinManager) {
     val settingsViewModel: SettingsViewModel = hiltViewModel()
     val calculatorEnabled by settingsViewModel.calculatorEnabled.collectAsState()
 
-    // Gate only on isPinSet — calculatorEnabled null means key absent, handled below.
-    if (isPinSet == null) {
+    // Wait for BOTH the PIN state and the calculator preference before choosing the start
+    // destination. They load from independent async stores (EncryptedSharedPreferences vs
+    // DataStore) with no ordering guarantee. If we committed the start destination the moment
+    // isPinSet resolved, a not-yet-loaded calculator preference would fall back to the PIN
+    // screen even though the disguise is enabled — issue #97. calculatorEnabled is null only
+    // while still loading; once loaded it is a real Boolean (absent key → false).
+    if (isPinSet == null || calculatorEnabled == null) {
         Box(Modifier.fillMaxSize())
         return
     }
 
-    // null = key absent → default false (PinEntry). Calculator opt-in only via DisguiseOverlay or Settings.
-    val useCalculator = calculatorEnabled ?: false
+    val useCalculator = calculatorEnabled == true
     val lockScreenRoute = if (useCalculator) Screen.Calculator.route else Screen.PinEntry.route
 
     val startDestination = remember {

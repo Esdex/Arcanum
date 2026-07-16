@@ -110,12 +110,19 @@ class SettingsViewModel @Inject constructor(
         initialValue = true
     )
 
-    // null = loading (key absent from DataStore); treat as true (calculator on by default)
-    val calculatorEnabled = prefs.calculatorEnabled.stateIn(
-        scope        = viewModelScope,
-        started      = SharingStarted.Eagerly,
-        initialValue = null
-    )
+    // null = still reading from DataStore (initial value, before the first disk emission).
+    // Once loaded it is never null: key present → its value; key absent (fresh install) →
+    // false, since the calculator disguise is opt-in (enabled via the disguise prompt or
+    // Settings). AppNavigation gates the start destination on this being non-null so the
+    // launch race in issue #97 (isPinSet resolves first → PIN screen despite the disguise)
+    // can't fall back to the wrong lock screen.
+    val calculatorEnabled: StateFlow<Boolean?> = prefs.calculatorEnabled
+        .map { it ?: false }
+        .stateIn(
+            scope        = viewModelScope,
+            started      = SharingStarted.Eagerly,
+            initialValue = null
+        )
 
     private val _manualShowDisguise = MutableStateFlow(false)
     private val _disguiseApplied    = MutableStateFlow(disguiseManager.isDisguiseApplied())
