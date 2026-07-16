@@ -287,8 +287,12 @@ fun MediaViewerScreen(
     // True once the user has deliberately tapped the video — enables the center play button
     var userInteracted by remember { mutableStateOf(false) }
 
-    // Reset bars and configure the shared ExoPlayer when the active file changes
-    LaunchedEffect(uiState.currentFile?.id) {
+    // Reset bars and configure the shared ExoPlayer when the active file changes.
+    // Also keyed on mc: the MediaController resolves asynchronously, so on first open the
+    // file often lands before it is ready. Without mc as a key the effect would run once
+    // with mc == null, bail early, and never reconfigure - leaving a black, non-playing
+    // video until the user swiped to another item and back (#100).
+    LaunchedEffect(uiState.currentFile?.id, mc) {
         userInteracted = false
         showBars = true
         val file = uiState.currentFile ?: return@LaunchedEffect
