@@ -1,0 +1,10 @@
+- Fix: Calculator disguise shows at launch
+- Fix: Calculator disguise respects 3-button navigation
+- Fix: Gallery videos play on first open
+- Fix: Large videos open instantly
+- Improvement: Refined video player controls
+- Improvement: One media viewer everywhere
+- Improvement: Screen stays on during video playback
+- Fix: No auto-lock while media is playing
+- Improvement: Shareable crash reports
+- Fix: No stale mounted state after a background kill
