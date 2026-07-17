@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import zip.arcanum.ArcanumApp
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.core.database.AppDatabase
@@ -81,12 +82,18 @@ class DebugViewModel @Inject constructor(
         val pim: Int
     )
 
+    data class CrashLog(
+        val name: String,
+        val content: String
+    )
+
     data class DebugState(
         val isLoading: Boolean = false,
         val runtime: RuntimeInfo? = null,
         val security: SecurityInfo? = null,
         val db: DatabaseInfo? = null,
         val mounted: List<MountedContainer> = emptyList(),
+        val crashLogs: List<CrashLog> = emptyList(),
         val dryRunActions: List<String>? = null
     )
 
@@ -104,8 +111,9 @@ class DebugViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
 
-            val runtime  = withContext(Dispatchers.Default) { buildRuntime() }
-            val security = withContext(Dispatchers.IO) { buildSecurity() }
+            val runtime   = withContext(Dispatchers.Default) { buildRuntime() }
+            val security  = withContext(Dispatchers.IO) { buildSecurity() }
+            val crashLogs = withContext(Dispatchers.IO) { readCrashLogs() }
 
             val allContainers = repo.getAllContainersRaw().first()
             val mountedList = allContainers.filter { it.isMounted }.map { entity ->
@@ -126,8 +134,33 @@ class DebugViewModel @Inject constructor(
                 runtime   = runtime,
                 security  = security,
                 db        = dbInfo,
-                mounted   = mountedList
+                mounted   = mountedList,
+                crashLogs = crashLogs
             ) }
+        }
+    }
+
+    private fun readCrashLogs(): List<CrashLog> =
+        java.io.File(context.filesDir, ArcanumApp.CRASH_DIR_NAME)
+            .listFiles()
+            ?.filter { it.isFile && it.length() > 0L }
+            ?.sortedByDescending { it.lastModified() }
+            ?.map { CrashLog(it.name, it.readText()) }
+            ?: emptyList()
+
+    fun copyCrashLogsToClipboard() {
+        val logs = state.value.crashLogs
+        if (logs.isEmpty()) return
+        val text = logs.joinToString("\n\n") { "----- ${it.name} -----\n${it.content}" }
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("Arcanum Crash Log", text))
+    }
+
+    fun clearCrashLogs() {
+        viewModelScope.launch(Dispatchers.IO) {
+            java.io.File(context.filesDir, ArcanumApp.CRASH_DIR_NAME)
+                .listFiles()?.forEach { it.delete() }
+            _state.update { it.copy(crashLogs = emptyList()) }
         }
     }
 

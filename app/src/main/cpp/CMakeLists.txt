@@ -35,6 +35,7 @@ set(ARCANUM_SOURCES
     vc_header.cpp
     jni_volume.cpp
     jni_files.cpp
+    crash_handler.cpp
 )
 
 # ── Main native library ───────────────────────────────────────────────
