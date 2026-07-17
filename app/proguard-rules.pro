@@ -17,6 +17,8 @@
 -keep class zip.arcanum.crypto.NativeFileInfo { *; }
 # NativeContainer and CryptoResult are accessed by name from JNI callbacks.
 -keep class zip.arcanum.crypto.NativeContainer { *; }
+# NativeCrashHandler.nativeInstall is resolved by its mangled JNI name at load time.
+-keep class zip.arcanum.crypto.NativeCrashHandler { *; }
 -keep class zip.arcanum.crypto.CryptoResult { *; }
 -keep class zip.arcanum.crypto.CryptoError { *; }
 # CreationProgressListener is called back from C++ via JNI — onProgress(float,float,long)

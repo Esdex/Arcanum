@@ -2273,6 +2273,56 @@ private fun DebugSubScreen(
                     }
                 }
 
+                // ── Crash log ─────────────────────────────────────────────────
+                if (state.crashLogs.isNotEmpty()) {
+                    PanicSectionLabel("Crash log")
+                    SettingsGroup {
+                        state.crashLogs.forEach { log ->
+                            Text(
+                                text     = log.name,
+                                style    = MaterialTheme.typography.labelMedium,
+                                color    = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                            )
+                            Text(
+                                text     = log.content.trim(),
+                                style    = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                color    = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        Row(
+                            modifier              = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick  = {
+                                    debugViewModel.copyCrashLogsToClipboard()
+                                    Toast.makeText(context, "Crash log copied", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Copy", style = MaterialTheme.typography.labelMedium)
+                            }
+                            OutlinedButton(
+                                onClick  = { debugViewModel.clearCrashLogs() },
+                                colors   = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                border   = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Clear", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
+
                 Spacer(Modifier.height(16.dp))
             }
         }
