@@ -82,7 +82,12 @@ emit_section() {
         | select(.type == $t)
         | "- **\(.title)**" + (if .description then " — \(.description)" else "" end)
     ' "$WHATSNEW_JSON")
-    [[ -n "$body" ]] && printf '### %s\n%s\n\n' "$heading" "$body"
+    # Use an if, not `[[ ]] && printf`: an empty section (e.g. a release with no `new`
+    # or `security` entries) would make the && return non-zero, and under `set -e` that
+    # silently kills the whole script right here. The if always returns 0 when skipped.
+    if [[ -n "$body" ]]; then
+        printf '### %s\n%s\n\n' "$heading" "$body"
+    fi
 }
 {
     emit_section new         "New"
