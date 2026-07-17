@@ -39,6 +39,7 @@ import zip.arcanum.arcanum.gallery.ServiceEncryptedDataSource
 import zip.arcanum.arcanum.gallery.domain.AudioMetadata
 import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
 import zip.arcanum.core.navigation.Screen
+import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
 import kotlin.math.sqrt
@@ -54,6 +55,7 @@ class AudioPlayerDirectViewModel @Inject constructor(
     val engine: VeraCryptEngine,
     private val repo: ContainerRepository,
     private val queue: AudioPlayerQueue,
+    private val idleMonitor: IdleMonitor,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
@@ -499,6 +501,10 @@ class AudioPlayerDirectViewModel @Inject constructor(
             ?.size?.takeIf { it > 0L } ?: navSize
 
     private fun stripExtension(name: String) = name.substringBeforeLast(".", name)
+
+    // Refresh the idle auto-lock baseline. Called periodically by the screen while audio is
+    // actively playing so listening (which produces no touch events) doesn't trip the idle timer.
+    fun recordInteraction() = idleMonitor.recordInteraction()
 
     override fun onCleared() {
         progressJob?.cancel()

@@ -80,6 +80,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -111,6 +115,17 @@ fun AudioPlayerDirectScreen(
             WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars())
         }
         onDispose { }
+    }
+
+    // Listening to audio is real activity though it produces no touch events, so playback must not
+    // trip idle auto-lock. Refresh the idle baseline while playing (gated on RESUMED so backgrounded
+    // playback still ages the vault out); pausing lets the timer count normally.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(state.isPlaying) {
+        if (!state.isPlaying) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) { viewModel.recordInteraction(); delay(10_000) }
+        }
     }
 
     // Animate dominant color smoothly across track changes
@@ -580,6 +595,18 @@ fun AudioPlayerScreen(
             }
             DisposableEffect(exoPlayer) {
                 onDispose { exoPlayer.stop(); exoPlayer.release() }
+            }
+
+            // Keep the idle auto-lock timer from firing while audio actually plays (no touch events
+            // during playback). Gated on RESUMED so backgrounded playback still ages the vault out.
+            val lifecycleOwner = LocalLifecycleOwner.current
+            LaunchedEffect(exoPlayer) {
+                lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                    while (true) {
+                        if (exoPlayer.isPlaying) viewModel.recordInteraction()
+                        delay(10_000)
+                    }
+                }
             }
 
             Column(
