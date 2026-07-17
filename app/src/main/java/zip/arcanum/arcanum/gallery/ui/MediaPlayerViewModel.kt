@@ -11,6 +11,7 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.navigation.Screen
+import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
 
@@ -19,7 +20,8 @@ class MediaPlayerViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val mediaFileDao: MediaFileDao,
     private val repo: ContainerRepository,
-    val engine: VeraCryptEngine
+    val engine: VeraCryptEngine,
+    private val idleMonitor: IdleMonitor
 ) : ViewModel() {
 
     // Backs the gallery AudioPlayer route.
@@ -38,4 +40,8 @@ class MediaPlayerViewModel @Inject constructor(
         val containerId = _file.value?.containerId ?: return null
         return repo.getContainerHandle(containerId)
     }
+
+    // Refresh the idle auto-lock baseline. Called periodically by the screen while audio is
+    // actively playing so listening (which produces no touch events) doesn't trip the idle timer.
+    fun recordInteraction() = idleMonitor.recordInteraction()
 }

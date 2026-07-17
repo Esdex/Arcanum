@@ -141,6 +141,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.app.Activity
 import android.view.WindowManager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -242,6 +245,22 @@ fun MediaViewerScreen(
         if (isPlaying) window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+
+    // Watching a video is real activity even though it produces no touch events, so a playing video
+    // must not trip idle auto-lock. Refresh the idle baseline periodically (well under the 30s
+    // shortest window) while playback runs. Gated on RESUMED via repeatOnLifecycle so a backgrounded
+    // video still ages the vault out, per the auto-lock security model; pausing stops the refresh,
+    // letting the timer count normally.
+    val idleLifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(isPlaying) {
+        if (!isPlaying) return@LaunchedEffect
+        idleLifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                viewModel.recordInteraction()
+                delay(10_000)
+            }
+        }
     }
 
     val exportLauncher = rememberLauncherForActivityResult(

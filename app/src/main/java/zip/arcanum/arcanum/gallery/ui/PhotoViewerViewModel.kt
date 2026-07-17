@@ -28,6 +28,7 @@ import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
 
@@ -39,7 +40,8 @@ class PhotoViewerViewModel @Inject constructor(
     private val repo: ContainerRepository,
     val engine: VeraCryptEngine,
     private val exifReader: ExifReader,
-    private val thumbnailManager: ThumbnailManager
+    private val thumbnailManager: ThumbnailManager,
+    private val idleMonitor: IdleMonitor
 ) : ViewModel() {
 
     private val fileId: String = savedStateHandle[Screen.PhotoViewer.ARG] ?: ""
@@ -367,4 +369,8 @@ class PhotoViewerViewModel @Inject constructor(
     }
 
     fun getHandleForContainer(id: String): Long? = repo.getContainerHandle(id)
+
+    // Refresh the idle auto-lock baseline. Called periodically by the viewer while a video is
+    // actively playing so watching (which produces no touch events) doesn't trip the idle timer.
+    fun recordInteraction() = idleMonitor.recordInteraction()
 }
