@@ -322,30 +322,44 @@ class DebugViewModel @Inject constructor(
     }
 
     private fun getSELinux(): String {
-        // 1. Direct file read
-        try {
-            val v = java.io.File("/sys/fs/selinux/enforce").readText().trim()
-            if (v == "1") return "Enforcing"
-            if (v == "0") return "Permissive"
-        } catch (_: Exception) {}
+        // Report the RUNTIME enforcing state, and only claim "Permissive" when a runtime source
+        // positively confirms it. ro.boot.selinux is deliberately NOT consulted: it is the
+        // boot-time request from the kernel command line, not the live state - a device can boot
+        // permissive and be switched to enforcing at runtime, which produced false "Permissive"
+        // reports here (#92 debug info -> #106).
 
-        // 2. android.os.SELinux reflection
+        // 1. security_getenforce() via android.os.SELinux - the live kernel state.
         try {
             val cls = Class.forName("android.os.SELinux")
             val enforced = cls.getMethod("isSELinuxEnforced").invoke(null) as Boolean
             return if (enforced) "Enforcing" else "Permissive"
-        } catch (_: Exception) {}
+        } catch (_: Throwable) {}
 
-        // 3. ro.boot.selinux system property
+        // 2. getenforce - the same live state, for devices where the reflection above is blocked
+        //    by the non-SDK interface restrictions.
         try {
-            val cls = Class.forName("android.os.SystemProperties")
-            val get = cls.getMethod("get", String::class.java, String::class.java)
-            val v   = get.invoke(null, "ro.boot.selinux", "") as String
-            if (v.isNotEmpty()) return v.replaceFirstChar { it.uppercaseChar() }
-        } catch (_: Exception) {}
+            val p = ProcessBuilder("getenforce").redirectErrorStream(true).start()
+            val out = p.inputStream.bufferedReader().use { it.readLine() }?.trim()?.lowercase()
+            p.waitFor()
+            when (out) {
+                "enforcing"  -> return "Enforcing"
+                "permissive" -> return "Permissive"
+            }
+        } catch (_: Throwable) {}
 
-        // Android 5+ is always enforcing per CDD requirement
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) "Enforcing" else "Unknown"
+        // 3. /sys/fs/selinux/enforce - live state too, though reading it is itself often denied
+        //    on an enforcing device (in which case we fall through).
+        try {
+            when (java.io.File("/sys/fs/selinux/enforce").readText().trim()) {
+                "1" -> return "Enforcing"
+                "0" -> return "Permissive"
+            }
+        } catch (_: Throwable) {}
+
+        // No runtime source was readable. Android has mandated global enforcing mode since 5.0
+        // (CDD), so assume Enforcing rather than guessing - but mark it unverified so the debug
+        // screen never overstates certainty (and never falsely reads Permissive).
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) "Enforcing (assumed)" else "Unknown"
     }
 
     private fun isBootloaderUnlocked(): Boolean {

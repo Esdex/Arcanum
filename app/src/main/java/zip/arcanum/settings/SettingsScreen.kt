@@ -2127,7 +2127,9 @@ private fun DebugSubScreen(
                             infoText   = "Security-Enhanced Linux enforces mandatory access controls at OS level.\n\n" +
                                 "Enforcing — policy violations are blocked. Required on all Google-certified devices.\n\n" +
                                 "Permissive — violations are only logged, not blocked. Common on custom ROMs. " +
-                                "Reduces inter-process isolation."
+                                "Reduces inter-process isolation.\n\n" +
+                                "Enforcing (assumed) — the live state could not be queried on this device " +
+                                "(the OS blocks the check); Android has mandated enforcing since 5.0."
                         )
                         DebugRow(
                             label      = "Root",
