@@ -4,7 +4,8 @@
       "version": "0.0.0",
       "versionCode": 9,
       "entries": [
-        { "type": "fix", "title": "Correct location for vaults added from the Downloads or Videos picker", "description": "Adding an existing vault while the file picker was showing Downloads, Videos, or any section other than the device's own storage showed a meaningless location like Internal/1000000123 instead of the real folder. The vault's location now resolves correctly no matter which picker section you chose the file from." }
+        { "type": "fix", "title": "Correct location for vaults added from the Downloads or Videos picker", "description": "Adding an existing vault while the file picker was showing Downloads, Videos, or any section other than the device's own storage showed a meaningless location like Internal/1000000123 instead of the real folder. The vault's location now resolves correctly no matter which picker section you chose the file from." },
+        { "type": "fix", "title": "Open FAT32 vaults created by other apps", "description": "Some apps (for example AndroidCrypt) format small containers as FAT32 even when they hold too few clusters to qualify as FAT32 under the spec. Arcanum's bundled filesystem rejected these with a mount failure, even though the password was correct and the same vault opened fine in desktop VeraCrypt. Arcanum now honors the on-disk FAT32 layout and mounts these vaults." }
       ]
     },
     {

@@ -3622,6 +3622,23 @@ static FRESULT mount_volume (	/* FR_OK(0): successful, !=0: an error occurred */
 		if (nclst <= MAX_FAT12) fmt = FS_FAT12;
 		if (fmt == 0) return FR_NO_FILESYSTEM;
 
+		/* Arcanum: honor an explicit FAT32 BPB even when the cluster count lands
+		 * in the FAT12/16 range. Some tools (e.g. AndroidCrypt) format small
+		 * volumes as FAT32 with fewer than 65525 clusters - illegal per the MS
+		 * FAT spec, but accepted by Windows, Linux and VeraCrypt. Detecting
+		 * FAT16/12 here would then fail the "RootEntCnt must not be 0" check
+		 * below (a FAT32 layout has no fixed root directory), so treat the
+		 * volume as its on-disk FAT32 layout. Cap the cluster count to what the
+		 * 32-bit FAT physically addresses so the geometry stays self-consistent
+		 * and no FAT access ever runs past the table. Only sub-65525-cluster
+		 * FAT32 volumes take this path; normal FAT16/FAT32 detection is byte-for
+		 * -byte unchanged (FATSz16 != 0, or fmt already FS_FAT32). */
+		if (fmt != FS_FAT32 && ld_16(fs->win + BPB_FATSz16) == 0) {
+			DWORD fat_clst = fs->fsize * (SS(fs) / 4);	/* Cluster entries the FAT32 table holds */
+			if (fat_clst > 2 && nclst > fat_clst - 2) nclst = fat_clst - 2;
+			fmt = FS_FAT32;
+		}
+
 		/* Boundaries and Limits */
 		fs->n_fatent = nclst + 2;						/* Number of FAT entries */
 		/* Arcanum #51: cap the allocation ceiling (NOT the FAT type) to the physical
