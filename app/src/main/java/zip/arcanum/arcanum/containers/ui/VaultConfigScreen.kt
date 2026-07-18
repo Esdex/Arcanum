@@ -530,7 +530,7 @@ private fun VaultConfigHero(
         label         = "hero_tint"
     )
 
-    val displayPath = remember(container?.path, container?.safUri) {
+    val displayPath = remember(container?.path, container?.safUri, container?.name) {
         when {
             container == null -> ""
             container.path.isNotBlank() -> {
@@ -551,13 +551,7 @@ private fun VaultConfigHero(
                     else -> path
                 }
             }
-            container.safUri.isNotBlank() -> {
-                val seg = android.net.Uri.decode(
-                    android.net.Uri.parse(container.safUri).lastPathSegment ?: ""
-                )
-                val after = seg.substringAfter(':')
-                if (after.isNotEmpty()) "Internal/$after" else seg
-            }
+            container.safUri.isNotBlank() -> safUriLocationDisplay(container.safUri, container.name)
             else -> ""
         }
     }

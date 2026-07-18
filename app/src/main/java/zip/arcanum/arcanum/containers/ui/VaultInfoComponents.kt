@@ -2,6 +2,7 @@ package zip.arcanum.arcanum.containers.ui
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -194,12 +195,51 @@ internal fun vaultLocationDisplay(context: Context, container: Container): Strin
             else -> path
         }
     }
-    container.safUri.isNotBlank() -> {
-        val seg = Uri.decode(Uri.parse(container.safUri).lastPathSegment ?: "")
-        val after = seg.substringAfter(':')
-        if (after.isNotEmpty()) "Internal/$after" else seg
-    }
+    container.safUri.isNotBlank() -> safUriLocationDisplay(container.safUri, container.name)
     else -> "—"
+}
+
+/**
+ * Best-effort human-readable location for a SAF document URI.
+ *
+ * Only the external-storage provider exposes a filesystem-style document id
+ * ("primary:Download/vault.hc", or "raw:/storage/emulated/0/..."). The other
+ * document providers - the Downloads UI, the Videos/Media UI, cloud roots -
+ * hand back opaque ids ("msf:1000000123", "video:42") that can't be turned
+ * into a path, so we fall back to a provider hint or the file name instead of
+ * printing "Internal/<garbage-id>".
+ */
+internal fun safUriLocationDisplay(safUri: String, fileName: String): String {
+    val uri   = Uri.parse(safUri)
+    val docId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+        ?: Uri.decode(uri.lastPathSegment ?: "")
+
+    // "raw:/storage/emulated/0/Download/vault.hc" - a real path, some providers use it.
+    if (docId.startsWith("raw:")) {
+        val p = docId.removePrefix("raw:")
+        return when {
+            p.startsWith("/storage/emulated/0/") -> "Internal/" + p.removePrefix("/storage/emulated/0/")
+            p.startsWith("/sdcard/")             -> "Internal/" + p.removePrefix("/sdcard/")
+            else                                 -> p
+        }
+    }
+
+    when (uri.authority) {
+        "com.android.externalstorage.documents" -> {
+            // "<volume>:<relative/path>"
+            val volume = docId.substringBefore(':', "")
+            val rel    = docId.substringAfter(':', "")
+            if (rel.isNotEmpty()) {
+                val root = if (volume == "primary") "Internal" else volume
+                return "$root/$rel"
+            }
+        }
+        // Same label the file gets when picked via external-storage: "Internal/Download/vault.hc".
+        "com.android.providers.downloads.documents" -> return "Internal/Download/$fileName"
+    }
+
+    // Unknown provider (media/cloud/etc.): the id is opaque, show just the file name under Internal.
+    return "Internal/$fileName"
 }
 
 // "AES-256-XTS" → "AES", "AES-Twofish-Serpent-256-XTS" → "AES-Twofish-Serpent"
