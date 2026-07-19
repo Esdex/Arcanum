@@ -389,17 +389,43 @@ int wipe_and_rewrite_header(int fd, uint64_t fileOff,
                              const uint8_t* extraEntropy = nullptr,
                              size_t extraEntropyLen = 0);
 
+/* ─── Keyfile pool (vc_header.cpp) ───────────────────────────────────── */
+/*
+ * The pool is 64 bytes for passwords up to 64 bytes and 128 bytes beyond that,
+ * exactly as VeraCrypt picks it (Keyfiles.c:239). Arcanum hardcoded 64 before
+ * issue #112; volumes written by that version with a keyfile AND a password
+ * over 64 bytes carry a 64-byte-pool header that the corrected code cannot
+ * reproduce.
+ *
+ * forceLegacyPool exists solely to open those. Rules:
+ *   - Authentication paths (mount, and the credential check in change/backup/
+ *     restore/expand) MAY retry with it after a normal attempt fails.
+ *   - Paths that WRITE a header must never use it, so every header written
+ *     from now on is correct and a re-key silently heals the volume.
+ * Use keyfile_pool_has_legacy_variant() to skip the retry when it cannot
+ * possibly differ - otherwise a wrong password costs two full PBKDF2 runs.
+ */
+
+/* True when the standard and legacy pools would differ for this input, i.e.
+ * the retry is worth attempting. Keyfiles must be present and the password
+ * longer than the legacy pool; otherwise both paths produce identical bytes. */
+inline bool keyfile_pool_has_legacy_variant(int origPwdLen, bool haveKeyfiles) {
+    return haveKeyfiles && origPwdLen > 64;
+}
+
 /* Apply one or more keyfiles (read from disk paths) to the password buffer.
  * Matches VeraCrypt KeyFilesApply() exactly.
  * Returns false on OOM — caller must propagate as a hard error. */
 bool apply_keyfiles_to_password(const std::vector<std::string>& paths,
-                                 uint8_t *pwd_buf, int *pwd_len);
+                                 uint8_t *pwd_buf, int *pwd_len,
+                                 bool forceLegacyPool = false);
 
 /* Same as apply_keyfiles_to_password but reads from JNI byte arrays (no disk
  * access). jKeyfileData is an Array<ByteArray>? — null or empty means no-op.
  * Returns false on OOM. */
 bool apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
-                            uint8_t *pwd_buf, int *pwd_len);
+                            uint8_t *pwd_buf, int *pwd_len,
+                            bool forceLegacyPool = false);
 
 /* ─── jni_volume.cpp / jni_files.cpp shared JNI utilities ───────────── */
 /*

@@ -21,26 +21,62 @@
 
 /* ─── VeraCrypt keyfile pool ─────────────────────────────────────────── */
 /*
- * Exact match to VeraCrypt Keyfiles.cpp :: KeyFileProcess() + KeyFilesApply()
+ * Exact match to VeraCrypt Keyfiles.c :: KeyFileProcess() + KeyFilesApply()
  *
  *  KeyFileProcess:
  *    crc = 0xFFFFFFFF (running, never finalised)
  *    for each byte b in keyfile (up to 1 MB):
  *        crc = CRCFUNC(crc, b)               ← table step, same as crc32_step
- *        pool[j % POOL_SIZE] += (crc >> 24)  ← high byte, addition not XOR
+ *        pool[j % poolSize] += (crc >> 24)   ← high byte, addition not XOR
  *
  *  KeyFilesApply:
- *    if pwd_len < POOL_SIZE: pad password with zeros to POOL_SIZE
- *    for i in [0, POOL_SIZE): password[i] += pool[i]  ← byte addition
- *    pwd_len = max(pwd_len, POOL_SIZE)
+ *    if pwd_len < poolSize: pad password with zeros to poolSize
+ *    for i in [0, poolSize): password[i] += pool[i]  ← byte addition
+ *    pwd_len = max(pwd_len, poolSize)
+ *
+ * POOL SIZE IS NOT FIXED. VeraCrypt (Keyfiles.c:239) picks it from the
+ * ORIGINAL password length, before any padding:
+ *
+ *     poolSize = pwd_len <= MAX_LEGACY_PASSWORD ? 64 : 128
+ *
+ * Arcanum hardcoded 64 until issue #112, which made every volume created here
+ * with a keyfile AND a password over 64 bytes incompatible with desktop
+ * VeraCrypt (and vice versa). Note "bytes", not characters: passwords are
+ * UTF-8, so a Cyrillic password crosses 64 bytes at 33 characters.
+ *
+ * Volumes created by the buggy version can still be opened: authentication
+ * paths retry with forceLegacyPool=true (see keyfile_pool_has_legacy_variant
+ * in arcanum_internal.h). Never pass forceLegacyPool on a path that WRITES a
+ * header — new headers must always use the correct pool.
  */
-#define VC_KEYFILE_POOL_SIZE  64
+#define VC_KEYFILE_POOL_LEGACY_SIZE  64            /* VeraCrypt KEYFILE_POOL_LEGACY_SIZE */
+#define VC_KEYFILE_POOL_SIZE        128            /* VeraCrypt KEYFILE_POOL_SIZE */
 #define VC_KEYFILE_MAX_READ   (1 * 1024 * 1024)   /* 1 MB cap (VeraCrypt MAX_KEY_FILE_SIZE) */
+
+/* vc_process_keyfile_buf writes 4 bytes per step and wraps only when j reaches
+   poolSize, so a non-multiple-of-4 pool would overrun. VeraCrypt guards the
+   same way (#error in Keyfiles.c). */
+static_assert(VC_KEYFILE_POOL_SIZE % 4 == 0,        "pool size must be a multiple of 4");
+static_assert(VC_KEYFILE_POOL_LEGACY_SIZE % 4 == 0, "legacy pool size must be a multiple of 4");
+/* The pool zero-extends the password up to poolSize, so the caller's buffer
+   must hold at least the largest pool. */
+static_assert(VC_KEYFILE_POOL_SIZE <= VC_MAX_PWD_LEN,
+              "password buffers must fit the largest keyfile pool");
+
+/* Selects the pool size the way VeraCrypt does, from the original password
+   length. forceLegacy pins the 64-byte pool for opening volumes written by
+   Arcanum before the #112 fix. */
+static int vc_keyfile_pool_size(int origPwdLen, bool forceLegacy) {
+    if (forceLegacy) return VC_KEYFILE_POOL_LEGACY_SIZE;
+    return origPwdLen <= VC_KEYFILE_POOL_LEGACY_SIZE
+           ? VC_KEYFILE_POOL_LEGACY_SIZE
+           : VC_KEYFILE_POOL_SIZE;
+}
 
 /* Process raw keyfile bytes into pool — separated for unit-testability.
    Matches VeraCrypt KeyFileProcess() exactly. */
 static void vc_process_keyfile_buf(const uint8_t *data, size_t size,
-                                    uint8_t pool[VC_KEYFILE_POOL_SIZE]) {
+                                    uint8_t *pool, int poolSize) {
     uint32_t crc   = 0xFFFFFFFFUL;
     size_t   j     = 0;
     size_t   limit = (size > (size_t)VC_KEYFILE_MAX_READ) ? (size_t)VC_KEYFILE_MAX_READ : size;
@@ -51,8 +87,20 @@ static void vc_process_keyfile_buf(const uint8_t *data, size_t size,
         pool[j + 2] += (uint8_t)(crc >>  8);
         pool[j + 3] += (uint8_t)(crc      );
         j += 4;
-        if (j >= VC_KEYFILE_POOL_SIZE) j = 0;
+        if (j >= (size_t)poolSize) j = 0;
     }
+}
+
+/* Applies the accumulated pool to the password buffer. Shared by the path and
+   JNI-array variants so the padding/addition rule lives in one place. */
+static void vc_apply_pool_to_password(const uint8_t *pool, int poolSize,
+                                       uint8_t *pwd_buf, int *pwd_len) {
+    if (*pwd_len < poolSize) {
+        memset(pwd_buf + *pwd_len, 0, (size_t)(poolSize - *pwd_len));
+        *pwd_len = poolSize;
+    }
+    for (int i = 0; i < poolSize; i++)
+        pwd_buf[i] = (uint8_t)((uint8_t)pwd_buf[i] + pool[i]);
 }
 
 /* Apply one or more keyfiles to the password buffer.
@@ -62,8 +110,12 @@ static void vc_process_keyfile_buf(const uint8_t *data, size_t size,
  *   - Password is zero-extended to POOL_SIZE before pool application.
  */
 bool apply_keyfiles_to_password(const std::vector<std::string>& paths,
-                                 uint8_t *pwd_buf, int *pwd_len) {
+                                 uint8_t *pwd_buf, int *pwd_len,
+                                 bool forceLegacyPool) {
     if (paths.empty()) return true;
+
+    /* Chosen from the ORIGINAL length, before the padding below grows it. */
+    const int poolSize = vc_keyfile_pool_size(*pwd_len, forceLegacyPool);
 
     uint8_t pool[VC_KEYFILE_POOL_SIZE] = {};   /* accumulates across all keyfiles */
 
@@ -81,20 +133,12 @@ bool apply_keyfiles_to_password(const std::vector<std::string>& paths,
         size_t total = fread(kfData, 1, (size_t)VC_KEYFILE_MAX_READ, f);
         fclose(f);
 
-        vc_process_keyfile_buf(kfData, total, pool);   /* crc restarts at 0xFFFFFFFF per call */
+        vc_process_keyfile_buf(kfData, total, pool, poolSize);   /* crc restarts at 0xFFFFFFFF per call */
         memset(kfData, 0, total);
         free(kfData);
     }
 
-    /* Zero-extend password to POOL_SIZE — VeraCrypt sets Length = MAX(original, POOL_SIZE) */
-    if (*pwd_len < VC_KEYFILE_POOL_SIZE) {
-        memset(pwd_buf + *pwd_len, 0, (size_t)(VC_KEYFILE_POOL_SIZE - *pwd_len));
-        *pwd_len = VC_KEYFILE_POOL_SIZE;
-    }
-
-    /* Apply pool via byte addition (mod 256) */
-    for (int i = 0; i < VC_KEYFILE_POOL_SIZE; i++)
-        pwd_buf[i] = (uint8_t)((uint8_t)pwd_buf[i] + pool[i]);
+    vc_apply_pool_to_password(pool, poolSize, pwd_buf, pwd_len);
 
     secure_memset(pool, 0, sizeof(pool));
     return true;
@@ -104,10 +148,14 @@ bool apply_keyfiles_to_password(const std::vector<std::string>& paths,
  * jKeyfileData is an Array<ByteArray>? — null or empty means no-op.
  * Returns false on OOM. */
 bool apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
-                            uint8_t *pwd_buf, int *pwd_len) {
+                            uint8_t *pwd_buf, int *pwd_len,
+                            bool forceLegacyPool) {
     if (!jKeyfileData) return true;
     jsize count = env->GetArrayLength(jKeyfileData);
     if (count == 0) return true;
+
+    /* Chosen from the ORIGINAL length, before the padding below grows it. */
+    const int poolSize = vc_keyfile_pool_size(*pwd_len, forceLegacyPool);
 
     uint8_t pool[VC_KEYFILE_POOL_SIZE] = {};
 
@@ -131,7 +179,7 @@ bool apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
                      ? (size_t)len : (size_t)VC_KEYFILE_MAX_READ;
         env->GetByteArrayRegion(jBuf, 0, (jsize)lim, (jbyte*)local);
         if (!env->ExceptionCheck()) {
-            vc_process_keyfile_buf(local, lim, pool);
+            vc_process_keyfile_buf(local, lim, pool, poolSize);
         } else {
             env->ExceptionClear();
         }
@@ -140,12 +188,7 @@ bool apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
     }
     free(local);
 
-    if (*pwd_len < VC_KEYFILE_POOL_SIZE) {
-        memset(pwd_buf + *pwd_len, 0, (size_t)(VC_KEYFILE_POOL_SIZE - *pwd_len));
-        *pwd_len = VC_KEYFILE_POOL_SIZE;
-    }
-    for (int i = 0; i < VC_KEYFILE_POOL_SIZE; i++)
-        pwd_buf[i] = (uint8_t)((uint8_t)pwd_buf[i] + pool[i]);
+    vc_apply_pool_to_password(pool, poolSize, pwd_buf, pwd_len);
 
     secure_memset(pool, 0, sizeof(pool));
     return true;
