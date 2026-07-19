@@ -167,6 +167,68 @@ std::string jstring_to_string(JNIEnv *env, jstring js) {
  * Kotlin's usePasswordBytes() zeroes its own copy once this call returns.
  * Every caller owns a SecureBuffer<VC_MAX_PWD_LEN>, so this is the single
  * site where the jbyteArray→native-secret conversion happens. */
+/* True when a JNI keyfile array carries at least one entry. Only used to decide
+ * whether the legacy-pool retry could change anything (see
+ * keyfile_pool_has_legacy_variant) — apply_keyfile_buffers no-ops on empty. */
+static bool jni_has_keyfiles(JNIEnv *env, jobjectArray arr) {
+    return arr != nullptr && env->GetArrayLength(arr) > 0;
+}
+
+/*
+ * Runs `attempt` against the effective password already built in effPwd; if it
+ * fails, rebuilds effPwd with the pre-#112 legacy 64-byte keyfile pool and runs
+ * it once more. Volumes Arcanum wrote before that fix derived their header from
+ * the 64-byte pool even with a password over 64 bytes, and would otherwise stop
+ * opening the moment the pool selection was corrected.
+ *
+ * The retry is skipped whenever the two pools cannot differ, so the common case
+ * (no keyfiles, or a password of 64 bytes or less) never pays for a second
+ * PBKDF2 sweep on a wrong password.
+ *
+ * On return effPwd holds whichever variant was tried last, and *usedLegacyPool
+ * (when not null) says which one succeeded. Any caller that goes on to WRITE a
+ * header MUST NOT write with a legacy-pool credential - call
+ * rebuild_standard_pool_password() first, so the header it writes is correct
+ * and the volume heals instead of carrying the bug forward.
+ */
+template <typename AuthFn>
+static int auth_with_legacy_pool_retry(
+        const std::vector<std::string> &keyfilePaths,
+        const uint8_t *pwd, int pwdLen,
+        uint8_t *effPwd, int *effPwdLen,
+        const char *logTag, bool *usedLegacyPool, AuthFn &&attempt)
+{
+    if (usedLegacyPool) *usedLegacyPool = false;
+
+    int rc = attempt((const uint8_t*)effPwd, *effPwdLen);
+    if (rc == ERR_OK) return rc;
+    if (!keyfile_pool_has_legacy_variant(pwdLen, !keyfilePaths.empty())) return rc;
+
+    LOGI("[%s] auth failed with the standard keyfile pool - retrying with the "
+         "pre-#112 legacy 64-byte pool", logTag);
+    *effPwdLen = pwdLen;
+    memcpy(effPwd, pwd, (size_t)pwdLen);
+    if (!apply_keyfiles_to_password(keyfilePaths, effPwd, effPwdLen, /*forceLegacyPool=*/true))
+        return ERR_RAND;
+
+    rc = attempt((const uint8_t*)effPwd, *effPwdLen);
+    if (rc == ERR_OK && usedLegacyPool) *usedLegacyPool = true;
+    return rc;
+}
+
+/* Rebuilds effPwd with the correct pool. Used after a successful legacy retry
+ * by every path that then writes a header, so the write is always in the
+ * corrected format. */
+static bool rebuild_standard_pool_password(
+        const std::vector<std::string> &keyfilePaths,
+        const uint8_t *pwd, int pwdLen, uint8_t *effPwd, int *effPwdLen)
+{
+    *effPwdLen = pwdLen;
+    memcpy(effPwd, pwd, (size_t)pwdLen);
+    return apply_keyfiles_to_password(keyfilePaths, effPwd, effPwdLen,
+                                      /*forceLegacyPool=*/false);
+}
+
 static int get_password_bytes(JNIEnv *env, jbyteArray jPwd, SecureBuffer<VC_MAX_PWD_LEN> &out) {
     if (!jPwd) return 0;
     jsize len = env->GetArrayLength(jPwd);
@@ -732,13 +794,32 @@ static jlong do_open_container(
     MountCb mountCb{ env, mountProgressListener, resolve_mount_mid(env, mountProgressListener), 1, 75 };
     MountCb *pMountCb = mountProgressListener ? &mountCb : nullptr;
 
-    for (int ti = 0; ti < 2 && rc != ERR_OK; ti++) {
-        if (tryOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
-        uint64_t hvSz = 0;
-        rc = read_vc_header(fd.get(), tryOffsets[ti], (const char*)effPwd.data(), effPwdLen,
-                            masterKey.data(), &mkLen, &dataSz, &dataOff, &algId, &hashId,
-                            (int)pim, &hvSz, (int)algorithm, (int)hashAlgorithm, pMountCb);
-        if (rc == ERR_OK) { authIsHidden = tryIsHidden[ti]; hiddenVolSize = hvSz; }
+    /* Volumes created before the #112 fix carry a header derived from a 64-byte
+     * keyfile pool even though their password is over 64 bytes. Try the correct
+     * pool first, then fall back, so those still open. Skipped entirely when
+     * the two pools cannot differ - otherwise every wrong password would cost
+     * two full PBKDF2 sweeps. */
+    const bool legacyPoolRetry =
+        keyfile_pool_has_legacy_variant(pwdLen, jni_has_keyfiles(env, jKeyfileData));
+
+    for (int variant = 0; variant <= (legacyPoolRetry ? 1 : 0) && rc != ERR_OK; variant++) {
+        if (variant == 1) {
+            LOGI("[%s] auth failed with the standard keyfile pool - retrying with the "
+                 "pre-#112 legacy 64-byte pool", logTag);
+            effPwdLen = pwdLen;
+            memcpy(effPwd.data(), pwd, (size_t)effPwdLen);
+            if (!apply_keyfile_buffers(env, jKeyfileData, effPwd.data(), &effPwdLen,
+                                       /*forceLegacyPool=*/true))
+                return (jlong)ERR_RAND;
+        }
+        for (int ti = 0; ti < 2 && rc != ERR_OK; ti++) {
+            if (tryOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
+            uint64_t hvSz = 0;
+            rc = read_vc_header(fd.get(), tryOffsets[ti], (const char*)effPwd.data(), effPwdLen,
+                                masterKey.data(), &mkLen, &dataSz, &dataOff, &algId, &hashId,
+                                (int)pim, &hvSz, (int)algorithm, (int)hashAlgorithm, pMountCb);
+            if (rc == ERR_OK) { authIsHidden = tryIsHidden[ti]; hiddenVolSize = hvSz; }
+        }
     }
 
     /* Deliberate early wipe: effPwd is never needed again regardless of
@@ -776,16 +857,31 @@ static jlong do_open_container(
             SecureBuffer<192> hidMasterKey;
             int hidMkLen = 0, hidAlgId = 0, hidHashId = 0;
             uint64_t hidDataSz = 0, hidDataOff = 0, hidHvSz = 0;
-            for (int ti = 0; ti < 2; ti++) {
-                if (hidOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
-                int hrc = read_vc_header(fd.get(), hidOffsets[ti], (const char*)hidEffPwd.data(), hidEffPwdLen,
-                                         hidMasterKey.data(), &hidMkLen, &hidDataSz, &hidDataOff,
-                                         &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
-                if (hrc == ERR_OK && hidDataSz > 0) {
-                    hiddenBoundary = dataOff + dataSz - hidDataSz;
-                    LOGE("[%s] protect-hidden: boundary set to 0x%llx from hidden header",
-                         logTag, (unsigned long long)hiddenBoundary);
-                    break;
+            /* Same legacy-pool fallback as the main credential, and it matters
+             * more here: failing to locate the hidden header does not fail the
+             * mount, it silently leaves hiddenBoundary at 0 and writes go
+             * through unprotected. */
+            const bool hidLegacyRetry = keyfile_pool_has_legacy_variant(
+                hiddenPwdLen, jni_has_keyfiles(env, jProtectHiddenKeyfileData));
+            for (int variant = 0; variant <= (hidLegacyRetry ? 1 : 0) && hiddenBoundary == 0; variant++) {
+                if (variant == 1) {
+                    hidEffPwdLen = hiddenPwdLen;
+                    memcpy(hidEffPwd.data(), hiddenPwd, (size_t)hidEffPwdLen);
+                    if (!apply_keyfile_buffers(env, jProtectHiddenKeyfileData, hidEffPwd.data(),
+                                               &hidEffPwdLen, /*forceLegacyPool=*/true))
+                        return (jlong)ERR_RAND;
+                }
+                for (int ti = 0; ti < 2; ti++) {
+                    if (hidOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
+                    int hrc = read_vc_header(fd.get(), hidOffsets[ti], (const char*)hidEffPwd.data(), hidEffPwdLen,
+                                             hidMasterKey.data(), &hidMkLen, &hidDataSz, &hidDataOff,
+                                             &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
+                    if (hrc == ERR_OK && hidDataSz > 0) {
+                        hiddenBoundary = dataOff + dataSz - hidDataSz;
+                        LOGE("[%s] protect-hidden: boundary set to 0x%llx from hidden header",
+                             logTag, (unsigned long long)hiddenBoundary);
+                        break;
+                    }
                 }
             }
             /* hidMasterKey wiped by its destructor here, at the end of this
@@ -1215,12 +1311,17 @@ static jint do_change_password(
     int mkLen = 0, algId = 0, hashId = 0;
     uint64_t dataSz = 0, dataOff = 0;
     uint64_t hiddenVolSize = 0;
-    int rc = read_vc_header(fd.get(), 0,
-                            (const char*)oldEffPwd.data(), oldEffPwdLen,
-                            masterKey.data(), &mkLen, &dataSz, &dataOff,
-                            &algId, &hashId, (int)oldPim, &hiddenVolSize);
+    int rc = auth_with_legacy_pool_retry(
+        oldKeyfilePaths, oldPwd, oldPwdLen, oldEffPwd.data(), &oldEffPwdLen, "chpwd",
+        /*usedLegacyPool=*/nullptr,   /* writes use newEffPwd, always standard */
+        [&](const uint8_t *eff, int effLen) {
+            return read_vc_header(fd.get(), 0, (const char*)eff, effLen,
+                                  masterKey.data(), &mkLen, &dataSz, &dataOff,
+                                  &algId, &hashId, (int)oldPim, &hiddenVolSize);
+        });
     /* Deliberate early wipe: oldEffPwd is never needed again regardless of
-     * outcome. */
+     * outcome. The new credential above was built with the correct pool, so a
+     * volume opened via the legacy retry is rewritten correct by this change. */
     oldEffPwd.wipe();
     if (rc != ERR_OK) {
         return ERR_WRONG_PASSWORD;
@@ -1359,12 +1460,17 @@ static jint do_change_keyfile(
     SecureBuffer<192> masterKey;
     int mkLen = 0, algId = 0, hashId = 0;
     uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
-    int rc = read_vc_header(fd.get(), 0,
-                            (const char*)oldEffPwd.data(), oldEffPwdLen,
-                            masterKey.data(), &mkLen, &dataSz, &dataOff,
-                            &algId, &hashId, (int)pim, &hiddenVolSize);
+    int rc = auth_with_legacy_pool_retry(
+        oldKeyfilePaths, pwd, pwdLen, oldEffPwd.data(), &oldEffPwdLen, "chkeyfile",
+        /*usedLegacyPool=*/nullptr,   /* writes use newEffPwd, always standard */
+        [&](const uint8_t *eff, int effLen) {
+            return read_vc_header(fd.get(), 0, (const char*)eff, effLen,
+                                  masterKey.data(), &mkLen, &dataSz, &dataOff,
+                                  &algId, &hashId, (int)pim, &hiddenVolSize);
+        });
     /* Deliberate early wipe: oldEffPwd is never needed again regardless of
-     * outcome. */
+     * outcome. The new credential above was built with the correct pool, so a
+     * volume opened via the legacy retry is rewritten correct by this change. */
     oldEffPwd.wipe();
     if (rc != ERR_OK) {
         return ERR_WRONG_PASSWORD;
@@ -1462,9 +1568,14 @@ static jint do_backup_volume_header(
     SecureBuffer<192> masterKey;
     int mkLen = 0, algId = 0, hashId = 0;
     uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
-    int rc = read_vc_header(volFd.get(), 0, (const char*)effPwd.data(), effPwdLen,
-                            masterKey.data(), &mkLen, &dataSz, &dataOff,
-                            &algId, &hashId, (int)pim, &hiddenVolSize);
+    bool usedLegacyPool = false;
+    int rc = auth_with_legacy_pool_retry(
+        keyfilePaths, pwd, pwdLen, effPwd.data(), &effPwdLen, "backup", &usedLegacyPool,
+        [&](const uint8_t *eff, int effLen) {
+            return read_vc_header(volFd.get(), 0, (const char*)eff, effLen,
+                                  masterKey.data(), &mkLen, &dataSz, &dataOff,
+                                  &algId, &hashId, (int)pim, &hiddenVolSize);
+        });
     /* Explicit early close: volFd is never needed again regardless of
      * outcome (matches the original's unconditional close(volFd) here,
      * rather than deferring it to function exit). */
@@ -1472,6 +1583,14 @@ static jint do_backup_volume_header(
     if (rc != ERR_OK) {
         return ERR_WRONG_PASSWORD;
     }
+
+    /* The backup below is re-encrypted with effPwd. Writing it with the legacy
+     * pool would bake the #112 bug into the backup file too, so the correct
+     * credential is rebuilt first: the backup opens with the same password and
+     * keyfiles, and restoring it heals the volume. */
+    if (usedLegacyPool &&
+        !rebuild_standard_pool_password(keyfilePaths, pwd, pwdLen, effPwd.data(), &effPwdLen))
+        return ERR_RAND;
 
     UniqueFd outFd(outputPath ? open(outputPath, O_WRONLY | O_CREAT | O_TRUNC, 0600)
                               : dup(safOutputFd));
@@ -1595,9 +1714,14 @@ static jint do_restore_volume_header(
     SecureBuffer<192> masterKey;
     int mkLen = 0, algId = 0, hashId = 0;
     uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
-    int rc = read_vc_header(srcFd, srcOffset, (const char*)effPwd.data(), effPwdLen,
-                            masterKey.data(), &mkLen, &dataSz, &dataOff,
-                            &algId, &hashId, (int)pim, &hiddenVolSize);
+    bool usedLegacyPool = false;
+    int rc = auth_with_legacy_pool_retry(
+        keyfilePaths, pwd, pwdLen, effPwd.data(), &effPwdLen, "restore", &usedLegacyPool,
+        [&](const uint8_t *eff, int effLen) {
+            return read_vc_header(srcFd, srcOffset, (const char*)eff, effLen,
+                                  masterKey.data(), &mkLen, &dataSz, &dataOff,
+                                  &algId, &hashId, (int)pim, &hiddenVolSize);
+        });
     /* Explicit early close, matching the original's `if (closeSrcFd)
      * close(srcFd);` right here rather than deferring to function exit. */
     srcFdOwned.reset();
@@ -1605,6 +1729,13 @@ static jint do_restore_volume_header(
     if (rc != ERR_OK) {
         return ERR_WRONG_PASSWORD;
     }
+
+    /* The header is about to be written back to the volume with effPwd. A
+     * legacy-pool backup is readable, but what lands on the volume should be
+     * the corrected format, so restoring an old backup heals it. */
+    if (usedLegacyPool &&
+        !rebuild_standard_pool_password(keyfilePaths, pwd, pwdLen, effPwd.data(), &effPwdLen))
+        return ERR_RAND;
 
     // Restore primary header at offset 0
     int r1 = wipe_and_rewrite_header(volFd.get(), 0,
@@ -1743,9 +1874,20 @@ static int fill_range_xts(int fd, uint64_t startByte, uint64_t endByte,
     return ERR_OK;   /* k1enc/k2enc wiped by SecureWipe's destructor */
 }
 
-static int do_expand_volume(int fd, const uint8_t *effPwd, int effPwdLen, int pim,
+/* Takes the raw password + keyfile paths rather than a pre-built effective
+   password: the legacy-pool retry has to be able to rebuild it, and the headers
+   rewritten at the end must always go out with the standard pool. */
+static int do_expand_volume(int fd,
+                             const uint8_t *pwd, int pwdLen,
+                             const std::vector<std::string> &keyfilePaths, int pim,
                              uint64_t newFileSize,
                              JNIEnv *env, jobject progressListener) {
+    SecureBuffer<VC_MAX_PWD_LEN> effPwdBuf;
+    int effPwdLen = pwdLen;
+    memcpy(effPwdBuf.data(), pwd, (size_t)pwdLen);
+    if (!apply_keyfiles_to_password(keyfilePaths, effPwdBuf.data(), &effPwdLen)) return ERR_RAND;
+    const uint8_t *effPwd = effPwdBuf.data();
+
     off_t oldSzOff = lseek(fd, 0, SEEK_END);
     if (oldSzOff < 0) return ERR_FILE;
     uint64_t oldFileSize = (uint64_t)oldSzOff;
@@ -1756,12 +1898,24 @@ static int do_expand_volume(int fd, const uint8_t *effPwd, int effPwdLen, int pi
     SecureBuffer<192> masterKey;
     int mkLen = 0, algId = 0, hashId = 0;
     uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
-    int rc = read_vc_header(fd, 0, (const char*)effPwd, effPwdLen,
-                            masterKey.data(), &mkLen, &dataSz, &dataOff,
-                            &algId, &hashId, pim, &hiddenVolSize);
+    bool usedLegacyPool = false;
+    int rc = auth_with_legacy_pool_retry(
+        keyfilePaths, pwd, pwdLen, effPwdBuf.data(), &effPwdLen, "expand", &usedLegacyPool,
+        [&](const uint8_t *eff, int effLen) {
+            return read_vc_header(fd, 0, (const char*)eff, effLen,
+                                  masterKey.data(), &mkLen, &dataSz, &dataOff,
+                                  &algId, &hashId, pim, &hiddenVolSize);
+        });
     if (rc != ERR_OK) {
         return ERR_WRONG_PASSWORD;
     }
+
+    /* Both headers are rewritten with effPwd at the end of this function, so
+     * the credential must be back on the standard pool first - expanding a
+     * pre-#112 volume heals it. */
+    if (usedLegacyPool &&
+        !rebuild_standard_pool_password(keyfilePaths, pwd, pwdLen, effPwdBuf.data(), &effPwdLen))
+        return ERR_RAND;
     /* Outer volume containing a hidden volume — cannot expand safely.
      *
      * LEGACY-ONLY GUARD: since the deniability fix (see nativeCreateHiddenVolume),
@@ -1830,15 +1984,15 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeExpandVolume(
     auto keyfilePaths = jstringArray_to_vector(env, jKeyfilePaths);
     if (path.empty()) return ERR_FILE;
 
-    SecureBuffer<VC_MAX_PWD_LEN> effPwd;
-    int effPwdLen = get_password_bytes(env, jPassword, effPwd);
-    if (!apply_keyfiles_to_password(keyfilePaths, effPwd.data(), &effPwdLen)) return ERR_RAND;
+    SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
+    int pwdLen = get_password_bytes(env, jPassword, pwdBuf);
 
     UniqueFd fd(open(path.c_str(), O_RDWR | O_CLOEXEC));
     if (!fd.ok()) return ERR_FILE;
 
-    return do_expand_volume(fd.get(), effPwd.data(), effPwdLen, (int)pim, (uint64_t)newSizeBytes, env, progressListener);
-    /* effPwd wiped, fd closed — by their destructors. */
+    return do_expand_volume(fd.get(), pwdBuf.data(), pwdLen, keyfilePaths,
+                            (int)pim, (uint64_t)newSizeBytes, env, progressListener);
+    /* pwdBuf wiped, fd closed — by their destructors. */
 }
 
 /* ─── JNI: nativeExpandVolumeFd ─────────────────────────────────────── */
@@ -1852,15 +2006,15 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeExpandVolumeFd(
 {
     auto keyfilePaths = jstringArray_to_vector(env, jKeyfilePaths);
 
-    SecureBuffer<VC_MAX_PWD_LEN> effPwd;
-    int effPwdLen = get_password_bytes(env, jPassword, effPwd);
-    if (!apply_keyfiles_to_password(keyfilePaths, effPwd.data(), &effPwdLen)) return ERR_RAND;
+    SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
+    int pwdLen = get_password_bytes(env, jPassword, pwdBuf);
 
     UniqueFd fd(dup((int)safFd));
     if (!fd.ok()) return ERR_FILE;
 
-    return do_expand_volume(fd.get(), effPwd.data(), effPwdLen, (int)pim, (uint64_t)newSizeBytes, env, progressListener);
-    /* effPwd wiped, fd closed — by their destructors. */
+    return do_expand_volume(fd.get(), pwdBuf.data(), pwdLen, keyfilePaths,
+                            (int)pim, (uint64_t)newSizeBytes, env, progressListener);
+    /* pwdBuf wiped, fd closed — by their destructors. */
 }
 
 /* ─── JNI: nativeGenerateKeyfileFd ──────────────────────────────────── */
