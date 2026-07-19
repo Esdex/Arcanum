@@ -277,8 +277,7 @@ static void layer_xts_ks(const XtsLayerKS *ks, uint8_t *buf, size_t len,
     }
 }
 
-/* Public — cascade XTS for one 512-byte sector.  Called by diskio.cpp. */
-void vc_crypt_sector(GenCipherCtx *ctx, uint8_t *buf, uint64_t sn, bool enc) {
+static void crypt_sector_layers(GenCipherCtx *ctx, uint8_t *buf, uint64_t sn, bool enc) {
     if (enc) {
         for (int i = 0; i < ctx->num; i++)
             layer_xts_ks(&ctx->layers[i], buf, VC_SECTOR_SIZE, sn, true);
@@ -286,6 +285,27 @@ void vc_crypt_sector(GenCipherCtx *ctx, uint8_t *buf, uint64_t sn, bool enc) {
         for (int i = ctx->num - 1; i >= 0; i--)
             layer_xts_ks(&ctx->layers[i], buf, VC_SECTOR_SIZE, sn, false);
     }
+}
+
+/* Public — cascade XTS for one 512-byte sector.  Called by diskio.cpp. */
+void vc_crypt_sector(GenCipherCtx *ctx, uint8_t *buf, uint64_t sn, bool enc) {
+    /* VeraCrypt's XTS whitening casts the data buffer to uint64_t* and performs
+     * 64-bit loads/stores (Xts.c). On armeabi-v7a an unaligned buffer makes those
+     * accesses raise SIGBUS (BUS_ADRALN); arm64/x86 tolerate them, so this only
+     * bites 32-bit devices. FatFs legitimately hands us an unaligned destination:
+     * a media read that starts mid-sector copies the leading partial sector first,
+     * which offsets the caller's buffer so the following direct multi-sector read
+     * (decrypted in place) is no longer 8-byte aligned. The ciphers themselves run
+     * fine at 8-byte alignment (every normal mount/read on arm32 proves it), so
+     * only bounce through an aligned buffer when the pointer is below that. (#92) */
+    if (reinterpret_cast<uintptr_t>(buf) % 8 != 0) {
+        alignas(16) uint8_t aligned[VC_SECTOR_SIZE];
+        memcpy(aligned, buf, VC_SECTOR_SIZE);
+        crypt_sector_layers(ctx, aligned, sn, enc);
+        memcpy(buf, aligned, VC_SECTOR_SIZE);
+        return;
+    }
+    crypt_sector_layers(ctx, buf, sn, enc);
 }
 
 /* ─── Drive alloc / free ─────────────────────────────────────────────── */
