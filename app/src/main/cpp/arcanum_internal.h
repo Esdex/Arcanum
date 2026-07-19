@@ -70,6 +70,15 @@ extern "C" {
    with the keyfile-pool-only constants in vc_header.cpp. */
 #define VC_MAX_PWD_LEN        128
 
+/* Keyfile generator size bounds, matching VeraCrypt's generator dialog
+   (Main/Forms/Forms.cpp: wxSpinCtrl min 64, max 1048576, default 64). The
+   upper bound is VeraCrypt's 1 MB keyfile read cap (VC_KEYFILE_MAX_READ in
+   vc_header.cpp) — bytes past it never reach the keyfile pool, here or in
+   VeraCrypt, so generating a larger file would add nothing. Enforced in
+   nativeGenerateKeyfileFd; the Kotlin side clamps to the same range. */
+#define VC_KEYFILE_MIN_SIZE   64
+#define VC_KEYFILE_MAX_SIZE   (1 * 1024 * 1024)
+
 /* ─── Algorithm table ───────────────────────────────────────────────── */
 /* Algorithm IDs = Kotlin CipherAlgorithm.ordinal.
  *

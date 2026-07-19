@@ -927,6 +927,28 @@
     <string name="chkeyfile_success_body">Keyfiles updated. Use the new keyfiles to unlock this container.</string>
     <string name="chkeyfile_error_title">Change Failed</string>
 
+    <!-- Generate Keyfile Screen -->
+    <string name="genkeyfile_title">Generate Keyfile</string>
+    <string name="genkeyfile_step1_title">Keyfile Options</string>
+    <string name="genkeyfile_step1_subtitle">Files of random data you can use instead of, or alongside, a password</string>
+    <string name="genkeyfile_name_label">File name</string>
+    <string name="genkeyfile_name_invalid">Name cannot contain / \\ : * ? \" &lt; &gt; |</string>
+    <string name="genkeyfile_count_label">How many</string>
+    <string name="genkeyfile_count_hint">Extra files get a numbered suffix</string>
+    <string name="genkeyfile_random_size_label">Random size</string>
+    <string name="genkeyfile_random_size_hint">Pick a different size for each file</string>
+    <string name="genkeyfile_size_label">Size in bytes</string>
+    <string name="genkeyfile_size_hint">From %1$d bytes to %2$s. 64 bytes is enough: only the first 64 bytes affect the key.</string>
+    <string name="genkeyfile_backup_warning">A keyfile is only its exact bytes. Lose it and the vault is gone, so back it up like a password.</string>
+    <string name="genkeyfile_entropy_subtitle">Move your finger across the canvas to mix extra randomness into the keyfile</string>
+    <string name="genkeyfile_btn_choose_folder">Choose Folder</string>
+    <string name="genkeyfile_running">Generating…</string>
+    <string name="genkeyfile_success_title">Keyfiles Created</string>
+    <string name="genkeyfile_error_title">Generation Failed</string>
+    <string name="genkeyfile_cd_more">One more file</string>
+    <string name="genkeyfile_cd_fewer">One fewer file</string>
+    <string name="vault_fab_generate_keyfile">Generate keyfile</string>
+
     <!-- Change Keyfile notifications -->
     <string name="notif_channel_change_keyfile">Keyfile Change</string>
     <string name="notif_channel_change_keyfile_desc">Shows progress while changing vault keyfiles</string>

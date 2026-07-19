@@ -7,6 +7,7 @@ sealed class Screen(val route: String) {
     object Onboarding      : Screen("onboarding")
     object VaultScreen     : Screen("vault_screen")
     object CreateContainer : Screen("create_container")
+    object GenerateKeyfile : Screen("generate_keyfile")
     object AppSettings     : Screen("app_settings")
 
     object ContainerScreen : Screen("container/{containerId}") {
