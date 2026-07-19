@@ -38,6 +38,19 @@ set(ARCANUM_SOURCES
     crash_handler.cpp
 )
 
+# ── Known-answer test hooks (debug builds only) ───────────────────────
+# jni_kat.cpp exposes the crypto primitives to NativeKatTest
+# (app/src/androidTest). Instrumented tests run against the debug build, so
+# gating on CMAKE_BUILD_TYPE costs no coverage and keeps the release library's
+# exported surface to exactly what the app itself calls. ARCANUM_KAT_HOOKS
+# additionally enables the kat_hmac() bridge in kdf.cpp, which reaches the
+# static hmac_generic() so the test verifies the real HMAC rather than a copy.
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    list(APPEND ARCANUM_SOURCES jni_kat.cpp)
+    add_compile_definitions(ARCANUM_KAT_HOOKS)
+    message(STATUS "Arcanum: KAT hooks enabled (debug build)")
+endif()
+
 # ── Main native library ───────────────────────────────────────────────
 add_library(
     arcanum-native

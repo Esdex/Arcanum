@@ -161,6 +161,18 @@ const HashTraits* hash_traits_for(int hashId) {
     return (hashId >= 0 && hashId <= 4) ? &HASH_TRAITS[hashId] : &HASH_TRAITS[0];
 }
 
+#ifdef ARCANUM_KAT_HOOKS
+/* Debug-only bridge for NativeKatTest (see jni_kat.cpp, added to the build
+   only when CMAKE_BUILD_TYPE is Debug). hmac_generic() is static here because
+   nothing in production needs it directly; the test calls it through this
+   wrapper rather than re-implementing HMAC, so what gets verified against
+   RFC 4231 is the exact function PBKDF2 runs. */
+void kat_hmac(int hashId, const uint8_t *key, int klen,
+              const uint8_t *msg, size_t mlen, uint8_t *out) {
+    hmac_generic(hash_traits_for(hashId), key, klen, msg, mlen, out);
+}
+#endif
+
 /* ─── VeraCrypt header authenticate ─────────────────────────────────── */
 
 /* hi outside [0,4] leaves `out` untouched (matches the original per-hash
