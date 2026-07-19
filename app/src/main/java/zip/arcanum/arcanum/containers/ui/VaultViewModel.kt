@@ -188,7 +188,10 @@ class VaultViewModel @Inject constructor(
     sealed interface MountState {
         object Idle                  : MountState
         object Loading               : MountState
-        data class Error(val message: String) : MountState
+        /** credentialHint = true keeps the generic "check password/PIM/PRF/..." reason list
+         *  (a failed decryption); false shows [message] verbatim (a specific, self-explanatory
+         *  failure such as a read-only storage location or a too-many-mounted limit). */
+        data class Error(val message: String, val credentialHint: Boolean = false) : MountState
     }
 
     private val _mountState = MutableStateFlow<MountState>(MountState.Idle)
@@ -349,7 +352,7 @@ class VaultViewModel @Inject constructor(
                             CryptoError.UNSUPPORTED_ALGORITHM -> MountState.Error("Unsupported container format")
                             CryptoError.TOO_MANY_MOUNTED      -> MountState.Error("Too many containers mounted — unmount one and try again")
                             CryptoError.CORRUPTED_CONTAINER   -> MountState.Error("Container filesystem could not be mounted")
-                            else -> MountState.Error("Wrong password")
+                            else -> MountState.Error("Wrong password", credentialHint = true)
                         }
                     }
                 }

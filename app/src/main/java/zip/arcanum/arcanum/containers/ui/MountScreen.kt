@@ -906,12 +906,15 @@ private fun MountScreenContent(
 
         // ── Mounting overlay ──────────────────────────────────────────────────
         if (isMounting) {
+            val errorState = mountState as? VaultViewModel.MountState.Error
             Box(Modifier.fillMaxSize().zIndex(100f)) {
                 MountingOverlay(
-                    isError        = mountState is VaultViewModel.MountState.Error,
-                    logs           = mountLogs,
-                    onCancel       = { viewModel.cancelMount(); onBack() },
-                    onDismissError = { viewModel.resetMountState(); isMounting = false }
+                    isError             = errorState != null,
+                    errorMessage        = errorState?.message,
+                    showCredentialHints = errorState?.credentialHint ?: true,
+                    logs                = mountLogs,
+                    onCancel            = { viewModel.cancelMount(); onBack() },
+                    onDismissError      = { viewModel.resetMountState(); isMounting = false }
                 )
             }
         }

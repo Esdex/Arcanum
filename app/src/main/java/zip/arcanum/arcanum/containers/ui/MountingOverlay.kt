@@ -64,6 +64,8 @@ import zip.arcanum.R
 @Composable
 fun MountingOverlay(
     isError: Boolean = false,
+    errorMessage: String? = null,
+    showCredentialHints: Boolean = true,
     logs: List<String>? = null,
     onCancel: () -> Unit,
     onDismissError: () -> Unit = {}
@@ -152,29 +154,42 @@ fun MountingOverlay(
 
                     Spacer(Modifier.height(14.dp))
 
-                    Text(
-                        text      = stringResource(R.string.mount_error_body),
-                        style     = MaterialTheme.typography.bodyMedium,
-                        color     = Color.White.copy(alpha = 0.6f),
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-
-                    listOf(
-                        stringResource(R.string.mount_error_reason_password),
-                        stringResource(R.string.mount_error_reason_pim),
-                        stringResource(R.string.mount_error_reason_prf),
-                        stringResource(R.string.mount_error_reason_not_valid),
-                        stringResource(R.string.mount_error_reason_old_algo),
-                    ).forEach { item ->
+                    if (showCredentialHints) {
+                        // Failed decryption - could be any of several credential factors, so keep
+                        // the generic body plus the checklist of things to verify.
                         Text(
-                            text     = "• $item",
-                            style    = MaterialTheme.typography.bodySmall,
-                            color    = Color.White.copy(alpha = 0.5f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp)
+                            text      = stringResource(R.string.mount_error_body),
+                            style     = MaterialTheme.typography.bodyMedium,
+                            color     = Color.White.copy(alpha = 0.6f),
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(Modifier.height(12.dp))
+
+                        listOf(
+                            stringResource(R.string.mount_error_reason_password),
+                            stringResource(R.string.mount_error_reason_pim),
+                            stringResource(R.string.mount_error_reason_prf),
+                            stringResource(R.string.mount_error_reason_not_valid),
+                            stringResource(R.string.mount_error_reason_old_algo),
+                        ).forEach { item ->
+                            Text(
+                                text     = "• $item",
+                                style    = MaterialTheme.typography.bodySmall,
+                                color    = Color.White.copy(alpha = 0.5f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp)
+                            )
+                        }
+                    } else {
+                        // Specific, self-explanatory failure (e.g. read-only storage location):
+                        // show its reason verbatim instead of the credential checklist.
+                        Text(
+                            text      = errorMessage ?: stringResource(R.string.mount_error_body),
+                            style     = MaterialTheme.typography.bodyMedium,
+                            color     = Color.White.copy(alpha = 0.6f),
+                            textAlign = TextAlign.Center
                         )
                     }
                 } else {
