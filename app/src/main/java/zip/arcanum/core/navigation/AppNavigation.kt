@@ -60,6 +60,7 @@ import zip.arcanum.arcanum.containers.ui.ChangePasswordScreen
 import zip.arcanum.arcanum.containers.ui.ExpandVolumeScreen
 import zip.arcanum.arcanum.containers.ui.RestoreHeaderScreen
 import zip.arcanum.arcanum.containers.ui.CreateContainerScreen
+import zip.arcanum.arcanum.containers.ui.GenerateKeyfileScreen
 import zip.arcanum.arcanum.containers.ui.MoveVaultScreen
 import zip.arcanum.setup.PinEntryScreen
 import zip.arcanum.setup.SetupPinScreen
@@ -293,6 +294,9 @@ fun AppNavigation(pinManager: PinManager) {
                 onCreateContainer = {
                     navController.navigate(Screen.CreateContainer.route)
                 },
+                onGenerateKeyfile = {
+                    navController.navigate(Screen.GenerateKeyfile.route)
+                },
                 onOpenSettings = {
                     navController.navigate(Screen.AppSettings.route)
                 },
@@ -334,6 +338,15 @@ fun AppNavigation(pinManager: PinManager) {
                     navController.popBackStack()
                 }
             )
+        }
+
+        // ── Keyfile generator ───────────────────────────────────────────
+        composable(
+            route             = Screen.GenerateKeyfile.route,
+            enterTransition   = { slideInHorizontally(tween(300)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(300)) { it } }
+        ) {
+            GenerateKeyfileScreen(onBack = { navController.popBackStack() })
         }
 
         // ── App settings ────────────────────────────────────────────────

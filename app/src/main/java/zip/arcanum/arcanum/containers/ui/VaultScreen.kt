@@ -141,6 +141,7 @@ import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.EmptyStateView
 import zip.arcanum.core.components.LocalHazeState
 import zip.arcanum.core.components.UpgradeOverlay
+import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.InAppNotificationBanner
@@ -163,6 +164,7 @@ import java.time.format.FormatStyle
 fun VaultScreen(
     onLock: () -> Unit,
     onCreateContainer: () -> Unit,
+    onGenerateKeyfile: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onVaultConfig: (containerId: String) -> Unit,
     onMountContainer: (containerId: String) -> Unit = {},
@@ -479,7 +481,26 @@ fun VaultScreen(
                 verticalArrangement  = Arrangement.spacedBy(8.dp),
                 horizontalAlignment  = Alignment.End
             ) {
-                // "Open existing" — above, appears second (50 ms delay)
+                // "Generate keyfile" — top, appears last (100 ms delay).
+                // Not gated by canAddMoreContainers: a keyfile is not a vault.
+                AnimatedVisibility(
+                    visible = fabExpanded,
+                    enter   = slideInVertically(
+                        animationSpec  = tween(300, delayMillis = 100),
+                        initialOffsetY = { it / 2 }
+                    ) + fadeIn(tween(200, delayMillis = 100)),
+                    exit    = slideOutVertically(tween(160), targetOffsetY = { it / 2 }) + fadeOut(tween(150))
+                ) {
+                    FabMenuItem(
+                        icon    = ArcanumIcons.Keyfile,
+                        label   = stringResource(R.string.vault_fab_generate_keyfile),
+                        onClick = {
+                            fabExpanded = false
+                            onGenerateKeyfile()
+                        }
+                    )
+                }
+                // "Open existing" — middle, appears second (50 ms delay)
                 AnimatedVisibility(
                     visible = fabExpanded,
                     enter   = slideInVertically(
