@@ -590,6 +590,7 @@ fun FileManagerScreen(
     renameTarget?.let { file ->
         RenameDialog(
             currentName = file.name,
+            isDirectory = file.isDirectory,
             onDismiss   = { renameTarget = null },
             onRename    = { newName ->
                 viewModel.renameFile(file, newName) { renameTarget = null }
@@ -1106,27 +1107,27 @@ private fun FileListItem(
         }
 
         if (!isSelectionMode) {
-            if (file.isDirectory) {
-                Icon(Icons.Outlined.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Box {
-                    IconButton(onClick = { showItemMenu = true }, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Outlined.MoreVert, null, modifier = Modifier.size(18.dp),
-                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    DropdownMenu(expanded = showItemMenu, onDismissRequest = { showItemMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.files_action_rename)) },
-                            leadingIcon = { Icon(Icons.Outlined.Edit, null) },
-                            onClick = { onRename(); showItemMenu = false },
-                            enabled = !isReadOnly
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.files_action_properties)) },
-                            leadingIcon = { Icon(Icons.Outlined.Info, null) },
-                            onClick = { onProperties(); showItemMenu = false }
-                        )
-                    }
+            // Folders get the same menu as files. They used to show only a
+            // chevron, which left no way to rename one — the gap that led the
+            // reporter of #113 to try Move-as-rename and lose the folder. The
+            // row itself still opens the folder on tap.
+            Box {
+                IconButton(onClick = { showItemMenu = true }, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Outlined.MoreVert, null, modifier = Modifier.size(18.dp),
+                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                DropdownMenu(expanded = showItemMenu, onDismissRequest = { showItemMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.files_action_rename)) },
+                        leadingIcon = { Icon(Icons.Outlined.Edit, null) },
+                        onClick = { onRename(); showItemMenu = false },
+                        enabled = !isReadOnly
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.files_action_properties)) },
+                        leadingIcon = { Icon(Icons.Outlined.Info, null) },
+                        onClick = { onProperties(); showItemMenu = false }
+                    )
                 }
             }
         }
@@ -1354,9 +1355,18 @@ private fun NewFolderDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
 }
 
 @Composable
-private fun RenameDialog(currentName: String, onDismiss: () -> Unit, onRename: (String) -> Unit) {
-    val nameWithoutExt = currentName.substringBeforeLast(".", currentName)
-    var newName by rememberSaveable { mutableStateOf(nameWithoutExt) }
+private fun RenameDialog(
+    currentName: String,
+    isDirectory: Boolean,
+    onDismiss: () -> Unit,
+    onRename: (String) -> Unit
+) {
+    // Only files have an extension to hide. A folder called "photos.2026" would
+    // otherwise be presented as "photos", and the part after the dot would look
+    // like it had been dropped.
+    val initial = if (isDirectory) currentName
+                  else currentName.substringBeforeLast(".", currentName)
+    var newName by rememberSaveable { mutableStateOf(initial) }
     AppDialog(
         onDismissRequest = onDismiss,
         title            = { Text(stringResource(R.string.files_rename_title)) },

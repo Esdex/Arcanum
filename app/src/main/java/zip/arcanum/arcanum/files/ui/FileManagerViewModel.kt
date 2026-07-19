@@ -400,9 +400,42 @@ class FileManagerViewModel @Inject constructor(
             _state.update { it.copy(isOperationInProgress = true, operationMessage = "Pasting…") }
             var count = 0
             val chunkSize = 1 * 1024 * 1024
+
+            /* Names already in the destination, used to pick a free one when
+               copying an item into the folder it already lives in. */
+            val takenNames = runCatching {
+                engine.listFilesOrNull(destHandle, currentPath)?.map { it.name }?.toMutableSet()
+            }.getOrNull() ?: mutableSetOf()
+
             for (item in clipItems) {
                 try {
-                    val destPath = if (currentPath == "/") "/${item.fileName}" else "$currentPath/${item.fileName}"
+                    val sameContainer = item.sourceContainerId == destContainerId
+                    val sourceParent  = item.sourcePath.substringBeforeLast("/").ifEmpty { "/" }
+                    val intoOwnFolder = sameContainer && sourceParent == currentPath
+
+                    /* Pasting into the folder the item is already in (#113).
+                       Source and destination paths are identical here, so the
+                       copy below would write the item onto itself and the delete
+                       that follows a cut would then destroy it outright. A move
+                       to where it already is has nothing to do. */
+                    if (intoOwnFolder && isCut) continue
+
+                    /* Pasting a folder into itself or into its own subtree (cut
+                       /a, paste in /a or /a/b) would recurse into the copy it is
+                       creating and then delete the original. Refuse instead. */
+                    val srcDir = item.sourcePath.trimEnd('/')
+                    val intoOwnSubtree = sameContainer && item.isDirectory &&
+                        (currentPath == srcDir || currentPath.startsWith("$srcDir/"))
+                    if (intoOwnSubtree) continue
+
+                    /* A copy into the same folder becomes a duplicate rather than
+                       a write onto itself, so it behaves like every other file
+                       manager instead of silently doing nothing. */
+                    val destName = if (intoOwnFolder) freeName(item.fileName, takenNames)
+                                   else item.fileName
+                    takenNames.add(destName)
+
+                    val destPath = if (currentPath == "/") "/$destName" else "$currentPath/$destName"
                     _state.update { it.copy(operationMessage = "${if (isCut) "Moving" else "Copying"} ${item.fileName}…") }
                     if (item.isDirectory) {
                         val ok = copyDirectoryRecursive(item.sourceHandle, item.sourcePath, destHandle, destPath)
@@ -438,6 +471,24 @@ class FileManagerViewModel @Inject constructor(
                     else InAppNotification.FilesPasted(count)
                 } else null
             ) }
+        }
+    }
+
+    /**
+     * First name of the form "base (n).ext" not already in [taken], starting at
+     * "base (1).ext". Used when copying an item into the folder it already
+     * lives in, where reusing the name would mean writing it onto itself.
+     */
+    private fun freeName(fileName: String, taken: Set<String>): String {
+        if (fileName !in taken) return fileName
+        val dot  = fileName.lastIndexOf('.')
+        val base = if (dot > 0) fileName.substring(0, dot) else fileName
+        val ext  = if (dot > 0) fileName.substring(dot) else ""
+        var n = 1
+        while (true) {
+            val candidate = "$base ($n)$ext"
+            if (candidate !in taken) return candidate
+            n++
         }
     }
 
@@ -655,7 +706,10 @@ class FileManagerViewModel @Inject constructor(
         val handle = repo.getContainerHandle(s.containerId) ?: return
         val dir = file.path.substringBeforeLast("/", "")
         val ext = file.name.substringAfterLast(".", "")
+        // Folders have no extension to preserve: re-appending one would turn
+        // "photos.2026" renamed to "archive" into "archive.2026".
         val finalName = when {
+            file.isDirectory      -> newName
             newName.contains('.') -> newName
             ext.isNotEmpty()      -> "$newName.$ext"
             else                  -> newName
