@@ -94,6 +94,7 @@ class DebugViewModel @Inject constructor(
         val db: DatabaseInfo? = null,
         val mounted: List<MountedContainer> = emptyList(),
         val crashLogs: List<CrashLog> = emptyList(),
+        val lastMountLog: String? = null,
         val dryRunActions: List<String>? = null
     )
 
@@ -114,6 +115,7 @@ class DebugViewModel @Inject constructor(
             val runtime   = withContext(Dispatchers.Default) { buildRuntime() }
             val security  = withContext(Dispatchers.IO) { buildSecurity() }
             val crashLogs = withContext(Dispatchers.IO) { readCrashLogs() }
+            val mountLog  = withContext(Dispatchers.IO) { readMountLog() }
 
             val allContainers = repo.getAllContainersRaw().first()
             val mountedList = allContainers.filter { it.isMounted }.map { entity ->
@@ -135,7 +137,8 @@ class DebugViewModel @Inject constructor(
                 security  = security,
                 db        = dbInfo,
                 mounted   = mountedList,
-                crashLogs = crashLogs
+                crashLogs = crashLogs,
+                lastMountLog = mountLog
             ) }
         }
     }
@@ -161,6 +164,24 @@ class DebugViewModel @Inject constructor(
             java.io.File(context.filesDir, ArcanumApp.CRASH_DIR_NAME)
                 .listFiles()?.forEach { it.delete() }
             _state.update { it.copy(crashLogs = emptyList()) }
+        }
+    }
+
+    private fun readMountLog(): String? =
+        java.io.File(context.filesDir, ArcanumApp.MOUNT_LOG_FILE)
+            .takeIf { it.isFile && it.length() > 0L }
+            ?.readText()
+
+    fun copyMountLogToClipboard() {
+        val text = state.value.lastMountLog ?: return
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("Arcanum Mount Log", text))
+    }
+
+    fun clearMountLog() {
+        viewModelScope.launch(Dispatchers.IO) {
+            java.io.File(context.filesDir, ArcanumApp.MOUNT_LOG_FILE).delete()
+            _state.update { it.copy(lastMountLog = null) }
         }
     }
 

@@ -85,5 +85,6 @@ class ArcanumApp : Application() {
         const val CRASH_DIR_NAME    = "crash"
         const val NATIVE_CRASH_FILE = "native_crash.txt"
         const val JAVA_CRASH_FILE   = "java_crash.txt"
+        const val MOUNT_LOG_FILE    = "last_mount.log"
     }
 }

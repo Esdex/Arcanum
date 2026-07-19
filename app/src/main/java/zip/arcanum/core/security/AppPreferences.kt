@@ -36,6 +36,7 @@ class AppPreferences @Inject constructor(
         val CALCULATOR_ENABLED        = booleanPreferencesKey("calculator_enabled")
         val BIOMETRIC_UNLOCK_ENABLED  = booleanPreferencesKey("biometric_unlock_enabled")
         val SHOW_MOUNT_LOG            = booleanPreferencesKey("show_mount_log")
+        val SAVE_MOUNT_LOG           = booleanPreferencesKey("save_mount_log")
         val LAST_SEEN_VERSION_CODE    = intPreferencesKey("last_seen_version_code")
         val UNMOUNT_ON_AUTO_LOCK      = booleanPreferencesKey("unmount_on_auto_lock")
         val GALLERY_RESYNC_BUTTON     = booleanPreferencesKey("gallery_resync_button")
@@ -131,6 +132,13 @@ class AppPreferences @Inject constructor(
 
     suspend fun setShowMountLog(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.SHOW_MOUNT_LOG] = enabled }
+    }
+
+    val saveMountLog: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.SAVE_MOUNT_LOG] ?: false }
+
+    suspend fun setSaveMountLog(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.SAVE_MOUNT_LOG] = enabled }
     }
 
     // null = key absent (fresh install — no prior version recorded)
