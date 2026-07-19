@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Info
@@ -88,6 +89,7 @@ fun StepPassword(
     state: CreateContainerState,
     onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit,
     onAddKeyfile: () -> Unit = {},
+    onGenerateKeyfile: () -> Unit = {},
     onRemoveKeyfile: (index: Int) -> Unit = {},
 ) {
     val context                = LocalContext.current
@@ -300,6 +302,18 @@ fun StepPassword(
             Icon(ArcanumIcons.Keyfile, contentDescription = null)
             Spacer(Modifier.size(6.dp))
             Text(stringResource(R.string.create_keyfile_add))
+        }
+        TextButton(onClick = onGenerateKeyfile, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
+            Spacer(Modifier.size(6.dp))
+            Text(stringResource(R.string.keyfile_generate_new))
+        }
+        if (state.keyfileError != null) {
+            Text(
+                state.keyfileError,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error
+            )
         }
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

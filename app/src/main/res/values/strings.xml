@@ -948,6 +948,7 @@
     <string name="genkeyfile_cd_more">One more file</string>
     <string name="genkeyfile_cd_fewer">One fewer file</string>
     <string name="vault_fab_generate_keyfile">Generate keyfile</string>
+    <string name="keyfile_generate_new">Generate new keyfile</string>
 
     <!-- Change Keyfile notifications -->
     <string name="notif_channel_change_keyfile">Keyfile Change</string>

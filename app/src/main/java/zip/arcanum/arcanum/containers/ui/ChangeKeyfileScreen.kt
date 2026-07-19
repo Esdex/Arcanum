@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Close
@@ -128,6 +129,15 @@ fun ChangeKeyfileScreen(
         uri ?: return@rememberLauncherForActivityResult
         val (path, name) = FileUtils.copyUriToCache(context, uri) ?: return@rememberLauncherForActivityResult
         viewModel.addNewKeyfile(path, name)
+    }
+    // Generated keyfiles need a folder to land in, so this picks a tree.
+    // Offered only for the new set: the old keyfile has to be the one the
+    // volume was created with, where a freshly random file is useless.
+    val newKeyfileFolderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        viewModel.generateNewKeyfile(uri)
     }
 
     BackHandler {
@@ -251,8 +261,9 @@ fun ChangeKeyfileScreen(
                         2 -> ChKfStep2(
                             state            = state,
                             onToggleKeyfiles = viewModel::toggleAddKeyfiles,
-                            onAddKeyfile     = { newKeyfileLauncher.launch("*/*") },
-                            onRemoveKeyfile  = viewModel::removeNewKeyfile
+                            onAddKeyfile      = { newKeyfileLauncher.launch("*/*") },
+                            onGenerateKeyfile = { newKeyfileFolderLauncher.launch(null) },
+                            onRemoveKeyfile   = viewModel::removeNewKeyfile
                         )
                         3 -> ChKfStep3(
                             state             = state,
@@ -388,6 +399,7 @@ private fun ChKfStep2(
     state: ChangeKeyfileState,
     onToggleKeyfiles: (Boolean) -> Unit,
     onAddKeyfile: () -> Unit,
+    onGenerateKeyfile: () -> Unit,
     onRemoveKeyfile: (Int) -> Unit
 ) {
     StepContent(
@@ -439,6 +451,18 @@ private fun ChKfStep2(
                             Icon(ArcanumIcons.Keyfile, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
                             Text(stringResource(R.string.create_keyfile_add_item))
+                        }
+                        TextButton(onClick = onGenerateKeyfile, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(stringResource(R.string.keyfile_generate_new))
+                        }
+                        if (state.keyfileError != null) {
+                            Text(
+                                state.keyfileError,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
                         }
                     }
                 }

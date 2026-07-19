@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Visibility
@@ -305,6 +306,7 @@ fun StepHiddenPassword(
     state: CreateContainerState,
     onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit,
     onAddKeyfile: () -> Unit = {},
+    onGenerateKeyfile: () -> Unit = {},
     onRemoveKeyfile: (index: Int) -> Unit = {}
 ) {
     val context                = LocalContext.current
@@ -493,6 +495,18 @@ fun StepHiddenPassword(
             Icon(ArcanumIcons.Keyfile, contentDescription = null)
             Spacer(Modifier.size(6.dp))
             Text(stringResource(R.string.create_keyfile_add))
+        }
+        TextButton(onClick = onGenerateKeyfile, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
+            Spacer(Modifier.size(6.dp))
+            Text(stringResource(R.string.keyfile_generate_new))
+        }
+        if (state.keyfileError != null) {
+            Text(
+                state.keyfileError,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error
+            )
         }
     }
 }

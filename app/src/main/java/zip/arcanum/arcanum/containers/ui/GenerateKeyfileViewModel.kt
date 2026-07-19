@@ -1,20 +1,14 @@
 package zip.arcanum.arcanum.containers.ui
 
-import android.content.Context
 import android.net.Uri
-import android.provider.DocumentsContract
-import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import zip.arcanum.crypto.CryptoResult
+import zip.arcanum.crypto.KeyfileGenerator
 import zip.arcanum.crypto.VeraCryptEngine
 import java.security.SecureRandom
 import javax.inject.Inject
@@ -53,8 +47,7 @@ data class GenerateKeyfileState(
 
 @HiltViewModel
 class GenerateKeyfileViewModel @Inject constructor(
-    private val engine: VeraCryptEngine,
-    @ApplicationContext private val context: Context
+    private val generator: KeyfileGenerator
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GenerateKeyfileState())
@@ -102,9 +95,10 @@ class GenerateKeyfileViewModel @Inject constructor(
             val names = mutableListOf<String>()
             var failure: String? = null
 
-            withContext(Dispatchers.IO) {
-                val parentDocId = DocumentsContract.getTreeDocumentId(treeUri)
-                val parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentDocId)
+            val parentUri = generator.parentOf(treeUri)
+            if (parentUri == null) {
+                failure = "Not a writable folder"
+            } else {
                 val rng = SecureRandom()
 
                 for (i in 0 until s.count) {
@@ -115,46 +109,13 @@ class GenerateKeyfileViewModel @Inject constructor(
                     } else s.sizeBytes
 
                     val name = fileNameFor(s.baseName, i)
+                    val result = generator.generate(parentUri, name, size, entropy)
 
-                    // createDocument never overwrites: a name clash yields
-                    // "name (1)", so an existing keyfile cannot be destroyed here.
-                    val created = runCatching {
-                        DocumentsContract.createDocument(
-                            context.contentResolver, parentUri, "application/octet-stream", name
-                        )
-                    }
-                    val fileUri = created.getOrNull()
-                    if (fileUri == null) {
-                        failure = created.exceptionOrNull()?.message ?: "Failed to create $name"
-                        break
-                    }
-
-                    // Null result means either the provider refused the fd or the
-                    // write threw; both are reported with whatever detail exists.
-                    val written = runCatching {
-                        context.contentResolver.openFileDescriptor(fileUri, "w").use { pfd ->
-                            if (pfd == null) null
-                            else engine.generateKeyfileFd(pfd.fd, size, entropy)
-                        }
-                    }
-                    val result = written.getOrNull()
-
-                    if (result == null) {
-                        failure = written.exceptionOrNull()?.message ?: "Failed to write $name"
-                    } else if (result is CryptoResult.Failure) {
-                        failure = result.error.name
-                    }
-
-                    if (failure != null) {
-                        // The document exists but holds no usable keyfile; leaving
-                        // it behind would look like a successful generation.
-                        runCatching {
-                            DocumentsContract.deleteDocument(context.contentResolver, fileUri)
-                        }
-                        break
-                    }
-
-                    names += resolveDisplayName(fileUri, name)
+                    result.fold(
+                        onSuccess = { names += it.displayName },
+                        onFailure = { failure = it.message ?: "Failed to create $name" }
+                    )
+                    if (failure != null) break
                 }
             }
 
@@ -181,14 +142,6 @@ class GenerateKeyfileViewModel @Inject constructor(
             baseName + "_" + index
         }
     }
-
-    /** Providers may rename on create (appended extension, conflict suffix), so
-     *  the name shown to the user is read back rather than assumed. */
-    private fun resolveDisplayName(uri: Uri, fallback: String): String = try {
-        context.contentResolver.query(
-            uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
-        )?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: fallback
-    } catch (_: Exception) { fallback }
 
     fun nextStep() = _state.update { it.copy(currentStep = (it.currentStep + 1).coerceAtMost(it.totalSteps)) }
     fun prevStep() = _state.update { it.copy(currentStep = (it.currentStep - 1).coerceAtLeast(1)) }
