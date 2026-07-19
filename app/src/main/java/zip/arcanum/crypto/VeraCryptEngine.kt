@@ -760,6 +760,7 @@ class VeraCryptEngine @Inject constructor() {
         const val ERR_RAND             = -8
         const val ERR_HIDDEN_BOUNDARY  = -9
         const val ERR_READ_ONLY        = -10
+        const val ERR_DIR_FULL         = -11
 
         /**
          * Keyfile generator size bounds — must match VC_KEYFILE_MIN_SIZE /
@@ -839,6 +840,7 @@ private fun Int.toError(): CryptoError = when (this) {
     VeraCryptEngine.ERR_FS              -> CryptoError.CORRUPTED_CONTAINER
     VeraCryptEngine.ERR_NO_SPACE        -> CryptoError.NO_SPACE
     VeraCryptEngine.ERR_READ_ONLY       -> CryptoError.READ_ONLY
+    VeraCryptEngine.ERR_DIR_FULL        -> CryptoError.DIRECTORY_FULL
     VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> CryptoError.HIDDEN_BOUNDARY_PROTECTED
     VeraCryptEngine.ERR_NO_SLOT         -> CryptoError.TOO_MANY_MOUNTED
     else                                -> CryptoError.UNKNOWN

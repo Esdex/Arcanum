@@ -36,6 +36,7 @@ import zip.arcanum.arcanum.gallery.ThumbnailManager
 import kotlinx.coroutines.coroutineScope
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileType
+import zip.arcanum.core.notifications.ImportFailureReason
 import zip.arcanum.core.notifications.InAppNotification
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -739,11 +740,13 @@ class FileManagerViewModel @Inject constructor(
             _state.update { it.copy(isOperationInProgress = true) }
             var count = 0
             var hiddenProtected = false
-            var importFailed = false
+            /* Null while everything is fine; set to the first failing native
+               code so the banner can say what actually went wrong (#114). */
+            var failureCode: Int? = null
             val chunkSize = 1 * 1024 * 1024
             val importedMedia = mutableListOf<Pair<String, Long>>()
             for (uri in uris) {
-                if (hiddenProtected || importFailed) break
+                if (hiddenProtected || failureCode != null) break
                 try {
                     val rawName = getFileNameFromUri(context, uri) ?: continue
                     val name = File(rawName).name.ifEmpty { continue }
@@ -765,7 +768,7 @@ class FileManagerViewModel @Inject constructor(
                                     done = true
                                 }
                                 rc != VeraCryptEngine.ERR_OK -> {
-                                    importFailed = true
+                                    failureCode = rc
                                     runCatching { engine.deleteFile(handle, destPath) }
                                     done = true
                                 }
@@ -774,7 +777,7 @@ class FileManagerViewModel @Inject constructor(
                         }
                         fileSize = offset
                     }
-                    if (!hiddenProtected && !importFailed) {
+                    if (!hiddenProtected && failureCode == null) {
                         count++
                         val ext = name.substringAfterLast('.', "").lowercase()
                         if (ext in IMAGE_EXTENSIONS_VM || ext in VIDEO_EXTENSIONS_VM) {
@@ -790,10 +793,10 @@ class FileManagerViewModel @Inject constructor(
                 isOperationInProgress = false,
                 operationMessage      = null,
                 pendingNotification   = when {
-                    hiddenProtected -> InAppNotification.HiddenVolumeWriteProtection
-                    importFailed    -> InAppNotification.ImportFailed
-                    count > 0       -> InAppNotification.FilesImported(count)
-                    else            -> null
+                    hiddenProtected      -> InAppNotification.HiddenVolumeWriteProtection
+                    failureCode != null  -> InAppNotification.ImportFailed(importFailureReason(failureCode))
+                    count > 0            -> InAppNotification.FilesImported(count)
+                    else                 -> null
                 }
             ) }
             if (importedMedia.isNotEmpty()) {
@@ -826,10 +829,10 @@ class FileManagerViewModel @Inject constructor(
             runCatching { engine.createDirectory(handle, destPath) }
 
             val importedMedia = mutableListOf<Pair<String, Long>>()
-            val (count, hiddenProtected, importFailed) =
+            val (count, hiddenProtected, failureCode) =
                 importFolderRecursive(context, handle, treeUri, rootDocId, destPath, importedMedia)
 
-            if (deleteAfterImport && !hiddenProtected && !importFailed && count > 0)
+            if (deleteAfterImport && !hiddenProtected && failureCode == null && count > 0)
                 runCatching { DocumentsContract.deleteDocument(context.contentResolver, rootDocUri) }
 
             refreshNow()
@@ -837,16 +840,32 @@ class FileManagerViewModel @Inject constructor(
                 isOperationInProgress = false,
                 operationMessage      = null,
                 pendingNotification   = when {
-                    hiddenProtected -> InAppNotification.HiddenVolumeWriteProtection
-                    importFailed    -> InAppNotification.ImportFailed
-                    count > 0       -> InAppNotification.FilesImported(count)
-                    else            -> null
+                    hiddenProtected      -> InAppNotification.HiddenVolumeWriteProtection
+                    failureCode != null  -> InAppNotification.ImportFailed(importFailureReason(failureCode))
+                    count > 0            -> InAppNotification.FilesImported(count)
+                    else                 -> null
                 }
             ) }
             if (importedMedia.isNotEmpty()) {
                 indexAndThumbnail(handle, s.containerId, importedMedia)
             }
         }
+    }
+
+    /**
+     * Turns the native write error into the reason the banner reports.
+     *
+     * Every failure used to be shown as "not enough space in the vault", which
+     * is the one thing the code path could not actually distinguish (#114).
+     * ERR_FILE stays UNKNOWN on purpose: it covers an unopenable path, a name
+     * FatFs rejects and a stale handle, which have nothing useful in common to
+     * tell the user.
+     */
+    private fun importFailureReason(code: Int): ImportFailureReason = when (code) {
+        VeraCryptEngine.ERR_DIR_FULL  -> ImportFailureReason.DIRECTORY_FULL
+        VeraCryptEngine.ERR_NO_SPACE  -> ImportFailureReason.NO_SPACE
+        VeraCryptEngine.ERR_READ_ONLY -> ImportFailureReason.READ_ONLY
+        else                          -> ImportFailureReason.UNKNOWN
     }
 
     // Reduces an untrusted SAF display name to a bare filename, rejecting empty,
@@ -861,7 +880,7 @@ class FileManagerViewModel @Inject constructor(
         docId: String,
         destPath: String,
         importedMedia: MutableList<Pair<String, Long>> = mutableListOf()
-    ): Triple<Int, Boolean, Boolean> {
+    ): Triple<Int, Boolean, Int?> {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
         val projection  = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -870,7 +889,8 @@ class FileManagerViewModel @Inject constructor(
         )
         var count           = 0
         var hiddenProtected = false
-        var importFailed    = false
+        /* First failing native code, or null while everything succeeded. */
+        var failureCode: Int? = null
         val chunkSize       = 1 * 1024 * 1024
 
         context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
@@ -878,7 +898,7 @@ class FileManagerViewModel @Inject constructor(
             val nameCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
             val mimeCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
 
-            while (cursor.moveToNext() && !hiddenProtected && !importFailed) {
+            while (cursor.moveToNext() && !hiddenProtected && failureCode == null) {
                 val childDocId  = cursor.getString(idCol) ?: continue
                 val childName   = cursor.getString(nameCol) ?: continue
                 val childMime   = cursor.getString(mimeCol) ?: continue
@@ -891,11 +911,11 @@ class FileManagerViewModel @Inject constructor(
                 try {
                     if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
                         runCatching { engine.createDirectory(handle, childDest) }
-                        val (sub, subProtected, subFailed) =
+                        val (sub, subProtected, subFailure) =
                             importFolderRecursive(context, handle, treeUri, childDocId, childDest, importedMedia)
                         count += sub
                         if (subProtected) hiddenProtected = true
-                        if (subFailed)    importFailed    = true
+                        if (subFailure != null) failureCode = subFailure
                     } else {
                         val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
                         _state.update { it.copy(operationMessage = "Importing $childName…") }
@@ -914,7 +934,7 @@ class FileManagerViewModel @Inject constructor(
                                         done = true
                                     }
                                     rc != VeraCryptEngine.ERR_OK -> {
-                                        importFailed = true
+                                        failureCode = rc
                                         runCatching { engine.deleteFile(handle, childDest) }
                                         done = true
                                     }
@@ -923,7 +943,7 @@ class FileManagerViewModel @Inject constructor(
                             }
                             childFileSize = offset
                         }
-                        if (!hiddenProtected && !importFailed) {
+                        if (!hiddenProtected && failureCode == null) {
                             count++
                             val ext = childName.substringAfterLast('.', "").lowercase()
                             if (ext in IMAGE_EXTENSIONS_VM || ext in VIDEO_EXTENSIONS_VM) {
@@ -931,10 +951,10 @@ class FileManagerViewModel @Inject constructor(
                             }
                         }
                     }
-                } catch (_: Exception) { importFailed = true }
+                } catch (_: Exception) { failureCode = VeraCryptEngine.ERR_FS }
             }
         }
-        return Triple(count, hiddenProtected, importFailed)
+        return Triple(count, hiddenProtected, failureCode)
     }
 
     fun exportSelected(context: Context, treeUri: android.net.Uri) {
