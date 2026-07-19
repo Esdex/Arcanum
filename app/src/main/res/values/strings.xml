@@ -938,7 +938,7 @@
     <string name="genkeyfile_random_size_label">Random size</string>
     <string name="genkeyfile_random_size_hint">Pick a different size for each file</string>
     <string name="genkeyfile_size_label">Size in bytes</string>
-    <string name="genkeyfile_size_hint">From %1$d bytes to %2$s. 64 bytes is enough: only the first 64 bytes affect the key.</string>
+    <string name="genkeyfile_size_hint">From %1$d bytes to %2$s. 64 bytes is already enough: the whole file is mixed in, but into a pool that size, so a bigger keyfile is not a stronger one.</string>
     <string name="genkeyfile_backup_warning">A keyfile is only its exact bytes. Lose it and the vault is gone, so back it up like a password.</string>
     <string name="genkeyfile_entropy_subtitle">Move your finger across the canvas to mix extra randomness into the keyfile</string>
     <string name="genkeyfile_btn_choose_folder">Choose Folder</string>

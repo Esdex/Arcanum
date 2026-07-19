@@ -767,9 +767,14 @@ class VeraCryptEngine @Inject constructor() {
          * rejects anything outside this range with [ERR_UNSUPPORTED].
          *
          * Same range as VeraCrypt's generator dialog. The 1 MB ceiling is
-         * VeraCrypt's keyfile read cap: bytes past it never reach the keyfile
-         * pool. The 64-byte default is not just VeraCrypt's — the pool itself
-         * is 64 bytes wide, so a larger keyfile adds no key strength.
+         * VeraCrypt's keyfile read cap: bytes past it are never read at all.
+         *
+         * The 64-byte default is not just VeraCrypt's. Every byte below the cap
+         * IS mixed in — but it is CRC-folded into a pool only 64 bytes wide
+         * (128 once the password passes 64 bytes, see issue #112), and that
+         * pool is the ceiling on what a keyfile can contribute. 64 bytes of
+         * real random data already saturates it, so a larger file costs storage
+         * without buying strength.
          */
         const val KEYFILE_MIN_SIZE     = 64
         const val KEYFILE_MAX_SIZE     = 1024 * 1024
