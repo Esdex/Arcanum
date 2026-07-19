@@ -7,6 +7,7 @@ import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.crypto.Cipher
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -75,41 +76,47 @@ class BiometricAuth @Inject constructor(
     }
 
     /**
-     * App-entry biometric unlock. Gated on the success callback of a bare
-     * BiometricPrompt, NOT bound to a CryptoObject / keystore operation.
+     * App-entry biometric unlock, bound to a Keystore CryptoObject (issue #89).
      *
-     * Limitation (documented, accepted): on a rooted or instrumented device the
-     * success callback can be driven directly without a real biometric match,
-     * bypassing this gate. Non-root devices are unaffected. This is bounded on
-     * purpose — passing this gate only reveals the vault *list*; each vault is
-     * separately encrypted and mounting it requires the vault password or the
-     * per-vault biometric, which IS CryptoObject-bound (Keystore key with
-     * setUserAuthenticationRequired). So no plaintext vault data is exposed by a
-     * spoofed app-entry unlock. Binding app entry to a keystore-unwrapped token
-     * would close the residual gap; deferred (see issue #88 item 6).
+     * Unlike a bare BiometricPrompt, success here is gated on a real Keystore cipher
+     * operation carried by [cryptoObject], so a spoofed success callback on a rooted or
+     * instrumented device cannot satisfy it: the Keystore only authorizes the cipher after a
+     * genuine biometric match. The authenticated [Cipher] is handed to [onSuccess] so the
+     * caller can wrap or unwrap its unlock token. STRONG biometrics only (required to use a
+     * CryptoObject); the negative button falls back to PIN entry.
      */
-    fun authenticate(
+    fun authenticateWithCryptoObject(
         activity: FragmentActivity,
-        title: String = "Biometric Authentication",
-        subtitle: String = "Confirm your identity to access Arcanum",
-        onSuccess: () -> Unit,
+        title: String,
+        subtitle: String,
+        cryptoObject: BiometricPrompt.CryptoObject,
+        onSuccess: (Cipher) -> Unit,
         onError: (Int, CharSequence) -> Unit,
         onFailed: () -> Unit
     ) {
         val executor = ContextCompat.getMainExecutor(activity)
         val callback = object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onSuccess()
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                val cipher = result.cryptoObject?.cipher
+                if (cipher != null) onSuccess(cipher)
+                else onError(BiometricPrompt.ERROR_UNABLE_TO_PROCESS, "No authenticated cipher")
+            }
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) = onError(errorCode, errString)
             override fun onAuthenticationFailed() = onFailed()
         }
-
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(title)
-            .setSubtitle(subtitle)
-            .setNegativeButtonText("Use PIN")
-            .build()
-
-        BiometricPrompt(activity, executor, callback).authenticate(promptInfo)
+        // Build + authenticate can throw synchronously (unsupported authenticator combination,
+        // no enrolled credential on some OEM builds). Route any failure to onError.
+        runCatching {
+            val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                .setTitle(title)
+                .setSubtitle(subtitle)
+                .setNegativeButtonText("Use PIN")
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .build()
+            BiometricPrompt(activity, executor, callback).authenticate(promptInfo, cryptoObject)
+        }.onFailure { e ->
+            onError(BiometricPrompt.ERROR_HW_UNAVAILABLE, e.message ?: "Authentication unavailable")
+        }
     }
 
     fun authenticateWithDeviceLock(

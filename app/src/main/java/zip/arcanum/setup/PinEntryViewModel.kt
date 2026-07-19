@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import zip.arcanum.core.security.AppEntryBiometricManager
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.PanicManager
@@ -38,6 +39,7 @@ class PinEntryViewModel @Inject constructor(
     private val pinManager: PinManager,
     private val panicManager: PanicManager,
     private val biometricAuth: BiometricAuth,
+    private val appEntryBiometric: AppEntryBiometricManager,
     private val prefs: AppPreferences,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -114,13 +116,25 @@ class PinEntryViewModel @Inject constructor(
                     pinManager.dummyPromote()
                     withContext(Dispatchers.Main) {
                         _state.value = PinEntryState.Idle
-                        biometricAuth.authenticate(
-                            activity  = activity,
-                            title     = "Enable biometric unlock",
-                            subtitle  = "Confirm your identity to register",
-                            onSuccess = {
+                        // Bind app-entry biometric to a Keystore CryptoObject (#89): register by
+                        // wrapping the unlock token behind a real biometric. The PIN is already
+                        // verified, so if the Keystore/biometric is unavailable just proceed
+                        // without enabling quick unlock rather than blocking entry.
+                        val crypto = appEntryBiometric.getCryptoObjectForEnroll()
+                        if (crypto == null) {
+                            onAuthenticated()
+                            return@withContext
+                        }
+                        biometricAuth.authenticateWithCryptoObject(
+                            activity     = activity,
+                            title        = "Enable biometric unlock",
+                            subtitle     = "Confirm your identity to register",
+                            cryptoObject = crypto,
+                            onSuccess    = { cipher ->
                                 viewModelScope.launch {
-                                    prefs.setBiometricUnlockEnabled(true)
+                                    if (appEntryBiometric.saveToken(cipher)) {
+                                        prefs.setBiometricUnlockEnabled(true)
+                                    }
                                     onAuthenticated()
                                 }
                             },
@@ -157,14 +171,36 @@ class PinEntryViewModel @Inject constructor(
         }
     }
 
+    // Only ever called when app-entry biometric is enabled (auto-prompt + fingerprint button
+    // both gate on biometricUnlockEnabled). Unlock is bound to a Keystore CryptoObject (#89):
+    // a real biometric must unwrap the token before we navigate in. If nothing is registered
+    // yet - a first-run enable, or an account upgraded from the old bare-prompt flow that has
+    // no token - the first successful biometric wraps the token (enroll-on-unlock migration).
+    // Any failure (spoofed callback, cancel, invalidated key) silently falls back to PIN entry.
     fun authenticate(activity: FragmentActivity, onAuthenticated: () -> Unit) {
-        biometricAuth.authenticate(
-            activity  = activity,
-            title     = "Unlock Arcanum",
-            subtitle  = "Confirm your identity",
-            onSuccess = onAuthenticated,
-            onError   = { _, _ -> },
-            onFailed  = {}
+        val hasToken = appEntryBiometric.hasToken()
+        val crypto = if (hasToken) appEntryBiometric.getCryptoObjectForUnlock()
+                     else          appEntryBiometric.getCryptoObjectForEnroll()
+        if (crypto == null) return  // not usable (unregistered / invalidated) -> fall back to PIN
+        biometricAuth.authenticateWithCryptoObject(
+            activity     = activity,
+            title        = "Unlock Arcanum",
+            subtitle     = "Confirm your identity",
+            cryptoObject = crypto,
+            onSuccess    = { cipher ->
+                viewModelScope.launch {
+                    val ok = if (hasToken) appEntryBiometric.verifyToken(cipher)
+                             else          appEntryBiometric.saveToken(cipher)
+                    if (ok) {
+                        if (!hasToken) prefs.setBiometricUnlockEnabled(true)
+                        onAuthenticated()
+                    }
+                    // !ok (e.g. a spoofed callback that can't drive the real cipher): do nothing,
+                    // the user completes entry with the PIN.
+                }
+            },
+            onError  = { _, _ -> },
+            onFailed = {}
         )
     }
 
