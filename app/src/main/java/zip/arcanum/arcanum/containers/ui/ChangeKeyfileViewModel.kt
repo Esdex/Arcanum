@@ -15,6 +15,7 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.service.ChangeKeyfileParams
 import zip.arcanum.arcanum.containers.service.ChangeKeyfileService
 import zip.arcanum.core.utils.FileUtils
+import zip.arcanum.crypto.KeyfileGenerator
 import javax.inject.Inject
 
 private const val ENTROPY_REQUIRED = 500
@@ -36,13 +37,18 @@ data class ChangeKeyfileState(
     // Step 4 - result
     val isRunning: Boolean = false,
     val isSuccess: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    /** Failure of the inline keyfile generator, kept apart from [error]: that
+     *  one gates startChange() and is only rendered on the result step, so a
+     *  generation failure there would silently block the whole operation. */
+    val keyfileError: String? = null
 )
 
 @HiltViewModel
 class ChangeKeyfileViewModel @Inject constructor(
     private val repo: ContainerRepository,
     private val changeKeyfileParams: ChangeKeyfileParams,
+    private val keyfileGenerator: KeyfileGenerator,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -100,6 +106,30 @@ class ChangeKeyfileViewModel @Inject constructor(
             newKeyfilePaths        = it.newKeyfilePaths + cachedPath,
             newKeyfileDisplayNames = it.newKeyfileDisplayNames + displayName
         ) }
+
+    /**
+     * Generates a fresh keyfile into the folder the user just picked and adds it
+     * to the NEW keyfile list. Only offered for the new set: the old one has to
+     * match what the volume was created with, where a random file is useless.
+     */
+    fun generateNewKeyfile(treeUri: Uri) {
+        _state.update { it.copy(keyfileError = null) }
+        viewModelScope.launch {
+            keyfileGenerator.generateOne(treeUri, DEFAULT_GENERATED_KEYFILE_NAME).fold(
+                onSuccess = { generated ->
+                    val cached = FileUtils.copyUriToCache(context, generated.uri)
+                    if (cached == null) {
+                        _state.update { it.copy(keyfileError = "Keyfile created but could not be read back") }
+                        return@fold
+                    }
+                    addNewKeyfile(cached.first, generated.displayName)
+                },
+                onFailure = { e ->
+                    _state.update { it.copy(keyfileError = e.message ?: "Failed to generate keyfile") }
+                }
+            )
+        }
+    }
 
     fun removeNewKeyfile(index: Int) {
         val paths = _state.value.newKeyfilePaths.toMutableList()

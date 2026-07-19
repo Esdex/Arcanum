@@ -114,6 +114,21 @@ fun CreateContainerScreen(
         viewModel.addHiddenKeyfile(path, name)
     }
 
+    // Generated keyfiles need a folder to land in, so these pick a tree rather
+    // than an existing document.
+    val keyfileFolderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        viewModel.generateKeyfile(uri)
+    }
+    val hiddenKeyfileFolderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        viewModel.generateKeyfile(uri, hidden = true)
+    }
+
     BackHandler {
         when {
             state.currentStep in listOf(9, 15) && state.isCreating -> showCancelDialog = true
@@ -240,10 +255,11 @@ fun CreateContainerScreen(
                         3    -> StepEncryptionAlgorithm(state, viewModel::update)
                         4    -> StepVolumeSize(state, viewModel::update, availableSpaceMb)
                         5    -> StepPassword(
-                                    state           = state,
-                                    onUpdate        = viewModel::update,
-                                    onAddKeyfile    = { keyfilePickerLauncher.launch("*/*") },
-                                    onRemoveKeyfile = viewModel::removeKeyfile
+                                    state             = state,
+                                    onUpdate          = viewModel::update,
+                                    onAddKeyfile      = { keyfilePickerLauncher.launch("*/*") },
+                                    onGenerateKeyfile = { keyfileFolderLauncher.launch(null) },
+                                    onRemoveKeyfile   = viewModel::removeKeyfile
                                 )
                         6    -> StepFormatMode(state, viewModel::update)
                         7    -> StepFilesystem(state, viewModel::update)
@@ -264,10 +280,11 @@ fun CreateContainerScreen(
                         11   -> StepHiddenAlgorithm(state, viewModel::update)
                         12   -> StepHiddenSize(state, viewModel::update)
                         13   -> StepHiddenPassword(
-                                    state           = state,
-                                    onUpdate        = viewModel::update,
-                                    onAddKeyfile    = { hiddenKeyfilePickerLauncher.launch("*/*") },
-                                    onRemoveKeyfile = viewModel::removeHiddenKeyfile
+                                    state             = state,
+                                    onUpdate          = viewModel::update,
+                                    onAddKeyfile      = { hiddenKeyfilePickerLauncher.launch("*/*") },
+                                    onGenerateKeyfile = { hiddenKeyfileFolderLauncher.launch(null) },
+                                    onRemoveKeyfile   = viewModel::removeHiddenKeyfile
                                 )
                         14   -> StepHiddenEntropy(state, viewModel::addHiddenEntropyPoint)
                         15   -> StepCreatingHidden(state)

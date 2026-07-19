@@ -32,8 +32,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -77,6 +77,7 @@ import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import kotlinx.coroutines.delay
 import zip.arcanum.R
+import zip.arcanum.core.theme.LocalDarkMode
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import kotlin.math.roundToInt
@@ -321,31 +322,6 @@ private fun GenKfStep1(
                 )
             }
         }
-
-        Spacer(Modifier.height(20.dp))
-
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            ),
-            shape  = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(modifier = Modifier.padding(16.dp)) {
-                Icon(
-                    Icons.Outlined.Info,
-                    contentDescription = null,
-                    tint     = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    stringResource(R.string.genkeyfile_backup_warning),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
     }
 }
 
@@ -468,8 +444,9 @@ private fun GenKfSuccess(names: List<String>, onBack: () -> Unit) {
             Spacer(Modifier.height(16.dp))
             Text(
                 stringResource(R.string.genkeyfile_success_title),
-                style      = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
+                style      = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign  = TextAlign.Center
             )
             Spacer(Modifier.height(8.dp))
             Text(
@@ -478,14 +455,39 @@ private fun GenKfSuccess(names: List<String>, onBack: () -> Unit) {
                 color     = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                stringResource(R.string.genkeyfile_backup_warning),
-                style     = MaterialTheme.typography.bodySmall,
-                color     = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier  = Modifier.padding(horizontal = 24.dp)
-            )
+            Spacer(Modifier.height(24.dp))
+            // The one thing the user must act on: this is where a keyfile is
+            // lost for good, so it gets the emphasis instead of the setup step.
+            // Amber rather than the error palette - nothing failed here.
+            // Foreground follows the theme: the dark amber the OsChip callout
+            // uses would sink into the tinted background in dark/AMOLED.
+            val warningFg = if (LocalDarkMode.current) Color(0xFFFBBF24) else Color(0xFFB45309)
+            Card(
+                colors   = CardDefaults.cardColors(
+                    containerColor = Color(0xFFF59E0B).copy(alpha = 0.12f)
+                ),
+                shape    = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier          = Modifier.padding(16.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.Warning,
+                        contentDescription = null,
+                        tint     = warningFg,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        stringResource(R.string.genkeyfile_backup_warning),
+                        style      = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color      = warningFg
+                    )
+                }
+            }
         }
         Button(
             onClick  = onBack,

@@ -20,9 +20,14 @@ import zip.arcanum.arcanum.containers.service.ContainerCreationParams
 import zip.arcanum.arcanum.containers.service.ContainerCreationService
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.CryptoResult
+import zip.arcanum.crypto.KeyfileGenerator
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
 import kotlin.math.roundToInt
+
+/** Base name for keyfiles made by the inline "generate new keyfile" action.
+ *  A clash is resolved by the storage provider, never by overwriting. */
+internal const val DEFAULT_GENERATED_KEYFILE_NAME = "arcanum-keyfile"
 
 enum class VolumeType { STANDARD, HIDDEN }
 enum class StorageLocation { APP_STORAGE, INTERNAL_STORAGE }
@@ -91,6 +96,10 @@ data class CreateContainerState(
     val filesystem: FilesystemType = FilesystemType.FAT32,
     val pim: Int = 0,
     val entropyPoints: Int = 0,
+    /** Failure of the inline keyfile generator, kept apart from [error]: that
+     *  one is only rendered on the hidden-volume creation screen, so a
+     *  generation failure set there would never reach the user. */
+    val keyfileError: String? = null,
     val creationProgress: Float = 0f,
     val creationSpeed: String = "",
     val creationTimeRemaining: String = "",
@@ -116,6 +125,7 @@ class CreateContainerViewModel @Inject constructor(
     private val cryptoEngine: VeraCryptEngine,
     private val repo: ContainerRepository,
     private val creationParams: ContainerCreationParams,
+    private val keyfileGenerator: KeyfileGenerator,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -218,6 +228,39 @@ class CreateContainerViewModel @Inject constructor(
     fun clearKeyfiles() {
         _state.value.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
         _state.update { it.copy(keyfilePaths = emptyList(), keyfileDisplayNames = emptyList()) }
+    }
+
+    /**
+     * Generates a fresh keyfile into the folder the user just picked and adds it
+     * to the outer volume's list, so a vault can be created with a keyfile
+     * without leaving the wizard.
+     *
+     * The default 64 bytes is the whole keyfile pool, so this is as strong as
+     * anything the standalone generator produces; the wizard collects its own
+     * entropy later, and plain urandom is already a CSPRNG. Use [hidden] for
+     * the hidden-volume list.
+     */
+    fun generateKeyfile(treeUri: Uri, hidden: Boolean = false) {
+        _state.update { it.copy(keyfileError = null) }
+        viewModelScope.launch {
+            val result = keyfileGenerator.generateOne(treeUri, DEFAULT_GENERATED_KEYFILE_NAME)
+            result.fold(
+                onSuccess = { generated ->
+                    // Mirror the picked-keyfile path: creation consumes cached
+                    // files, so the generated one is copied in the same way.
+                    val cached = FileUtils.copyUriToCache(context, generated.uri)
+                    if (cached == null) {
+                        _state.update { it.copy(keyfileError = "Keyfile created but could not be read back") }
+                        return@fold
+                    }
+                    if (hidden) addHiddenKeyfile(cached.first, generated.displayName)
+                    else        addKeyfile(cached.first, generated.displayName)
+                },
+                onFailure = { e ->
+                    _state.update { it.copy(keyfileError = e.message ?: "Failed to generate keyfile") }
+                }
+            )
+        }
     }
 
     fun addEntropyPoint(x: Int, y: Int) {
