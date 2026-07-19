@@ -447,6 +447,85 @@ static bool preallocate_fd(
  * (0.9 quick / 0.5 secure) for allocation and random-fills up to 0.9,
  * exactly as the two pre-dedup variants did.
  */
+/* ─── FAT cluster size (issue #115) ──────────────────────────────────── */
+/*
+ * VeraCrypt's cluster-size ladder, transcribed from GetFatParams()
+ * (src/Common/Fat.c). Returned in bytes, which is what MKFS_PARM.au_size takes.
+ *
+ * This has to be passed explicitly. With au_size left at 0 FatFs runs its own
+ * automatic selection, and that behaves quite differently: ff.c:6210 only
+ * chooses FAT32 up front when FM_FAT is absent, so passing FM_FAT|FM_FAT32
+ * always starts at FAT16, and ff.c's table then picks deliberately large
+ * clusters to keep the volume inside FAT16. The result was that every vault
+ * from 256 MB to 2 GB came out FAT16 with 8-32 KB clusters, where VeraCrypt
+ * would have written FAT32 with 2-4 KB. FAT16 caps the root directory at a
+ * fixed 512 entries, so the top level of such a vault fills up after ~130 long
+ * filenames while the volume is nearly empty.
+ *
+ * Passing the size also fixes the FAT type for free: the retry at ff.c:6437
+ * that grows the cluster to stay in FAT16 is guarded by sz_au == 0, so with an
+ * explicit size FatFs falls through to `fsty = FS_FAT32` as soon as the cluster
+ * count passes the FAT16 limit - matching where VeraCrypt switches.
+ */
+static DWORD vc_fat_cluster_size(uint64_t volumeSize) {
+    const uint64_t KB = 1024ULL, MB = 1024ULL * KB, GB = 1024ULL * MB, TB = 1024ULL * GB;
+    DWORD clusterSize;
+    if      (volumeSize >= 2   * TB) clusterSize = (DWORD)(256 * KB);
+    else if (volumeSize >= 512 * GB) clusterSize = (DWORD)(128 * KB);
+    else if (volumeSize >= 128 * GB) clusterSize = (DWORD)( 64 * KB);
+    else if (volumeSize >=  64 * GB) clusterSize = (DWORD)( 32 * KB);
+    else if (volumeSize >=  32 * GB) clusterSize = (DWORD)( 16 * KB);
+    else if (volumeSize >=  16 * GB) clusterSize = (DWORD)(  8 * KB);
+    else if (volumeSize >= 512 * MB) clusterSize = (DWORD)(  4 * KB);
+    else if (volumeSize >= 256 * MB) clusterSize = (DWORD)(  2 * KB);
+    else if (volumeSize >=   1 * MB) clusterSize = (DWORD)(  1 * KB);
+    else                             clusterSize = 512;
+
+    /* VeraCrypt caps at 256 KB (Volumes.h TC_MAX_FAT_CLUSTER_SIZE) because
+       Windows XP/Vista could crash above that. FatFs additionally rejects
+       anything over 128 sectors per cluster, which is 64 KB at our 512-byte
+       sector size, and would silently fall back to auto-selection if we handed
+       it something larger - defeating the whole point. Clamp to what FatFs
+       will actually honour. */
+    const DWORD maxAu = 128u * VC_SECTOR_SIZE;
+    if (clusterSize > maxAu) clusterSize = maxAu;
+
+    /* VeraCrypt drops to a single sector per cluster on very small volumes:
+       `if (volumeSize <= TC_MAX_FAT_CLUSTER_SIZE * 4) ft->cluster_size = 1;`
+       with TC_MAX_FAT_CLUSTER_SIZE = 256 KB (Volumes.h), so the threshold is
+       1 MB. Below Arcanum's smallest preset, but kept for parity. */
+    if (volumeSize <= 1024ULL * KB) clusterSize = VC_SECTOR_SIZE;
+
+    /*
+     * Keep the resulting cluster count away from the FAT16 ceiling.
+     *
+     * VeraCrypt computes its geometry in one pass, but FatFs iterates: it
+     * starts at FAT16, and on overflow switches to FAT32 and recomputes with
+     * the reserved, FAT and directory sectors subtracted. If that recomputation
+     * drops the count back to MAX_FAT16 or below, ff.c:6431 aborts outright -
+     * the retry that would have adjusted the cluster is guarded by sz_au == 0,
+     * and we are deliberately passing a size. A volume landing a few hundred
+     * clusters above the line would therefore fail to format at all.
+     *
+     * That band is reachable: a custom 64 MB vault gives exactly 65536 clusters
+     * at VeraCrypt's 1 KB. Halving the cluster doubles the count and clears the
+     * line; at the sector floor go the other way and settle firmly inside
+     * FAT16 instead.
+     */
+    const DWORD FAT16_MAX_CLUSTERS = 0xFFF5;
+    const DWORD margin = FAT16_MAX_CLUSTERS / 50;   /* 2% */
+    for (int guard = 0; guard < 8; guard++) {
+        uint64_t clusters = volumeSize / clusterSize;
+        if (clusters <= FAT16_MAX_CLUSTERS ||
+            clusters >= (uint64_t)FAT16_MAX_CLUSTERS + margin) break;
+        if (clusterSize > VC_SECTOR_SIZE) clusterSize /= 2;   /* toward FAT32 */
+        else if (clusterSize * 2 <= maxAu) clusterSize *= 2;  /* toward FAT16 */
+        else break;
+    }
+
+    return clusterSize;
+}
+
 static jint do_create_container(
         JNIEnv *env, int fdIn, const char *unlinkPathOnFail, const char *logTag,
         jlong sizeBytes, const uint8_t *pwd, int pwdLen,
@@ -616,7 +695,12 @@ static jint do_create_container(
     BYTE  work[4096];
     BYTE  fmtFlag = (filesystem == 1) ? (FM_EXFAT|FM_SFD) : ((FM_FAT|FM_FAT32)|FM_SFD);
     BYTE  nFat    = (filesystem == 1) ? 1 : 2;
-    MKFS_PARM opts = { fmtFlag, nFat, 0, 0, 0 };
+    /* Cluster size, in bytes, for FAT volumes (ignored by the exFAT path).
+       See vc_fat_cluster_size() - leaving this at 0 lands almost every vault on
+       FAT16 with a 512-entry root directory, which is not what VeraCrypt would
+       have written (issue #115). */
+    DWORD auSize = (filesystem == 1) ? 0 : vc_fat_cluster_size(dataSize);
+    MKFS_PARM opts = { fmtFlag, nFat, 0, 0, auSize };
     FRESULT fr = FR_DISK_ERR;
     int pdrv;
     {
@@ -1159,10 +1243,14 @@ static jint do_create_hidden_volume(
     hiddenPrimarySalt.wipe();
     hiddenBackupSalt.wipe();
 
-    /* ── Format hidden area as FAT32 ── */
+    /* ── Format hidden area ──
+       The comment here used to claim FAT32, but with au_size left at 0 FatFs
+       started at FAT16 and stayed there for anything under ~2 GB, exactly as on
+       the outer-volume path (issue #115). Same fix: pass VeraCrypt's cluster
+       size and let the type follow from it. */
     char drvPath[8];
     BYTE work[4096];
-    MKFS_PARM opts = { (FM_FAT | FM_FAT32) | FM_SFD, 2, 0, 0, 0 };
+    MKFS_PARM opts = { (FM_FAT | FM_FAT32) | FM_SFD, 2, 0, 0, vc_fat_cluster_size(hidSz) };
     FRESULT fr = FR_DISK_ERR;
     {
         std::lock_guard<std::mutex> lock(g_fatfs_mutex);
