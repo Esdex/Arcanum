@@ -261,11 +261,18 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         title           = ctx.getString(R.string.notif_hidden_write_protection),
         subtitle        = ctx.getString(R.string.notif_hidden_write_protection_subtitle)
     )
-    InAppNotification.ImportFailed -> NotificationDisplayConfig(
+    is InAppNotification.ImportFailed -> NotificationDisplayConfig(
         backgroundColor = Color(0xFFDC2626),
         icon            = Icons.Outlined.Warning,
         title           = ctx.getString(R.string.notif_import_failed),
-        subtitle        = ctx.getString(R.string.notif_import_failed_subtitle)
+        subtitle        = ctx.getString(
+            when (this.reason) {
+                ImportFailureReason.DIRECTORY_FULL -> R.string.notif_import_failed_dir_full
+                ImportFailureReason.NO_SPACE       -> R.string.notif_import_failed_no_space
+                ImportFailureReason.READ_ONLY      -> R.string.notif_import_failed_read_only
+                ImportFailureReason.UNKNOWN        -> R.string.notif_import_failed_unknown
+            }
+        )
     )
     InAppNotification.ReadOnlyError -> NotificationDisplayConfig(
         backgroundColor = Color(0xFFDC2626),

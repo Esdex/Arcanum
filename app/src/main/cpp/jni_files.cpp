@@ -292,6 +292,54 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
     return result;
 }
 
+/* ─── Write failure classification ───────────────────────────────────── */
+/*
+ * FR_DENIED from f_open means "no room for the new entry", which is two very
+ * different problems with two different fixes:
+ *
+ *   - the directory table cannot take another entry. On FAT12/16 the ROOT
+ *     directory is a fixed 512 entries (ff.c f_mkfs defaults n_root to 512),
+ *     and with long filenames enabled one file eats several of them - a
+ *     29-character name costs four. A root full of camera filenames is
+ *     exhausted after ~130 files while the volume is still mostly empty.
+ *     Subdirectories grow dynamically and are not affected, so the fix is to
+ *     put the file in a folder.
+ *   - the volume genuinely has no free cluster left, where the fix is to
+ *     expand the vault or delete something.
+ *
+ * Reporting the wrong one sends the user off in the wrong direction (issue
+ * #114 was reported as "not enough space" for every possible failure), so ask
+ * f_getfree which it is. That can walk the whole FAT on a large volume, which
+ * is why it stays on this error path rather than being checked up front.
+ */
+static jint open_failure_code(FRESULT fr, int pdrv) {
+    if (fr != FR_DENIED) return ERR_FILE;
+
+    char drv[8];
+    snprintf(drv, sizeof(drv), "%d:", pdrv);
+    DWORD freeClusters = 0;
+    FATFS *fsPtr = nullptr;
+    if (f_getfree(drv, &freeClusters, &fsPtr) == FR_OK && freeClusters == 0)
+        return ERR_NO_SPACE;
+    return ERR_DIR_FULL;
+}
+
+/*
+ * FatFs signals a full volume as a SHORT write (FR_OK with bw < len), not an
+ * error code. Both write entry points used to let that fall through as ERR_FS,
+ * so the one cause the UI actually named was the one it could never report.
+ * Hidden-boundary protection is checked first because it also produces a short
+ * write, and it is not a space problem.
+ */
+static jint write_result_code(FRESULT fr, UINT bw, jsize len, int pdrv) {
+    if (fr == FR_OK && (jint)bw == len) return ERR_OK;
+    bool tripped = g_drives[pdrv].hiddenBoundaryTripped;
+    g_drives[pdrv].hiddenBoundaryTripped = false;
+    if (tripped) return ERR_HIDDEN_BOUNDARY;
+    if (fr == FR_OK && (jint)bw < len) return ERR_NO_SPACE;
+    return ERR_FS;
+}
+
 /* ─── JNI: nativeWriteFile ───────────────────────────────────────────── */
 
 extern "C" JNIEXPORT jint JNICALL
@@ -317,7 +365,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteFile(
     int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
     if (n < 0 || n >= (int)sizeof(fullPath)) return ERR_FILE;
 
-    if (f_open(&fil, fullPath, omode) != FR_OK) return ERR_FILE;
+    FRESULT fro = f_open(&fil, fullPath, omode);
+    if (fro != FR_OK) return open_failure_code(fro, pdrv);
     if (offset > 0 && f_lseek(&fil, (FSIZE_t)offset) != FR_OK) {
         f_close(&fil);
         return ERR_FS;
@@ -330,11 +379,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteFile(
     FRESULT fr  = f_write(&fil, data, (UINT)len, &bw);
     env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
     f_close(&fil);
-    if (fr == FR_OK && (jint)bw == len) return ERR_OK;
-    /* Distinguish hidden-boundary protection from generic I/O error */
-    bool tripped = g_drives[pdrv].hiddenBoundaryTripped;
-    g_drives[pdrv].hiddenBoundaryTripped = false;
-    return tripped ? ERR_HIDDEN_BOUNDARY : ERR_FS;
+    return write_result_code(fr, bw, len, pdrv);
 }
 
 /* ─── JNI: nativeWriteAt ─────────────────────────────────────────────── */
@@ -364,7 +409,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteAt(
     int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
     if (n < 0 || n >= (int)sizeof(fullPath)) return ERR_FILE;
 
-    if (f_open(&fil, fullPath, FA_WRITE | FA_OPEN_ALWAYS) != FR_OK) return ERR_FILE;
+    FRESULT fro = f_open(&fil, fullPath, FA_WRITE | FA_OPEN_ALWAYS);
+    if (fro != FR_OK) return open_failure_code(fro, pdrv);
 
     jsize len = env->GetArrayLength(jData);
     if (len == 0) { f_close(&fil); return ERR_OK; }   // touch / ensure-exists only
@@ -377,10 +423,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteAt(
     FRESULT fr = f_write(&fil, data, (UINT)len, &bw);
     env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
     f_close(&fil);
-    if (fr == FR_OK && (jint)bw == len) return ERR_OK;
-    bool tripped = g_drives[pdrv].hiddenBoundaryTripped;
-    g_drives[pdrv].hiddenBoundaryTripped = false;
-    return tripped ? ERR_HIDDEN_BOUNDARY : ERR_FS;
+    return write_result_code(fr, bw, len, pdrv);
 }
 
 /* ─── JNI: nativeGetAlgorithmId ─────────────────────────────────────── */

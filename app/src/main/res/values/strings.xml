@@ -70,7 +70,10 @@
     <string name="notif_hidden_write_protection">Write Error</string>
     <string name="notif_hidden_write_protection_subtitle">A storage error occurred while importing</string>
     <string name="notif_import_failed">Import Failed</string>
-    <string name="notif_import_failed_subtitle">Not enough space in the vault</string>
+    <string name="notif_import_failed_dir_full">This folder can\'t hold more files. Import into a subfolder instead.</string>
+    <string name="notif_import_failed_no_space">Not enough space in the vault</string>
+    <string name="notif_import_failed_read_only">The vault is read-only right now</string>
+    <string name="notif_import_failed_unknown">The file could not be written to the vault</string>
     <string name="notif_read_only_error">Read-Only</string>
     <string name="notif_read_only_error_subtitle">The vault is mounted in read-only mode</string>
     <string name="notif_support_developer">Enjoying Arcanum?</string>

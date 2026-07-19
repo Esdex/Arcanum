@@ -175,7 +175,11 @@ class VaultDocumentsProvider : DocumentsProvider() {
                 when (engine.writeAt(h, path, bytes, offset)) {
                     VeraCryptEngine.ERR_OK -> {}
                     VeraCryptEngine.ERR_READ_ONLY -> throw ErrnoException("onWrite", OsConstants.EROFS)
-                    VeraCryptEngine.ERR_NO_SPACE  -> throw ErrnoException("onWrite", OsConstants.ENOSPC)
+                    // ENOSPC for both: an external app cannot act on the
+                    // distinction, and "no space" is the closest true statement
+                    // for a directory that cannot take another entry.
+                    VeraCryptEngine.ERR_NO_SPACE,
+                    VeraCryptEngine.ERR_DIR_FULL  -> throw ErrnoException("onWrite", OsConstants.ENOSPC)
                     else -> throw ErrnoException("onWrite", OsConstants.EIO)
                 }
                 val end = offset + count

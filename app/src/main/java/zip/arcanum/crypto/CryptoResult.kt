@@ -16,6 +16,13 @@ enum class CryptoError {
     NO_SPACE,
     /** Native ERR_READ_ONLY: write blocked because the container is mounted read-only. */
     READ_ONLY,
+    /**
+     * Native ERR_DIR_FULL: the directory cannot hold another entry. On FAT12/16
+     * the root directory is a fixed 512 entries and a long filename consumes
+     * several, so a root can fill up while the volume is nearly empty. Distinct
+     * from [NO_SPACE] because the remedy is different: use a subfolder.
+     */
+    DIRECTORY_FULL,
     /** Native ERR_HIDDEN_BOUNDARY: write blocked by hidden-volume protection. */
     HIDDEN_BOUNDARY_PROTECTED,
     /** Native ERR_NO_SLOT: no free drive slot (MAX_DRIVES containers already mounted). */
