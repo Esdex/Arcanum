@@ -333,7 +333,28 @@ class VaultViewModel @Inject constructor(
                 }
             } finally {
                 if (!pfdConsumed) pfd?.close()
+                persistMountLog()
             }
+        }
+    }
+
+    /**
+     * Writes the just-finished mount log to disk when the debug "Save mount log" toggle is on,
+     * so it can be copied from Settings > Debug (the live terminal is otherwise ephemeral and
+     * can't be grabbed for a bug report). Snapshot is read on the caller's thread; the file
+     * write is offloaded to IO. Best-effort - never affects the mount outcome.
+     */
+    private fun persistMountLog() {
+        val snapshot = mountLogger.lines.value
+        if (snapshot.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (!prefs.saveMountLog.first()) return@launch
+                val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                    .format(java.util.Date())
+                java.io.File(context.filesDir, zip.arcanum.ArcanumApp.MOUNT_LOG_FILE)
+                    .writeText("Mount log - $ts\n" + snapshot.joinToString("\n"))
+            } catch (_: Exception) {}
         }
     }
 

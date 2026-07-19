@@ -2012,6 +2012,7 @@ private fun DebugSubScreen(
 
             if (debugMode) {
                 val showMountLog by viewModel.showMountLog.collectAsState()
+                val saveMountLog by viewModel.saveMountLog.collectAsState()
                 val galleryResyncButton by viewModel.galleryResyncButton.collectAsState()
                 SettingsGroup {
                     SettingsSwitch(
@@ -2019,6 +2020,12 @@ private fun DebugSubScreen(
                         subtitle        = stringResource(R.string.settings_debug_mount_log_desc),
                         checked         = showMountLog,
                         onCheckedChange = { viewModel.setShowMountLog(it) }
+                    )
+                    SettingsSwitch(
+                        title           = stringResource(R.string.settings_debug_save_mount_log_title),
+                        subtitle        = stringResource(R.string.settings_debug_save_mount_log_desc),
+                        checked         = saveMountLog,
+                        onCheckedChange = { viewModel.setSaveMountLog(it) }
                     )
                     SettingsSwitch(
                         title           = stringResource(R.string.settings_debug_gallery_resync_title),
@@ -2272,6 +2279,48 @@ private fun DebugSubScreen(
                         Icon(Icons.Outlined.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("Force Clean Cache", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+
+                // ── Mount log ─────────────────────────────────────────────────
+                state.lastMountLog?.let { mountLog ->
+                    PanicSectionLabel("Mount log")
+                    SettingsGroup {
+                        Text(
+                            text     = mountLog.trim(),
+                            style    = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color    = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        Row(
+                            modifier              = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick  = {
+                                    debugViewModel.copyMountLogToClipboard()
+                                    Toast.makeText(context, "Mount log copied", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Copy", style = MaterialTheme.typography.labelMedium)
+                            }
+                            OutlinedButton(
+                                onClick  = { debugViewModel.clearMountLog() },
+                                colors   = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                border   = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Clear", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
                     }
                 }
 

@@ -542,6 +542,8 @@
     <string name="settings_debug_mode_desc">Enable developer tools</string>
     <string name="settings_debug_mount_log_title">Mount log</string>
     <string name="settings_debug_mount_log_desc">Show a live terminal log during container mounting. Resets when debug mode is disabled.</string>
+    <string name="settings_debug_save_mount_log_title">Save last mount log</string>
+    <string name="settings_debug_save_mount_log_desc">Keep the log of the most recent mount so it can be copied below. Resets when debug mode is disabled.</string>
     <string name="settings_debug_gallery_resync_title">Gallery resync button</string>
     <string name="settings_debug_gallery_resync_desc">Show a resync button in the Gallery top bar to force a full vault scan. Resets when debug mode is disabled.</string>
     <string name="settings_debug_section_runtime">RUNTIME</string>
