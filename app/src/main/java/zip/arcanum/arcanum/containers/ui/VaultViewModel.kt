@@ -226,13 +226,35 @@ class VaultViewModel @Inject constructor(
             _mountState.value = MountState.Loading
             mountLogger.start()
             mountLogger.log("Container: ${container.name}")
-            val pfd: ParcelFileDescriptor? = if (container.safUri.isNotEmpty()) {
+            val isSaf = container.safUri.isNotEmpty()
+            val pfd: ParcelFileDescriptor? = if (isSaf) {
                 mountLogger.log("Source: SAF URI (${container.safUri.takeLast(40)})")
-                context.contentResolver.openFileDescriptor(Uri.parse(container.safUri), if (readOnly) "r" else "rw")
+                // Some DocumentsProviders (SMB / network shares, some cloud roots) expose a file
+                // for reading but refuse "rw" - openFileDescriptor then throws (or returns null)
+                // instead of handing back a writable fd. Catch it so the mount ends with a clear
+                // reason instead of an uncaught exception, and never fall through to the native
+                // open("") path below (which would report a misleading "Cannot open file").
+                try {
+                    context.contentResolver.openFileDescriptor(Uri.parse(container.safUri), if (readOnly) "r" else "rw")
+                } catch (e: Exception) {
+                    mountLogger.log("ERROR: storage refused ${if (readOnly) "read" else "read-write"} access (${e.javaClass.simpleName})")
+                    null
+                }
             } else {
                 mountLogger.log("Source: ${container.path}")
                 null
             }
+
+            if (isSaf && pfd == null) {
+                mountLogger.log("Mount aborted: storage did not provide a file descriptor")
+                _mountState.value = MountState.Error(
+                    if (readOnly) "This storage location can't be opened."
+                    else "This storage location is read-only. Enable Read-only to mount it."
+                )
+                persistMountLog()
+                return@launch
+            }
+
             var pfdConsumed = false
             try {
                 if (keyfileData.isNotEmpty()) mountLogger.log("Keyfiles: ${keyfileData.size} file(s)")
