@@ -36,15 +36,22 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.VectorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -88,6 +95,16 @@ private data class FrameSlice(
 private const val DIM_FLOOR = 0.22f
 private val PEEK_OFFSET = 12.dp
 
+// How much of the ring's width and of the sector's arc a floating icon may take up.
+// Both leave room for the icon to travel and to stay off the clip edge.
+private const val BAND_ICON_FRACTION = 0.55f
+private const val ARC_ICON_FRACTION  = 0.85f
+private const val MIN_ICON_SIZE      = 8f
+
+// Icons are rasterised at roughly twice their largest on-screen size, so every icon is
+// scaled down rather than up and stays crisp.
+private const val ICON_RASTER_DP = 56f
+
 /**
  * Animated donut for vault storage usage. Toggling a category (via the legend)
  * smoothly shrinks/grows its slice. Press-and-hold on a slice "peeks" it: the
@@ -116,6 +133,29 @@ fun StorageDonutChart(
         StorageCategory.MUSIC  to rememberVectorPainter(Icons.Outlined.MusicNote),
         StorageCategory.FILES  to rememberVectorPainter(Icons.Outlined.InsertDriveFile),
     )
+
+    // Each icon is rasterised once and then blitted, rather than asking the same
+    // VectorPainter to draw itself at a different size for every icon on every frame.
+    // A VectorPainter is backed by a single graphics layer that it re-records whenever
+    // the requested size changes, and all of a frame's draws reference that one layer -
+    // so with icons of differing sizes they all ended up showing whichever size was
+    // recorded last, stretched into each icon's rect. That was the artifact.
+    val density = LocalDensity.current
+    val iconRasters: Map<StorageCategory, ImageBitmap> = remember(density) {
+        val px = with(density) { ICON_RASTER_DP.dp.toPx() }.roundToInt().coerceAtLeast(1)
+        painters.mapValues { (_, painter) ->
+            val bitmap = ImageBitmap(px, px)
+            CanvasDrawScope().draw(
+                density        = density,
+                layoutDirection = LayoutDirection.Ltr,
+                canvas         = Canvas(bitmap),
+                size           = Size(px.toFloat(), px.toFloat())
+            ) {
+                with(painter) { draw(size = Size(px.toFloat(), px.toFloat())) }
+            }
+            bitmap
+        }
+    }
 
     // Per-category animated weight: bytes while included, 0 while excluded.
     val weights = remember { mutableStateMapOf<StorageCategory, Animatable<Float, AnimationVector1D>>() }
@@ -300,7 +340,7 @@ fun StorageDonutChart(
 
             // ── 3. Flying icons (clipped to each offset segment) ─────────────
             frameSlices.forEach { slice ->
-                val painter = painters[slice.category] ?: return@forEach // FREE_SPACE has none
+                val raster = iconRasters[slice.category] ?: return@forEach // FREE_SPACE has none
                 val adjStart = slice.startAngle + gapDeg / 2f
                 val adjSweep = (slice.sweepAngle - gapDeg).coerceAtLeast(0f)
                 if (adjSweep <= 0f || slice.reveal < 0.05f) return@forEach
@@ -329,23 +369,42 @@ fun StorageDonutChart(
                     val iconAlpha = (icon.alpha * min(fadeIn, fadeOut) * slice.reveal * slice.segAlpha).coerceIn(0f, 1f)
                     if (iconAlpha < 0.01f) return@forEach
 
-                    val angle = slice.startAngle + icon.fraction * slice.sweepAngle
-                    val rad = Math.toRadians(angle.toDouble()).toFloat()
-                    val curRadius = innerRadius + (outerRadius - innerRadius) * t
-                    val ix = cx + cos(rad) * curRadius + o.x
-                    val iy = cy + sin(rad) * curRadius + o.y
-                    val sizePx = icon.sizeDp.dp.toPx()
+                    // The clip below is a hard, unantialiased edge, so an icon that reaches it
+                    // is not faded out - it is sliced. Fit the icon inside its slice instead:
+                    // bounded by the ring's width, and by the sector's arc width at its
+                    // narrowest point (the inner edge). Without the arc bound a thin segment
+                    // cut every icon down to a vertical sliver.
+                    val bandWidth = outerRadius - innerRadius
+                    val arcWidthAtInner = Math.toRadians(adjSweep.toDouble()).toFloat() * innerRadius
+                    val sizePx = min(
+                        icon.sizeDp.dp.toPx(),
+                        min(bandWidth * BAND_ICON_FRACTION, arcWidthAtInner * ARC_ICON_FRACTION)
+                    )
+                    // Below this it reads as a speck rather than an icon - drop it instead.
+                    if (sizePx < MIN_ICON_SIZE.dp.toPx()) return@forEach
                     val half = sizePx / 2f
 
-                    translate(left = ix - half, top = iy - half) {
-                        with(painter) {
-                            draw(
-                                size = Size(sizePx, sizePx),
-                                alpha = iconAlpha,
-                                colorFilter = ColorFilter.tint(iconColor)
-                            )
-                        }
-                    }
+                    // Position within the drawn arc, not the raw slice: the raw one includes
+                    // the gap between segments, so an icon could sit centred in the gap and
+                    // be clipped in half lengthwise.
+                    val angle = adjStart + icon.fraction * adjSweep
+                    val rad = Math.toRadians(angle.toDouble()).toFloat()
+                    // Inset by half an icon at both ends so the flight stays clear of the clip.
+                    val curRadius = (innerRadius + half) + (bandWidth - sizePx) * t
+                    val ix = cx + cos(rad) * curRadius + o.x
+                    val iy = cy + sin(rad) * curRadius + o.y
+
+                    val dst = sizePx.roundToInt().coerceAtLeast(1)
+                    drawImage(
+                        image         = raster,
+                        srcOffset     = IntOffset.Zero,
+                        srcSize       = IntSize(raster.width, raster.height),
+                        dstOffset     = IntOffset((ix - half).roundToInt(), (iy - half).roundToInt()),
+                        dstSize       = IntSize(dst, dst),
+                        alpha         = iconAlpha,
+                        colorFilter   = ColorFilter.tint(iconColor),
+                        filterQuality = FilterQuality.High
+                    )
                 }
 
                 drawContext.canvas.restore()
