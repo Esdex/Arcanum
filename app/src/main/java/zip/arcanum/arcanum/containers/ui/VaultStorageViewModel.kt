@@ -52,7 +52,15 @@ class VaultStorageViewModel @Inject constructor(
         val handle = repo.getContainerHandle(containerId)
             ?: return StorageBreakdown(fallbackCapacity, emptyMap(), isLoading = false)
 
-        val capacity = engine.getDataSize(handle).takeIf { it > 0L } ?: fallbackCapacity
+        // Ask the filesystem, not the volume header. Expanding a container grows the
+        // volume but leaves the filesystem at its original size, so getDataSize counts
+        // space no write can reach - it used to show ~3 GB free on a vault that refused
+        // every import (#114). The header size stays only as a last resort for a volume
+        // that cannot be queried at all.
+        val usage = engine.getFsUsage(handle)
+        val capacity = usage?.totalBytes?.takeIf { it > 0L }
+            ?: engine.getDataSize(handle).takeIf { it > 0L }
+            ?: fallbackCapacity
 
         val sums = HashMap<StorageCategory, Long>()
         // Iterative walk to avoid deep recursion on large trees. Native paths are
@@ -76,6 +84,11 @@ class VaultStorageViewModel @Inject constructor(
             }
         }
 
-        return StorageBreakdown(capacity = capacity, used = sums, isLoading = false)
+        return StorageBreakdown(
+            capacity     = capacity,
+            used         = sums,
+            isLoading    = false,
+            reportedFree = usage?.freeBytes
+        )
     }
 }

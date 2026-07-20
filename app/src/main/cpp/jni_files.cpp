@@ -651,3 +651,50 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeHasHiddenVolume(
     if (pdrv < 0) return JNI_FALSE;
     return (g_drives[pdrv].hiddenBoundary > 0) ? JNI_TRUE : JNI_FALSE;
 }
+
+/*
+ * Filesystem capacity and free space in bytes, as {total, free}.
+ *
+ * Deliberately not derived from the volume size in the VeraCrypt header, because
+ * the two are not the same number. Expanding a container grows the volume but
+ * leaves the filesystem describing its original size - do_expand_volume never
+ * touches it, and FatFs cannot grow a formatted volume - so the header size
+ * counts space that no write can reach. Reporting it as capacity is what made
+ * the Storage screen offer free space every import then refused to use.
+ *
+ * Both figures are measured against alloc_fatent rather than n_fatent so they
+ * agree with f_getfree, which only counts allocatable clusters: on an outer
+ * volume mounted with hidden-volume protection the ceiling is lower, and a total
+ * taken from n_fatent would include clusters the free count excludes.
+ *
+ * f_getfree can walk the whole FAT, so this is a screen-level call, not one to
+ * put on a per-file path.
+ */
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeGetFsUsage(
+        JNIEnv *env, jobject /*thiz*/, jlong handle)
+{
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    int pdrv = decode_handle(handle);
+    if (pdrv < 0) return nullptr;
+
+    char drv[8];
+    snprintf(drv, sizeof(drv), "%d:", pdrv);
+    DWORD freeClusters = 0;
+    FATFS *fs = nullptr;
+    if (f_getfree(drv, &freeClusters, &fs) != FR_OK || fs == nullptr) return nullptr;
+
+    /* FF_MIN_SS == FF_MAX_SS == 512, so the sector size is fixed and there is no
+     * per-volume ssize field to read. alloc_fatent counts the two reserved entries. */
+    const uint64_t bytesPerCluster = (uint64_t)fs->csize * FF_MAX_SS;
+    const uint64_t dataClusters    = (fs->alloc_fatent > 2) ? (uint64_t)(fs->alloc_fatent - 2) : 0ULL;
+
+    jlong out[2];
+    out[0] = (jlong)(dataClusters * bytesPerCluster);
+    out[1] = (jlong)((uint64_t)freeClusters * bytesPerCluster);
+
+    jlongArray arr = env->NewLongArray(2);
+    if (arr == nullptr) return nullptr;
+    env->SetLongArrayRegion(arr, 0, 2, out);
+    return arr;
+}

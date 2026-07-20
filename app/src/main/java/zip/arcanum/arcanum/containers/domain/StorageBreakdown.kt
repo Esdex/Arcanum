@@ -36,19 +36,28 @@ enum class StorageCategory(
 /**
  * A computed usage snapshot for one mounted vault.
  *
- * @param capacity total volume data-area size in bytes (`getDataSize`).
- * @param used     bytes per content category; FREE_SPACE is intentionally absent
- *                 and derived on demand via [freeSpace] / [bytesOf].
+ * @param capacity     size of the filesystem inside the volume, in bytes - not the
+ *                     volume size from the VeraCrypt header, which counts space the
+ *                     filesystem cannot reach after an expand.
+ * @param used         bytes per content category; FREE_SPACE is intentionally absent
+ *                     and derived on demand via [freeSpace] / [bytesOf].
+ * @param reportedFree free space as the filesystem itself reports it, or null when it
+ *                     could not be queried.
  */
 data class StorageBreakdown(
     val capacity: Long,
     val used: Map<StorageCategory, Long>,
     val isLoading: Boolean = false,
+    val reportedFree: Long? = null,
 ) {
     val usedTotal: Long get() = used.values.sum()
 
-    /** Capacity minus everything used, never negative. */
-    val freeSpace: Long get() = (capacity - usedTotal).coerceAtLeast(0L)
+    /**
+     * What the filesystem says is free, falling back to capacity minus the file
+     * sizes we summed. The fallback reads slightly high because it cannot see
+     * cluster slack or directory overhead, so prefer the reported figure.
+     */
+    val freeSpace: Long get() = reportedFree ?: (capacity - usedTotal).coerceAtLeast(0L)
 
     /** Bytes for any category, treating FREE_SPACE as derived. */
     fun bytesOf(category: StorageCategory): Long =
