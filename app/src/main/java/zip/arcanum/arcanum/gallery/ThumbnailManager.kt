@@ -19,6 +19,7 @@ import java.io.InputStream
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.sqrt
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -61,7 +62,7 @@ class ThumbnailManager @Inject constructor(
     }
 
     private fun cacheFile(containerId: String, filePath: String): File {
-        val key = md5("$containerId:$filePath:v4")
+        val key = md5("$containerId:$filePath:v5")
         return File(cacheRoot, "$containerId/$key.enc")
     }
 
@@ -149,8 +150,7 @@ class ThumbnailManager @Inject constructor(
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(NativeMediaDataSource(engine, handle, relativePath, fileSize))
-            val frame = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            frame?.let {
+            pickVideoFrame(retriever)?.let {
                 val thumb = centerCrop(it, 256)
                 saveToCacheFile(thumb, cacheFile)
                 thumb
@@ -160,6 +160,64 @@ class ThumbnailManager @Inject constructor(
         }
     } catch (_: Throwable) {
         null
+    }
+
+    /**
+     * Picks the most informative frame available, cheapest source first (#111):
+     *  1. An embedded cover image, when the muxer stored one — it is the frame the
+     *     camera or editor already chose, and it costs no video decoding at all.
+     *  2. The first frame, which is what most videos want anyway.
+     *  3. Only when the first frame is a near-solid fill (black lead-in, white intro
+     *     slate) do we pay for a second seek deeper into the file — and even then we
+     *     keep whichever of the two frames carries more detail, so a false positive
+     *     costs one seek rather than a worse thumbnail.
+     */
+    private fun pickVideoFrame(retriever: MediaMetadataRetriever): Bitmap? {
+        retriever.embeddedPicture?.let { bytes ->
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { return it }
+        }
+
+        val first = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            ?: return null
+        val firstDetail = frameDetail(first)
+        if (firstDetail >= SOLID_FRAME_THRESHOLD) return first
+
+        val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            ?.toLongOrNull() ?: return first
+        // 30% in clears long fades and intro slates. The 5 s cap keeps the seek near the
+        // start of long videos, where 30% would land minutes deep — a slow read into the
+        // middle of the container for a frame no more representative than an early one.
+        val seekMs = minOf(durationMs * 30 / 100, 5_000L)
+        if (seekMs <= 0L) return first
+
+        val later = retriever.getFrameAtTime(
+            seekMs * 1_000L,  // getFrameAtTime takes microseconds
+            MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+        ) ?: return first
+        return if (frameDetail(later) > firstDetail) later else first
+    }
+
+    /**
+     * Standard deviation of luma over an 8x8 reduction of the frame: a solid fill
+     * scores ~0 while any real scene scores well above it. Scaling down first means
+     * we inspect 64 averaged pixels instead of millions.
+     */
+    private fun frameDetail(frame: Bitmap): Double = try {
+        val small = Bitmap.createScaledBitmap(frame, 8, 8, true)
+        val pixels = IntArray(64)
+        small.getPixels(pixels, 0, 8, 0, 0, 8, 8)
+        if (small !== frame) small.recycle()
+        val luma = pixels.map {
+            0.299 * ((it shr 16) and 0xFF) +
+            0.587 * ((it shr 8) and 0xFF) +
+            0.114 * (it and 0xFF)
+        }
+        val mean = luma.average()
+        sqrt(luma.sumOf { (it - mean) * (it - mean) } / luma.size)
+    } catch (_: Throwable) {
+        // Unreadable frame (e.g. a HARDWARE-config bitmap) — report it as detailed so
+        // the caller keeps the frame it already has instead of losing the thumbnail.
+        Double.MAX_VALUE
     }
 
     private fun generateAudioThumbnail(
@@ -279,6 +337,13 @@ class ThumbnailManager @Inject constructor(
         MessageDigest.getInstance("MD5")
             .digest(input.toByteArray())
             .joinToString("") { "%02x".format(it) }
+
+    private companion object {
+        // Luma stddev (0-255 scale) below which a frame reads as a solid fill. Set low
+        // on purpose: a dim-but-real scene misjudged here only costs an extra seek,
+        // since pickVideoFrame keeps the more detailed of the two frames either way.
+        const val SOLID_FRAME_THRESHOLD = 6.0
+    }
 }
 
 /**
