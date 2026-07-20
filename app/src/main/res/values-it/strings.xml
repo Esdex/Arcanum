@@ -626,7 +626,6 @@
     <string name="vault_info_label_location">Posizione</string>
     <string name="vault_info_section_operations">Operazioni</string>
     <string name="vault_info_op_change_password">Cambia password</string>
-    <string name="vault_info_op_expand_volume">Espandi volume</string>
     <string name="vault_info_op_backup_header">Backup intestazione</string>
     <string name="vault_info_op_change_keyfile">Cambia file chiave</string>
     <string name="vault_info_unmount_button">Smonta cassaforte</string>
@@ -635,7 +634,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">Visualizza dettagli e metadati del volume</string>
     <string name="vault_card_change_password_desc">Modifica la password di cifratura</string>
-    <string name="vault_card_expand_desc">Aumenta la dimensione di questo volume</string>
     <string name="vault_card_backup_desc">Salva un backup dell\'intestazione del volume</string>
     <string name="vault_card_keyfile_desc">Aggiorna il file chiave di questo volume</string>
     <string name="vault_card_unmount_desc">Blocca e smonta questo vault</string>

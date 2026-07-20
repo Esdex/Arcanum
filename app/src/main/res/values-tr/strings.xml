@@ -626,7 +626,6 @@
     <string name="vault_info_label_location">Konum</string>
     <string name="vault_info_section_operations">İşlemler</string>
     <string name="vault_info_op_change_password">Parolayı Değiştir</string>
-    <string name="vault_info_op_expand_volume">Birimi Genişlet</string>
     <string name="vault_info_op_backup_header">Başlığı Yedekle</string>
     <string name="vault_info_op_change_keyfile">Anahtar Dosyasını Değiştir</string>
     <string name="vault_info_unmount_button">Kasanın Bağlantısını Kes</string>
@@ -635,7 +634,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">Birim ayrıntılarını ve meta verileri görüntüle</string>
     <string name="vault_card_change_password_desc">Şifreleme parolasını değiştir</string>
-    <string name="vault_card_expand_desc">Bu birimin boyutunu artır</string>
     <string name="vault_card_backup_desc">Birim başlığının yedeğini kaydet</string>
     <string name="vault_card_keyfile_desc">Bu birimin anahtar dosyasını güncelle</string>
     <string name="vault_card_unmount_desc">Bu vault\'u kilitle ve bağlantıyı kes</string>

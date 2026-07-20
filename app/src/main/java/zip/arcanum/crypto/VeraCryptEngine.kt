@@ -409,40 +409,6 @@ class VeraCryptEngine @Inject constructor() {
         }.toResult()
     }
 
-    suspend fun expandVolume(
-        path: String,
-        password: String,
-        keyfileData: List<ByteArray> = emptyList(),
-        pim: Int = 0,
-        newSizeBytes: Long,
-        progressListener: CreationProgressListener? = null
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        usePasswordBytes(password) { passwordBytes ->
-            nativeExpandVolume(
-                path, passwordBytes,
-                keyfileData.toTypedArray().ifEmpty { null }, pim,
-                newSizeBytes, progressListener
-            )
-        }.toResult()
-    }
-
-    suspend fun expandVolumeFd(
-        fd: Int,
-        password: String,
-        keyfileData: List<ByteArray> = emptyList(),
-        pim: Int = 0,
-        newSizeBytes: Long,
-        progressListener: CreationProgressListener? = null
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
-        usePasswordBytes(password) { passwordBytes ->
-            nativeExpandVolumeFd(
-                fd, passwordBytes,
-                keyfileData.toTypedArray().ifEmpty { null }, pim,
-                newSizeBytes, progressListener
-            )
-        }.toResult()
-    }
-
     fun getVolumeType(handle: Long): Int = nativeGetVolumeType(handle)
     fun hasHiddenVolume(handle: Long): Boolean = nativeHasHiddenVolume(handle)
 
@@ -722,24 +688,6 @@ class VeraCryptEngine @Inject constructor() {
         outputFd: Int,
         sizeBytes: Int,
         entropyBytes: ByteArray?
-    ): Int
-
-    private external fun nativeExpandVolume(
-        path: String,
-        password: ByteArray,
-        keyfileData: Array<ByteArray>?,
-        pim: Int,
-        newSizeBytes: Long,
-        progressListener: CreationProgressListener?
-    ): Int
-
-    private external fun nativeExpandVolumeFd(
-        fd: Int,
-        password: ByteArray,
-        keyfileData: Array<ByteArray>?,
-        pim: Int,
-        newSizeBytes: Long,
-        progressListener: CreationProgressListener?
     ): Int
 
     private external fun nativeGetVolumeType(handle: Long): Int

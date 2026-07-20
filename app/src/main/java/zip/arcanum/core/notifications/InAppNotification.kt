@@ -10,7 +10,7 @@ package zip.arcanum.core.notifications
 enum class ImportFailureReason {
     /** Directory cannot hold another entry - remedy is a subfolder. */
     DIRECTORY_FULL,
-    /** Volume is out of clusters - remedy is expanding the vault or freeing space. */
+    /** Volume is out of clusters - remedy is freeing space, or moving to a larger vault. */
     NO_SPACE,
     /** Vault turned out to be read-only underneath the UI's read-write state. */
     READ_ONLY,

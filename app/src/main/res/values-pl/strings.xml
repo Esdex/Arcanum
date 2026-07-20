@@ -642,7 +642,6 @@
     <string name="vault_info_label_location">Lokalizacja</string>
     <string name="vault_info_section_operations">Operacje</string>
     <string name="vault_info_op_change_password">Zmień hasło</string>
-    <string name="vault_info_op_expand_volume">Rozszerz wolumin</string>
     <string name="vault_info_op_backup_header">Utwórz kopię zapasową nagłówka</string>
     <string name="vault_info_op_change_keyfile">Zmień plik klucza</string>
     <string name="vault_info_unmount_button">Odmontuj skarbiec</string>
@@ -651,7 +650,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">Wyświetl szczegóły i metadane woluminu</string>
     <string name="vault_card_change_password_desc">Zmień hasło szyfrowania</string>
-    <string name="vault_card_expand_desc">Zwiększ rozmiar tego woluminu</string>
     <string name="vault_card_backup_desc">Zapisz kopię zapasową nagłówka woluminu</string>
     <string name="vault_card_keyfile_desc">Zaktualizuj plik klucza tego woluminu</string>
     <string name="vault_card_unmount_desc">Zablokuj i odmontuj to vault</string>

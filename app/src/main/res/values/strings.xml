@@ -783,7 +783,6 @@
     <string name="vault_details_desc">General and encryption information</string>
     <string name="vault_details_mount_first">Mount the vault to view</string>
     <string name="vault_info_op_change_password">Change Password</string>
-    <string name="vault_info_op_expand_volume">Expand Volume</string>
     <string name="vault_info_op_backup_header">Backup Header</string>
     <string name="vault_info_op_change_keyfile">Change Keyfile</string>
     <string name="vault_info_unmount_button">Unmount Vault</string>
@@ -793,7 +792,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">View volume details and metadata</string>
     <string name="vault_card_change_password_desc">Change the encryption password</string>
-    <string name="vault_card_expand_desc">Increase the size of this volume</string>
     <string name="vault_card_backup_desc">Save a backup of the volume header</string>
     <string name="vault_card_keyfile_desc">Update the keyfile for this volume</string>
     <string name="vault_card_unmount_desc">Lock and unmount this vault</string>
@@ -1012,37 +1010,5 @@
     <string name="vault_config_external_access_switch">Allow external app access</string>
     <string name="vault_config_external_access_switch_desc">Expose this vault in the system file picker while mounted</string>
     <string name="vault_config_title">Vault Config</string>
-
-    <!-- Expand Volume screen -->
-    <string name="expand_volume_title">Expand Volume</string>
-    <string name="expand_current_size">Current size</string>
-    <string name="expand_available_space">Available</string>
-    <string name="expand_new_size_label">New size</string>
-    <string name="expand_size_hint">Enter size</string>
-    <string name="expand_password_label">Password</string>
-    <string name="expand_fill_note">The new space will be filled with AES-XTS encrypted zeros using a temporary random key, making it indistinguishable from existing ciphertext. This protects plausible deniability.</string>
-    <string name="expand_volume_button">Expand</string>
-    <string name="expand_progress_title">Expanding volume…</string>
-    <string name="expand_speed">%s MB/s</string>
-    <string name="expand_success_title">Volume expanded</string>
-    <string name="expand_success_body">The volume has been successfully expanded. You can now mount it and use the additional space.</string>
-    <string name="expand_error_wrong_password">Wrong password or keyfiles</string>
-    <string name="expand_error_has_hidden">This volume contains a hidden volume and cannot be expanded</string>
-    <string name="expand_error_io">I/O error — check storage permissions</string>
-    <string name="expand_error_too_small">New size must be larger than current size by at least 64 KB</string>
-    <string name="expand_error_not_aligned">Size must be a multiple of 512 bytes (use whole MB or GB)</string>
-    <string name="expand_hidden_question">Does this container contain a hidden volume?</string>
-    <string name="expand_hidden_note">Expanding a container permanently destroys any hidden volume inside it. If you are not sure, do not proceed.</string>
-    <string name="expand_error_generic">Expansion failed: %s</string>
-    <string name="expand_step1_heading">Enter Current Credentials</string>
-    <string name="expand_error_title">Expansion Failed</string>
-    <string name="expand_try_again">Try Again</string>
-
-    <!-- Expand Volume notifications -->
-    <string name="notif_channel_expand_volume">Volume Expansion</string>
-    <string name="notif_channel_expand_volume_desc">Shows progress while expanding a vault volume</string>
-    <string name="notif_expanding_volume">Expanding volume…</string>
-    <string name="notif_expanding_volume_pct">Filling new space: %d%%</string>
-    <string name="notif_expanding_volume_desc">Do not close the app</string>
 
 </resources>

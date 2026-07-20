@@ -626,7 +626,6 @@
     <string name="vault_info_label_location">Speicherort</string>
     <string name="vault_info_section_operations">Operationen</string>
     <string name="vault_info_op_change_password">Passwort ändern</string>
-    <string name="vault_info_op_expand_volume">Volume erweitern</string>
     <string name="vault_info_op_backup_header">Header sichern</string>
     <string name="vault_info_op_change_keyfile">Schlüsseldatei ändern</string>
     <string name="vault_info_unmount_button">Tresor trennen</string>
@@ -635,7 +634,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">Volume-Details und Metadaten anzeigen</string>
     <string name="vault_card_change_password_desc">Verschlüsselungspasswort ändern</string>
-    <string name="vault_card_expand_desc">Größe dieses Volumes vergrößern</string>
     <string name="vault_card_backup_desc">Sicherungskopie des Volume-Headers speichern</string>
     <string name="vault_card_keyfile_desc">Schlüsseldatei dieses Volumes aktualisieren</string>
     <string name="vault_card_unmount_desc">Dieses Vault sperren und aushängen</string>

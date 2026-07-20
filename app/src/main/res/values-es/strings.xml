@@ -626,7 +626,6 @@
     <string name="vault_info_label_location">Ubicación</string>
     <string name="vault_info_section_operations">Operaciones</string>
     <string name="vault_info_op_change_password">Cambiar contraseña</string>
-    <string name="vault_info_op_expand_volume">Expandir volumen</string>
     <string name="vault_info_op_backup_header">Copia de seguridad del encabezado</string>
     <string name="vault_info_op_change_keyfile">Cambiar archivo clave</string>
     <string name="vault_info_unmount_button">Desmontar bóveda</string>
@@ -635,7 +634,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">Ver detalles y metadatos del volumen</string>
     <string name="vault_card_change_password_desc">Cambiar la contraseña de cifrado</string>
-    <string name="vault_card_expand_desc">Aumentar el tamaño del volumen</string>
     <string name="vault_card_backup_desc">Guardar copia de seguridad del encabezado</string>
     <string name="vault_card_keyfile_desc">Actualizar el archivo de clave del volumen</string>
     <string name="vault_card_unmount_desc">Bloquear y desmontar este vault</string>
