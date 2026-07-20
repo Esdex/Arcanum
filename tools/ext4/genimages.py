@@ -78,6 +78,18 @@ def parse_extents(text):
     return rows
 
 
+def _has_hole(extents):
+    """True when leaf extents leave a gap in logical numbering."""
+    leaves = sorted((e for e in extents if not e["is_index"]),
+                    key=lambda e: e["logical_start"])
+    nxt = 0
+    for e in leaves:
+        if e["logical_start"] > nxt:
+            return True
+        nxt = e["logical_end"] + 1
+    return False
+
+
 def stat_file(img, name):
     out = debugfs(img, f"stat {name}\n")
     inode = re.search(r"Inode:\s+(\d+)", out)
@@ -141,6 +153,21 @@ def make_case(case_dir, blob_dir, rng, keep_blobs):
             f.write(data)
         debugfs(img, f"write {blob} {name}\n", write=True)
 
+        # Two shapes a plain write never produces, and both were invisible to the
+        # corpus until a mutation test showed the reader could ignore the
+        # uninitialised bit entirely without a single case noticing:
+        #   punch     - a hole, so logical numbering stops being contiguous
+        #   fallocate - a preallocated run, flagged Uninit, which reads as zeroes
+        blocks = max(1, nbytes // block_size)
+        if name in ("medium", "large") and blocks > 40:
+            hole_start = blocks // 4
+            hole_end   = hole_start + max(1, blocks // 8)
+            debugfs(img, f"punch {name} {hole_start} {hole_end}\n", write=True)
+        if name in ("small", "medium"):
+            fa_start = blocks + 16
+            debugfs(img, f"fallocate {name} {fa_start} {fa_start + rng.randint(8, 400)}\n",
+                    write=True)
+
         inode, size = stat_file(img, name)
         if inode is None:
             return None, f"could not stat {name} after writing it"
@@ -152,6 +179,8 @@ def make_case(case_dir, blob_dir, rng, keep_blobs):
             "sha256": hashlib.sha256(data).hexdigest(),
             "max_depth": max((e["depth"] for e in extents), default=0),
             "extent_count": sum(1 for e in extents if not e["is_index"]),
+            "uninit_count": sum(1 for e in extents if "Uninit" in e["flags"]),
+            "has_hole": _has_hole(extents),
             "extents": extents,
         })
         if not keep_blobs:
@@ -195,6 +224,7 @@ def main():
     blob_dir = tempfile.mkdtemp(prefix="ext4blobs-")
 
     depths = {}
+    uninit_files = holed_files = 0
     failures = []
     for i in range(args.count):
         case_dir = os.path.join(args.out, f"case-{i:03d}")
@@ -204,6 +234,8 @@ def main():
             continue
         for f in truth["files"]:
             depths[f["max_depth"]] = depths.get(f["max_depth"], 0) + 1
+            if f["uninit_count"]: uninit_files += 1
+            if f["has_hole"]:     holed_files += 1
 
     if not args.keep_blobs:
         shutil.rmtree(blob_dir, ignore_errors=True)
@@ -212,6 +244,8 @@ def main():
     print(f"cases: {args.count - len(failures)}/{args.count}   files: {total}")
     for d in sorted(depths):
         print(f"  tree depth {d}: {depths[d]} files")
+    print(f"  with uninitialised extents: {uninit_files} files")
+    print(f"  with holes:                 {holed_files} files")
     for case_dir, err in failures:
         print(f"  FAILED {case_dir}: {err}")
     # Depth 0 alone would mean the corpus never exercises index blocks, which is
