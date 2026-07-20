@@ -232,9 +232,6 @@
     <string name="files_type_archive">壓縮檔</string>
     <string name="files_type_apk">Android 安裝套件</string>
     <string name="files_type_file">檔案</string>
-    <string name="files_open_with_body">要開啟此檔案，將建立一個暫時解密的副本。當您返回 Arcanum 時，它將自動刪除。</string>
-    <string name="files_open_with_cancel">取消</string>
-    <string name="files_open_with_confirm">使用應用程式開啟</string>
     <string name="files_sort_title">排序方式</string>
     <string name="files_sort_name">名稱</string>
     <string name="files_sort_date">日期</string>

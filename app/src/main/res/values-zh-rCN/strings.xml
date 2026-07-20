@@ -232,9 +232,6 @@
     <string name="files_type_archive">压缩包</string>
     <string name="files_type_apk">Android 安装包</string>
     <string name="files_type_file">文件</string>
-    <string name="files_open_with_body">要打开此文件，将创建一个临时解密副本。当您返回 Arcanum 时，它将自动删除。</string>
-    <string name="files_open_with_cancel">取消</string>
-    <string name="files_open_with_confirm">使用应用打开</string>
     <string name="files_sort_title">排序方式</string>
     <string name="files_sort_name">名称</string>
     <string name="files_sort_date">日期</string>

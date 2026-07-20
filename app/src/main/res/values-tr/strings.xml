@@ -237,9 +237,6 @@
     <string name="files_type_archive">Arşiv</string>
     <string name="files_type_apk">Android Paketi</string>
     <string name="files_type_file">Dosya</string>
-    <string name="files_open_with_body">Bu dosyayı açmak için geçici şifresi çözülmüş bir kopya oluşturulacak. Arcanum\'a döndüğünüzde otomatik olarak silinecek.</string>
-    <string name="files_open_with_cancel">İptal</string>
-    <string name="files_open_with_confirm">Uygulamayla aç</string>
     <string name="files_sort_title">Sırala</string>
     <string name="files_sort_name">Ad</string>
     <string name="files_sort_date">Tarih</string>
