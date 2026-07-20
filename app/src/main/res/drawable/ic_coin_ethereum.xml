@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Brand mark, converted from the official asset. Carries its own colour, so the
+     caller must not put a coloured backdrop behind it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp"
+    android:height="40dp"
+    android:viewportWidth="879.4"
+    android:viewportHeight="879.4">
+    <group android:translateX="169.7" android:translateY="0.0">
+        <path
+            android:pathData="m269.9 325.2-269.9 122.7 269.9 159.6 270-159.6z"
+            android:fillColor="#FFFFFFFF"
+            android:fillAlpha=".6" />
+        <path
+            android:pathData="m0.1 447.8 269.9 159.6v-607.4z"
+            android:fillColor="#FFFFFFFF"
+            android:fillAlpha=".45" />
+        <path
+            android:pathData="m270 0v607.4l269.9-159.6z"
+            android:fillColor="#FFFFFFFF"
+            android:fillAlpha=".8" />
+        <path
+            android:pathData="m0 499 269.9 380.4v-220.9z"
+            android:fillColor="#FFFFFFFF"
+            android:fillAlpha=".45" />
+        <path
+            android:pathData="m269.9 658.5v220.9l270.1-380.4z"
+            android:fillColor="#FFFFFFFF"
+            android:fillAlpha=".8" />
+    </group>
+</vector>

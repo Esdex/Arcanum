@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.LockOpen
@@ -292,5 +293,12 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         icon            = Icons.Outlined.Favorite,
         title           = ctx.getString(R.string.notif_support_developer),
         subtitle        = ctx.getString(R.string.notif_support_developer_subtitle)
+    )
+
+    InAppNotification.GoPremium -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFF5B301),
+        icon            = Icons.Outlined.Star,
+        title           = ctx.getString(R.string.notif_go_premium),
+        subtitle        = ctx.getString(R.string.notif_go_premium_subtitle)
     )
 }

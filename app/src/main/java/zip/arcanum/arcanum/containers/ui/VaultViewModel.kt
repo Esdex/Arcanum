@@ -41,6 +41,7 @@ import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.BuildConfig
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.security.AppPreferences
+import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.BiometricCryptoManager
 import zip.arcanum.crypto.CryptoError
@@ -102,6 +103,46 @@ class VaultViewModel @Inject constructor(
 
     fun markUpdateSeen() {
         viewModelScope.launch { prefs.setLastSeenVersionCode(BuildConfig.VERSION_CODE) }
+    }
+
+    // ── Support prompt ────────────────────────────────────────────────────
+    // A day after the user first got to the vault list, then once a month. On the Play
+    // flavour the ask is to buy the full version instead of to donate.
+
+    private val _supportPrompt = MutableStateFlow<InAppNotification?>(null)
+    val supportPrompt: StateFlow<InAppNotification?> = _supportPrompt.asStateFlow()
+
+    fun checkSupportPrompt() {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+
+            // First run: start the clock and say nothing. Recorded here rather than at
+            // install so the day counts from real use, not from an APK sitting unopened.
+            val firstSeen = prefs.firstSeenAt.first()
+            if (firstSeen == null) {
+                prefs.setFirstSeenAt(now)
+                return@launch
+            }
+            // Guards against a clock that moved backwards: treat it as not yet due
+            // rather than letting a negative age satisfy every interval.
+            if (now - firstSeen < FIRST_PROMPT_AFTER_MS) return@launch
+
+            val lastShown = prefs.lastSupportPromptAt.first()
+            if (lastShown != null && now - lastShown < PROMPT_INTERVAL_MS) return@launch
+
+            // Nothing to sell to someone who already bought it.
+            if (BuildConfig.HAS_BILLING && billingManager.isPro.value) return@launch
+
+            _supportPrompt.value =
+                if (BuildConfig.HAS_BILLING) InAppNotification.GoPremium
+                else InAppNotification.SupportDeveloper
+        }
+    }
+
+    /** Called once the banner has actually been put on screen, not when it is dismissed. */
+    fun markSupportPromptShown() {
+        _supportPrompt.value = null
+        viewModelScope.launch { prefs.setLastSupportPromptAt(System.currentTimeMillis()) }
     }
 
     private val screenOffReceiver = object : BroadcastReceiver() {
@@ -682,5 +723,10 @@ class VaultViewModel @Inject constructor(
                     java.io.File(container.path).delete()
             }
         }
+    }
+
+    private companion object {
+        const val FIRST_PROMPT_AFTER_MS = 24L * 60 * 60 * 1000          // one day
+        const val PROMPT_INTERVAL_MS    = 30L * 24 * 60 * 60 * 1000     // then monthly
     }
 }

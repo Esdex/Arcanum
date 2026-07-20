@@ -78,6 +78,8 @@
     <string name="notif_read_only_error_subtitle">The vault is mounted in read-only mode</string>
     <string name="notif_support_developer">Enjoying Arcanum?</string>
     <string name="notif_support_developer_subtitle">Consider supporting development</string>
+    <string name="notif_go_premium">Enjoying Arcanum?</string>
+    <string name="notif_go_premium_subtitle">Unlock the full version</string>
 
     <plurals name="notif_items_copied">
         <item quantity="one">%1$d item copied</item>
@@ -525,8 +527,23 @@
     <string name="settings_appearance_dynamic_colors_unavailable">Dynamic colors require Android 12 or higher.</string>
     <string name="settings_about_title">About</string>
     <string name="settings_about_app_desc">VeraCrypt-compatible encrypted vault manager for Android</string>
-    <string name="settings_about_kofi">Support the project</string>
-    <string name="settings_about_kofi_desc">Support development on Ko-fi</string>
+    <string name="settings_about_donate">Support the project</string>
+    <string name="settings_about_donate_desc">Donation links and wallet addresses</string>
+
+    <!-- Donations screen -->
+    <string name="donations_title">Donations</string>
+    <string name="donations_heading">Arcanum runs on donations</string>
+    <string name="donations_body">Arcanum is built in my own time, with no ads and nothing about you collected or sold. Donations are what buy that time: every fix, every new feature and every release comes out of it. If Arcanum keeps something of yours safe, help keep it going.</string>
+    <string name="donations_github_sponsors">GitHub Sponsors</string>
+    <string name="donations_github_sponsors_desc">One-off or monthly, through GitHub</string>
+    <string name="donations_kofi">Ko-fi</string>
+    <string name="donations_kofi_desc">One-off or monthly, by card</string>
+    <string name="donations_bitcoin">Bitcoin</string>
+    <string name="donations_lightning">Bitcoin Lightning</string>
+    <string name="donations_ethereum">Ethereum</string>
+    <string name="donations_monero">Monero</string>
+    <string name="donations_solana">Solana / USDT / USDC</string>
+    <string name="donations_copied">%1$s address copied</string>
     <string name="settings_about_whats_new">What\'s new</string>
     <string name="settings_about_whats_new_desc">See what changed in this version</string>
     <string name="settings_whats_new_current">Current</string>

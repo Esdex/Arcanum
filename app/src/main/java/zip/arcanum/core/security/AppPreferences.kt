@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.first
 import androidx.datastore.preferences.preferencesDataStore
@@ -42,6 +43,8 @@ class AppPreferences @Inject constructor(
         val GALLERY_RESYNC_BUTTON     = booleanPreferencesKey("gallery_resync_button")
         val DEFAULT_CONTAINER_TAB     = stringPreferencesKey("default_container_tab")
         val RECEIVE_SHARES            = booleanPreferencesKey("receive_shares")
+        val FIRST_SEEN_AT             = longPreferencesKey("first_seen_at")
+        val LAST_SUPPORT_PROMPT_AT    = longPreferencesKey("last_support_prompt_at")
     }
 
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
@@ -161,6 +164,27 @@ class AppPreferences @Inject constructor(
 
     suspend fun setReceiveShares(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.RECEIVE_SHARES] = enabled }
+    }
+
+    /**
+     * When the user first reached the vault list, i.e. finished onboarding and started
+     * actually using the app. The support prompt counts from here rather than from the
+     * install, so someone who installs and only sets up days later is not asked on their
+     * first real day. null = not recorded yet.
+     */
+    val firstSeenAt: Flow<Long?> = context.appPrefsDataStore.data
+        .map { it[Keys.FIRST_SEEN_AT] }
+
+    suspend fun setFirstSeenAt(millis: Long) {
+        context.appPrefsDataStore.edit { it[Keys.FIRST_SEEN_AT] = millis }
+    }
+
+    /** null = the support prompt has never been shown. */
+    val lastSupportPromptAt: Flow<Long?> = context.appPrefsDataStore.data
+        .map { it[Keys.LAST_SUPPORT_PROMPT_AT] }
+
+    suspend fun setLastSupportPromptAt(millis: Long) {
+        context.appPrefsDataStore.edit { it[Keys.LAST_SUPPORT_PROMPT_AT] = millis }
     }
 
     val galleryResyncButton: Flow<Boolean> = context.appPrefsDataStore.data

@@ -320,6 +320,12 @@ fun AppNavigation(pinManager: PinManager) {
                 onAutoMountHandled        = { pendingMountContainerId = null },
                 onOpenWhatsNew            = {
                     navController.navigate(Screen.WhatsNew.route)
+                },
+                onOpenDonations           = {
+                    navController.navigate(Screen.Donations.route)
+                },
+                onOpenPremium             = {
+                    navController.navigate(Screen.Premium.route)
                 }
             )
         }
@@ -473,6 +479,31 @@ fun AppNavigation(pinManager: PinManager) {
                 onBack       = { navController.popBackStack() },
                 viewModel    = settingsViewModel,
                 openWhatsNew = true
+            )
+        }
+
+        // ── Donations / Premium (Settings opened at the matching subscreen) ──
+        composable(
+            route             = Screen.Donations.route,
+            enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
+        ) {
+            SettingsScreen(
+                onBack         = { navController.popBackStack() },
+                viewModel      = settingsViewModel,
+                openDonations  = true
+            )
+        }
+
+        composable(
+            route             = Screen.Premium.route,
+            enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
+        ) {
+            SettingsScreen(
+                onBack        = { navController.popBackStack() },
+                viewModel     = settingsViewModel,
+                openPremium   = true
             )
         }
 

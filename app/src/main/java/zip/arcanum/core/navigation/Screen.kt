@@ -66,6 +66,11 @@ sealed class Screen(val route: String) {
 
     object WhatsNew : Screen("whats_new")
 
+    // Both open Settings straight at a subscreen, so the support banner can lead
+    // somewhere without the user hunting through About.
+    object Donations : Screen("donations")
+    object Premium   : Screen("premium")
+
     object ChangePassword : Screen("change_password/{containerId}") {
         const val ARG = "containerId"
         fun buildRoute(containerId: String) = "change_password/$containerId"
