@@ -98,12 +98,17 @@
             </intent-filter>
         </provider>
 
+        <!-- configChanges: rotation is handled in-process. Without it the video player's
+             fullscreen button would recreate the Activity, tearing down the viewer and its
+             controller connection mid-playback; Compose reacts to the size change by itself.
+             A mounted vault's UI state survives a rotation as a side benefit. -->
         <activity
             android:name=".MainActivity"
             android:exported="false"
             android:label="@string/app_name"
             android:launchMode="singleTask"
             android:theme="@style/Theme.Arcanum"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize"/>
 
         <!-- Default launcher entry — shown when disguise is OFF -->
