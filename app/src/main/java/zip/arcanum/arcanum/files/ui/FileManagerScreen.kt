@@ -107,7 +107,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -129,7 +128,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -139,8 +137,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.foundation.ExperimentalFoundationApi
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
@@ -182,7 +178,6 @@ fun FileManagerScreen(
     val context          = LocalContext.current
     val state            by viewModel.state.collectAsState()
     val mountedContainers by viewModel.mountedContainers.collectAsState()
-    val lifecycleOwner   = LocalLifecycleOwner.current
 
     var showFabMenu by remember { mutableStateOf(false) }
     val fabRotation by animateFloatAsState(
@@ -197,15 +192,6 @@ fun FileManagerScreen(
     )
 
     LaunchedEffect(containerId) { viewModel.initialize(containerId) }
-
-    // Sweep up decrypted copies left behind by the pre-#103 Open with implementation
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) viewModel.purgeLegacyTempFiles(context)
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
 
     // Forward notifications
     LaunchedEffect(state.pendingNotification) {
