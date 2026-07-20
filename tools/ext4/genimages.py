@@ -94,8 +94,10 @@ def stat_file(img, name):
     out = debugfs(img, f"stat {name}\n")
     inode = re.search(r"Inode:\s+(\d+)", out)
     size = re.search(r"Size:\s+(\d+)", out)
+    gen = re.search(r"Generation:\s+(\d+)", out)
     return (int(inode.group(1)) if inode else None,
-            int(size.group(1)) if size else None)
+            int(size.group(1)) if size else None,
+            int(gen.group(1)) if gen else 0)
 
 
 def make_case(case_dir, blob_dir, rng, keep_blobs):
@@ -177,7 +179,7 @@ def make_case(case_dir, blob_dir, rng, keep_blobs):
             debugfs(img, f"fallocate {name} {blocks + 16} {blocks + 16 + rng.randint(8, 200)}\n",
                     write=True)
 
-        inode, size = stat_file(img, name)
+        inode, size, generation = stat_file(img, name)
         if inode is None:
             return None, f"could not stat {name} after writing it"
 
@@ -199,6 +201,7 @@ def make_case(case_dir, blob_dir, rng, keep_blobs):
         files.append({
             "name": name,
             "inode": inode,
+            "generation": generation,
             "size": size,
             "sha256_written": hashlib.sha256(data).hexdigest(),
             "sha256_ondisk": sha_ondisk,

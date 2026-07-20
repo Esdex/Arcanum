@@ -16,6 +16,7 @@
  */
 
 #include "ext4_extents.h"
+#include "ext4_csum.h"
 
 #include <string.h>
 
@@ -159,6 +160,62 @@ int ext4_map_block(const ext4_fs *fs, const uint8_t *inode,
     return EXT4_OK;
 }
 
+/* ── Extent tree checksums ────────────────────────────────────────────────── */
+
+typedef struct {
+    const ext4_fs *fs;
+    uint32_t seed;
+    int      checked;
+    int      bad;
+} csum_ctx;
+
+static int check_node(csum_ctx *c, const uint8_t *node, size_t capacity, int guard);
+
+static int check_children(csum_ctx *c, const uint8_t *node, size_t capacity, int guard) {
+    eh_t eh;
+    if (parse_header(node, capacity, &eh) != EXT4_OK) return EXT4_ERR_FORMAT;
+    if (eh.depth == 0) return EXT4_OK;
+
+    const uint8_t *entry = node + 12;
+    uint8_t child[EXT4_MAX_BLOCK_SIZE];
+    for (uint16_t i = 0; i < eh.entries; i++, entry += 12) {
+        uint64_t blk = idx_child(entry);
+        if (blk == 0 || blk >= c->fs->blocks_count) return EXT4_ERR_RANGE;
+        if (c->fs->read_block(c->fs->ctx, blk, child) != EXT4_OK) return EXT4_ERR_IO;
+        int rc = check_node(c, child, entries_per_block(c->fs), guard + 1);
+        if (rc != EXT4_OK) return rc;
+    }
+    return EXT4_OK;
+}
+
+static int check_node(csum_ctx *c, const uint8_t *node, size_t capacity, int guard) {
+    if (guard > EXT4_MAX_DEPTH) return EXT4_ERR_FORMAT;
+    uint32_t bs  = c->fs->block_size;
+    uint32_t off = ext4_extent_tail_offset(node);
+    if (off + 4 > bs) return EXT4_ERR_FORMAT;
+    uint32_t stored = (uint32_t)node[off] | ((uint32_t)node[off + 1] << 8) |
+                      ((uint32_t)node[off + 2] << 16) | ((uint32_t)node[off + 3] << 24);
+    uint32_t want   = ext4_extent_block_csum(c->seed, node, bs);
+    c->checked++;
+    if (stored != want) { c->bad++; return EXT4_ERR_FORMAT; }
+    return check_children(c, node, capacity, guard);
+}
+
+int ext4_check_extent_tree(const ext4_fs *fs, uint32_t ino, uint32_t generation,
+                           const uint8_t *inode, int *blocks_checked) {
+    if (blocks_checked) *blocks_checked = 0;
+    if (!fs->has_metadata_csum) return EXT4_OK;
+    if (!(rd32(inode + INODE_FLAGS_OFF) & EXT4_INODE_FLAG_EXTENTS)) return EXT4_ERR_NOT_EXTENT;
+
+    csum_ctx c = { fs, ext4_inode_csum_seed(fs->csum_seed, ino, generation), 0, 0 };
+    /* Starts at the inode root, which itself carries no tail: only the blocks it
+     * points at are checksummed here. */
+    int rc = check_children(&c, inode + INODE_IBLOCK_OFF,
+                            (INODE_IBLOCK_SIZE - 12) / 12, 0);
+    if (blocks_checked) *blocks_checked = c.checked;
+    return rc;
+}
+
 /* ── Reading file data ────────────────────────────────────────────────────── */
 
 #define INODE_SIZE_LO_OFF     0x04
@@ -241,7 +298,13 @@ long ext4_read_file(const ext4_fs *fs, const uint8_t *inode,
 #define SB_INODE_SIZE         0x58
 #define SB_FEATURE_INCOMPAT   0x60
 #define SB_DESC_SIZE          0xFE
+#define SB_UUID               0x68
 #define SB_BLOCKS_HI          0x150
+#define SB_FEATURE_RO_COMPAT  0x64
+#define SB_CHECKSUM_SEED      0x270
+#define RO_COMPAT_METADATA_CSUM 0x0400u
+#define INCOMPAT_CSUM_SEED      0x2000u
+#define INODE_GENERATION_OFF  0x64
 
 int ext4_open(ext4_fs *fs, ext4_read_block_fn read_block, void *ctx) {
     uint8_t buf[EXT4_MAX_BLOCK_SIZE];
@@ -273,6 +336,15 @@ int ext4_open(ext4_fs *fs, ext4_read_block_fn read_block, void *ctx) {
     fs->blocks_count = (uint64_t)rd32(buf + SB_BLOCKS_LO) |
                        ((uint64_t)rd32(buf + SB_BLOCKS_HI) << 32);
     if (fs->blocks_count == 0) return EXT4_ERR_FORMAT;
+
+    fs->has_metadata_csum = (rd32(buf + SB_FEATURE_RO_COMPAT) & RO_COMPAT_METADATA_CSUM) != 0;
+    /* With CSUM_SEED the filesystem stores its seed outright, which lets the UUID
+     * change without rewriting every checksum. Without it, the seed is the crc32c
+     * of the UUID. */
+    if (incompat & INCOMPAT_CSUM_SEED)
+        fs->csum_seed = rd32(buf + SB_CHECKSUM_SEED);
+    else
+        fs->csum_seed = ext4_crc32c(~0u, buf + SB_UUID, 16);
     return EXT4_OK;
 }
 

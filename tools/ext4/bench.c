@@ -42,8 +42,9 @@ static int print_run(void *user, const ext4_extent_run *run) {
 
 int main(int argc, char **argv) {
     int read_mode = (argc == 4 && strcmp(argv[3], "--read") == 0);
-    if (argc != 3 && !read_mode) {
-        fprintf(stderr, "usage: %s <image> <inode> [--read]\n", argv[0]);
+    int csum_mode = (argc == 4 && strcmp(argv[3], "--csum") == 0);
+    if (argc != 3 && !read_mode && !csum_mode) {
+        fprintf(stderr, "usage: %s <image> <inode> [--read|--csum]\n", argv[0]);
         return 2;
     }
     img_ctx ctx = { fopen(argv[1], "rb"), 1024 };
@@ -60,6 +61,18 @@ int main(int argc, char **argv) {
     memset(inode, 0, sizeof(inode));
     rc = ext4_read_inode_raw(&fs, (uint32_t)strtoul(argv[2], NULL, 10), inode, sizeof(inode));
     if (rc != EXT4_OK) { fprintf(stderr, "read_inode: %d\n", rc); return 1; }
+
+    if (csum_mode) {
+        /* i_generation, which the per-inode checksum seed folds in. */
+        uint32_t generation = (uint32_t)inode[0x64] | ((uint32_t)inode[0x65] << 8) |
+                              ((uint32_t)inode[0x66] << 16) | ((uint32_t)inode[0x67] << 24);
+        int checked = 0;
+        rc = ext4_check_extent_tree(&fs, (uint32_t)strtoul(argv[2], NULL, 10),
+                                    generation, inode, &checked);
+        printf("%d %d\n", rc, checked);
+        fclose(ctx.fp);
+        return rc == EXT4_OK ? 0 : 1;
+    }
 
     if (read_mode) {
         /* Streamed in chunks rather than one allocation, so a multi-megabyte
