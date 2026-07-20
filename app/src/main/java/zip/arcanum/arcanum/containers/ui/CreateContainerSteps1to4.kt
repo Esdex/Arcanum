@@ -415,7 +415,12 @@ fun StepContent(
     subtitle: String? = null,
     content: @Composable () -> Unit
 ) {
-    Column(modifier = Modifier.imePadding().verticalScroll(rememberScrollState()).padding(top = 28.dp, bottom = 24.dp)) {
+    // No imePadding() here. It used to sit in front of verticalScroll, which
+    // shrank this viewport by the keyboard's height and left an empty band of
+    // background sitting above the keyboard. The keyboard is handled once, at
+    // each screen's container, so the whole layout - including the wizard's
+    // bottom button - lifts together.
+    Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(top = 28.dp, bottom = 24.dp)) {
         Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         if (subtitle != null) {
             Spacer(Modifier.height(4.dp))

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -99,6 +100,7 @@ import zip.arcanum.core.utils.DotVisualTransformation
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.utils.FileUtils
+import zip.arcanum.core.components.OperationSuccess
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -194,7 +196,7 @@ fun ChangeKeyfileScreen(
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Box(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
+        Box(modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
             Column(modifier = Modifier.fillMaxSize()) {
 
                 val showTopBar = state.currentStep < 4 || state.isSuccess || state.error != null
@@ -595,38 +597,11 @@ private fun ChKfStep4Loading() {
 }
 
 @Composable
-private fun ChKfStep4Success(onBack: () -> Unit) {
-    val haptic      = LocalHapticFeedback.current
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_check))
-    val progress    by animateLottieCompositionAsState(composition, iterations = 1)
-    LaunchedEffect(Unit) { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
-
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-            LottieAnimation(composition, { progress }, modifier = Modifier.size(160.dp))
-            Spacer(Modifier.height(16.dp))
-            Text(
-                stringResource(R.string.chkeyfile_success_title),
-                style      = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                stringResource(R.string.chkeyfile_success_body),
-                style     = MaterialTheme.typography.bodyMedium,
-                color     = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-        }
-        Button(
-            onClick  = onBack,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 24.dp)
-        ) { Text(stringResource(R.string.common_done)) }
-    }
-}
+private fun ChKfStep4Success(onBack: () -> Unit) = OperationSuccess(
+    title  = stringResource(R.string.chkeyfile_success_title),
+    body   = stringResource(R.string.chkeyfile_success_body),
+    onDone = onBack
+)
 
 @Composable
 private fun ChKfStep4Error(error: String, onBack: () -> Unit) {

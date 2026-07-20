@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -118,7 +119,7 @@ fun ExpandVolumeScreen(
     val showTopBar = step < 3 || state.isSuccess || state.error != null
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Box(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
+        Box(modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
             Column(modifier = Modifier.fillMaxSize()) {
 
                 // ── Top bar ────────────────────────────────────────────────────

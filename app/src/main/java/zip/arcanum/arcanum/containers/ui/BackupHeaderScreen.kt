@@ -67,6 +67,14 @@ import zip.arcanum.core.utils.DotVisualTransformation
 import zip.arcanum.R
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.utils.FileUtils
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.style.TextAlign
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.animateLottieCompositionAsState
+import com.airbnb.lottie.compose.rememberLottieComposition
+import zip.arcanum.core.components.OperationSuccess
 
 @Composable
 fun BackupHeaderScreen(
@@ -329,25 +337,11 @@ private fun BackupLoadingContent() {
 }
 
 @Composable
-private fun BackupSuccessContent(onBack: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            modifier              = Modifier.padding(32.dp),
-            horizontalAlignment   = Alignment.CenterHorizontally,
-            verticalArrangement   = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(stringResource(R.string.backup_header_success_title),
-                style      = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold)
-            Text(stringResource(R.string.backup_header_success_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = onBack) {
-                Text(stringResource(R.string.common_done))
-            }
-        }
-    }
-}
+private fun BackupSuccessContent(onBack: () -> Unit) = OperationSuccess(
+    title  = stringResource(R.string.backup_header_success_title),
+    body   = stringResource(R.string.backup_header_success_body),
+    onDone = onBack
+)
 
 // ── Shared keyfile section ─────────────────────────────────────────────────────
 
