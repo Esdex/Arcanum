@@ -176,6 +176,8 @@ fun VaultScreen(
     autoMountContainerId: String? = null,
     onAutoMountHandled: () -> Unit = {},
     onOpenWhatsNew: () -> Unit = {},
+    onOpenDonations: () -> Unit = {},
+    onOpenPremium: () -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context              = LocalContext.current
@@ -184,6 +186,7 @@ fun VaultScreen(
     val addVaultResult       by viewModel.addVaultResult.collectAsState()
     val sortState            by viewModel.sortState.collectAsState()
     val showUpdateBanner     by viewModel.showUpdateBanner.collectAsState()
+    val supportPrompt        by viewModel.supportPrompt.collectAsState()
     val hazeState      = remember { HazeState() }
     val isAmoled       = LocalAmoledMode.current
     val topBarColors   = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -213,6 +216,16 @@ fun VaultScreen(
 
     LaunchedEffect(showUpdateBanner) {
         if (showUpdateBanner) notification = InAppNotification.AppUpdated
+    }
+
+    // The support prompt yields to anything already on screen — an update banner or a
+    // vault operation result is what the user was actually doing, and both outrank an ask.
+    LaunchedEffect(Unit) { viewModel.checkSupportPrompt() }
+    LaunchedEffect(supportPrompt, notification) {
+        val prompt = supportPrompt ?: return@LaunchedEffect
+        if (notification != null) return@LaunchedEffect
+        notification = prompt
+        viewModel.markSupportPromptShown()
     }
 
     // Unmount containers per their per-vault config on app stop
@@ -571,9 +584,14 @@ fun VaultScreen(
                 notification = notification,
                 onDismiss    = { notification = null },
                 onAction     = { notif ->
-                    if (notif is InAppNotification.AppUpdated) {
-                        viewModel.markUpdateSeen()
-                        onOpenWhatsNew()
+                    when (notif) {
+                        is InAppNotification.AppUpdated -> {
+                            viewModel.markUpdateSeen()
+                            onOpenWhatsNew()
+                        }
+                        is InAppNotification.SupportDeveloper -> onOpenDonations()
+                        is InAppNotification.GoPremium        -> onOpenPremium()
+                        else -> Unit
                     }
                     notification = null
                 },

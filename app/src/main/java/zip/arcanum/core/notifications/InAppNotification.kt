@@ -130,6 +130,14 @@ sealed class InAppNotification {
         override val priority = 2
     }
 
+    /**
+     * Shown on the Play flavour in place of [SupportDeveloper], where the equivalent of a
+     * donation is buying the full version. Never shown to someone who already has it.
+     */
+    data object GoPremium : InAppNotification() {
+        override val priority = 3
+    }
+
     data object AppUpdated : InAppNotification() {
         override val priority    = 3
         override val persistent  = true

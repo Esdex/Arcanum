@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Brand mark, converted from the official asset. Carries its own colour, so the
+     caller must not put a coloured backdrop behind it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp"
+    android:height="40dp"
+    android:viewportWidth="256.0"
+    android:viewportHeight="256.0">
+    <path
+        android:pathData="M127.9983,0.0005 C57.3183,0.0005 0.0003,57.3155 0.0003,127.9975 C0.0003,142.1255 2.2893,155.7145 6.5183,168.4275 L44.7993,168.4275 L44.7993,60.7335 L127.9983,143.9335 L211.1973,60.7335 L211.1973,168.4275 L249.4793,168.4275 C253.7103,155.7145 256.0003,142.1255 256.0003,127.9975 C256.0003,57.3155 198.6813,0.0005 127.9983,0.0005"
+        android:fillColor="#FFFF6600" />
+    <path
+        android:pathData="M108.8673,163.0617 L72.5573,126.7507 L72.5573,194.5157 L58.6773,194.5157 L44.7973,194.5157 L18.6233,194.5157 C41.0923,231.3787 81.6743,255.9967 127.9963,255.9967 C174.3183,255.9967 214.9033,231.3787 237.3703,194.5157 L211.1933,194.5157 L186.3673,194.5157 L183.4373,194.5157 L183.4373,126.7507 L147.1263,163.0617 L127.9963,182.1897 L108.8693,163.0617 L108.8673,163.0617 Z"
+        android:fillColor="#FF4C4C4C" />
+</vector>

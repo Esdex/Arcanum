@@ -56,6 +56,11 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.EaseInOutCubic
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.animation.slideInHorizontally
@@ -92,7 +97,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.scale
 import android.view.WindowManager
@@ -126,7 +134,7 @@ import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Language
-import androidx.compose.material.icons.outlined.LocalCafe
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.Link
@@ -184,7 +192,7 @@ private val SUPPORTED_LANGUAGES = listOf(
 )
 
 private enum class SubScreen {
-    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, ABOUT, LICENSES, WHATS_NEW, PREMIUM, DEBUG
+    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, ABOUT, LICENSES, WHATS_NEW, DONATIONS, PREMIUM, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -193,10 +201,14 @@ fun SettingsScreen(
     onBack:         () -> Unit = {},
     viewModel:      SettingsViewModel = hiltViewModel(),
     panicViewModel: PanicModeViewModel = hiltViewModel(),
-    openWhatsNew:   Boolean = false
+    openWhatsNew:   Boolean = false,
+    openDonations:  Boolean = false,
+    openPremium:    Boolean = false
 ) {
     var subScreen by remember { mutableStateOf<SubScreen?>(null) }
-    LaunchedEffect(openWhatsNew) { if (openWhatsNew) subScreen = SubScreen.WHATS_NEW }
+    LaunchedEffect(openWhatsNew)  { if (openWhatsNew)  subScreen = SubScreen.WHATS_NEW }
+    LaunchedEffect(openDonations) { if (openDonations) subScreen = SubScreen.DONATIONS }
+    LaunchedEffect(openPremium)   { if (openPremium)   subScreen = SubScreen.PREMIUM }
     val autoLockEnabled         by viewModel.autoLockEnabled.collectAsState()
     val autoLockDelayIndex      by viewModel.autoLockDelayIndex.collectAsState()
     val unmountOnAutoLock       by viewModel.unmountOnAutoLock.collectAsState()
@@ -214,6 +226,7 @@ fun SettingsScreen(
             SubScreen.CHANGE_PIN    -> SubScreen.SECURITY
             SubScreen.LICENSES      -> SubScreen.ABOUT
             SubScreen.WHATS_NEW     -> SubScreen.ABOUT
+            SubScreen.DONATIONS     -> SubScreen.ABOUT
             else                    -> null
         }
     }
@@ -275,11 +288,14 @@ fun SettingsScreen(
                 onBack          = { subScreen = null },
                 onLicenses      = { subScreen = SubScreen.LICENSES },
                 onWhatsNew      = { subScreen = SubScreen.WHATS_NEW },
+                onDonations     = { subScreen = SubScreen.DONATIONS },
                 viewModel       = viewModel,
                 onDebugUnlocked = { subScreen = SubScreen.DEBUG }
             )
             SubScreen.LICENSES  -> LicensesScreen(onBack = { subScreen = SubScreen.ABOUT })
             SubScreen.WHATS_NEW -> WhatsNewSubScreen(onBack = { subScreen = SubScreen.ABOUT })
+
+            SubScreen.DONATIONS -> DonationsSubScreen(onBack = { subScreen = SubScreen.ABOUT })
             SubScreen.PREMIUM -> PremiumSubScreen(onBack = { subScreen = null })
             SubScreen.DEBUG   -> DebugSubScreen(
                 viewModel = viewModel,
@@ -514,7 +530,7 @@ private fun SettingsGroup(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SubScreenScaffold(
+internal fun SubScreenScaffold(
     title: String,
     onBack: () -> Unit,
     content: @Composable (innerPadding: PaddingValues) -> Unit
@@ -1422,6 +1438,7 @@ private fun AboutSubScreen(
     onBack: () -> Unit,
     onLicenses: () -> Unit,
     onWhatsNew: () -> Unit,
+    onDonations: () -> Unit,
     viewModel: SettingsViewModel,
     onDebugUnlocked: () -> Unit
 ) {
@@ -1556,21 +1573,48 @@ private fun AboutSubScreen(
             }
 
             item {
+                // Opens the in-app Donations screen rather than jumping straight to Ko-fi:
+                // the wallet addresses have nowhere else to live, and the app has no network
+                // permission, so paying is always finished in the user's own app (#66).
+                //
+                // The gold sheen travels across the border by sliding a repeating gradient
+                // by exactly one period, so the loop closes on itself with no visible jump.
+                val shimmer by rememberInfiniteTransition(label = "donate_border")
+                    .animateFloat(
+                        initialValue  = 0f,
+                        targetValue   = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(2600, easing = LinearEasing),
+                            repeatMode = RepeatMode.Restart
+                        ),
+                        label = "donate_border_shift"
+                    )
+                val gold   = Color(0xFFFFC107)
+                val sheen  = Color(0xFFFFF6C2)
+                val period = 640f
+                val head   = shimmer * period
                 AboutLinkCard(
-                    icon           = Icons.Outlined.LocalCafe,
-                    iconBackground = Color(0xFFFF5E5B),
-                    title          = stringResource(R.string.settings_about_kofi),
-                    subtitle       = stringResource(R.string.settings_about_kofi_desc),
-                    onClick        = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://ko-fi.com/esdex"))
+                    icon           = Icons.Filled.Star,
+                    iconBackground = gold,
+                    title          = stringResource(R.string.settings_about_donate),
+                    subtitle       = stringResource(R.string.settings_about_donate_desc),
+                    onClick        = onDonations,
+                    border         = BorderStroke(
+                        width = 1.5.dp,
+                        brush = Brush.linearGradient(
+                            colors   = listOf(gold, sheen, gold),
+                            start    = Offset(head - period, 0f),
+                            end      = Offset(head, 0f),
+                            // Tiled, so the gradient covers the card at any width without
+                            // needing to measure it.
+                            tileMode = TileMode.Repeated
                         )
-                    },
+                    ),
                     trailing = {
                         Icon(
-                            Icons.AutoMirrored.Outlined.OpenInNew,
+                            Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                             null,
-                            modifier = Modifier.size(16.dp),
+                            modifier = Modifier.size(20.dp),
                             tint     = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -2617,7 +2661,8 @@ private fun AboutLinkCard(
     title: String,
     subtitle: String? = null,
     onClick: () -> Unit,
-    trailing: (@Composable () -> Unit)? = null
+    trailing: (@Composable () -> Unit)? = null,
+    border: BorderStroke? = null
 ) {
     val isDark    = LocalDarkMode.current
     val isAmoled  = LocalAmoledMode.current
@@ -2630,7 +2675,8 @@ private fun AboutLinkCard(
         onClick   = onClick,
         modifier  = Modifier.fillMaxWidth().padding(bottom = 8.dp),
         colors    = CardDefaults.cardColors(containerColor = cardColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border    = border
     ) {
         Row(
             modifier              = Modifier.padding(12.dp),
