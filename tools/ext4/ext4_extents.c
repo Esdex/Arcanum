@@ -159,6 +159,75 @@ int ext4_map_block(const ext4_fs *fs, const uint8_t *inode,
     return EXT4_OK;
 }
 
+/* ── Reading file data ────────────────────────────────────────────────────── */
+
+#define INODE_SIZE_LO_OFF     0x04
+#define INODE_SIZE_HI_OFF     0x6C
+
+uint64_t ext4_inode_size(const uint8_t *inode) {
+    return (uint64_t)rd32(inode + INODE_SIZE_LO_OFF) |
+           ((uint64_t)rd32(inode + INODE_SIZE_HI_OFF) << 32);
+}
+
+typedef struct {
+    const ext4_fs *fs;
+    uint64_t want_start;   /* byte offset of the first byte wanted */
+    uint64_t want_end;     /* one past the last */
+    uint8_t *out;          /* pre-zeroed, so holes need no writing */
+    int      rc;
+} read_ctx;
+
+static int read_cb(void *user, const ext4_extent_run *run) {
+    read_ctx *r  = (read_ctx *)user;
+    uint64_t bs  = r->fs->block_size;
+    uint64_t beg = (uint64_t)run->logical * bs;
+    uint64_t end = beg + (uint64_t)run->length * bs;
+
+    if (end <= r->want_start) return 0;          /* entirely before the window */
+    if (beg >= r->want_end)   return 1;          /* past it, and runs are ordered */
+    /* Preallocated but never written: the blocks exist and hold whatever was
+     * there before, so they must read as zeroes rather than be copied out. */
+    if (run->uninit) return 0;
+
+    uint64_t from = beg > r->want_start ? beg : r->want_start;
+    uint64_t to   = end < r->want_end   ? end : r->want_end;
+
+    uint8_t block[EXT4_MAX_BLOCK_SIZE];
+    while (from < to) {
+        uint64_t blk_index  = from / bs;
+        uint64_t blk_offset = from % bs;
+        uint64_t chunk      = bs - blk_offset;
+        if (chunk > to - from) chunk = to - from;
+
+        uint64_t phys = run->physical + (blk_index - run->logical);
+        if (r->fs->read_block(r->fs->ctx, phys, block) != EXT4_OK) {
+            r->rc = EXT4_ERR_IO;
+            return 1;
+        }
+        memcpy(r->out + (from - r->want_start), block + blk_offset, (size_t)chunk);
+        from += chunk;
+    }
+    return 0;
+}
+
+long ext4_read_file(const ext4_fs *fs, const uint8_t *inode,
+                    uint64_t offset, uint8_t *buf, uint64_t length) {
+    uint64_t size = ext4_inode_size(inode);
+    if (offset >= size) return 0;
+    if (offset + length > size) length = size - offset;
+    if (length == 0) return 0;
+
+    /* Zero first: every byte not covered by an initialised extent is a hole, and
+     * this way the walk only has to fill in what it actually finds. */
+    memset(buf, 0, (size_t)length);
+
+    read_ctx ctx = { fs, offset, offset + length, buf, EXT4_OK };
+    int rc = ext4_walk_extents(fs, inode, read_cb, &ctx);
+    if (rc != EXT4_OK && rc != 1) return rc;
+    if (ctx.rc != EXT4_OK) return ctx.rc;
+    return (long)length;
+}
+
 /* ── Superblock and inode location ────────────────────────────────────────── */
 
 #define SB_OFFSET             1024

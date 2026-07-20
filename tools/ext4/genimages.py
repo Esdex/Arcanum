@@ -163,20 +163,46 @@ def make_case(case_dir, blob_dir, rng, keep_blobs):
             hole_start = blocks // 4
             hole_end   = hole_start + max(1, blocks // 8)
             debugfs(img, f"punch {name} {hole_start} {hole_end}\n", write=True)
-        if name in ("small", "medium"):
-            fa_start = blocks + 16
-            debugfs(img, f"fallocate {name} {fa_start} {fa_start + rng.randint(8, 400)}\n",
+
+            # Reallocate part of that hole. This is the only way to get an
+            # uninitialised extent *within* the file: preallocating past the end
+            # produces one the reader never reaches, since reads stop at the file
+            # size - which is exactly why a reader that copied preallocated blocks
+            # out verbatim passed the corpus at first.
+            if hole_end - hole_start > 4:
+                fa_start = hole_start + 1
+                fa_end   = hole_start + (hole_end - hole_start) // 2
+                debugfs(img, f"fallocate {name} {fa_start} {fa_end}\n", write=True)
+        if name == "small":
+            debugfs(img, f"fallocate {name} {blocks + 16} {blocks + 16 + rng.randint(8, 200)}\n",
                     write=True)
 
         inode, size = stat_file(img, name)
         if inode is None:
             return None, f"could not stat {name} after writing it"
+
+        # The sha256 above is of what we handed to debugfs; punch and fallocate
+        # change the file after that, and a punched range has to read back as
+        # zeroes. So the content oracle is what debugfs dumps once the file is in
+        # its final state - our reader has to reproduce exactly that.
+        dumped = os.path.join(blob_dir, f"{name}.dump")
+        debugfs(img, f"dump {name} {dumped}\n")
+        try:
+            with open(dumped, "rb") as fh:
+                ondisk = fh.read()
+            sha_ondisk = hashlib.sha256(ondisk).hexdigest()
+            size_ondisk = len(ondisk)
+            os.remove(dumped)
+        except OSError:
+            return None, f"debugfs could not dump {name} back out"
         extents = parse_extents(debugfs(img, f"dump_extents {name}\n"))
         files.append({
             "name": name,
             "inode": inode,
             "size": size,
-            "sha256": hashlib.sha256(data).hexdigest(),
+            "sha256_written": hashlib.sha256(data).hexdigest(),
+            "sha256_ondisk": sha_ondisk,
+            "size_ondisk": size_ondisk,
             "max_depth": max((e["depth"] for e in extents), default=0),
             "extent_count": sum(1 for e in extents if not e["is_index"]),
             "uninit_count": sum(1 for e in extents if "Uninit" in e["flags"]),

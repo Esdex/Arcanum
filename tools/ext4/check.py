@@ -12,6 +12,7 @@ mapping they describe has to match exactly.
 """
 
 import argparse
+import hashlib
 import json
 import glob
 import os
@@ -45,6 +46,25 @@ def reader_runs(bench, img, inode):
     return runs, None
 
 
+def content_sha(bench, img, inode):
+    """Hash of the file as our reader produces it, chunked so a large file does
+    not have to be held in memory twice."""
+    p = subprocess.Popen([bench, img, str(inode), "--read"],
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    h = hashlib.sha256()
+    total = 0
+    while True:
+        chunk = p.stdout.read(1 << 20)
+        if not chunk:
+            break
+        h.update(chunk)
+        total += len(chunk)
+    err = p.stderr.read().decode(errors="replace").strip()
+    if p.wait() != 0:
+        return None, 0, err or "reader exited non-zero"
+    return h.hexdigest(), total, None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cases", required=True)
@@ -76,6 +96,21 @@ def main():
                 print(f"FAIL {case}/{f['name']}: reader errored: {err}")
                 continue
 
+            sha, nbytes, cerr = content_sha(args.bench, img, f["inode"])
+            if cerr is not None:
+                failed += 1
+                by_depth[depth][1] += 1
+                print(f"FAIL {case}/{f['name']}: reading content: {cerr}")
+                continue
+            if sha != f["sha256_ondisk"] or nbytes != f["size_ondisk"]:
+                failed += 1
+                by_depth[depth][1] += 1
+                print(f"FAIL {case}/{f['name']}  content mismatch "
+                      f"(profile={truth['profile']} bsize={truth['block_size']} depth={depth})")
+                print(f"     expected {f['size_ondisk']} bytes {f['sha256_ondisk'][:16]}")
+                print(f"     got      {nbytes} bytes {(sha or '-')[:16]}")
+                continue
+
             if got != expected:
                 failed += 1
                 by_depth[depth][1] += 1
@@ -89,7 +124,7 @@ def main():
             elif args.verbose:
                 print(f"ok   {case}/{f['name']}  {len(expected)} runs, depth {depth}")
 
-    print(f"\nchecked {checked} files, {failed} failed")
+    print(f"\nchecked {checked} files (extent map + content), {failed} failed")
     for d in sorted(by_depth):
         total, bad = by_depth[d]
         print(f"  depth {d}: {total - bad}/{total} passed")
