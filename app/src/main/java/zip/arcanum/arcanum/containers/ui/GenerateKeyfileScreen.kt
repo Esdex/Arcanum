@@ -61,9 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -73,7 +71,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
-import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import kotlinx.coroutines.delay
@@ -83,6 +80,7 @@ import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import kotlin.math.roundToInt
 import zip.arcanum.core.components.OperationSuccess
+import zip.arcanum.core.components.OperationLoading
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -417,21 +415,7 @@ private fun GenKfStep3(state: GenerateKeyfileState, onBack: () -> Unit) {
 }
 
 @Composable
-private fun GenKfLoading() {
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.loading))
-    val progress    by animateLottieCompositionAsState(composition, iterations = LottieConstants.IterateForever)
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            LottieAnimation(composition, { progress }, modifier = Modifier.size(160.dp))
-            Spacer(Modifier.height(16.dp))
-            Text(
-                stringResource(R.string.genkeyfile_running),
-                style      = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
-}
+private fun GenKfLoading() = OperationLoading(stringResource(R.string.genkeyfile_running))
 
 @Composable
 private fun GenKfSuccess(names: List<String>, onBack: () -> Unit) = OperationSuccess(

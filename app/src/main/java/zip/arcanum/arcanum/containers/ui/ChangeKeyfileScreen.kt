@@ -53,11 +53,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
-import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import androidx.compose.runtime.Composable
@@ -75,7 +72,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
@@ -101,6 +97,7 @@ import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.core.components.OperationSuccess
+import zip.arcanum.core.components.OperationLoading
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -580,21 +577,7 @@ private fun ChKfStep4(state: ChangeKeyfileState, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ChKfStep4Loading() {
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.loading))
-    val progress    by animateLottieCompositionAsState(composition, iterations = LottieConstants.IterateForever)
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            LottieAnimation(composition, { progress }, modifier = Modifier.size(160.dp))
-            Spacer(Modifier.height(16.dp))
-            Text(
-                stringResource(R.string.chkeyfile_title),
-                style      = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
-}
+private fun ChKfStep4Loading() = OperationLoading(stringResource(R.string.chkeyfile_title))
 
 @Composable
 private fun ChKfStep4Success(onBack: () -> Unit) = OperationSuccess(
