@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -90,6 +91,7 @@ import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.utils.FileUtils
+import zip.arcanum.core.components.OperationSuccess
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -159,6 +161,7 @@ fun ChangePasswordScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .systemBarsPadding()
+                .imePadding()
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
 
@@ -653,49 +656,11 @@ private fun ChPwdStep4Loading() {
 }
 
 @Composable
-private fun ChPwdStep4Success(onBack: () -> Unit) {
-    val haptic      = LocalHapticFeedback.current
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_check))
-    val progress    by animateLottieCompositionAsState(composition = composition, iterations = 1)
-
-    LaunchedEffect(Unit) { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
-
-    Column(
-        modifier            = Modifier.fillMaxSize().padding(horizontal = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                LottieAnimation(
-                    composition = composition,
-                    progress    = { progress },
-                    modifier    = Modifier.size(180.dp)
-                )
-                Text(
-                    stringResource(R.string.chpwd_step4_success_title),
-                    style      = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    textAlign  = TextAlign.Center
-                )
-                Text(
-                    stringResource(R.string.chpwd_step4_success_body),
-                    style     = MaterialTheme.typography.bodyMedium,
-                    color     = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-        Button(
-            onClick  = onBack,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
-        ) {
-            Text(stringResource(R.string.common_done), fontWeight = FontWeight.SemiBold)
-        }
-    }
-}
+private fun ChPwdStep4Success(onBack: () -> Unit) = OperationSuccess(
+    title  = stringResource(R.string.chpwd_step4_success_title),
+    body   = stringResource(R.string.chpwd_step4_success_body),
+    onDone = onBack
+)
 
 @Composable
 private fun ChPwdStep4Error(error: String, onBack: () -> Unit) {

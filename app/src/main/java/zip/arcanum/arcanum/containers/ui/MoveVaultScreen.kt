@@ -63,6 +63,7 @@ import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import zip.arcanum.R
+import zip.arcanum.core.components.OperationSuccess
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -423,52 +424,11 @@ private fun MovingScreen(state: MoveVaultViewModel.State.Moving) {
 // ── Success screen ────────────────────────────────────────────────────────────
 
 @Composable
-private fun SuccessScreen(onDone: () -> Unit) {
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_check))
-    val progress    by animateLottieCompositionAsState(composition = composition, iterations = 1)
-
-    Column(
-        modifier              = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 40.dp)
-            .navigationBarsPadding(),
-        horizontalAlignment   = Alignment.CenterHorizontally,
-        verticalArrangement   = Arrangement.Center
-    ) {
-        LottieAnimation(
-            composition = composition,
-            progress    = { progress },
-            modifier    = Modifier.size(160.dp)
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        Text(
-            text       = stringResource(R.string.move_vault_success_title),
-            style      = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            textAlign  = TextAlign.Center
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        Text(
-            text      = stringResource(R.string.move_vault_success_body),
-            style     = MaterialTheme.typography.bodyMedium,
-            color     = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(Modifier.height(32.dp))
-
-        Button(
-            onClick  = onDone,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(stringResource(R.string.common_done))
-        }
-    }
-}
+private fun SuccessScreen(onDone: () -> Unit) = OperationSuccess(
+    title  = stringResource(R.string.move_vault_success_title),
+    body   = stringResource(R.string.move_vault_success_body),
+    onDone = onDone
+)
 
 // ── Failure screen ────────────────────────────────────────────────────────────
 

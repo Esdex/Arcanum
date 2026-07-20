@@ -1770,7 +1770,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
             }
 
             // ── Current version entries ───────────────────────────────────
-            items(currentVersion?.entries ?: emptyList()) { entry ->
+            items((currentVersion?.entries ?: emptyList()).inDisplayOrder()) { entry ->
                 val (icon, color) = whatsNewVisualsFor(entry.type)
                 WhatsNewEntry(
                     icon     = icon,
@@ -1808,7 +1808,7 @@ private fun WhatsNewSubScreen(onBack: () -> Unit) {
                                 HorizontalDivider(modifier = Modifier.weight(1f))
                             }
                         }
-                        items(version.entries) { entry ->
+                        items(version.entries.inDisplayOrder()) { entry ->
                             val (icon, color) = whatsNewVisualsFor(entry.type)
                             WhatsNewEntry(
                                 icon     = icon,

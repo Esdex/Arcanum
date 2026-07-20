@@ -45,6 +45,29 @@ fun whatsNewVisualsFor(type: String): Pair<ImageVector, Color> = when (type) {
     else          -> Icons.Outlined.Stars      to Color(0xFFFFC107)
 }
 
+/**
+ * Display rank for an entry [type]: features, then improvements, then security,
+ * then fixes.
+ *
+ * Kept next to [whatsNewVisualsFor] so the two never disagree about what a type
+ * means, and unknown types rank with "new" for the same reason they are drawn
+ * as it.
+ */
+private fun whatsNewRankFor(type: String): Int = when (type) {
+    "improvement" -> 1
+    "security"    -> 2
+    "fix"         -> 3
+    else          -> 0
+}
+
+/**
+ * The entries in the order they should be shown. [sortedBy] is stable, so
+ * entries keep the order they were authored in within their own group -
+ * whatsnew.json stays the place to control that.
+ */
+fun List<WhatsNewEntryData>.inDisplayOrder(): List<WhatsNewEntryData> =
+    sortedBy { whatsNewRankFor(it.type) }
+
 private val whatsNewJson = Json { ignoreUnknownKeys = true }
 
 /**

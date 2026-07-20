@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -81,6 +82,7 @@ import zip.arcanum.core.theme.LocalDarkMode
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import kotlin.math.roundToInt
+import zip.arcanum.core.components.OperationSuccess
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -108,7 +110,7 @@ fun GenerateKeyfileScreen(
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Box(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
+        Box(modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
             Column(modifier = Modifier.fillMaxSize()) {
 
                 val showTopBar = state.currentStep < 3 || state.isSuccess || state.error != null
@@ -432,70 +434,40 @@ private fun GenKfLoading() {
 }
 
 @Composable
-private fun GenKfSuccess(names: List<String>, onBack: () -> Unit) {
-    val haptic      = LocalHapticFeedback.current
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_check))
-    val progress    by animateLottieCompositionAsState(composition, iterations = 1)
-    LaunchedEffect(Unit) { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
-
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-            LottieAnimation(composition, { progress }, modifier = Modifier.size(160.dp))
-            Spacer(Modifier.height(16.dp))
-            Text(
-                stringResource(R.string.genkeyfile_success_title),
-                style      = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                textAlign  = TextAlign.Center
+private fun GenKfSuccess(names: List<String>, onBack: () -> Unit) = OperationSuccess(
+    title  = stringResource(R.string.genkeyfile_success_title),
+    body   = names.joinToString("\n"),
+    onDone = onBack
+) {
+    // The one thing the user must act on: this is where a keyfile is lost for
+    // good, so it gets the emphasis instead of the setup step. Amber rather
+    // than the error palette - nothing failed here. Foreground follows the
+    // theme: the dark amber the OsChip callout uses would sink into the tinted
+    // background in dark/AMOLED.
+    val warningFg = if (LocalDarkMode.current) Color(0xFFFBBF24) else Color(0xFFB45309)
+    Card(
+        colors   = CardDefaults.cardColors(containerColor = Color(0xFFF59E0B).copy(alpha = 0.12f)),
+        shape    = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier          = Modifier.padding(16.dp)
+        ) {
+            Icon(
+                Icons.Outlined.Warning,
+                contentDescription = null,
+                tint     = warningFg,
+                modifier = Modifier.size(24.dp)
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.width(12.dp))
             Text(
-                names.joinToString("\n"),
-                style     = MaterialTheme.typography.bodySmall,
-                color     = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
+                stringResource(R.string.genkeyfile_backup_warning),
+                style      = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color      = warningFg
             )
-            Spacer(Modifier.height(24.dp))
-            // The one thing the user must act on: this is where a keyfile is
-            // lost for good, so it gets the emphasis instead of the setup step.
-            // Amber rather than the error palette - nothing failed here.
-            // Foreground follows the theme: the dark amber the OsChip callout
-            // uses would sink into the tinted background in dark/AMOLED.
-            val warningFg = if (LocalDarkMode.current) Color(0xFFFBBF24) else Color(0xFFB45309)
-            Card(
-                colors   = CardDefaults.cardColors(
-                    containerColor = Color(0xFFF59E0B).copy(alpha = 0.12f)
-                ),
-                shape    = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier          = Modifier.padding(16.dp)
-                ) {
-                    Icon(
-                        Icons.Outlined.Warning,
-                        contentDescription = null,
-                        tint     = warningFg,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        stringResource(R.string.genkeyfile_backup_warning),
-                        style      = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color      = warningFg
-                    )
-                }
-            }
         }
-        Button(
-            onClick  = onBack,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 24.dp)
-        ) { Text(stringResource(R.string.common_done)) }
     }
 }
 
