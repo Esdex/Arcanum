@@ -88,9 +88,12 @@
 -dontwarn androidx.security.crypto.**
 
 # ── SQLCipher ────────────────────────────────────────────────────────────────
-# SQLCipher loads its native library and accesses Java classes via JNI.
--keep class net.sqlcipher.** { *; }
--dontwarn net.sqlcipher.**
+# sqlcipher-android ships consumer rules inside its AAR that keep exactly the JNI
+# surface: native methods, constructors and the mNativeHandle field. Those are applied
+# automatically, so there is nothing to repeat here - restating them would only risk
+# drifting from whatever the library needs next. The old net.sqlcipher.** rules went
+# with the retired artifact (#45).
+-dontwarn net.zetetic.**
 
 # ── Coil ─────────────────────────────────────────────────────────────────────
 -dontwarn coil.**

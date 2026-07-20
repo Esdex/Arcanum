@@ -52,7 +52,7 @@ class DatabaseKeyManager @Inject constructor(
         }
     }
 
-    // Plaintext DB from older app versions cannot be opened by SupportFactory.
+    // Plaintext DB from older app versions cannot be opened by SQLCipher.
     // Delete it so Room recreates it encrypted — container files on disk are not affected.
     fun migrateIfNeeded() {
         val dbFile = context.getDatabasePath("arcanum.db")
