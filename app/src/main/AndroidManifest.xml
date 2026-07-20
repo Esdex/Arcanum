@@ -62,11 +62,6 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <service
-            android:name=".arcanum.containers.service.ExpandVolumeService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
         <!-- Disable WorkManager auto-init so HiltWorkerFactory can be injected first -->
         <provider
             android:name="androidx.startup.InitializationProvider"

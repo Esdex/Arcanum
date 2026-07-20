@@ -618,7 +618,6 @@
     <string name="vault_info_label_location">位置</string>
     <string name="vault_info_section_operations">操作</string>
     <string name="vault_info_op_change_password">變更密碼</string>
-    <string name="vault_info_op_expand_volume">展開卷</string>
     <string name="vault_info_op_backup_header">備份標頭</string>
     <string name="vault_info_op_change_keyfile">變更金鑰檔案</string>
     <string name="vault_info_unmount_button">卸載保險庫</string>
@@ -627,7 +626,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">查看磁碟區詳情與中繼資料</string>
     <string name="vault_card_change_password_desc">變更加密密碼</string>
-    <string name="vault_card_expand_desc">擴大此磁碟區的大小</string>
     <string name="vault_card_backup_desc">儲存磁碟區標頭的備份</string>
     <string name="vault_card_keyfile_desc">更新此磁碟區的金鑰檔案</string>
     <string name="vault_card_unmount_desc">鎖定並卸載此保險庫</string>

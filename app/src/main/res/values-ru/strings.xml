@@ -642,7 +642,6 @@
     <string name="vault_info_label_location">Расположение</string>
     <string name="vault_info_section_operations">Операции</string>
     <string name="vault_info_op_change_password">Изменить пароль</string>
-    <string name="vault_info_op_expand_volume">Расширить том</string>
     <string name="vault_info_op_backup_header">Резервная копия заголовка</string>
     <string name="vault_info_op_change_keyfile">Изменить ключевой файл</string>
     <string name="vault_info_unmount_button">Отключить хранилище</string>
@@ -651,7 +650,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">Просмотр сведений и метаданных тома</string>
     <string name="vault_card_change_password_desc">Изменить пароль шифрования</string>
-    <string name="vault_card_expand_desc">Увеличить размер тома</string>
     <string name="vault_card_backup_desc">Сохранить резервную копию заголовка тома</string>
     <string name="vault_card_keyfile_desc">Обновить ключевой файл тома</string>
     <string name="vault_card_unmount_desc">Заблокировать и размонтировать хранилище</string>

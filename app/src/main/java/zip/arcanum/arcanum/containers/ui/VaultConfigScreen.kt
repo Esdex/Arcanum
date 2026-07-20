@@ -33,7 +33,6 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Timer
@@ -100,7 +99,6 @@ fun VaultConfigScreen(
     onChangeKeyfile: (containerId: String) -> Unit,
     onBackupHeader: (containerId: String) -> Unit,
     onRestoreHeader: (containerId: String) -> Unit,
-    onExpandVolume: (containerId: String) -> Unit,
     onMoveVault: (containerId: String, toApp: Boolean) -> Unit
 ) {
     val context      = LocalContext.current
@@ -291,15 +289,6 @@ fun VaultConfigScreen(
                         isDynamic = isDynamic,
                         enabled   = !isMounted,
                         onClick   = { onRestoreHeader(containerId) }
-                    )
-                    VaultOperationItem(
-                        icon      = Icons.Outlined.OpenInFull,
-                        rawColor  = Color(0xFF8E24AA),
-                        title     = stringResource(R.string.vault_info_op_expand_volume),
-                        subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.vault_card_expand_desc),
-                        isDynamic = isDynamic,
-                        enabled   = !isMounted,
-                        onClick   = { onExpandVolume(containerId) }
                     )
 
                     // General + Encryption details — only meaningful while mounted

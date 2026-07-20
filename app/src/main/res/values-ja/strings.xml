@@ -618,7 +618,6 @@
     <string name="vault_info_label_location">場所</string>
     <string name="vault_info_section_operations">操作</string>
     <string name="vault_info_op_change_password">パスワードを変更</string>
-    <string name="vault_info_op_expand_volume">ボリュームを拡張</string>
     <string name="vault_info_op_backup_header">ヘッダーをバックアップ</string>
     <string name="vault_info_op_change_keyfile">キーファイルを変更</string>
     <string name="vault_info_unmount_button">ボールトをアンマウント</string>
@@ -627,7 +626,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">ボリュームの詳細とメタデータを表示</string>
     <string name="vault_card_change_password_desc">暗号化パスワードを変更</string>
-    <string name="vault_card_expand_desc">このボリュームのサイズを拡張</string>
     <string name="vault_card_backup_desc">ボリュームヘッダのバックアップを保存</string>
     <string name="vault_card_keyfile_desc">このボリュームのキーファイルを更新</string>
     <string name="vault_card_unmount_desc">このボールトをロックしてアンマウント</string>

@@ -618,7 +618,6 @@
     <string name="vault_info_label_location">위치</string>
     <string name="vault_info_section_operations">작업</string>
     <string name="vault_info_op_change_password">비밀번호 변경</string>
-    <string name="vault_info_op_expand_volume">볼륨 확장</string>
     <string name="vault_info_op_backup_header">헤더 백업</string>
     <string name="vault_info_op_change_keyfile">키 파일 변경</string>
     <string name="vault_info_unmount_button">보관함 마운트 해제</string>
@@ -627,7 +626,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">볼륨 세부 정보 및 메타데이터 보기</string>
     <string name="vault_card_change_password_desc">암호화 비밀번호 변경</string>
-    <string name="vault_card_expand_desc">볼륨 크기 늘리기</string>
     <string name="vault_card_backup_desc">볼륨 헤더 백업 저장</string>
     <string name="vault_card_keyfile_desc">볼륨의 키 파일 업데이트</string>
     <string name="vault_card_unmount_desc">이 볼트 잠금 및 마운트 해제</string>

@@ -626,7 +626,6 @@
     <string name="vault_info_label_location">Localização</string>
     <string name="vault_info_section_operations">Operações</string>
     <string name="vault_info_op_change_password">Alterar palavra-passe</string>
-    <string name="vault_info_op_expand_volume">Expandir volume</string>
     <string name="vault_info_op_backup_header">Cópia de segurança do cabeçalho</string>
     <string name="vault_info_op_change_keyfile">Alterar ficheiro de chave</string>
     <string name="vault_info_unmount_button">Desmontar cofre</string>
@@ -635,7 +634,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">Ver detalhes e metadados do volume</string>
     <string name="vault_card_change_password_desc">Alterar a senha de criptografia</string>
-    <string name="vault_card_expand_desc">Aumentar o tamanho deste volume</string>
     <string name="vault_card_backup_desc">Salvar backup do cabeçalho do volume</string>
     <string name="vault_card_keyfile_desc">Atualizar o arquivo de chave deste volume</string>
     <string name="vault_card_unmount_desc">Bloquear e desmontar este vault</string>

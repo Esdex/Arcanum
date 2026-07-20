@@ -626,7 +626,6 @@
     <string name="vault_info_label_location">Emplacement</string>
     <string name="vault_info_section_operations">Opérations</string>
     <string name="vault_info_op_change_password">Changer le mot de passe</string>
-    <string name="vault_info_op_expand_volume">Étendre le volume</string>
     <string name="vault_info_op_backup_header">Sauvegarder l\'en-tête</string>
     <string name="vault_info_op_change_keyfile">Changer le fichier clé</string>
     <string name="vault_info_unmount_button">Démonter le coffre</string>
@@ -635,7 +634,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">Afficher les détails et métadonnées du volume</string>
     <string name="vault_card_change_password_desc">Modifier le mot de passe de chiffrement</string>
-    <string name="vault_card_expand_desc">Augmenter la taille de ce volume</string>
     <string name="vault_card_backup_desc">Enregistrer une sauvegarde de l\'en-tête</string>
     <string name="vault_card_keyfile_desc">Mettre à jour le fichier clé de ce volume</string>
     <string name="vault_card_unmount_desc">Verrouiller et démonter ce vault</string>

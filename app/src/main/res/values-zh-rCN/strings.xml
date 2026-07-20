@@ -618,7 +618,6 @@
     <string name="vault_info_label_location">位置</string>
     <string name="vault_info_section_operations">操作</string>
     <string name="vault_info_op_change_password">更改密码</string>
-    <string name="vault_info_op_expand_volume">扩展卷</string>
     <string name="vault_info_op_backup_header">备份头部</string>
     <string name="vault_info_op_change_keyfile">更改密钥文件</string>
     <string name="vault_info_unmount_button">卸载保险库</string>
@@ -627,7 +626,6 @@
     <string name="vault_info_fallback_name">vault</string>
     <string name="vault_card_info_desc">查看卷详情和元数据</string>
     <string name="vault_card_change_password_desc">更改加密密码</string>
-    <string name="vault_card_expand_desc">扩大此卷的大小</string>
     <string name="vault_card_backup_desc">保存卷标头的备份</string>
     <string name="vault_card_keyfile_desc">更新此卷的密钥文件</string>
     <string name="vault_card_unmount_desc">锁定并卸载此保险库</string>
