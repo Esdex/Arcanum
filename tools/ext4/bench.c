@@ -15,6 +15,7 @@
 #define _FILE_OFFSET_BITS 64
 
 #include "ext4_extents.h"
+#include "ext4_csum.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,10 +67,25 @@ int main(int argc, char **argv) {
         /* i_generation, which the per-inode checksum seed folds in. */
         uint32_t generation = (uint32_t)inode[0x64] | ((uint32_t)inode[0x65] << 8) |
                               ((uint32_t)inode[0x66] << 16) | ((uint32_t)inode[0x67] << 24);
+        uint32_t ino = (uint32_t)strtoul(argv[2], NULL, 10);
         int checked = 0;
-        rc = ext4_check_extent_tree(&fs, (uint32_t)strtoul(argv[2], NULL, 10),
-                                    generation, inode, &checked);
-        printf("%d %d\n", rc, checked);
+        rc = ext4_check_extent_tree(&fs, ino, generation, inode, &checked);
+
+        /* The inode's own checksum, which covers the extent root that the tree
+         * blocks' own tails do not. */
+        uint32_t want = ext4_inode_csum(fs.csum_seed, ino, generation, inode, fs.inode_size);
+        uint32_t lo   = (uint32_t)inode[EXT4_INODE_CSUM_LO_OFF] |
+                        ((uint32_t)inode[EXT4_INODE_CSUM_LO_OFF + 1] << 8);
+        uint32_t got  = lo;
+        if (fs.inode_size > 128 && ext4_inode_has_checksum_hi(inode))
+            got |= ((uint32_t)inode[EXT4_INODE_CSUM_HI_OFF] |
+                    ((uint32_t)inode[EXT4_INODE_CSUM_HI_OFF + 1] << 8)) << 16;
+        else
+            want &= 0xFFFFu;
+        int inode_ok = (want == got);
+        if (!inode_ok && rc == EXT4_OK) rc = EXT4_ERR_FORMAT;
+
+        printf("%d %d %d\n", rc, checked, inode_ok);
         fclose(ctx.fp);
         return rc == EXT4_OK ? 0 : 1;
     }

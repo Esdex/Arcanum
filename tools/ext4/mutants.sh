@@ -106,6 +106,15 @@ try "checksum seed folds the generation twice, never the inode number" \
 try "checksum covers the whole block instead of stopping at the tail" \
     's@    return ext4_crc32c(inode_seed, block, off);@    return ext4_crc32c(inode_seed, block, block_size - 4);@'
 
+try "inode checksum covers only the classic 128 bytes" \
+    's@    int has_hi = inode_size > 128 \&\& ext4_inode_has_checksum_hi(inode);@    int has_hi = inode_size > 128 \&\& ext4_inode_has_checksum_hi(inode); inode_size = 128;@'
+
+try "inode checksum does not blank i_checksum_lo" \
+    's@    crc = ext4_crc32c(crc, inode, EXT4_INODE_CSUM_LO_OFF);@    crc = ext4_crc32c(crc, inode, EXT4_INODE_CSUM_LO_OFF + 2); if (0)@'
+
+try "inode checksum ignores the high half" \
+    's@    int has_hi = inode_size > 128 \&\& ext4_inode_has_checksum_hi(inode);@    int has_hi = 0;@'
+
 echo
 if [ "$fail" -ne 0 ]; then
     echo "RESULT: the corpus has a gap - a broken reader passed it"
