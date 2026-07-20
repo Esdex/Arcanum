@@ -77,6 +77,18 @@ try "index child block high bits dropped" \
 try "entries read from the wrong header field" \
     's@out->entries = rd16(node + 2);@out->entries = rd16(node + 4);@'
 
+# The ones below only bite on the content check - the extent map is identical
+# either way, which is the whole reason content is verified separately.
+
+try "preallocated extents copied out instead of zeroed" \
+    's@    if (run->uninit) return 0;@@'
+
+try "holes not zero-filled" \
+    's@    memset(buf, 0, (size_t)length);@@'
+
+try "read not clamped to file size" \
+    's@    if (offset + length > size) length = size - offset;@@'
+
 echo
 if [ "$fail" -ne 0 ]; then
     echo "RESULT: the corpus has a gap - a broken reader passed it"

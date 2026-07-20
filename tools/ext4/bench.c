@@ -41,8 +41,9 @@ static int print_run(void *user, const ext4_extent_run *run) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
-        fprintf(stderr, "usage: %s <image> <inode>\n", argv[0]);
+    int read_mode = (argc == 4 && strcmp(argv[3], "--read") == 0);
+    if (argc != 3 && !read_mode) {
+        fprintf(stderr, "usage: %s <image> <inode> [--read]\n", argv[0]);
         return 2;
     }
     img_ctx ctx = { fopen(argv[1], "rb"), 1024 };
@@ -59,6 +60,26 @@ int main(int argc, char **argv) {
     memset(inode, 0, sizeof(inode));
     rc = ext4_read_inode_raw(&fs, (uint32_t)strtoul(argv[2], NULL, 10), inode, sizeof(inode));
     if (rc != EXT4_OK) { fprintf(stderr, "read_inode: %d\n", rc); return 1; }
+
+    if (read_mode) {
+        /* Streamed in chunks rather than one allocation, so a multi-megabyte
+         * file does not decide how much memory the harness needs. */
+        uint64_t size = ext4_inode_size(inode);
+        uint64_t done = 0;
+        uint8_t  chunk[256 * 1024];
+        /* Always asks for a full chunk, including past the end on the last one:
+         * clamping to the file size is ext4_read_file's job, and asking politely
+         * would leave that untested. */
+        while (done < size) {
+            long got = ext4_read_file(&fs, inode, done, chunk, sizeof(chunk));
+            if (got < 0) { fprintf(stderr, "read: %ld\n", got); return 1; }
+            if (got == 0) break;
+            fwrite(chunk, 1, (size_t)got, stdout);
+            done += (uint64_t)got;
+        }
+        fclose(ctx.fp);
+        return 0;
+    }
 
     rc = ext4_walk_extents(&fs, inode, print_run, NULL);
     if (rc != EXT4_OK) { fprintf(stderr, "walk: %d\n", rc); return 1; }

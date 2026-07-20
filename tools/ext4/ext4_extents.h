@@ -75,6 +75,20 @@ int ext4_walk_extents(const ext4_fs *fs, const uint8_t *inode,
 int ext4_map_block(const ext4_fs *fs, const uint8_t *inode,
                    uint32_t logical, uint64_t *physical, int *uninit);
 
+/* File length in bytes, from the inode's split size fields. */
+uint64_t ext4_inode_size(const uint8_t *inode);
+
+/*
+ * Reads [offset, offset+length) of the file into buf, stopping at end of file.
+ * Returns the number of bytes produced, or a negative EXT4_ERR_*.
+ *
+ * A hole and a preallocated (uninitialised) extent both read as zeroes: neither
+ * holds file data, and handing back whatever the blocks happen to contain would
+ * leak the previous tenant of that space.
+ */
+long ext4_read_file(const ext4_fs *fs, const uint8_t *inode,
+                    uint64_t offset, uint8_t *buf, uint64_t length);
+
 #ifdef __cplusplus
 }
 #endif
