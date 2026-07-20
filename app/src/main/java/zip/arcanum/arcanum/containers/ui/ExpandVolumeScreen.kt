@@ -109,9 +109,9 @@ fun ExpandVolumeScreen(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
-            val (path, name) = FileUtils.copyUriToCache(context, it)
+            val (bytes, name) = FileUtils.readKeyfileBytes(context, it)
                 ?: return@rememberLauncherForActivityResult
-            viewModel.addKeyfile(path, name)
+            viewModel.addKeyfile(bytes, name)
         }
     }
 

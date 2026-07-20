@@ -102,16 +102,16 @@ fun CreateContainerScreen(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val (path, name) = FileUtils.copyUriToCache(context, uri) ?: return@rememberLauncherForActivityResult
-        viewModel.addKeyfile(path, name)
+        val (bytes, name) = FileUtils.readKeyfileBytes(context, uri) ?: return@rememberLauncherForActivityResult
+        viewModel.addKeyfile(bytes, name)
     }
 
     val hiddenKeyfilePickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val (path, name) = FileUtils.copyUriToCache(context, uri) ?: return@rememberLauncherForActivityResult
-        viewModel.addHiddenKeyfile(path, name)
+        val (bytes, name) = FileUtils.readKeyfileBytes(context, uri) ?: return@rememberLauncherForActivityResult
+        viewModel.addHiddenKeyfile(bytes, name)
     }
 
     // Generated keyfiles need a folder to land in, so these pick a tree rather
@@ -383,7 +383,7 @@ private fun isStepValid(state: CreateContainerState, availableSpaceMb: Long = Lo
     13   -> state.hiddenPassword.length >= 4 &&
             state.hiddenPassword == state.hiddenConfirmPassword &&
             state.hiddenPassword != state.password &&
-            !(state.hiddenPim in 1..484 && state.hiddenPassword.length < 20 && state.hiddenKeyfilePaths.isEmpty())
+            !(state.hiddenPim in 1..484 && state.hiddenPassword.length < 20 && state.hiddenKeyfileData.isEmpty())
     14   -> state.hiddenEntropyPoints >= 500
     else -> true
 }

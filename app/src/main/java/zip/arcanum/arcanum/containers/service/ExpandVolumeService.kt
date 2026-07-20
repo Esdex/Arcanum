@@ -80,7 +80,7 @@ class ExpandVolumeService : Service() {
                         cryptoEngine.expandVolumeFd(
                             fd               = p.safFd,
                             password         = p.password,
-                            keyfilePaths     = p.keyfilePaths,
+                            keyfileData     = p.keyfileData,
                             pim              = p.pim,
                             newSizeBytes     = p.newSizeBytes,
                             progressListener = listener
@@ -89,7 +89,7 @@ class ExpandVolumeService : Service() {
                         cryptoEngine.expandVolume(
                             path             = p.path,
                             password         = p.password,
-                            keyfilePaths     = p.keyfilePaths,
+                            keyfileData     = p.keyfileData,
                             pim              = p.pim,
                             newSizeBytes     = p.newSizeBytes,
                             progressListener = listener
@@ -97,7 +97,7 @@ class ExpandVolumeService : Service() {
                     }
                 } finally {
                     p.safPfd?.close()
-                    p.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+                    p.keyfileData.forEach { it.fill(0) }
                 }
 
                 // M4: persist new size from within the service's own scope so it survives ViewModel teardown

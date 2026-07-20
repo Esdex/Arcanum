@@ -85,7 +85,7 @@ class ContainerCreationService : Service() {
                         filesystem       = p.filesystem,
                         quickFormat      = p.quickFormat,
                         entropyBytes     = p.entropyBytes,
-                        keyfilePaths     = p.keyfilePaths,
+                        keyfileData     = p.keyfileData,
                         progressListener = listener,
                         pim              = p.pim
                     )
@@ -99,16 +99,17 @@ class ContainerCreationService : Service() {
                         filesystem       = p.filesystem,
                         quickFormat      = p.quickFormat,
                         entropyBytes     = p.entropyBytes,
-                        keyfilePaths     = p.keyfilePaths,
+                        keyfileData     = p.keyfileData,
                         progressListener = listener,
                         pim              = p.pim
                     )
                 }
             } finally {
                 p.safPfd?.close()
-                if (!p.preserveKeyfiles) {
-                    p.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-                }
+                // These are this service's own copies (the ViewModel keeps
+                // its own for the hidden step), so they are always safe to
+                // wipe here - there is no longer anything to preserve.
+                p.keyfileData.forEach { it.fill(0) }
             }
 
             if (result is zip.arcanum.crypto.CryptoResult.Success) {

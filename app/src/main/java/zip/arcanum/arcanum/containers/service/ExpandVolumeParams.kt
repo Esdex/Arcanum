@@ -16,7 +16,7 @@ class ExpandVolumeParams @Inject constructor() {
         val safFd: Int = -1,
         val safPfd: ParcelFileDescriptor? = null,
         val password: String,
-        val keyfilePaths: List<String>,
+        val keyfileData: List<ByteArray>,
         val pim: Int,
         val newSizeBytes: Long
     )
@@ -27,7 +27,7 @@ class ExpandVolumeParams @Inject constructor() {
     fun set(params: Params) {
         val old = pending.getAndSet(params)
         old?.safPfd?.close()
-        old?.keyfilePaths?.forEach { FileUtils.secureZeroAndDelete(File(it)) }
+        old?.keyfileData?.forEach { it.fill(0) }
     }
 
     fun take(): Params? = pending.getAndSet(null)
@@ -36,6 +36,6 @@ class ExpandVolumeParams @Inject constructor() {
     fun clear() {
         val old = pending.getAndSet(null)
         old?.safPfd?.close()
-        old?.keyfilePaths?.forEach { FileUtils.secureZeroAndDelete(File(it)) }
+        old?.keyfileData?.forEach { it.fill(0) }
     }
 }

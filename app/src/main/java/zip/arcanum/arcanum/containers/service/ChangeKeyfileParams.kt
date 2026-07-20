@@ -13,9 +13,9 @@ class ChangeKeyfileParams @Inject constructor() {
         val safFd: Int = -1,
         val safPfd: ParcelFileDescriptor? = null,
         val password: String,
-        val oldKeyfilePaths: List<String>,
+        val oldKeyfileData: List<ByteArray>,
         val pim: Int,
-        val newKeyfilePaths: List<String>,
+        val newKeyfileData: List<ByteArray>,
         val newHashAlgorithm: Int,
         val extraEntropy: ByteArray
     )

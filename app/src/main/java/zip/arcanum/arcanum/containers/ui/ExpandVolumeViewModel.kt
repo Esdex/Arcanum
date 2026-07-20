@@ -26,7 +26,7 @@ enum class SizeUnit { MB, GB }
 data class ExpandVolumeState(
     val password: String = "",
     val pim: Int = 0,
-    val keyfilePaths: List<String> = emptyList(),
+    val keyfileData: List<ByteArray> = emptyList(),
     val keyfileDisplayNames: List<String> = emptyList(),
     val newSizeInput: String = "",
     val sizeUnit: SizeUnit = SizeUnit.GB,
@@ -93,22 +93,22 @@ class ExpandVolumeViewModel @Inject constructor(
     fun update(block: ExpandVolumeState.() -> ExpandVolumeState) =
         _state.update { it.block() }
 
-    fun addKeyfile(path: String, name: String) {
+    fun addKeyfile(bytes: ByteArray, name: String) {
         _state.update { it.copy(
-            keyfilePaths        = it.keyfilePaths + path,
+            keyfileData        = it.keyfileData + bytes,
             keyfileDisplayNames = it.keyfileDisplayNames + name
         ) }
     }
 
     fun removeKeyfile(index: Int) {
-        val paths = _state.value.keyfilePaths.toMutableList()
+        val paths = _state.value.keyfileData.toMutableList()
         val names = _state.value.keyfileDisplayNames.toMutableList()
         if (index in paths.indices) {
-            FileUtils.secureZeroAndDelete(File(paths[index]))
+            paths[index].fill(0)
             paths.removeAt(index)
             names.removeAt(index)
         }
-        _state.update { it.copy(keyfilePaths = paths, keyfileDisplayNames = names) }
+        _state.update { it.copy(keyfileData = paths, keyfileDisplayNames = names) }
     }
 
     fun startExpand() {
@@ -154,20 +154,22 @@ class ExpandVolumeViewModel @Inject constructor(
             safFd        = pfd?.fd ?: -1,
             safPfd       = pfd,
             password     = current.password,
-            keyfilePaths = current.keyfilePaths,
+            // Copies - see the note in CreateContainerViewModel: the service
+            // outlives this ViewModel and both zero what they hold.
+            keyfileData = current.keyfileData.map { it.copyOf() },
             pim          = current.pim,
             newSizeBytes = newSizeBytes
         ))
 
         // M1: clear password + keyfile references from state as soon as they're handed to the service
-        _state.update { it.copy(password = "", keyfilePaths = emptyList(), keyfileDisplayNames = emptyList()) }
+        _state.update { it.copy(password = "", keyfileData = emptyList(), keyfileDisplayNames = emptyList()) }
 
         try {
             context.startForegroundService(Intent(context, ExpandVolumeService::class.java))
         } catch (e: Exception) {
             val residual = expandVolumeParams.take()
             residual?.safPfd?.close()
-            residual?.keyfilePaths?.forEach { FileUtils.secureZeroAndDelete(File(it)) }
+            residual?.keyfileData?.forEach { it.fill(0) }
             _state.update { it.copy(isRunning = false, error = e.message ?: "Failed to start service") }
             return
         }
@@ -201,7 +203,7 @@ class ExpandVolumeViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        _state.value.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(File(it)) }
+        _state.value.keyfileData.forEach { it.fill(0) }
         // M1: drop password reference from heap
         _state.update { it.copy(password = "") }
         // M5: release any params the service was killed before consuming (fd + keyfile copies)

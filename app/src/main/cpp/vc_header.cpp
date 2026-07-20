@@ -91,8 +91,7 @@ static void vc_process_keyfile_buf(const uint8_t *data, size_t size,
     }
 }
 
-/* Applies the accumulated pool to the password buffer. Shared by the path and
-   JNI-array variants so the padding/addition rule lives in one place. */
+/* Applies the accumulated pool to the password buffer. */
 static void vc_apply_pool_to_password(const uint8_t *pool, int poolSize,
                                        uint8_t *pwd_buf, int *pwd_len) {
     if (*pwd_len < poolSize) {
@@ -103,48 +102,19 @@ static void vc_apply_pool_to_password(const uint8_t *pool, int poolSize,
         pwd_buf[i] = (uint8_t)((uint8_t)pwd_buf[i] + pool[i]);
 }
 
-/* Apply one or more keyfiles to the password buffer.
- * Matches VeraCrypt KeyFilesApply() exactly:
- *   - Each keyfile is processed independently (crc reset per file) into the shared pool.
- *   - The combined pool is applied to the password via byte addition once after all files.
- *   - Password is zero-extended to POOL_SIZE before pool application.
- */
-bool apply_keyfiles_to_password(const std::vector<std::string>& paths,
-                                 uint8_t *pwd_buf, int *pwd_len,
-                                 bool forceLegacyPool) {
-    if (paths.empty()) return true;
-
-    /* Chosen from the ORIGINAL length, before the padding below grows it. */
-    const int poolSize = vc_keyfile_pool_size(*pwd_len, forceLegacyPool);
-
-    uint8_t pool[VC_KEYFILE_POOL_SIZE] = {};   /* accumulates across all keyfiles */
-
-    for (const auto& path : paths) {
-        FILE *f = fopen(path.c_str(), "rb");
-        if (!f) { LOGE("Keyfile: cannot open '%s'", path.c_str()); continue; }
-
-        auto *kfData = static_cast<uint8_t*>(malloc(VC_KEYFILE_MAX_READ));
-        if (!kfData) {
-            fclose(f);
-            secure_memset(pool, 0, sizeof(pool));
-            LOGE("Keyfile: OOM");
-            return false;
-        }
-        size_t total = fread(kfData, 1, (size_t)VC_KEYFILE_MAX_READ, f);
-        fclose(f);
-
-        vc_process_keyfile_buf(kfData, total, pool, poolSize);   /* crc restarts at 0xFFFFFFFF per call */
-        memset(kfData, 0, total);
-        free(kfData);
-    }
-
-    vc_apply_pool_to_password(pool, poolSize, pwd_buf, pwd_len);
-
-    secure_memset(pool, 0, sizeof(pool));
-    return true;
-}
-
-/* Same as apply_keyfiles_to_password but reads from JNI byte arrays (no disk access).
+/* Applies one or more keyfiles, read from JNI byte arrays, to the password
+ * buffer. Matches VeraCrypt KeyFilesApply() exactly:
+ *   - Each keyfile is processed independently (crc reset per file) into the
+ *     shared pool.
+ *   - The combined pool is applied to the password via byte addition once after
+ *     all files.
+ *   - Password is zero-extended to poolSize before pool application.
+ *
+ * This is the ONLY way keyfile material enters the native layer. The former
+ * path-taking variant was removed with issue #116: keyfiles used to be copied
+ * to cacheDir in plaintext for every flow except mounting, and with no function
+ * here that opens a keyfile by name, that cannot be reintroduced by accident.
+ *
  * jKeyfileData is an Array<ByteArray>? — null or empty means no-op.
  * Returns false on OOM. */
 bool apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,

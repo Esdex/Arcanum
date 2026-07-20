@@ -90,7 +90,7 @@ data class CreateContainerState(
     val sizeMb: Long = 1024L,
     val password: String = "",
     val confirmPassword: String = "",
-    val keyfilePaths: List<String> = emptyList(),
+    val keyfileData: List<ByteArray> = emptyList(),
     val keyfileDisplayNames: List<String> = emptyList(),
     val quickFormat: Boolean = true,
     val filesystem: FilesystemType = FilesystemType.FAT32,
@@ -112,7 +112,7 @@ data class CreateContainerState(
     val hiddenConfirmPassword: String = "",
     val hiddenAlgorithm: CipherAlgorithm = CipherAlgorithm.AES,
     val hiddenHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA512,
-    val hiddenKeyfilePaths: List<String> = emptyList(),
+    val hiddenKeyfileData: List<ByteArray> = emptyList(),
     val hiddenKeyfileDisplayNames: List<String> = emptyList(),
     val hiddenPim: Int = 0,
     val hiddenEntropyPoints: Int = 0,
@@ -207,27 +207,27 @@ class CreateContainerViewModel @Inject constructor(
         ) }
     }
 
-    fun addKeyfile(cachedPath: String, displayName: String) {
+    fun addKeyfile(bytes: ByteArray, displayName: String) {
         _state.update { it.copy(
-            keyfilePaths       = it.keyfilePaths + cachedPath,
+            keyfileData       = it.keyfileData + bytes,
             keyfileDisplayNames = it.keyfileDisplayNames + displayName
         ) }
     }
 
     fun removeKeyfile(index: Int) {
-        val paths = _state.value.keyfilePaths.toMutableList()
+        val paths = _state.value.keyfileData.toMutableList()
         val names = _state.value.keyfileDisplayNames.toMutableList()
         if (index in paths.indices) {
-            FileUtils.secureZeroAndDelete(java.io.File(paths[index]))
+            paths[index].fill(0)
             paths.removeAt(index)
             names.removeAt(index)
         }
-        _state.update { it.copy(keyfilePaths = paths, keyfileDisplayNames = names) }
+        _state.update { it.copy(keyfileData = paths, keyfileDisplayNames = names) }
     }
 
     fun clearKeyfiles() {
-        _state.value.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-        _state.update { it.copy(keyfilePaths = emptyList(), keyfileDisplayNames = emptyList()) }
+        _state.value.keyfileData.forEach { it.fill(0) }
+        _state.update { it.copy(keyfileData = emptyList(), keyfileDisplayNames = emptyList()) }
     }
 
     /**
@@ -248,7 +248,7 @@ class CreateContainerViewModel @Inject constructor(
                 onSuccess = { generated ->
                     // Mirror the picked-keyfile path: creation consumes cached
                     // files, so the generated one is copied in the same way.
-                    val cached = FileUtils.copyUriToCache(context, generated.uri)
+                    val cached = FileUtils.readKeyfileBytes(context, generated.uri)
                     if (cached == null) {
                         _state.update { it.copy(keyfileError = "Keyfile created but could not be read back") }
                         return@fold
@@ -269,22 +269,22 @@ class CreateContainerViewModel @Inject constructor(
         _state.update { it.copy(entropyPoints = it.entropyPoints + 1) }
     }
 
-    fun addHiddenKeyfile(cachedPath: String, displayName: String) {
+    fun addHiddenKeyfile(bytes: ByteArray, displayName: String) {
         _state.update { it.copy(
-            hiddenKeyfilePaths        = it.hiddenKeyfilePaths + cachedPath,
+            hiddenKeyfileData        = it.hiddenKeyfileData + bytes,
             hiddenKeyfileDisplayNames = it.hiddenKeyfileDisplayNames + displayName
         ) }
     }
 
     fun removeHiddenKeyfile(index: Int) {
-        val paths = _state.value.hiddenKeyfilePaths.toMutableList()
+        val paths = _state.value.hiddenKeyfileData.toMutableList()
         val names = _state.value.hiddenKeyfileDisplayNames.toMutableList()
         if (index in paths.indices) {
-            FileUtils.secureZeroAndDelete(java.io.File(paths[index]))
+            paths[index].fill(0)
             paths.removeAt(index)
             names.removeAt(index)
         }
-        _state.update { it.copy(hiddenKeyfilePaths = paths, hiddenKeyfileDisplayNames = names) }
+        _state.update { it.copy(hiddenKeyfileData = paths, hiddenKeyfileDisplayNames = names) }
     }
 
     fun addHiddenEntropyPoint(x: Int, y: Int) {
@@ -305,10 +305,10 @@ class CreateContainerViewModel @Inject constructor(
                         fd                  = pfd.fd,
                         hiddenSizeBytes     = s.hiddenSizeMb * 1024L * 1024L,
                         outerPassword       = s.password,
-                        outerKeyfilePaths   = s.keyfilePaths,
+                        outerKeyfileData   = s.keyfileData,
                         outerPim            = s.pim,
                         hiddenPassword      = s.hiddenPassword,
-                        hiddenKeyfilePaths  = s.hiddenKeyfilePaths,
+                        hiddenKeyfileData  = s.hiddenKeyfileData,
                         hiddenPim           = s.hiddenPim,
                         hiddenAlgorithm     = s.hiddenAlgorithm.ordinal,
                         hiddenHashAlgorithm = s.hiddenHashAlgorithm.ordinal,
@@ -321,10 +321,10 @@ class CreateContainerViewModel @Inject constructor(
                         path                = fullPath,
                         hiddenSizeBytes     = s.hiddenSizeMb * 1024L * 1024L,
                         outerPassword       = s.password,
-                        outerKeyfilePaths   = s.keyfilePaths,
+                        outerKeyfileData   = s.keyfileData,
                         outerPim            = s.pim,
                         hiddenPassword      = s.hiddenPassword,
-                        hiddenKeyfilePaths  = s.hiddenKeyfilePaths,
+                        hiddenKeyfileData  = s.hiddenKeyfileData,
                         hiddenPim           = s.hiddenPim,
                         hiddenAlgorithm     = s.hiddenAlgorithm.ordinal,
                         hiddenHashAlgorithm = s.hiddenHashAlgorithm.ordinal,
@@ -335,13 +335,13 @@ class CreateContainerViewModel @Inject constructor(
                 }
             } finally {
                 // Always delete keyfile copies regardless of success, failure, or exception.
-                // Outer keyfiles were preserved by the service (preserveKeyfiles=true) - delete here.
-                s.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-                s.hiddenKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+                // The service wiped its own copies; these are the ViewModel's.
+                s.keyfileData.forEach { it.fill(0) }
+                s.hiddenKeyfileData.forEach { it.fill(0) }
                 _state.update { it.copy(
-                    keyfilePaths              = emptyList(),
+                    keyfileData              = emptyList(),
                     keyfileDisplayNames       = emptyList(),
-                    hiddenKeyfilePaths        = emptyList(),
+                    hiddenKeyfileData        = emptyList(),
                     hiddenKeyfileDisplayNames = emptyList()
                 ) }
             }
@@ -411,11 +411,14 @@ class CreateContainerViewModel @Inject constructor(
             filesystem       = s.filesystem.ordinal,
             quickFormat      = s.quickFormat,
             entropyBytes     = entropyBuffer.toByteArray(),
-            keyfilePaths     = s.keyfilePaths,
+            // Copies, not the state's arrays: the service outlives this
+            // ViewModel and both sides zero what they hold, so sharing one
+            // array lets a cancel or onCleared() wipe bytes the service is
+            // still deriving a key from (#116).
+            keyfileData     = s.keyfileData.map { it.copyOf() },
             pim              = s.pim,
             safFd            = servicePfd?.fd ?: -1,
-            safPfd           = servicePfd,
-            preserveKeyfiles = s.volumeType == VolumeType.HIDDEN
+            safPfd           = servicePfd
         ))
         context.startForegroundService(Intent(context, ContainerCreationService::class.java))
     }
@@ -451,8 +454,8 @@ class CreateContainerViewModel @Inject constructor(
         val s = _state.value
         safParcelFd?.close()
         safParcelFd = null
-        s.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-        s.hiddenKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+        s.keyfileData.forEach { it.fill(0) }
+        s.hiddenKeyfileData.forEach { it.fill(0) }
         if (s.safUri.isEmpty()) {
             val fullPath = "${s.filePath.trimEnd('/')}/${s.fileName}"
             java.io.File(fullPath).delete()
@@ -467,9 +470,9 @@ class CreateContainerViewModel @Inject constructor(
             isCreating                = false,
             currentStep               = 1,
             safUri                    = "",
-            keyfilePaths              = emptyList(),
+            keyfileData              = emptyList(),
             keyfileDisplayNames       = emptyList(),
-            hiddenKeyfilePaths        = emptyList(),
+            hiddenKeyfileData        = emptyList(),
             hiddenKeyfileDisplayNames = emptyList()
         ) }
     }
@@ -477,8 +480,8 @@ class CreateContainerViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         val s = _state.value
-        s.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-        s.hiddenKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+        s.keyfileData.forEach { it.fill(0) }
+        s.hiddenKeyfileData.forEach { it.fill(0) }
         safParcelFd?.close()
         safParcelFd = null
         // The SAF picker creates a 0-byte placeholder the moment the user picks a location.

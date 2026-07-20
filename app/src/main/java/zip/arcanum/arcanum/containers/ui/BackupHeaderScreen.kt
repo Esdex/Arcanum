@@ -83,8 +83,8 @@ fun BackupHeaderScreen(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
-            val (path, name) = FileUtils.copyUriToCache(context, it) ?: return@rememberLauncherForActivityResult
-            viewModel.addKeyfile(path, name)
+            val (bytes, name) = FileUtils.readKeyfileBytes(context, it) ?: return@rememberLauncherForActivityResult
+            viewModel.addKeyfile(bytes, name)
         }
     }
 

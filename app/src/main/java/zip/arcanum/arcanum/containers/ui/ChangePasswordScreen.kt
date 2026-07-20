@@ -110,15 +110,15 @@ fun ChangePasswordScreen(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val (path, name) = FileUtils.copyUriToCache(context, uri) ?: return@rememberLauncherForActivityResult
-        viewModel.addOldKeyfile(path, name)
+        val (bytes, name) = FileUtils.readKeyfileBytes(context, uri) ?: return@rememberLauncherForActivityResult
+        viewModel.addOldKeyfile(bytes, name)
     }
     val newKeyfileLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val (path, name) = FileUtils.copyUriToCache(context, uri) ?: return@rememberLauncherForActivityResult
-        viewModel.addNewKeyfile(path, name)
+        val (bytes, name) = FileUtils.readKeyfileBytes(context, uri) ?: return@rememberLauncherForActivityResult
+        viewModel.addNewKeyfile(bytes, name)
     }
 
     BackHandler {
