@@ -88,14 +88,7 @@ object FileUtils {
     fun getExtension(fileName: String): String =
         fileName.substringAfterLast('.', "").lowercase()
 
-    fun isImageFile(fileName: String): Boolean =
-        getExtension(fileName) in setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "heif")
-
-    fun isVideoFile(fileName: String): Boolean =
-        getExtension(fileName) in setOf("mp4", "mkv", "avi", "mov", "webm", "3gp")
-
-    fun isAudioFile(fileName: String): Boolean =
-        getExtension(fileName) in setOf("mp3", "flac", "ogg", "wav", "aac", "m4a")
+    // Media classification lives in MediaExtensions - see the note there.
 
     fun normalizeSafUri(uri: Uri): Uri {
         return try {

@@ -1,5 +1,6 @@
 package zip.arcanum.arcanum.gallery
 
+import zip.arcanum.core.utils.MediaExtensions
 import android.media.MediaMetadataRetriever
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -31,10 +32,6 @@ class MediaScanner @Inject constructor(
     )
 
     companion object {
-        val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp")
-        val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "mov", "3gp", "webm", "m4v")
-        val AUDIO_EXTENSIONS = setOf("mp3", "flac", "aac", "ogg", "wav", "m4a")
-
         // Formats returned by MediaMetadataRetriever.METADATA_KEY_DATE
         private val MEDIA_DATE_FORMATS = listOf(
             SimpleDateFormat("yyyyMMdd'T'HHmmss.SSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") },
@@ -68,8 +65,8 @@ class MediaScanner @Inject constructor(
                     scanned++
                     val ext = entry.name.substringAfterLast('.', "").lowercase()
                     val type = when (ext) {
-                        in IMAGE_EXTENSIONS -> MediaFileType.IMAGE
-                        in VIDEO_EXTENSIONS -> MediaFileType.VIDEO
+                        in MediaExtensions.IMAGE -> MediaFileType.IMAGE
+                        in MediaExtensions.VIDEO -> MediaFileType.VIDEO
                         else -> null
                     } ?: continue
 
@@ -154,8 +151,8 @@ class MediaScanner @Inject constructor(
         val name = path.substringAfterLast('/')
         val ext  = name.substringAfterLast('.', "").lowercase()
         val type = when (ext) {
-            in IMAGE_EXTENSIONS -> MediaFileType.IMAGE
-            in VIDEO_EXTENSIONS -> MediaFileType.VIDEO
+            in MediaExtensions.IMAGE -> MediaFileType.IMAGE
+            in MediaExtensions.VIDEO -> MediaFileType.VIDEO
             else -> null
         } ?: return null
         val prev = dao.getByPath(containerId, path)
