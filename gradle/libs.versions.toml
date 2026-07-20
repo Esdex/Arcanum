@@ -35,7 +35,7 @@ palette = "1.0.0"
 aboutlibraries = "14.2.1"
 bouncycastle = "1.79"
 billing = "7.1.1"
-sqlcipher = "4.5.4"
+sqlcipher = "4.9.0"
 aire = "0.18.1"
 
 [libraries]
@@ -86,7 +86,12 @@ androidx-palette = { group = "androidx.palette", name = "palette", version.ref =
 aboutlibraries-compose-m3 = { group = "com.mikepenz", name = "aboutlibraries-compose-m3", version.ref = "aboutlibraries" }
 bouncycastle-provider = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
-sqlcipher = { group = "net.zetetic", name = "android-database-sqlcipher", version.ref = "sqlcipher" }
+# net.zetetic:android-database-sqlcipher is the retired artifact, frozen at 4.5.4, whose
+# libsqlcipher.so is aligned to 4 KB pages. Google Play has required 16 KB since November
+# 2025, so it cannot be submitted. sqlcipher-android is the maintained replacement and its
+# arm64 library is 16 KB aligned. Same SQLCipher 4 on-disk format, so existing encrypted
+# databases open unchanged (#45).
+sqlcipher = { group = "net.zetetic", name = "sqlcipher-android", version.ref = "sqlcipher" }
 aire = { group = "com.github.awxkee", name = "aire", version.ref = "aire" }
 
 [plugins]
