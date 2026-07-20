@@ -219,6 +219,7 @@
     <string name="files_search_open">Search</string>
     <string name="files_cd_more">More</string>
     <string name="files_cd_cancel_selection">Cancel selection</string>
+    <string name="files_cd_more_actions">More actions</string>
     <string name="files_cd_select_all">Select all</string>
     <string name="files_selection_count">%1$d selected</string>
     <string name="files_hide_hidden">Hide hidden files</string>
