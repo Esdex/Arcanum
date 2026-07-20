@@ -112,6 +112,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -230,10 +231,15 @@ fun MediaViewerScreen(
         onDispose { controller.removeListener(listener) }
     }
 
+    // Sampled once per frame rather than on a 200 ms timer, which advanced the seek bar in
+    // five visible steps a second. MediaController extrapolates its position locally between
+    // updates from the session, so reading it this often costs no extra IPC, and while the
+    // controls are hidden AnimatedVisibility drops the bar from composition, so nothing
+    // recomposes for the values written here.
     LaunchedEffect(isPlaying, isScrubbing) {
         while (isPlaying && !isScrubbing) {
+            withFrameNanos { }
             positionMs = mc?.currentPosition ?: 0L
-            delay(200)
         }
     }
 
