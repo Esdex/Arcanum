@@ -50,15 +50,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
-import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -92,6 +88,7 @@ import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.core.components.OperationSuccess
+import zip.arcanum.core.components.OperationLoading
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -630,30 +627,7 @@ private fun ChPwdStep5(state: ChangePasswordState, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ChPwdStep4Loading() {
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.loading))
-    Box(
-        modifier         = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            LottieAnimation(
-                composition = composition,
-                iterations  = LottieConstants.IterateForever,
-                modifier    = Modifier.size(160.dp)
-            )
-            Text(
-                stringResource(R.string.chpwd_step4_title),
-                style      = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                textAlign  = TextAlign.Center
-            )
-        }
-    }
-}
+private fun ChPwdStep4Loading() = OperationLoading(stringResource(R.string.chpwd_step4_title))
 
 @Composable
 private fun ChPwdStep4Success(onBack: () -> Unit) = OperationSuccess(
