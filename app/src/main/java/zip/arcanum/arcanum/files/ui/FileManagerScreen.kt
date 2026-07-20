@@ -25,6 +25,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -52,6 +53,7 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.rounded.Add
@@ -121,6 +123,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
@@ -1052,6 +1055,36 @@ private fun FileListContent(
     }
 }
 
+/**
+ * The marker drawn over a thumbnail to say what kind of file it belongs to: a play
+ * triangle for video, a note for a track's cover art. Images get nothing - the picture
+ * already is the file.
+ *
+ * Shared by the list and grid layouts so the two cannot end up marking different things;
+ * they previously each carried their own copy of the video check.
+ */
+@Composable
+private fun BoxScope.MediaBadge(fileName: String, size: Dp) {
+    val badge = when {
+        MediaExtensions.isVideo(fileName) -> Icons.Filled.PlayArrow
+        MediaExtensions.isAudio(fileName) -> Icons.Filled.MusicNote
+        else                              -> null
+    } ?: return
+
+    Icon(
+        imageVector        = badge,
+        contentDescription = null,
+        tint               = Color.White,
+        // Cover art is often bright, and a bare white glyph disappears into it. The video
+        // badge sits on a frame that is usually darker, but one shadow for both keeps the
+        // two markers looking like a set.
+        modifier = Modifier
+            .align(Alignment.Center)
+            .size(size)
+            .shadow(elevation = 6.dp, shape = CircleShape, clip = false)
+    )
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FileListItem(
@@ -1116,7 +1149,6 @@ private fun FileListItem(
                         .background(iconColor.copy(alpha = 0.12f))
                 ) {
                     if (thumbnail != null) {
-                        val isVideo = MediaExtensions.isVideo(file.name)
                         Box(Modifier.fillMaxSize()) {
                             Box(
                                 Modifier.fillMaxSize().paint(
@@ -1124,14 +1156,10 @@ private fun FileListItem(
                                     contentScale = ContentScale.Crop
                                 )
                             )
-                            if (isVideo) {
-                                Icon(
-                                    Icons.Filled.PlayArrow,
-                                    contentDescription = null,
-                                    tint     = Color.White,
-                                    modifier = Modifier.size(20.dp).align(Alignment.Center)
-                                )
-                            }
+                            // Cover art and a photo are both just a picture at this size, so
+                            // the badge is what says which one you are looking at - same job
+                            // the play triangle does for video.
+                            MediaBadge(file.name, size = 20.dp)
                         }
                     } else {
                         Icon(icon, null, tint = iconColor, modifier = Modifier.size(22.dp))
@@ -1258,7 +1286,6 @@ private fun FileGridContent(
                                 .background(iconColor.copy(alpha = 0.15f))
                         ) {
                             if (thumbnail != null) {
-                                val isVideo = MediaExtensions.isVideo(file.name)
                                 Box(Modifier.fillMaxSize()) {
                                     Box(
                                         Modifier.fillMaxSize().paint(
@@ -1266,14 +1293,7 @@ private fun FileGridContent(
                                             contentScale = ContentScale.Crop
                                         )
                                     )
-                                    if (isVideo) {
-                                        Icon(
-                                            Icons.Filled.PlayArrow,
-                                            contentDescription = null,
-                                            tint     = Color.White,
-                                            modifier = Modifier.size(22.dp).align(Alignment.Center)
-                                        )
-                                    }
+                                    MediaBadge(file.name, size = 22.dp)
                                 }
                             } else {
                                 Icon(icon, null, tint = iconColor, modifier = Modifier.size(28.dp))
