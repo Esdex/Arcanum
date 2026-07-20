@@ -46,6 +46,14 @@ def reader_runs(bench, img, inode):
     return runs, None
 
 
+def csum_ok(bench, img, inode):
+    """Every extent block's stored crc32c must equal the one we compute."""
+    r = subprocess.run([bench, img, str(inode), "--csum"], capture_output=True, text=True)
+    if r.returncode != 0:
+        return False, r.stdout.strip() or r.stderr.strip()
+    return True, r.stdout.strip()
+
+
 def content_sha(bench, img, inode):
     """Hash of the file as our reader produces it, chunked so a large file does
     not have to be held in memory twice."""
@@ -96,6 +104,13 @@ def main():
                 print(f"FAIL {case}/{f['name']}: reader errored: {err}")
                 continue
 
+            ok, detail = csum_ok(args.bench, img, f["inode"])
+            if not ok:
+                failed += 1
+                by_depth[depth][1] += 1
+                print(f"FAIL {case}/{f['name']}: extent block checksum mismatch ({detail})")
+                continue
+
             sha, nbytes, cerr = content_sha(args.bench, img, f["inode"])
             if cerr is not None:
                 failed += 1
@@ -124,7 +139,7 @@ def main():
             elif args.verbose:
                 print(f"ok   {case}/{f['name']}  {len(expected)} runs, depth {depth}")
 
-    print(f"\nchecked {checked} files (extent map + content), {failed} failed")
+    print(f"\nchecked {checked} files (extent map + content + checksums), {failed} failed")
     for d in sorted(by_depth):
         total, bad = by_depth[d]
         print(f"  depth {d}: {total - bad}/{total} passed")

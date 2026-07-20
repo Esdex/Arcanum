@@ -39,6 +39,8 @@ typedef struct {
     uint32_t first_data_block;
     uint32_t desc_size;        /* 32, or 64 when the 64BIT feature is on */
     uint64_t blocks_count;
+    uint32_t csum_seed;        /* seed for metadata checksums */
+    int      has_metadata_csum;
 } ext4_fs;
 
 /* One resolved run of blocks. `uninit` marks a preallocated extent that reads
@@ -74,6 +76,15 @@ int ext4_walk_extents(const ext4_fs *fs, const uint8_t *inode,
 /* Maps one logical block to a physical one. Sets *physical to 0 for a hole. */
 int ext4_map_block(const ext4_fs *fs, const uint8_t *inode,
                    uint32_t logical, uint64_t *physical, int *uninit);
+
+/*
+ * Verifies the crc32c in the tail of every extent block belonging to an inode.
+ * The root inside the inode has no tail - it is covered by the inode checksum -
+ * so a file small enough to keep its whole tree there checks zero blocks and
+ * still returns EXT4_OK. Returns EXT4_ERR_FORMAT on the first mismatch.
+ */
+int ext4_check_extent_tree(const ext4_fs *fs, uint32_t ino, uint32_t generation,
+                           const uint8_t *inode, int *blocks_checked);
 
 /* File length in bytes, from the inode's split size fields. */
 uint64_t ext4_inode_size(const uint8_t *inode);
