@@ -119,3 +119,45 @@ uint32_t ext4_extent_block_csum(uint32_t inode_seed, const uint8_t *block, uint3
     if (off + 4 > block_size) return 0;   /* header is not trustworthy */
     return ext4_crc32c(inode_seed, block, off);
 }
+
+/* ── Filesystem-wide metadata ─────────────────────────────────────────────── */
+
+/*
+ * Group descriptor. Seeded with the group number so a descriptor cannot be moved
+ * to another slot and still verify, and covering the whole descriptor - on a
+ * 64-bit filesystem that is 64 bytes, and stopping at 32 gives a wrong answer
+ * that looks plausible. Only the low 16 bits are stored, at bg_checksum.
+ */
+uint32_t ext4_group_desc_csum(uint32_t fs_seed, uint32_t group,
+                              const uint8_t *desc, uint32_t desc_size) {
+    static const uint8_t zeros[2] = { 0, 0 };
+    uint8_t le[4];
+    le[0] = (uint8_t)group;         le[1] = (uint8_t)(group >> 8);
+    le[2] = (uint8_t)(group >> 16); le[3] = (uint8_t)(group >> 24);
+
+    uint32_t crc = ext4_crc32c(fs_seed, le, 4);
+    crc = ext4_crc32c(crc, desc, EXT4_GD_CSUM_OFF);
+    crc = ext4_crc32c(crc, zeros, 2);                    /* bg_checksum reads as zero */
+    if (desc_size > EXT4_GD_CSUM_OFF + 2)
+        crc = ext4_crc32c(crc, desc + EXT4_GD_CSUM_OFF + 2,
+                          desc_size - (EXT4_GD_CSUM_OFF + 2));
+    return crc & 0xFFFFu;
+}
+
+/*
+ * Block and inode bitmaps. Seeded with the filesystem seed alone - no group
+ * number, unlike the descriptor that holds the result. The value is split across
+ * the descriptor: low half at 0x18, high half at 0x38, and the high half only
+ * exists on 64-bit descriptors.
+ */
+uint32_t ext4_bitmap_csum(uint32_t fs_seed, const uint8_t *bitmap, uint32_t len) {
+    return ext4_crc32c(fs_seed, bitmap, len);
+}
+
+/*
+ * The superblock is the one structure seeded with ~0 rather than the filesystem
+ * seed - it has to be verifiable before the seed inside it can be trusted.
+ */
+uint32_t ext4_superblock_csum(const uint8_t *sb) {
+    return ext4_crc32c(0xFFFFFFFFu, sb, EXT4_SB_CSUM_OFF);
+}
