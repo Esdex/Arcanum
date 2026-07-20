@@ -460,6 +460,17 @@ private fun WaveformView(
     val progressColor = MaterialTheme.colorScheme.primary
     val inactiveColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.25f)
 
+    // The player samples its position five times a second, which stepped the fill across the
+    // waveform. A linear tween of the same length bridges one sample to the next, so the fill
+    // advances continuously. Smoothed here rather than by sampling more often, because that
+    // loop keeps running with the screen off, where a higher rate would cost battery for a
+    // waveform nobody is looking at.
+    val animatedProgress by animateFloatAsState(
+        targetValue   = progress,
+        animationSpec = tween(durationMillis = 200, easing = LinearEasing),
+        label         = "waveform_progress"
+    )
+
     if (waveformBars == null) {
         // Shimmer skeleton
         val shimmerBars = remember { List(80) { Random.nextFloat().coerceIn(0.1f, 0.9f) } }
@@ -511,7 +522,7 @@ private fun WaveformView(
         val bars = waveformBars
         val barWidth = size.width / bars.size
         val centerY = size.height / 2f
-        val progressX = size.width * progress
+        val progressX = size.width * animatedProgress
         bars.forEachIndexed { i, amp ->
             val x = i * barWidth + barWidth / 2f
             val barH = amp * size.height * 0.9f
