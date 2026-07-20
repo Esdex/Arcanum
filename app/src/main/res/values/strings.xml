@@ -78,6 +78,8 @@
     <string name="notif_read_only_error_subtitle">The vault is mounted in read-only mode</string>
     <string name="notif_support_developer">Enjoying Arcanum?</string>
     <string name="notif_support_developer_subtitle">Consider supporting development</string>
+    <string name="video_enter_fullscreen">Fullscreen</string>
+    <string name="video_exit_fullscreen">Exit fullscreen</string>
     <string name="notif_go_premium">Enjoying Arcanum?</string>
     <string name="notif_go_premium_subtitle">Unlock the full version</string>
 

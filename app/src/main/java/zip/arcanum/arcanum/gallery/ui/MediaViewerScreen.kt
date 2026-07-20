@@ -17,6 +17,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import android.content.ComponentName
 import androidx.core.content.ContextCompat
@@ -54,6 +55,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -81,6 +83,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.Fullscreen
+import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CameraAlt
@@ -135,12 +139,14 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -214,6 +220,16 @@ fun MediaViewerScreen(
     // distinguishes a read/source failure from a decoder one.
     var playbackError by remember { mutableStateOf<String?>(null) }
 
+    // Displayed width/height of the video. Kept as the ratio rather than a bare flag
+    // because the fullscreen button is placed inside the letterboxed picture, which means
+    // working out where that picture actually is.
+    var videoAspect by remember { mutableStateOf(0f) }
+    // Wider than it is tall, so it shows as a strip in a portrait window and has something
+    // to gain from turning the screen. A video shot upright already fills the window, so it
+    // never offers the button.
+    val isWideVideo = videoAspect > 1.05f
+    var isFullscreen by remember { mutableStateOf(false) }
+
     DisposableEffect(mc) {
         val controller = mc ?: return@DisposableEffect onDispose {}
         val listener = object : Player.Listener {
@@ -221,6 +237,13 @@ fun MediaViewerScreen(
             override fun onPlaybackStateChanged(state: Int) {
                 isBuffering = state == Player.STATE_BUFFERING
                 controller.duration.takeIf { it > 0L }?.let { durationMs = it }
+            }
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                // pixelWidthHeightRatio matters: anamorphic content reports square-ish
+                // dimensions and is only wide once the sample aspect is applied.
+                val w = videoSize.width * videoSize.pixelWidthHeightRatio
+                val h = videoSize.height.toFloat()
+                videoAspect = if (w > 0f && h > 0f) w / h else 0f
             }
             override fun onPlayerError(error: PlaybackException) {
                 isBuffering   = false
@@ -230,6 +253,24 @@ fun MediaViewerScreen(
         controller.addListener(listener)
         onDispose { controller.removeListener(listener) }
     }
+
+    // Turning the window is what "fullscreen" means here - the player itself keeps running,
+    // so playback carries on from the same moment rather than restarting. SENSOR_LANDSCAPE so
+    // either way up works once turned. The reset in onDispose is not optional: without it the
+    // whole app would stay locked landscape after backing out of a video.
+    val activity = LocalContext.current as? Activity
+    DisposableEffect(isFullscreen, activity) {
+        activity?.requestedOrientation = if (isFullscreen)
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        else
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
+    // A video that stops being wide (next item in the pager) has nothing to be fullscreen for.
+    LaunchedEffect(isWideVideo) { if (!isWideVideo) isFullscreen = false }
 
     // Sampled once per frame rather than on a 200 ms timer, which advanced the seek bar in
     // five visible steps a second. MediaController extrapolates its position locally between
@@ -441,49 +482,112 @@ fun MediaViewerScreen(
                     MediaFileType.VIDEO -> VideoSurfacePage(
                         exoPlayer       = if (isCurrent) mc else null,
                         onTap           = { userInteracted = true; showBars = !showBars },
-                        onDoubleTapLeft  = { mc?.let { p -> p.seekTo((p.currentPosition - 10_000L).coerceAtLeast(0L)) }; seekLeftToken++ },
-                        onDoubleTapRight = { mc?.let { p -> p.seekTo(p.currentPosition + 10_000L) }; seekRightToken++ }
+                        // A double tap is a seek, not a request for the controls: if they
+                        // are hidden they stay hidden and only the +/-10s marker shows. If
+                        // they are already up, restart their countdown - letting them
+                        // vanish while the user is still seeking would be the wrong read of
+                        // an interaction.
+                        onDoubleTapLeft  = {
+                            mc?.let { p -> p.seekTo((p.currentPosition - 10_000L).coerceAtLeast(0L)) }
+                            seekLeftToken++
+                            if (showBars) barsPokeToken++
+                        },
+                        onDoubleTapRight = {
+                            mc?.let { p -> p.seekTo(p.currentPosition + 10_000L) }
+                            seekRightToken++
+                            if (showBars) barsPokeToken++
+                        }
                     )
                     else -> Box(Modifier.fillMaxSize().background(Color.Black))
                 }
             }
 
-            // ── Seek indicators — sit just above the bottom controls bar ──
-            AnimatedVisibility(
-                visible  = showSeekLeft,
-                enter    = fadeIn(tween(120)),
-                exit     = fadeOut(tween(300)),
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 170.dp)
-            ) {
-                Row(
-                    verticalAlignment     = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.6f), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    Icon(Icons.Filled.FastRewind, null, tint = Color.White, modifier = Modifier.size(20.dp))
-                    Text(stringResource(R.string.viewer_seek_back), color = Color.White, style = MaterialTheme.typography.labelLarge)
+            // ── Overlays anchored to the picture, not to the window ───────
+            // PlayerView fits the video into the window, so on a portrait screen a wide
+            // video is a strip with black above and below it. Everything that belongs to
+            // the video rather than to the screen - the seek feedback and the fullscreen
+            // button - is laid out against that strip, recomputed here from the same
+            // aspect the player is fitting to. Anchoring them to the window instead is
+            // what put them in the black margin.
+            //
+            // Nothing here takes pointer input except the fullscreen button, so taps on
+            // the picture still reach the pager underneath.
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val boxAspect = maxWidth / maxHeight
+                // Falls back to the window's own shape until the first frame reports a
+                // size, so seek feedback still appears on a video that never does.
+                val aspect   = if (videoAspect > 0f) videoAspect else boxAspect
+                // Wider than the window: full width, shortened height (letterboxed).
+                // Otherwise the height fills and the sides go black.
+                val pictureW = if (aspect >= boxAspect) maxWidth else maxHeight * aspect
+                val pictureH = if (aspect >= boxAspect) maxWidth / aspect else maxHeight
+
+                Box(modifier = Modifier.size(pictureW, pictureH).align(Alignment.Center)) {
+                    AnimatedVisibility(
+                        visible  = showSeekLeft,
+                        enter    = fadeIn(tween(120)),
+                        exit     = fadeOut(tween(300)),
+                        modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment     = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Filled.FastRewind, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                            Text(stringResource(R.string.viewer_seek_back), color = Color.White, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible  = showSeekRight,
+                        enter    = fadeIn(tween(120)),
+                        exit     = fadeOut(tween(300)),
+                        modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment     = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Text(stringResource(R.string.viewer_seek_forward), color = Color.White, style = MaterialTheme.typography.labelLarge)
+                            Icon(Icons.Filled.FastForward, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible  = isWideVideo && !isFullscreen && showBars &&
+                                   uiState.currentFile?.fileType == MediaFileType.VIDEO,
+                        enter    = fadeIn(),
+                        exit     = fadeOut(),
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                // A white glyph alone can land on a pale frame and vanish;
+                                // the scrim keeps it readable over any video.
+                                .background(Color.Black.copy(alpha = 0.45f))
+                                .clickable { isFullscreen = true; showBars = true; barsPokeToken++ },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector        = Icons.Outlined.Fullscreen,
+                                contentDescription = stringResource(R.string.video_enter_fullscreen),
+                                tint               = Color.White,
+                                modifier           = Modifier.size(20.dp)
+                            )
+                        }
+                    }
                 }
             }
 
-            AnimatedVisibility(
-                visible  = showSeekRight,
-                enter    = fadeIn(tween(120)),
-                exit     = fadeOut(tween(300)),
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 170.dp)
-            ) {
-                Row(
-                    verticalAlignment     = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.6f), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    Text(stringResource(R.string.viewer_seek_forward), color = Color.White, style = MaterialTheme.typography.labelLarge)
-                    Icon(Icons.Filled.FastForward, null, tint = Color.White, modifier = Modifier.size(20.dp))
-                }
-            }
 
             // ── Center play/pause — circle button, shown only after user tap ─
             if (uiState.currentFile?.fileType == MediaFileType.VIDEO) {
@@ -621,7 +725,9 @@ fun MediaViewerScreen(
                         positionMs             = if (isScrubbing) scrubMs else positionMs,
                         durationMs             = durationMs,
                         onSliderChange         = { f -> val ms = (f * durationMs).toLong(); isScrubbing = true; scrubMs = ms; mc?.seekTo(ms); showBars = true; barsPokeToken++ },
-                        onSliderChangeFinished = { mc?.seekTo(scrubMs); isScrubbing = false; showBars = true; barsPokeToken++ }
+                        onSliderChangeFinished = { mc?.seekTo(scrubMs); isScrubbing = false; showBars = true; barsPokeToken++ },
+                        isFullscreen           = isFullscreen,
+                        onExitFullscreen       = { isFullscreen = false; showBars = true; barsPokeToken++ }
                     )
                 } else {
                     Box(
@@ -827,7 +933,9 @@ private fun VideoBottomBar(
     positionMs: Long,
     durationMs: Long,
     onSliderChange: (Float) -> Unit,
-    onSliderChangeFinished: () -> Unit
+    onSliderChangeFinished: () -> Unit,
+    isFullscreen: Boolean,
+    onExitFullscreen: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -892,6 +1000,19 @@ private fun VideoBottomBar(
                 style    = MaterialTheme.typography.labelSmall,
                 maxLines = 1
             )
+            // Exit only. Entering lives over the video, where there is still video to sit
+            // on; in fullscreen there is not, so the way out belongs beside the timecode.
+            if (isFullscreen) {
+                Spacer(Modifier.width(4.dp))
+                IconButton(onClick = onExitFullscreen, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        imageVector        = Icons.Outlined.FullscreenExit,
+                        contentDescription = stringResource(R.string.video_exit_fullscreen),
+                        tint               = Color.White.copy(alpha = 0.85f),
+                        modifier           = Modifier.size(22.dp)
+                    )
+                }
+            }
         }
     }
 }
