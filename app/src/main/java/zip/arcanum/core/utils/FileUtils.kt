@@ -53,6 +53,24 @@ object FileUtils {
         file.delete()
     }
 
+    /**
+     * Wipes decrypted copies left in cacheDir/arcanum_temp by the pre-#103 Open with, which
+     * exported a file before handing it to another app. Nothing writes there any more - files
+     * are served straight from the mounted vault over SAF - but upgrading does not clean up
+     * after the old build, and a process killed mid-flight never got the chance to either.
+     *
+     * Called at app start rather than only from the file browser, so a leftover is not left
+     * sitting in the cache until the user happens to open that screen. Do the call off the
+     * main thread: a leftover can be a whole video, and secureZeroAndDelete overwrites it.
+     */
+    fun purgeLegacyTempFiles(context: Context) {
+        runCatching {
+            val dir = File(context.cacheDir, LEGACY_TEMP_DIR)
+            dir.listFiles()?.forEach { secureZeroAndDelete(it) }
+            dir.delete()
+        }
+    }
+
     fun getFileSize(file: File): Long = file.length()
 
     fun getHumanReadableSize(bytes: Long): String {
@@ -94,4 +112,6 @@ object FileUtils {
     fun safUriDocumentId(uri: Uri): String? = try {
         DocumentsContract.getDocumentId(uri)
     } catch (_: Exception) { null }
+
+    private const val LEGACY_TEMP_DIR = "arcanum_temp"
 }

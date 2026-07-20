@@ -8,9 +8,13 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import androidx.work.WorkManager
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import zip.arcanum.R
 import zip.arcanum.arcanum.containers.service.ContainerCreationService
+import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.NativeCrashHandler
 import java.io.File
 import java.text.SimpleDateFormat
@@ -36,6 +40,7 @@ class ArcanumApp : Application() {
             Timber.plant(Timber.DebugTree())
         }
         createNotificationChannels()
+        CoroutineScope(Dispatchers.IO).launch { FileUtils.purgeLegacyTempFiles(this@ArcanumApp) }
     }
 
     private fun createNotificationChannels() {

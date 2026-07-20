@@ -43,7 +43,6 @@ import zip.arcanum.core.notifications.ImportFailureReason
 import zip.arcanum.core.notifications.InAppNotification
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import zip.arcanum.crypto.NativeFileInfo
 import java.io.File
@@ -1058,25 +1057,6 @@ class FileManagerViewModel @Inject constructor(
                 pendingNotification   = if (count > 0) InAppNotification.FilesExported(count) else null
             ) }
         }
-    }
-
-    /**
-     * Open with no longer decrypts anything to disk (#103), so nothing writes into arcanum_temp
-     * any more. This stays because an upgrade does not clean up after the old implementation:
-     * a copy left behind by a version that still exported files - or by a process killed before
-     * it could tidy up - would otherwise sit in the cache as plaintext forever.
-     */
-    fun purgeLegacyTempFiles(context: Context) {
-        runCatching {
-            val dir = File(context.cacheDir, "arcanum_temp")
-            dir.listFiles()?.forEach { FileUtils.secureZeroAndDelete(it) }
-            dir.delete()
-        }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        purgeLegacyTempFiles(context)
     }
 
     fun clearPendingNotification() {
