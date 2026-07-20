@@ -75,6 +75,45 @@ uint32_t ext4_extent_tail_offset(const uint8_t *block) {
     return 12u + eh_max * 12u;
 }
 
+/*
+ * The inode's own checksum, split across two fields inside the inode it covers:
+ * i_checksum_lo at 0x7C and i_checksum_hi at 0x82. Both read as zero for the
+ * purpose of the calculation, so this walks around them rather than copying the
+ * inode aside to blank them.
+ *
+ * The whole inode is covered, all s_inode_size bytes of it, not just the 128-byte
+ * classic part - checksumming only the first 128 produces a confident wrong answer.
+ * i_checksum_hi only exists when i_extra_isize leaves room for it.
+ */
+uint32_t ext4_inode_csum(uint32_t fs_seed, uint32_t ino, uint32_t generation,
+                         const uint8_t *inode, uint32_t inode_size) {
+    static const uint8_t zeros[2] = { 0, 0 };
+    uint32_t crc = ext4_inode_csum_seed(fs_seed, ino, generation);
+    int has_hi = inode_size > 128 && ext4_inode_has_checksum_hi(inode);
+
+    crc = ext4_crc32c(crc, inode, EXT4_INODE_CSUM_LO_OFF);
+    crc = ext4_crc32c(crc, zeros, 2);
+
+    if (has_hi) {
+        crc = ext4_crc32c(crc, inode + EXT4_INODE_CSUM_LO_OFF + 2,
+                          EXT4_INODE_CSUM_HI_OFF - (EXT4_INODE_CSUM_LO_OFF + 2));
+        crc = ext4_crc32c(crc, zeros, 2);
+        crc = ext4_crc32c(crc, inode + EXT4_INODE_CSUM_HI_OFF + 2,
+                          inode_size - (EXT4_INODE_CSUM_HI_OFF + 2));
+    } else {
+        crc = ext4_crc32c(crc, inode + EXT4_INODE_CSUM_LO_OFF + 2,
+                          inode_size - (EXT4_INODE_CSUM_LO_OFF + 2));
+    }
+    return crc;
+}
+
+/* i_extra_isize must reach past i_checksum_hi for that half to exist. */
+int ext4_inode_has_checksum_hi(const uint8_t *inode) {
+    uint32_t extra = (uint32_t)inode[EXT4_INODE_EXTRA_ISIZE_OFF] |
+                     ((uint32_t)inode[EXT4_INODE_EXTRA_ISIZE_OFF + 1] << 8);
+    return extra >= (EXT4_INODE_CSUM_HI_OFF + 2) - 128;
+}
+
 uint32_t ext4_extent_block_csum(uint32_t inode_seed, const uint8_t *block, uint32_t block_size) {
     uint32_t off = ext4_extent_tail_offset(block);
     if (off + 4 > block_size) return 0;   /* header is not trustworthy */
