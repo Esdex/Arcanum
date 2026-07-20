@@ -237,9 +237,6 @@
     <string name="files_type_archive">Archivio</string>
     <string name="files_type_apk">Pacchetto Android</string>
     <string name="files_type_file">File</string>
-    <string name="files_open_with_body">Per aprire questo file, verrà creata una copia decifrata temporanea. Verrà eliminata automaticamente quando torni in Arcanum.</string>
-    <string name="files_open_with_cancel">Annulla</string>
-    <string name="files_open_with_confirm">Apri con app</string>
     <string name="files_sort_title">Ordina per</string>
     <string name="files_sort_name">Nome</string>
     <string name="files_sort_date">Data</string>

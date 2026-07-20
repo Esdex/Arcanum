@@ -247,9 +247,6 @@
     <string name="files_type_archive">Архив</string>
     <string name="files_type_apk">Пакет Android</string>
     <string name="files_type_file">Файл</string>
-    <string name="files_open_with_body">Чтобы открыть этот файл, будет создана временная расшифрованная копия. Она будет автоматически удалена при возвращении в Arcanum.</string>
-    <string name="files_open_with_cancel">Отмена</string>
-    <string name="files_open_with_confirm">Открыть в приложении</string>
     <string name="files_sort_title">Сортировка</string>
     <string name="files_sort_name">Имя</string>
     <string name="files_sort_date">Дата</string>

@@ -1,6 +1,7 @@
 package zip.arcanum.arcanum.files.ui
 
 import android.content.Context
+import android.content.Intent
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import androidx.datastore.core.DataStore
@@ -33,6 +34,8 @@ import zip.arcanum.arcanum.files.domain.FileClipboard
 import zip.arcanum.arcanum.gallery.AudioPlayerQueue
 import zip.arcanum.arcanum.gallery.MediaScanner
 import zip.arcanum.arcanum.gallery.ThumbnailManager
+import zip.arcanum.arcanum.saf.VaultDocumentsProvider
+import zip.arcanum.R
 import kotlinx.coroutines.coroutineScope
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileType
@@ -43,7 +46,6 @@ import kotlinx.coroutines.sync.withPermit
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import zip.arcanum.crypto.NativeFileInfo
-import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.inject.Inject
 
@@ -88,7 +90,6 @@ class FileManagerViewModel @Inject constructor(
         val clipboardCount: Int = 0,
         val error: String? = null,
         val pendingNotification: InAppNotification? = null,
-        val tempFileToOpen: Pair<File, String>? = null,
         val isOperationInProgress: Boolean = false,
         val operationMessage: String? = null,
         val isReadOnly: Boolean = false,
@@ -102,7 +103,6 @@ class FileManagerViewModel @Inject constructor(
         .map { list -> list.filter { it.isMounted } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val _tempFiles = mutableListOf<File>()
     private var initialized = false
     private val loadingThumbnails = mutableSetOf<String>()
     private val thumbnailSemaphore = Semaphore(4)
@@ -181,6 +181,65 @@ class FileManagerViewModel @Inject constructor(
             }
             onResult(id)
         }
+    }
+
+    /**
+     * Outcome of asking to hand a file to another app (#103).
+     */
+    sealed interface OpenWithRequest {
+        data class Ready(val chooser: Intent) : OpenWithRequest
+        /** The vault's External app access is off, so the provider would refuse the URI. */
+        data object NeedsExternalAccess : OpenWithRequest
+        /** The vault is no longer mounted - nothing to hand over. */
+        data object Unavailable : OpenWithRequest
+    }
+
+    fun requestOpenWith(file: NativeFileInfo, onResult: (OpenWithRequest) -> Unit) {
+        val cid = _state.value.containerId
+        viewModelScope.launch {
+            if (!repo.isExternalAccessEnabled(cid)) {
+                onResult(OpenWithRequest.NeedsExternalAccess)
+            } else {
+                onResult(buildOpenWithChooser(cid, file))
+            }
+        }
+    }
+
+    /**
+     * Called only after the user has agreed to the prompt. Exposing a vault to other apps is
+     * the user's decision to make, so this never runs as a silent side effect of Open with.
+     */
+    fun enableExternalAccessAndOpenWith(file: NativeFileInfo, onResult: (OpenWithRequest) -> Unit) {
+        val cid = _state.value.containerId
+        viewModelScope.launch {
+            repo.updateExternalAccessEnabled(cid, true)
+            onResult(buildOpenWithChooser(cid, file))
+        }
+    }
+
+    /**
+     * Hands out a SAF URI rather than a decrypted copy. VaultDocumentsProvider serves it through
+     * a proxy file descriptor, so the other app reads and seeks straight out of the mounted vault
+     * and no plaintext is ever written to disk - which is what #103 asks for over an export.
+     */
+    private fun buildOpenWithChooser(cid: String, file: NativeFileInfo): OpenWithRequest {
+        if (repo.getContainerHandle(cid) == null) return OpenWithRequest.Unavailable
+
+        val uri = DocumentsContract.buildDocumentUri(
+            VaultDocumentsProvider.authority(context),
+            VaultDocumentsProvider.documentId(cid, file.path)
+        )
+        // "*/*" rather than octet-stream for an unknown extension: octet-stream makes most
+        // players decline the intent outright, leaving an empty chooser.
+        val mime = getMimeType(file.name).takeIf { it != "application/octet-stream" } ?: "*/*"
+
+        val view = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        return OpenWithRequest.Ready(
+            Intent.createChooser(view, context.getString(R.string.files_action_open_with))
+        )
     }
 
     fun setAudioQueue(clickedFile: NativeFileInfo) {
@@ -1001,62 +1060,23 @@ class FileManagerViewModel @Inject constructor(
         }
     }
 
-    fun prepareOpenWithExternalApp(context: Context, file: NativeFileInfo) {
-        if (file.isDirectory) return
-        val handle = repo.getContainerHandle(_state.value.containerId) ?: return
-
-        viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isOperationInProgress = true, operationMessage = "Preparing ${file.name}…") }
-            try {
-                val tempDir = File(context.cacheDir, "arcanum_temp").also { it.mkdirs() }
-                val safeName = File(file.name).name.ifEmpty { "file" }
-                val tempFile = File(tempDir, safeName)
-                val baos = ByteArrayOutputStream()
-                val chunkSize = 1 * 1024 * 1024
-                var offset = 0L
-                while (offset < file.size) {
-                    val chunk = engine.readFile(handle, file.path, offset, chunkSize) ?: break
-                    baos.write(chunk)
-                    offset += chunk.size
-                    if (chunk.size < chunkSize) break
-                }
-                tempFile.writeBytes(baos.toByteArray())
-                _tempFiles.add(tempFile)
-                _state.update { it.copy(
-                    isOperationInProgress = false,
-                    operationMessage      = null,
-                    tempFileToOpen        = Pair(tempFile, getMimeType(file.name))
-                ) }
-            } catch (_: Exception) {
-                _state.update { it.copy(isOperationInProgress = false, operationMessage = null) }
-            }
-        }
-    }
-
-    fun clearTempFileToOpen() {
-        _state.update { it.copy(tempFileToOpen = null) }
-    }
-
-    fun clearTempFiles(context: Context) {
-        val iter = _tempFiles.iterator()
-        while (iter.hasNext()) {
-            runCatching { FileUtils.secureZeroAndDelete(iter.next()) }
-            iter.remove()
-        }
+    /**
+     * Open with no longer decrypts anything to disk (#103), so nothing writes into arcanum_temp
+     * any more. This stays because an upgrade does not clean up after the old implementation:
+     * a copy left behind by a version that still exported files - or by a process killed before
+     * it could tidy up - would otherwise sit in the cache as plaintext forever.
+     */
+    fun purgeLegacyTempFiles(context: Context) {
         runCatching {
-            File(context.cacheDir, "arcanum_temp").listFiles()
-                ?.forEach { FileUtils.secureZeroAndDelete(it) }
+            val dir = File(context.cacheDir, "arcanum_temp")
+            dir.listFiles()?.forEach { FileUtils.secureZeroAndDelete(it) }
+            dir.delete()
         }
     }
 
     override fun onCleared() {
         super.onCleared()
-        runCatching {
-            File(context.cacheDir, "arcanum_temp").listFiles()
-                ?.forEach { FileUtils.secureZeroAndDelete(it) }
-        }
-        _tempFiles.forEach { runCatching { FileUtils.secureZeroAndDelete(it) } }
-        _tempFiles.clear()
+        purgeLegacyTempFiles(context)
     }
 
     fun clearPendingNotification() {

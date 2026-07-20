@@ -235,6 +235,12 @@
     <string name="files_type_folder">Folder</string>
     <string name="files_action_rename">Rename</string>
     <string name="files_action_properties">Properties</string>
+    <string name="files_action_open_with">Open with…</string>
+    <string name="files_open_with_enable_title">Allow external app access?</string>
+    <string name="files_open_with_enable_message">Opening a file in another app needs External app access for this vault. The other app reads the file straight from the mounted vault - nothing is decrypted to disk, and access ends when you unmount. While it is on, this vault also appears in the system file picker, and you can turn it off again in the vault\'s settings.</string>
+    <string name="files_open_with_enable_confirm">Turn on and open</string>
+    <string name="files_open_with_unavailable">The vault is no longer mounted.</string>
+    <string name="files_open_with_no_app">No app on this device can open this file.</string>
     <string name="files_cd_close_fab">Close</string>
     <string name="files_cd_file_actions_fab">File actions</string>
     <string name="files_action_import">Import</string>
@@ -271,9 +277,6 @@
     <string name="files_type_archive">Archive</string>
     <string name="files_type_apk">Android Package</string>
     <string name="files_type_file">File</string>
-    <string name="files_open_with_body">To open this file, a temporary decrypted copy will be created. It will be deleted automatically when you return to Arcanum.</string>
-    <string name="files_open_with_cancel">Cancel</string>
-    <string name="files_open_with_confirm">Open with app</string>
     <string name="files_sort_title">Sort by</string>
     <string name="files_sort_name">Name</string>
     <string name="files_sort_date">Date</string>

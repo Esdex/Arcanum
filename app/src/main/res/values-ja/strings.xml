@@ -232,9 +232,6 @@
     <string name="files_type_archive">アーカイブ</string>
     <string name="files_type_apk">Androidパッケージ</string>
     <string name="files_type_file">ファイル</string>
-    <string name="files_open_with_body">このファイルを開くには、一時的な復号コピーが作成されます。Arcanumに戻ると自動的に削除されます。</string>
-    <string name="files_open_with_cancel">キャンセル</string>
-    <string name="files_open_with_confirm">アプリで開く</string>
     <string name="files_sort_title">並べ替え</string>
     <string name="files_sort_name">名前</string>
     <string name="files_sort_date">日付</string>

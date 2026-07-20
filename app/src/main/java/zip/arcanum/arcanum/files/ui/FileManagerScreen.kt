@@ -1,7 +1,6 @@
 package zip.arcanum.arcanum.files.ui
 
 import android.content.Context
-import android.content.Intent
 import android.provider.DocumentsContract
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -139,7 +138,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -200,10 +198,10 @@ fun FileManagerScreen(
 
     LaunchedEffect(containerId) { viewModel.initialize(containerId) }
 
-    // Delete temp files when user returns to app
+    // Sweep up decrypted copies left behind by the pre-#103 Open with implementation
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) viewModel.clearTempFiles(context)
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.purgeLegacyTempFiles(context)
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -214,21 +212,6 @@ fun FileManagerScreen(
         state.pendingNotification?.let { notif ->
             onNotification?.invoke(notif)
             viewModel.clearPendingNotification()
-        }
-    }
-
-    // Launch intent for "open with external app"
-    LaunchedEffect(state.tempFileToOpen) {
-        state.tempFileToOpen?.let { (tempFile, mimeType) ->
-            runCatching {
-                val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", tempFile)
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, mimeType)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                context.startActivity(intent)
-            }
-            viewModel.clearTempFileToOpen()
         }
     }
 
@@ -265,15 +248,41 @@ fun FileManagerScreen(
     var showMoreMenu           by remember { mutableStateOf(false) }
     var renameTarget           by remember { mutableStateOf<NativeFileInfo?>(null) }
     var propertiesTarget       by remember { mutableStateOf<NativeFileInfo?>(null) }
-    var openWithTarget         by remember { mutableStateOf<NativeFileInfo?>(null) }
-    var showOpenWithWarning    by remember { mutableStateOf(false) }
+    // Set when Open with is blocked on the vault's External app access being off
+    var enableAccessTarget     by remember { mutableStateOf<NativeFileInfo?>(null) }
 
     // Hoist sheet states unconditionally (Compose rule: no hooks inside conditions)
     val propertiesSheetState   = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val openWithSheetState     = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val sortSheetState         = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val moveSheetState         = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val copySheetState         = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Single entry point for Open with, shared by the item menu and by tapping a file that
+    // has no in-app viewer, so both routes behave identically (#103).
+    val openWithResult: (FileManagerViewModel.OpenWithRequest) -> Unit = { result ->
+        when (result) {
+            is FileManagerViewModel.OpenWithRequest.Ready ->
+                if (runCatching { context.startActivity(result.chooser) }.isFailure) {
+                    onNotification?.invoke(InAppNotification.VaultError(
+                        state.containerId, context.getString(R.string.files_open_with_no_app)
+                    ))
+                }
+            FileManagerViewModel.OpenWithRequest.NeedsExternalAccess -> {}
+            FileManagerViewModel.OpenWithRequest.Unavailable ->
+                onNotification?.invoke(InAppNotification.VaultError(
+                    state.containerId, context.getString(R.string.files_open_with_unavailable)
+                ))
+        }
+    }
+    val launchOpenWith: (NativeFileInfo) -> Unit = { file ->
+        viewModel.requestOpenWith(file) { result ->
+            if (result is FileManagerViewModel.OpenWithRequest.NeedsExternalAccess) {
+                enableAccessTarget = file
+            } else {
+                openWithResult(result)
+            }
+        }
+    }
 
     val isAtRoot          = state.currentPath == "/"
     val isAmoled          = LocalAmoledMode.current
@@ -349,9 +358,9 @@ fun FileManagerScreen(
                                         val open = onMediaFileClick
                                         viewModel.openMediaFile(file) { fileId ->
                                             if (fileId != null) open(fileId)
-                                            else { openWithTarget = file; showOpenWithWarning = true }
+                                            else launchOpenWith(file)
                                         }
-                                    } else { openWithTarget = file; showOpenWithWarning = true }
+                                    } else launchOpenWith(file)
                                 },
                                 onFileLongClick      = { file ->
                                     if (!state.isSelectionMode) viewModel.enterSelectionMode(file.path)
@@ -359,6 +368,7 @@ fun FileManagerScreen(
                                 },
                                 onRename             = { renameTarget = it },
                                 onProperties         = { propertiesTarget = it },
+                                onOpenWith           = launchOpenWith,
                                 formatSize           = viewModel::formatFileSize
                             )
                         }
@@ -384,9 +394,9 @@ fun FileManagerScreen(
                                     val open = onMediaFileClick
                                     viewModel.openMediaFile(file) { fileId ->
                                         if (fileId != null) open(fileId)
-                                        else { openWithTarget = file; showOpenWithWarning = true }
+                                        else launchOpenWith(file)
                                     }
-                                } else { openWithTarget = file; showOpenWithWarning = true }
+                                } else launchOpenWith(file)
                             },
                             onFileLongClick = { file ->
                                 if (!state.isSelectionMode) viewModel.enterSelectionMode(file.path)
@@ -417,7 +427,8 @@ fun FileManagerScreen(
                             onCancel       = viewModel::exitSelectionMode,
                             onSelectAll    = viewModel::selectAll,
                             onRename       = { renameTarget = it },
-                            onProperties   = { propertiesTarget = it }
+                            onProperties   = { propertiesTarget = it },
+                            onOpenWith     = launchOpenWith
                         )
                     } else {
                         FileManagerTopBar(
@@ -619,22 +630,25 @@ fun FileManagerScreen(
         }
     }
 
-    if (showOpenWithWarning && openWithTarget != null) {
-        val file = openWithTarget!!
-        AppSheet(
-            onDismissRequest = { showOpenWithWarning = false; openWithTarget = null },
-            sheetState       = openWithSheetState
-        ) {
-            OpenWithWarningContent(
-                fileName  = file.name,
-                onCancel  = { showOpenWithWarning = false; openWithTarget = null },
-                onConfirm = {
-                    showOpenWithWarning = false
-                    viewModel.prepareOpenWithExternalApp(context, file)
-                    openWithTarget = null
+    // Open with needs the vault exposed through the SAF provider. Turning that on widens what
+    // other apps can reach, so it is asked for rather than flipped silently.
+    enableAccessTarget?.let { file ->
+        AppDialog(
+            onDismissRequest = { enableAccessTarget = null },
+            title  = { Text(stringResource(R.string.files_open_with_enable_title)) },
+            text   = { Text(stringResource(R.string.files_open_with_enable_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    enableAccessTarget = null
+                    viewModel.enableExternalAccessAndOpenWith(file, openWithResult)
+                }) { Text(stringResource(R.string.files_open_with_enable_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { enableAccessTarget = null }) {
+                    Text(stringResource(R.string.common_cancel))
                 }
-            )
-        }
+            }
+        )
     }
 
     if (showImportSheet) {
@@ -889,7 +903,8 @@ private fun SelectionTopBar(
     onCancel: () -> Unit,
     onSelectAll: () -> Unit,
     onRename: (NativeFileInfo) -> Unit,
-    onProperties: (NativeFileInfo) -> Unit
+    onProperties: (NativeFileInfo) -> Unit,
+    onOpenWith: (NativeFileInfo) -> Unit
 ) {
     val isAmoled  = LocalAmoledMode.current
     val hazeState = LocalHazeState.current
@@ -927,6 +942,13 @@ private fun SelectionTopBar(
                             onClick     = { showMenu = false; onRename(singleSelected) },
                             enabled     = !isReadOnly
                         )
+                        if (!singleSelected.isDirectory) {
+                            DropdownMenuItem(
+                                text        = { Text(stringResource(R.string.files_action_open_with)) },
+                                leadingIcon = { Icon(Icons.Outlined.FileOpen, null) },
+                                onClick     = { showMenu = false; onOpenWith(singleSelected) }
+                            )
+                        }
                         DropdownMenuItem(
                             text        = { Text(stringResource(R.string.files_action_properties)) },
                             leadingIcon = { Icon(Icons.Outlined.Info, null) },
@@ -1017,6 +1039,7 @@ private fun FileListContent(
     onFileLongClick: (NativeFileInfo) -> Unit,
     onRename: (NativeFileInfo) -> Unit,
     onProperties: (NativeFileInfo) -> Unit,
+    onOpenWith: (NativeFileInfo) -> Unit,
     formatSize: (Long) -> String
 ) {
     LazyColumn(
@@ -1036,6 +1059,7 @@ private fun FileListContent(
                 onFileLongClick    = { onFileLongClick(file) },
                 onRename           = { onRename(file) },
                 onProperties       = { onProperties(file) },
+                onOpenWith         = { onOpenWith(file) },
                 formatSize         = formatSize
             )
         }
@@ -1056,6 +1080,7 @@ private fun FileListItem(
     onFileLongClick: () -> Unit,
     onRename: () -> Unit,
     onProperties: () -> Unit,
+    onOpenWith: () -> Unit,
     formatSize: (Long) -> String
 ) {
     val isHidden = file.name.startsWith(".")
@@ -1165,6 +1190,14 @@ private fun FileListItem(
                         onClick = { onRename(); showItemMenu = false },
                         enabled = !isReadOnly
                     )
+                    // Folders have nothing to hand to another app
+                    if (!file.isDirectory) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.files_action_open_with)) },
+                            leadingIcon = { Icon(Icons.Outlined.FileOpen, null) },
+                            onClick = { onOpenWith(); showItemMenu = false }
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.files_action_properties)) },
                         leadingIcon = { Icon(Icons.Outlined.Info, null) },
@@ -1477,41 +1510,6 @@ private fun PropertiesRow(label: String, value: String) {
              maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
     HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-}
-
-@Composable
-private fun OpenWithWarningContent(fileName: String, onCancel: () -> Unit, onConfirm: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 8.dp)
-            .padding(bottom = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(Icons.Outlined.FileOpen, null,
-             modifier = Modifier.size(40.dp).padding(vertical = 8.dp),
-             tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(4.dp))
-        Text(fileName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-             maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(12.dp))
-        Text(
-            stringResource(R.string.files_open_with_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.height(24.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            TextButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.files_open_with_cancel)) }
-            androidx.compose.material3.Button(onClick = onConfirm, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.files_open_with_confirm))
-            }
-        }
-    }
 }
 
 @Composable

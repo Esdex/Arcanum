@@ -166,6 +166,9 @@ class ContainerRepository @Inject constructor(
     suspend fun updateUnmountOnBackground(id: String, value: Boolean) =
         dao.updateUnmountOnBackground(id, value)
 
+    suspend fun isExternalAccessEnabled(id: String): Boolean =
+        dao.getContainerById(id)?.externalAccessEnabled == true
+
     suspend fun updateExternalAccessEnabled(id: String, value: Boolean) {
         dao.updateExternalAccessEnabled(id, value)
         // Turning access off must immediately drop existing grants and hide the root.
