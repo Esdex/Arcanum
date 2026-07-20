@@ -347,9 +347,6 @@ class CreateContainerViewModel @Inject constructor(
             }
             when (result) {
                 is CryptoResult.Success -> {
-                    // Session-only knowledge for the expand-volume guard; never persisted
-                    // (would defeat plausible deniability).
-                    _createdContainerId.value?.let { repo.markSessionHasHiddenVolume(it) }
                     _state.update { it.copy(
                         isCreating       = false,
                         isHiddenCreated  = true,

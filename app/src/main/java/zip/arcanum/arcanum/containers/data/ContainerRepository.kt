@@ -41,13 +41,16 @@ class ContainerRepository @Inject constructor(
     )
     private val mounted = ConcurrentHashMap<String, MountState>()
 
-    // Session-only knowledge that a container holds a hidden volume — observed when it
-    // was mounted as hidden / with hidden-volume protection, or when the hidden volume
-    // was created this session. Unlike the mounted map above this survives unmount,
-    // but it is NEVER persisted: recording hidden-volume existence in the DB would
-    // defeat plausible deniability (same reason field28 is no longer written to the
-    // outer header). Used by the expand-volume guard.
-    private val sessionHasHiddenVolume: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    // There is deliberately no record here of which containers hold a hidden volume.
+    //
+    // A session-only set of those ids used to live here, feeding the guard that stopped
+    // Expand Volume from running on an outer container. Expand Volume is gone, and with
+    // it the only reader — so the set was removed rather than left filling up. Holding
+    // that fact anywhere is a deniability cost: it is the same fact the code refuses to
+    // put in the database, and refuses to write into the outer header as field28. Keeping
+    // it in process memory for no consumer only exposed it to anyone who can inspect a
+    // running process. If a future feature needs the same guard, weigh that cost again
+    // rather than assuming it is free.
 
     fun getAllContainers(): Flow<List<Container>> =
         dao.getAllContainers().map { list -> list.map { it.toDomain() } }
@@ -85,18 +88,11 @@ class ContainerRepository @Inject constructor(
             isReadOnly = isReadOnly
         )
         _mountedContainerIds.update { it + id }
-        if (isHidden || hasHidden) sessionHasHiddenVolume += id
         dao.setMounted(id, true)
         dao.updateLastAccessed(id, System.currentTimeMillis())
     }
 
     fun getPimForContainer(id: String): Int = mounted[id]?.pim ?: 0
-
-    /** Marks a container as known (this session) to contain a hidden volume. */
-    fun markSessionHasHiddenVolume(id: String) { sessionHasHiddenVolume += id }
-
-    /** Session-only: true if this container was observed to contain a hidden volume. */
-    fun isKnownToContainHiddenVolume(id: String): Boolean = id in sessionHasHiddenVolume
 
     suspend fun unmountContainer(id: String) {
         mounted.remove(id)?.parcelFd?.close()
@@ -114,7 +110,6 @@ class ContainerRepository @Inject constructor(
         val snapshot = mounted.values.toList()
         mounted.clear()
         _mountedContainerIds.value = emptySet()
-        sessionHasHiddenVolume.clear()
         snapshot.forEach { runCatching { it.parcelFd?.close() } }
         return snapshot.map { it.handle }
     }
