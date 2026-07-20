@@ -37,6 +37,7 @@ import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.arcanum.saf.VaultDocumentsProvider
 import zip.arcanum.R
 import kotlinx.coroutines.coroutineScope
+import zip.arcanum.core.utils.MediaExtensions
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.notifications.ImportFailureReason
@@ -49,10 +50,6 @@ import java.io.File
 import javax.inject.Inject
 
 private val Context.fileManagerPrefs: DataStore<Preferences> by preferencesDataStore("file_manager_prefs")
-
-private val AUDIO_EXTENSIONS_VM  = setOf("mp3", "m4a", "aac", "ogg", "flac", "wav", "opus")
-private val IMAGE_EXTENSIONS_VM  = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif")
-private val VIDEO_EXTENSIONS_VM  = setOf("mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp")
 
 @HiltViewModel
 class FileManagerViewModel @Inject constructor(
@@ -121,8 +118,11 @@ class FileManagerViewModel @Inject constructor(
         if (file.isDirectory) return
         val ext = file.name.substringAfterLast('.', "").lowercase()
         val type = when (ext) {
-            in IMAGE_EXTENSIONS_VM -> MediaFileType.IMAGE
-            in VIDEO_EXTENSIONS_VM -> MediaFileType.VIDEO
+            in MediaExtensions.IMAGE -> MediaFileType.IMAGE
+            in MediaExtensions.VIDEO -> MediaFileType.VIDEO
+            // ThumbnailManager has always known how to pull embedded cover art; the file
+            // browser just never asked for it.
+            in MediaExtensions.AUDIO -> MediaFileType.AUDIO
             else -> return
         }
         if (!loadingThumbnails.add(file.path)) return
@@ -139,7 +139,12 @@ class FileManagerViewModel @Inject constructor(
                             while (map.size > MAX_FM_THUMBNAILS) map.iterator().also { it.next(); it.remove() }
                             s.copy(thumbnails = map)
                         }
-                    } else {
+                    } else if (type != MediaFileType.AUDIO) {
+                        // Allow a retry on a later pass: an image or video that yielded
+                        // nothing usually hit a transient read failure. Audio is different -
+                        // plenty of tracks simply carry no artwork, and that will not change,
+                        // so retrying would reopen the extractor over encrypted storage for
+                        // every art-less track on every scroll.
                         loadingThumbnails.remove(file.path)
                     }
                 }
@@ -243,7 +248,7 @@ class FileManagerViewModel @Inject constructor(
 
     fun setAudioQueue(clickedFile: NativeFileInfo) {
         val audioFiles = _state.value.files.filter {
-            !it.isDirectory && it.name.substringAfterLast('.', "").lowercase() in AUDIO_EXTENSIONS_VM
+            !it.isDirectory && it.name.substringAfterLast('.', "").lowercase() in MediaExtensions.AUDIO
         }
         val index = audioFiles.indexOfFirst { it.path == clickedFile.path }.coerceAtLeast(0)
         audioQueue.set(_state.value.containerId, audioFiles, index)
@@ -838,7 +843,7 @@ class FileManagerViewModel @Inject constructor(
                     if (!hiddenProtected && failureCode == null) {
                         count++
                         val ext = name.substringAfterLast('.', "").lowercase()
-                        if (ext in IMAGE_EXTENSIONS_VM || ext in VIDEO_EXTENSIONS_VM) {
+                        if (ext in MediaExtensions.IMAGE || ext in MediaExtensions.VIDEO) {
                             importedMedia.add(Pair(destPath, fileSize))
                         }
                         if (deleteAfterImport && fileOk)
@@ -1004,7 +1009,7 @@ class FileManagerViewModel @Inject constructor(
                         if (!hiddenProtected && failureCode == null) {
                             count++
                             val ext = childName.substringAfterLast('.', "").lowercase()
-                            if (ext in IMAGE_EXTENSIONS_VM || ext in VIDEO_EXTENSIONS_VM) {
+                            if (ext in MediaExtensions.IMAGE || ext in MediaExtensions.VIDEO) {
                                 importedMedia.add(Pair(childDest, childFileSize))
                             }
                         }

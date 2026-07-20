@@ -142,6 +142,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import zip.arcanum.R
+import zip.arcanum.core.utils.MediaExtensions
 import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.arcanum.files.ui.FileManagerViewModel.SortBy
 import zip.arcanum.arcanum.files.ui.FileManagerViewModel.ViewMode
@@ -158,7 +159,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "aac", "ogg", "flac", "wav", "opus")
 private val MEDIA_EXTENSIONS = setOf(
     "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif",
     "mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp"
@@ -336,7 +336,7 @@ fun FileManagerScreen(
                                     if (state.isSelectionMode) viewModel.toggleSelection(file.path)
                                     else if (file.isDirectory) viewModel.navigateTo(file.path)
                                     else if (onAudioFileClick != null &&
-                                             file.name.substringAfterLast('.', "").lowercase() in AUDIO_EXTENSIONS) {
+                                             file.name.substringAfterLast('.', "").lowercase() in MediaExtensions.AUDIO) {
                                         viewModel.setAudioQueue(file)
                                         onAudioFileClick(file.path, file.name, file.size)
                                     } else if (onMediaFileClick != null &&
@@ -372,7 +372,7 @@ fun FileManagerScreen(
                                 if (state.isSelectionMode) viewModel.toggleSelection(file.path)
                                 else if (file.isDirectory) viewModel.navigateTo(file.path)
                                 else if (onAudioFileClick != null &&
-                                         file.name.substringAfterLast('.', "").lowercase() in AUDIO_EXTENSIONS) {
+                                         file.name.substringAfterLast('.', "").lowercase() in MediaExtensions.AUDIO) {
                                     viewModel.setAudioQueue(file)
                                     onAudioFileClick(file.path, file.name, file.size)
                                 } else if (onMediaFileClick != null &&
@@ -1116,8 +1116,7 @@ private fun FileListItem(
                         .background(iconColor.copy(alpha = 0.12f))
                 ) {
                     if (thumbnail != null) {
-                        val isVideo = file.name.substringAfterLast('.', "").lowercase() in
-                            setOf("mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp")
+                        val isVideo = MediaExtensions.isVideo(file.name)
                         Box(Modifier.fillMaxSize()) {
                             Box(
                                 Modifier.fillMaxSize().paint(
@@ -1259,8 +1258,7 @@ private fun FileGridContent(
                                 .background(iconColor.copy(alpha = 0.15f))
                         ) {
                             if (thumbnail != null) {
-                                val isVideo = file.name.substringAfterLast('.', "").lowercase() in
-                                    setOf("mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp")
+                                val isVideo = MediaExtensions.isVideo(file.name)
                                 Box(Modifier.fillMaxSize()) {
                                     Box(
                                         Modifier.fillMaxSize().paint(

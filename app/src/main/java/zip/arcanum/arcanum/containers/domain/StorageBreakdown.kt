@@ -7,7 +7,7 @@ import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.ui.graphics.vector.ImageVector
 import zip.arcanum.R
-import zip.arcanum.arcanum.gallery.MediaScanner
+import zip.arcanum.core.utils.MediaExtensions
 
 /**
  * The five storage buckets shown on the Info → Storage donut.
@@ -71,16 +71,16 @@ data class StorageBreakdown(
 
 /**
  * Pure classification of a file into a [StorageCategory], reusing the canonical
- * extension sets from [MediaScanner] so the donut agrees with the gallery.
+ * extension sets from [MediaExtensions] so the donut agrees with every other screen.
  * Kept side-effect free so it can be unit-tested without Android.
  */
 object StorageCategorizer {
 
     /** Classify a bare file extension (without dot). Anything unknown → FILES. */
     fun categorize(extension: String): StorageCategory = when (extension.lowercase()) {
-        in MediaScanner.IMAGE_EXTENSIONS -> StorageCategory.PHOTOS
-        in MediaScanner.VIDEO_EXTENSIONS -> StorageCategory.VIDEOS
-        in MediaScanner.AUDIO_EXTENSIONS -> StorageCategory.MUSIC
+        in MediaExtensions.IMAGE -> StorageCategory.PHOTOS
+        in MediaExtensions.VIDEO -> StorageCategory.VIDEOS
+        in MediaExtensions.AUDIO -> StorageCategory.MUSIC
         else                             -> StorageCategory.FILES
     }
 
