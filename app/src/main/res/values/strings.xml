@@ -777,6 +777,7 @@
     <string name="storage_cat_files">Files</string>
     <string name="storage_cat_free_space">Free space</string>
     <string name="vault_storage_filesystem_caption">Vault filesystem: %1$s</string>
+    <string name="vault_storage_volume_gap_caption">%1$s of the %2$s volume is usable — expanding grew the volume but not the filesystem inside it</string>
     <string name="nav_storage">Storage</string>
     <string name="vault_details_title">Vault details</string>
     <string name="vault_details_desc">General and encryption information</string>

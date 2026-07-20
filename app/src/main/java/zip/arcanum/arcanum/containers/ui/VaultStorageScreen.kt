@@ -124,6 +124,30 @@ fun VaultStorageScreen(
             modifier = Modifier.fillMaxWidth().alpha(captionAlpha)
         )
 
+        // The vault list shows the volume size while this screen shows what the filesystem
+        // can actually hold. Those are normally within a fraction of a percent of each
+        // other - FAT metadata is the only difference - but after an expand the filesystem
+        // keeps its original size and the two diverge for good. Name the gap where it
+        // exists rather than leaving two screens quietly disagreeing.
+        //
+        // 5% is well clear of the metadata overhead, which stays under 1% for every
+        // geometry Arcanum formats, so this can only fire on a genuine gap.
+        val volumeSize = container.size
+        if (!breakdown.isLoading && volumeSize > 0L &&
+            breakdown.capacity in 1 until (volumeSize - volumeSize / 20)) {
+            Text(
+                text = stringResource(
+                    R.string.vault_storage_volume_gap_caption,
+                    breakdown.capacity.formatStorageSize(),
+                    volumeSize.formatStorageSize()
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().alpha(captionAlpha)
+            )
+        }
+
         Spacer(Modifier.height(8.dp))
 
         // Checkable legend — bare rows, all checked initially; tap toggles a bucket.

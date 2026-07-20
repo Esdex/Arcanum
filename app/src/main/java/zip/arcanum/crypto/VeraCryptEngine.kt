@@ -489,6 +489,20 @@ class VeraCryptEngine @Inject constructor() {
     fun closeContainer(handle: Long): Int = nativeCloseContainer(handle)
 
     fun getDataSize(handle: Long): Long = nativeGetDataSize(handle)
+
+    /**
+     * Capacity and free space of the filesystem inside the volume, or null if it
+     * cannot be queried.
+     *
+     * Not the same as [getDataSize], which is the volume size from the VeraCrypt
+     * header. Expanding a container grows the volume but not the filesystem in it,
+     * so the header size can count space no write will ever reach - anything showing
+     * the user how much room is left must ask here instead.
+     *
+     * Walks the FAT, so call it per screen, not per file.
+     */
+    fun getFsUsage(handle: Long): FsUsage? =
+        nativeGetFsUsage(handle)?.takeIf { it.size == 2 }?.let { FsUsage(it[0], it[1]) }
     fun getAlgorithmId(handle: Long): Int = nativeGetAlgorithmId(handle)
     fun getHashId(handle: Long): Int = nativeGetHashId(handle)
     fun getFilesystem(handle: Long): Int = nativeGetFilesystem(handle)
@@ -739,6 +753,7 @@ class VeraCryptEngine @Inject constructor() {
     private external fun nativeGetFilesystem(handle: Long): Int
 
     private external fun nativeGetDataSize(handle: Long): Long
+    private external fun nativeGetFsUsage(handle: Long): LongArray?
 
     private external fun nativeGetKeySize(handle: Long): Int
 
