@@ -413,16 +413,16 @@ inline bool keyfile_pool_has_legacy_variant(int origPwdLen, bool haveKeyfiles) {
     return haveKeyfiles && origPwdLen > 64;
 }
 
-/* Apply one or more keyfiles (read from disk paths) to the password buffer.
- * Matches VeraCrypt KeyFilesApply() exactly.
+/* Apply one or more keyfiles to the password buffer, read from JNI byte arrays.
+ * Matches VeraCrypt KeyFilesApply() exactly. jKeyfileData is an
+ * Array<ByteArray>? — null or empty means no-op.
+ *
+ * There is deliberately no path-taking variant. One existed until issue #116,
+ * and it forced every caller outside the mount path to copy the user's keyfile
+ * into cacheDir in plaintext first. Keyfile bytes now reach the native layer
+ * only through this function, so no caller can put them on disk on the way in.
+ *
  * Returns false on OOM — caller must propagate as a hard error. */
-bool apply_keyfiles_to_password(const std::vector<std::string>& paths,
-                                 uint8_t *pwd_buf, int *pwd_len,
-                                 bool forceLegacyPool = false);
-
-/* Same as apply_keyfiles_to_password but reads from JNI byte arrays (no disk
- * access). jKeyfileData is an Array<ByteArray>? — null or empty means no-op.
- * Returns false on OOM. */
 bool apply_keyfile_buffers(JNIEnv *env, jobjectArray jKeyfileData,
                             uint8_t *pwd_buf, int *pwd_len,
                             bool forceLegacyPool = false);

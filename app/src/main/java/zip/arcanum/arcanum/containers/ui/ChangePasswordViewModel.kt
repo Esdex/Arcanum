@@ -33,13 +33,13 @@ data class ChangePasswordState(
     // Step 1 - current credentials
     val oldPassword: String = "",
     val oldPim: Int = 0,
-    val oldKeyfilePaths: List<String> = emptyList(),
+    val oldKeyfileData: List<ByteArray> = emptyList(),
     val oldKeyfileDisplayNames: List<String> = emptyList(),
     // Step 2 - new credentials
     val newPassword: String = "",
     val newConfirmPassword: String = "",
     val newPim: Int = 0,
-    val newKeyfilePaths: List<String> = emptyList(),
+    val newKeyfileData: List<ByteArray> = emptyList(),
     val newKeyfileDisplayNames: List<String> = emptyList(),
     val newHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA512,
     // Step 3 - entropy
@@ -94,36 +94,36 @@ class ChangePasswordViewModel @Inject constructor(
 
     // ── Keyfiles ──────────────────────────────────────────────────────────
 
-    fun addOldKeyfile(cachedPath: String, displayName: String) =
+    fun addOldKeyfile(bytes: ByteArray, displayName: String) =
         _state.update { it.copy(
-            oldKeyfilePaths        = it.oldKeyfilePaths + cachedPath,
+            oldKeyfileData        = it.oldKeyfileData + bytes,
             oldKeyfileDisplayNames = it.oldKeyfileDisplayNames + displayName
         ) }
 
     fun removeOldKeyfile(index: Int) {
-        val paths = _state.value.oldKeyfilePaths.toMutableList()
+        val paths = _state.value.oldKeyfileData.toMutableList()
         val names = _state.value.oldKeyfileDisplayNames.toMutableList()
         if (index in paths.indices) {
-            FileUtils.secureZeroAndDelete(java.io.File(paths[index]))
+            paths[index].fill(0)
             paths.removeAt(index); names.removeAt(index)
         }
-        _state.update { it.copy(oldKeyfilePaths = paths, oldKeyfileDisplayNames = names) }
+        _state.update { it.copy(oldKeyfileData = paths, oldKeyfileDisplayNames = names) }
     }
 
-    fun addNewKeyfile(cachedPath: String, displayName: String) =
+    fun addNewKeyfile(bytes: ByteArray, displayName: String) =
         _state.update { it.copy(
-            newKeyfilePaths        = it.newKeyfilePaths + cachedPath,
+            newKeyfileData        = it.newKeyfileData + bytes,
             newKeyfileDisplayNames = it.newKeyfileDisplayNames + displayName
         ) }
 
     fun removeNewKeyfile(index: Int) {
-        val paths = _state.value.newKeyfilePaths.toMutableList()
+        val paths = _state.value.newKeyfileData.toMutableList()
         val names = _state.value.newKeyfileDisplayNames.toMutableList()
         if (index in paths.indices) {
-            FileUtils.secureZeroAndDelete(java.io.File(paths[index]))
+            paths[index].fill(0)
             paths.removeAt(index); names.removeAt(index)
         }
-        _state.update { it.copy(newKeyfilePaths = paths, newKeyfileDisplayNames = names) }
+        _state.update { it.copy(newKeyfileData = paths, newKeyfileDisplayNames = names) }
     }
 
     // ── Start ─────────────────────────────────────────────────────────────
@@ -147,10 +147,12 @@ class ChangePasswordViewModel @Inject constructor(
             safFd            = pfd?.fd ?: -1,
             safPfd           = pfd,
             oldPassword      = s.oldPassword,
-            oldKeyfilePaths  = s.oldKeyfilePaths,
+            // Copies - see the note in CreateContainerViewModel: the service
+            // outlives this ViewModel and both zero what they hold.
+            oldKeyfileData  = s.oldKeyfileData.map { it.copyOf() },
             oldPim           = s.oldPim,
             newPassword      = s.newPassword,
-            newKeyfilePaths  = s.newKeyfilePaths,
+            newKeyfileData  = s.newKeyfileData.map { it.copyOf() },
             newHashAlgorithm = s.newHashAlgorithm.ordinal,
             newPim           = s.newPim,
             wipePassCount    = s.wipeMode.passCount,
@@ -159,8 +161,8 @@ class ChangePasswordViewModel @Inject constructor(
 
         // Clear keyfile paths from state — service owns them now
         _state.update { it.copy(
-            oldKeyfilePaths = emptyList(), oldKeyfileDisplayNames = emptyList(),
-            newKeyfilePaths = emptyList(), newKeyfileDisplayNames = emptyList()
+            oldKeyfileData = emptyList(), oldKeyfileDisplayNames = emptyList(),
+            newKeyfileData = emptyList(), newKeyfileDisplayNames = emptyList()
         ) }
 
         try {
@@ -171,8 +173,8 @@ class ChangePasswordViewModel @Inject constructor(
             // Service failed to start — recover params and surface error
             val residual = changePasswordParams.take()
             residual?.safPfd?.close()
-            residual?.oldKeyfilePaths?.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-            residual?.newKeyfilePaths?.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+            residual?.oldKeyfileData?.forEach { it.fill(0) }
+            residual?.newKeyfileData?.forEach { it.fill(0) }
             residual?.extraEntropy?.fill(0)
             _state.update { it.copy(isRunning = false, error = e.message ?: "Failed to start service") }
             return
@@ -201,8 +203,8 @@ class ChangePasswordViewModel @Inject constructor(
         // If VM is cleared before service finishes, keyfiles are already with the service.
         // Clean up any residual keyfiles still in state (edge case: cleared before startChange).
         val s = _state.value
-        s.oldKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-        s.newKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+        s.oldKeyfileData.forEach { it.fill(0) }
+        s.newKeyfileData.forEach { it.fill(0) }
         collectedEntropy.fill(0)
     }
 }

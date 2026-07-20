@@ -24,25 +24,15 @@ object FileUtils {
         bytes to displayName
     } catch (_: Exception) { null }
 
-    /**
-     * Copies a SAF URI to a temp file in the app's cache dir.
-     * Returns (absolutePath, displayName) or null on failure.
-     * The caller is responsible for deleting the file when done.
+    /*
+     * There is deliberately no copyUriToCache() here any more.
+     *
+     * It existed solely to stage keyfiles for the flows that took paths rather
+     * than bytes, and it put the user's keyfile in cacheDir in plaintext to do
+     * it (issue #116). Every flow now reads keyfiles with readKeyfileBytes()
+     * above and passes the bytes to the native layer, which no longer has a
+     * function that opens a keyfile by name. Do not reintroduce this.
      */
-    fun copyUriToCache(context: Context, uri: Uri): Pair<String, String>? = try {
-        val displayName = context.contentResolver.query(
-            uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) cursor.getString(0) else null
-        } ?: uri.lastPathSegment ?: "keyfile"
-
-        val cacheFile = File(context.cacheDir, "arcanum_keyfile_${System.currentTimeMillis()}")
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            cacheFile.outputStream().use { output -> input.copyTo(output) }
-        }
-        cacheFile.absolutePath to displayName
-    } catch (_: Exception) { null }
-
 
     fun secureZeroAndDelete(file: File) {
         try {

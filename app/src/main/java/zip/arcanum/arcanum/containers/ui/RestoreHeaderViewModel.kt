@@ -22,7 +22,7 @@ data class RestoreHeaderState(
     val password: String = "",
     val showPassword: Boolean = false,
     val pim: Int = 0,
-    val keyfilePaths: List<String> = emptyList(),
+    val keyfileData: List<ByteArray> = emptyList(),
     val keyfileDisplayNames: List<String> = emptyList(),
     val fromExternal: Boolean = false,
     val backupUri: String = "",
@@ -58,20 +58,20 @@ class RestoreHeaderViewModel @Inject constructor(
     fun update(block: RestoreHeaderState.() -> RestoreHeaderState) =
         _state.update { it.block() }
 
-    fun addKeyfile(cachedPath: String, displayName: String) =
+    fun addKeyfile(bytes: ByteArray, displayName: String) =
         _state.update { it.copy(
-            keyfilePaths        = it.keyfilePaths + cachedPath,
+            keyfileData        = it.keyfileData + bytes,
             keyfileDisplayNames = it.keyfileDisplayNames + displayName
         ) }
 
     fun removeKeyfile(index: Int) {
-        val paths = _state.value.keyfilePaths.toMutableList()
+        val paths = _state.value.keyfileData.toMutableList()
         val names = _state.value.keyfileDisplayNames.toMutableList()
         if (index in paths.indices) {
-            FileUtils.secureZeroAndDelete(File(paths[index]))
+            paths[index].fill(0)
             paths.removeAt(index); names.removeAt(index)
         }
-        _state.update { it.copy(keyfilePaths = paths, keyfileDisplayNames = names) }
+        _state.update { it.copy(keyfileData = paths, keyfileDisplayNames = names) }
     }
 
     fun setBackupFile(uri: String, displayName: String) =
@@ -116,15 +116,15 @@ class RestoreHeaderViewModel @Inject constructor(
             val result: CryptoResult<Unit> = engine.restoreVolumeHeaderFd(
                 volumeFd     = volumePfd.fd,
                 password     = s.password,
-                keyfilePaths = s.keyfilePaths,
+                keyfileData = s.keyfileData,
                 pim          = s.pim,
                 fromExternal = s.fromExternal,
                 backupFd     = backupPfd?.fd ?: -1
             )
 
             volumePfd.close(); backupPfd?.close()
-            s.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(File(it)) }
-            _state.update { it.copy(keyfilePaths = emptyList(), keyfileDisplayNames = emptyList()) }
+            s.keyfileData.forEach { it.fill(0) }
+            _state.update { it.copy(keyfileData = emptyList(), keyfileDisplayNames = emptyList()) }
 
             when (result) {
                 is CryptoResult.Success -> _state.update { it.copy(isRunning = false, isSuccess = true) }
@@ -135,6 +135,6 @@ class RestoreHeaderViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        _state.value.keyfilePaths.forEach { FileUtils.secureZeroAndDelete(File(it)) }
+        _state.value.keyfileData.forEach { it.fill(0) }
     }
 }

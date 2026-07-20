@@ -120,15 +120,15 @@ fun ChangeKeyfileScreen(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val (path, name) = FileUtils.copyUriToCache(context, uri) ?: return@rememberLauncherForActivityResult
-        viewModel.addOldKeyfile(path, name)
+        val (bytes, name) = FileUtils.readKeyfileBytes(context, uri) ?: return@rememberLauncherForActivityResult
+        viewModel.addOldKeyfile(bytes, name)
     }
     val newKeyfileLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val (path, name) = FileUtils.copyUriToCache(context, uri) ?: return@rememberLauncherForActivityResult
-        viewModel.addNewKeyfile(path, name)
+        val (bytes, name) = FileUtils.readKeyfileBytes(context, uri) ?: return@rememberLauncherForActivityResult
+        viewModel.addNewKeyfile(bytes, name)
     }
     // Generated keyfiles need a folder to land in, so this picks a tree.
     // Offered only for the new set: the old keyfile has to be the one the
@@ -277,7 +277,7 @@ fun ChangeKeyfileScreen(
                 if (state.currentStep < 4) {
                     val canProceed = when (state.currentStep) {
                         1    -> state.password.isNotEmpty()
-                        2    -> !state.addKeyfilesEnabled || state.newKeyfilePaths.isNotEmpty()
+                        2    -> !state.addKeyfilesEnabled || state.newKeyfileData.isNotEmpty()
                         3    -> state.entropyProgress >= 1f
                         else -> false
                     }

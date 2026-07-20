@@ -26,11 +26,11 @@ data class ChangeKeyfileState(
     // Step 1 - credentials
     val password: String = "",
     val pim: Int = 0,
-    val oldKeyfilePaths: List<String> = emptyList(),
+    val oldKeyfileData: List<ByteArray> = emptyList(),
     val oldKeyfileDisplayNames: List<String> = emptyList(),
     // Step 2 - new keyfiles
     val addKeyfilesEnabled: Boolean = true,
-    val newKeyfilePaths: List<String> = emptyList(),
+    val newKeyfileData: List<ByteArray> = emptyList(),
     val newKeyfileDisplayNames: List<String> = emptyList(),
     // Step 3 - entropy
     val entropyProgress: Float = 0f,
@@ -83,27 +83,27 @@ class ChangeKeyfileViewModel @Inject constructor(
 
     // ── Old Keyfiles ──────────────────────────────────────────────────────
 
-    fun addOldKeyfile(cachedPath: String, displayName: String) =
+    fun addOldKeyfile(bytes: ByteArray, displayName: String) =
         _state.update { it.copy(
-            oldKeyfilePaths        = it.oldKeyfilePaths + cachedPath,
+            oldKeyfileData        = it.oldKeyfileData + bytes,
             oldKeyfileDisplayNames = it.oldKeyfileDisplayNames + displayName
         ) }
 
     fun removeOldKeyfile(index: Int) {
-        val paths = _state.value.oldKeyfilePaths.toMutableList()
+        val paths = _state.value.oldKeyfileData.toMutableList()
         val names = _state.value.oldKeyfileDisplayNames.toMutableList()
         if (index in paths.indices) {
-            FileUtils.secureZeroAndDelete(java.io.File(paths[index]))
+            paths[index].fill(0)
             paths.removeAt(index); names.removeAt(index)
         }
-        _state.update { it.copy(oldKeyfilePaths = paths, oldKeyfileDisplayNames = names) }
+        _state.update { it.copy(oldKeyfileData = paths, oldKeyfileDisplayNames = names) }
     }
 
     // ── New Keyfiles ──────────────────────────────────────────────────────
 
-    fun addNewKeyfile(cachedPath: String, displayName: String) =
+    fun addNewKeyfile(bytes: ByteArray, displayName: String) =
         _state.update { it.copy(
-            newKeyfilePaths        = it.newKeyfilePaths + cachedPath,
+            newKeyfileData        = it.newKeyfileData + bytes,
             newKeyfileDisplayNames = it.newKeyfileDisplayNames + displayName
         ) }
 
@@ -117,7 +117,7 @@ class ChangeKeyfileViewModel @Inject constructor(
         viewModelScope.launch {
             keyfileGenerator.generateOne(treeUri, DEFAULT_GENERATED_KEYFILE_NAME).fold(
                 onSuccess = { generated ->
-                    val cached = FileUtils.copyUriToCache(context, generated.uri)
+                    val cached = FileUtils.readKeyfileBytes(context, generated.uri)
                     if (cached == null) {
                         _state.update { it.copy(keyfileError = "Keyfile created but could not be read back") }
                         return@fold
@@ -132,21 +132,21 @@ class ChangeKeyfileViewModel @Inject constructor(
     }
 
     fun removeNewKeyfile(index: Int) {
-        val paths = _state.value.newKeyfilePaths.toMutableList()
+        val paths = _state.value.newKeyfileData.toMutableList()
         val names = _state.value.newKeyfileDisplayNames.toMutableList()
         if (index in paths.indices) {
-            FileUtils.secureZeroAndDelete(java.io.File(paths[index]))
+            paths[index].fill(0)
             paths.removeAt(index); names.removeAt(index)
         }
-        _state.update { it.copy(newKeyfilePaths = paths, newKeyfileDisplayNames = names) }
+        _state.update { it.copy(newKeyfileData = paths, newKeyfileDisplayNames = names) }
     }
 
     fun toggleAddKeyfiles(enabled: Boolean) {
         if (!enabled) {
-            _state.value.newKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+            _state.value.newKeyfileData.forEach { it.fill(0) }
             _state.update { it.copy(
                 addKeyfilesEnabled     = false,
-                newKeyfilePaths        = emptyList(),
+                newKeyfileData        = emptyList(),
                 newKeyfileDisplayNames = emptyList()
             ) }
         } else {
@@ -179,23 +179,25 @@ class ChangeKeyfileViewModel @Inject constructor(
             context.contentResolver.openFileDescriptor(Uri.parse(safUri), "rw")
         else null
 
-        val effectiveNewKeyfiles = if (s.addKeyfilesEnabled) s.newKeyfilePaths else emptyList()
+        val effectiveNewKeyfiles = if (s.addKeyfilesEnabled) s.newKeyfileData else emptyList()
 
         changeKeyfileParams.set(ChangeKeyfileParams.Params(
             path             = containerPath,
             safFd            = pfd?.fd ?: -1,
             safPfd           = pfd,
             password         = s.password,
-            oldKeyfilePaths  = s.oldKeyfilePaths,
+            // Copies - see the note in CreateContainerViewModel: the service
+            // outlives this ViewModel and both zero what they hold.
+            oldKeyfileData  = s.oldKeyfileData.map { it.copyOf() },
             pim              = s.pim,
-            newKeyfilePaths  = effectiveNewKeyfiles,
+            newKeyfileData  = effectiveNewKeyfiles.map { it.copyOf() },
             newHashAlgorithm = containerHashAlgorithm.ordinal,
             extraEntropy     = collectedEntropy.copyOf(entropyIndex)
         ))
 
         _state.update { it.copy(
-            oldKeyfilePaths = emptyList(), oldKeyfileDisplayNames = emptyList(),
-            newKeyfilePaths = emptyList(), newKeyfileDisplayNames = emptyList()
+            oldKeyfileData = emptyList(), oldKeyfileDisplayNames = emptyList(),
+            newKeyfileData = emptyList(), newKeyfileDisplayNames = emptyList()
         ) }
 
         try {
@@ -205,8 +207,8 @@ class ChangeKeyfileViewModel @Inject constructor(
         } catch (e: Exception) {
             val residual = changeKeyfileParams.take()
             residual?.safPfd?.close()
-            residual?.oldKeyfilePaths?.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-            residual?.newKeyfilePaths?.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+            residual?.oldKeyfileData?.forEach { it.fill(0) }
+            residual?.newKeyfileData?.forEach { it.fill(0) }
             residual?.extraEntropy?.fill(0)
             _state.update { it.copy(isRunning = false, error = e.message ?: "Failed to start service") }
             return
@@ -232,8 +234,8 @@ class ChangeKeyfileViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         val s = _state.value
-        s.oldKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-        s.newKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+        s.oldKeyfileData.forEach { it.fill(0) }
+        s.newKeyfileData.forEach { it.fill(0) }
         collectedEntropy.fill(0)
     }
 }

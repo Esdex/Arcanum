@@ -66,9 +66,9 @@ class ChangeKeyfileService : Service() {
                         cryptoEngine.changeKeyfileFd(
                             fd               = p.safFd,
                             password         = p.password,
-                            oldKeyfilePaths  = p.oldKeyfilePaths,
+                            oldKeyfileData  = p.oldKeyfileData,
                             pim              = p.pim,
-                            newKeyfilePaths  = p.newKeyfilePaths,
+                            newKeyfileData  = p.newKeyfileData,
                             newHashAlgorithm = p.newHashAlgorithm,
                             extraEntropy     = p.extraEntropy
                         )
@@ -76,17 +76,17 @@ class ChangeKeyfileService : Service() {
                         cryptoEngine.changeKeyfile(
                             path             = p.path,
                             password         = p.password,
-                            oldKeyfilePaths  = p.oldKeyfilePaths,
+                            oldKeyfileData  = p.oldKeyfileData,
                             pim              = p.pim,
-                            newKeyfilePaths  = p.newKeyfilePaths,
+                            newKeyfileData  = p.newKeyfileData,
                             newHashAlgorithm = p.newHashAlgorithm,
                             extraEntropy     = p.extraEntropy
                         )
                     }
                 } finally {
                     p.safPfd?.close()
-                    p.oldKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-                    p.newKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+                    p.oldKeyfileData.forEach { it.fill(0) }
+                    p.newKeyfileData.forEach { it.fill(0) }
                     p.extraEntropy.fill(0)
                 }
 

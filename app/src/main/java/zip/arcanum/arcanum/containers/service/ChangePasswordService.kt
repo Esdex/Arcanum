@@ -66,10 +66,10 @@ class ChangePasswordService : Service() {
                         cryptoEngine.changePasswordFd(
                             fd               = p.safFd,
                             oldPassword      = p.oldPassword,
-                            oldKeyfilePaths  = p.oldKeyfilePaths,
+                            oldKeyfileData  = p.oldKeyfileData,
                             oldPim           = p.oldPim,
                             newPassword      = p.newPassword,
-                            newKeyfilePaths  = p.newKeyfilePaths,
+                            newKeyfileData  = p.newKeyfileData,
                             newHashAlgorithm = p.newHashAlgorithm,
                             newPim           = p.newPim,
                             wipePassCount    = p.wipePassCount,
@@ -79,10 +79,10 @@ class ChangePasswordService : Service() {
                         cryptoEngine.changePassword(
                             path             = p.path,
                             oldPassword      = p.oldPassword,
-                            oldKeyfilePaths  = p.oldKeyfilePaths,
+                            oldKeyfileData  = p.oldKeyfileData,
                             oldPim           = p.oldPim,
                             newPassword      = p.newPassword,
-                            newKeyfilePaths  = p.newKeyfilePaths,
+                            newKeyfileData  = p.newKeyfileData,
                             newHashAlgorithm = p.newHashAlgorithm,
                             newPim           = p.newPim,
                             wipePassCount    = p.wipePassCount,
@@ -91,8 +91,8 @@ class ChangePasswordService : Service() {
                     }
                 } finally {
                     p.safPfd?.close()
-                    p.oldKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
-                    p.newKeyfilePaths.forEach { FileUtils.secureZeroAndDelete(java.io.File(it)) }
+                    p.oldKeyfileData.forEach { it.fill(0) }
+                    p.newKeyfileData.forEach { it.fill(0) }
                     p.extraEntropy.fill(0)
                 }
 

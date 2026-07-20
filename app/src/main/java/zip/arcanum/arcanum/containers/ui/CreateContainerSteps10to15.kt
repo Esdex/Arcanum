@@ -459,7 +459,7 @@ fun StepHiddenPassword(
             modifier        = Modifier.fillMaxWidth()
         )
         Text("$pimIcon $pimMsg", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (hiddenPimInt in 1..484 && state.hiddenPassword.length < 20 && state.hiddenKeyfilePaths.isEmpty()) {
+        if (hiddenPimInt in 1..484 && state.hiddenPassword.length < 20 && state.hiddenKeyfileData.isEmpty()) {
             Text(stringResource(R.string.create_pim_short_pwd_error), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
         }
 
