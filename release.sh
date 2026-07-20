@@ -44,16 +44,54 @@ BLOCK_COUNT=$(jq --argjson vc "$VERSION_CODE" '[.versions[] | select(.versionCod
 # ── 2. Generate F-Droid changelog from JSON ──────────────────────────────────
 
 log "Generating $CHANGELOG_FILE..."
-jq -r --argjson vc "$VERSION_CODE" '
-    .versions[] | select(.versionCode == $vc) | .entries[]
-    | select(.fdroid != false)
-    | "- \((.type[0:1] | ascii_upcase) + .type[1:]): \(.title)"
-' "$WHATSNEW_JSON" > "$CHANGELOG_FILE"
 
-BYTES=$(wc -c < "$CHANGELOG_FILE")
-[[ "$BYTES" -gt "$FDROID_MAX_BYTES" ]] && \
-    die "F-Droid changelog is $BYTES bytes (limit $FDROID_MAX_BYTES). Shorten titles in $WHATSNEW_JSON."
-log "F-Droid changelog: $BYTES/$FDROID_MAX_BYTES bytes."
+# Sorted by how much a reader deciding whether to update needs to know: new, security,
+# fix, improvement. Stable within a group, so whatsnew.json still controls the rest.
+#
+# Deliberately NOT the in-app order (whatsNewRankFor in WhatsNew.kt puts improvement
+# second). That rank sorts a list nobody has to cut, where polish reads better next to
+# features. Here the tail gets dropped, and ranking polish above security would have
+# spent the budget on "Interface polish" while cutting "Keyfiles never touch storage".
+FULL_LIST=$(mktemp)
+jq -r --argjson vc "$VERSION_CODE" '
+    .versions[] | select(.versionCode == $vc) | .entries
+    | map(select(.fdroid != false))
+    | sort_by(if   .type == "security"    then 1
+              elif .type == "fix"         then 2
+              elif .type == "improvement" then 3
+              else 0 end)
+    | .[]
+    | "- \((.type[0:1] | ascii_upcase) + .type[1:]): \(.title)"
+' "$WHATSNEW_JSON" > "$FULL_LIST"
+
+TOTAL=$(wc -l < "$FULL_LIST")
+BYTES=$(wc -c < "$FULL_LIST")
+
+if [[ "$BYTES" -le "$FDROID_MAX_BYTES" ]]; then
+    cp "$FULL_LIST" "$CHANGELOG_FILE"
+    log "F-Droid changelog: $BYTES/$FDROID_MAX_BYTES bytes, $TOTAL entries."
+else
+    # F-Droid hard-caps this file, so drop whole entries off the tail until the list
+    # plus its own closing line fits. Whole lines only: a sentence cut mid-word reads
+    # like a broken release, where an honest count does not. The line is rebuilt each
+    # pass because its own length grows with the number it reports.
+    KEEP="$TOTAL"
+    while (( KEEP > 0 )); do
+        KEEP=$(( KEEP - 1 ))
+        {
+            head -n "$KEEP" "$FULL_LIST"
+            printf -- "- ...and %d more, see What's New in the app\n" "$(( TOTAL - KEEP ))"
+        } > "$CHANGELOG_FILE"
+        if (( $(wc -c < "$CHANGELOG_FILE") <= FDROID_MAX_BYTES )); then break; fi
+    done
+    if (( KEEP == 0 )); then
+        die "No single entry fits in $FDROID_MAX_BYTES bytes. Shorten titles in $WHATSNEW_JSON."
+    fi
+    warn "F-Droid changelog trimmed to $KEEP of $TOTAL entries ($(wc -c < "$CHANGELOG_FILE")/$FDROID_MAX_BYTES bytes)."
+    warn "The in-app What's New still lists all $TOTAL. To control which ones are dropped,"
+    warn "mark the ones that need not reach F-Droid with \"fdroid\": false in $WHATSNEW_JSON."
+fi
+rm -f "$FULL_LIST"
 
 # The changelog must land in the tagged commit (F-Droid reads it from the tag),
 # so require it committed before we tag. A regenerated-but-uncommitted changelog
