@@ -115,6 +115,12 @@ fun ContainerScreen(
     val isAmoled               = LocalAmoledMode.current
     val hazeState              = remember { HazeState() }
     var selectedTab          by rememberSaveable { mutableStateOf(BottomNavItem.ContainerFiles.route) }
+    // Recompute the storage breakdown on every visit to the tab. Import and delete announce
+    // themselves to the view model, but move and paste do not, and this covers whatever
+    // changed the vault without needing a signal per operation.
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == BottomNavItem.ContainerInfo.route) storageViewModel.refresh()
+    }
     var defaultTabApplied      by rememberSaveable { mutableStateOf(false) }
     var notification           by remember { mutableStateOf<InAppNotification?>(null) }
     var showUnmountConfirm     by remember { mutableStateOf(false) }

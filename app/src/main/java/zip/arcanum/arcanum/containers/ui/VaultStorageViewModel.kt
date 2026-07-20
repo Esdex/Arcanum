@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -13,6 +14,7 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.domain.StorageBreakdown
 import zip.arcanum.arcanum.containers.domain.StorageCategory
 import zip.arcanum.arcanum.containers.domain.StorageCategorizer
+import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
@@ -28,6 +30,7 @@ class VaultStorageViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repo: ContainerRepository,
     private val engine: VeraCryptEngine,
+    private val thumbnailManager: ThumbnailManager,
 ) : ViewModel() {
 
     val containerId: String = savedStateHandle[Screen.ContainerScreen.ARG] ?: ""
@@ -35,15 +38,35 @@ class VaultStorageViewModel @Inject constructor(
     private val _breakdown = MutableStateFlow(StorageBreakdown.Loading)
     val breakdown = _breakdown.asStateFlow()
 
+    private var refreshJob: Job? = null
+
     init {
         refresh()
+        // Import and delete announce themselves, so a running import updates the donut
+        // while it is on screen instead of waiting for the tab to be revisited.
+        viewModelScope.launch {
+            thumbnailManager.importedContainerIds.collect { if (it == containerId) refresh() }
+        }
+        viewModelScope.launch {
+            thumbnailManager.deletedContainerIds.collect { if (it == containerId) refresh() }
+        }
     }
 
     /** Recompute the breakdown off the main thread. Safe to call again after edits. */
     fun refresh() {
-        _breakdown.value = _breakdown.value.copy(isLoading = true)
-        viewModelScope.launch {
-            _breakdown.value = withContext(Dispatchers.IO) { compute() }
+        // Only the first walk shows a spinner. Later ones keep the current numbers up
+        // while recomputing - blanking the donut every time the tab is opened reads as a
+        // glitch, and the walk is quick enough that the stale values are never on screen
+        // for long.
+        if (_breakdown.value.capacity == 0L) {
+            _breakdown.value = _breakdown.value.copy(isLoading = true)
+        }
+        // Cancel rather than queue: several deletes in a row would otherwise each walk the
+        // whole tree, and only the last result matters.
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { compute() }
+            _breakdown.value = result
         }
     }
 
