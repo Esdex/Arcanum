@@ -410,9 +410,14 @@ fun FileManagerScreen(
                 ) { selectionMode ->
                     if (selectionMode) {
                         SelectionTopBar(
-                            selectedCount = state.selectedItems.size,
-                            onCancel      = viewModel::exitSelectionMode,
-                            onSelectAll   = viewModel::selectAll
+                            selectedCount  = state.selectedItems.size,
+                            singleSelected = state.selectedItems.singleOrNull()
+                                ?.let { p -> state.files.find { it.path == p } },
+                            isReadOnly     = state.isReadOnly,
+                            onCancel       = viewModel::exitSelectionMode,
+                            onSelectAll    = viewModel::selectAll,
+                            onRename       = { renameTarget = it },
+                            onProperties   = { propertiesTarget = it }
                         )
                     } else {
                         FileManagerTopBar(
@@ -593,7 +598,12 @@ fun FileManagerScreen(
             isDirectory = file.isDirectory,
             onDismiss   = { renameTarget = null },
             onRename    = { newName ->
-                viewModel.renameFile(file, newName) { renameTarget = null }
+                viewModel.renameFile(file, newName) { success ->
+                    renameTarget = null
+                    // Renaming from selection mode leaves the selection pointing
+                    // at a path that no longer exists, so close it out.
+                    if (success) viewModel.exitSelectionMode()
+                }
             }
         )
     }
@@ -874,11 +884,17 @@ private fun FileManagerTopBar(
 @Composable
 private fun SelectionTopBar(
     selectedCount: Int,
+    singleSelected: NativeFileInfo?,
+    isReadOnly: Boolean,
     onCancel: () -> Unit,
-    onSelectAll: () -> Unit
+    onSelectAll: () -> Unit,
+    onRename: (NativeFileInfo) -> Unit,
+    onProperties: (NativeFileInfo) -> Unit
 ) {
     val isAmoled  = LocalAmoledMode.current
     val hazeState = LocalHazeState.current
+    var showMenu by remember { mutableStateOf(false) }
+
     TopAppBar(
         modifier       = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier,
         colors         = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -892,6 +908,32 @@ private fun SelectionTopBar(
         actions = {
             IconButton(onClick = onSelectAll) {
                 Icon(Icons.Outlined.SelectAll, contentDescription = stringResource(R.string.files_cd_select_all))
+            }
+            // Single-item actions live here rather than in the bottom bar: that
+            // row is SpaceEvenly with a label under each icon, and six entries
+            // overflow a narrow screen. This is also the only route to Rename
+            // and Properties in the grid layout, whose tiles have no menu of
+            // their own - no grid in the app does.
+            if (singleSelected != null) {
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Outlined.MoreVert,
+                             contentDescription = stringResource(R.string.files_cd_more_actions))
+                    }
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text        = { Text(stringResource(R.string.files_action_rename)) },
+                            leadingIcon = { Icon(Icons.Outlined.Edit, null) },
+                            onClick     = { showMenu = false; onRename(singleSelected) },
+                            enabled     = !isReadOnly
+                        )
+                        DropdownMenuItem(
+                            text        = { Text(stringResource(R.string.files_action_properties)) },
+                            leadingIcon = { Icon(Icons.Outlined.Info, null) },
+                            onClick     = { showMenu = false; onProperties(singleSelected) }
+                        )
+                    }
+                }
             }
         }
     )
