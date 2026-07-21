@@ -14,7 +14,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-cp "$HERE/ext4_extents.h" "$HERE/ext4_csum.h" "$HERE/bench.c" "$WORK/"
+. "$HERE/sources.sh"
+mutant_stage "$HERE" "$WORK" bench.c
 
 fail=0
 
@@ -27,17 +28,16 @@ try() {
     # Delimiter is @ rather than / or |, both of which appear in the C being
     # matched - a bitwise or in an expression silently ends the sed command.
     local desc="$1" expr="$2" expect_miss="${3:-}"
-    cp "$HERE/ext4_extents.c" "$WORK/m.c"
-    cp "$HERE/ext4_csum.c"    "$WORK/c.c"
+    mutant_reset "$HERE" "$WORK"
     # Mutations target either file; whichever one matches is the mutated one.
-    sed -i "$expr" "$WORK/m.c"
-    sed -i "$expr" "$WORK/c.c"
-    if cmp -s "$HERE/ext4_extents.c" "$WORK/m.c" && cmp -s "$HERE/ext4_csum.c" "$WORK/c.c"; then
+    sed -i "$expr" "$WORK/ext4_extents.c"
+    sed -i "$expr" "$WORK/ext4_csum.c"
+    if ! mutant_changed "$HERE" "$WORK"; then
         echo "  SKIP  $desc - the pattern did not match, so nothing was mutated"
         fail=1
         return
     fi
-    if ! (cd "$WORK" && cc -O2 -std=c99 -o bm bench.c m.c c.c 2>/dev/null); then
+    if ! mutant_build "$WORK" bench.c bm; then
         echo "  SKIP  $desc - mutant did not build"
         fail=1
         return

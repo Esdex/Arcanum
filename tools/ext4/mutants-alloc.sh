@@ -18,11 +18,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# ext4_ialloc.c comes along unmutated because alloc.c calls into it. Leaving it
-# out does not fail loudly - every mutant simply stops linking and the suite
-# reports SKIP, which is how a stale build list here was found the first time.
-cp "$HERE/ext4_alloc.h" "$HERE/ext4_csum.h" "$HERE/ext4_csum.c" \
-   "$HERE/ext4_ialloc.c" "$HERE/alloc.c" "$WORK/"
+. "$HERE/sources.sh"
+mutant_stage "$HERE" "$WORK" alloc.c
 
 fail=0
 CHECK_EXTRA=()          # extra fsckcheck.py arguments for the mutants below
@@ -35,14 +32,14 @@ CHECK_EXTRA=()          # extra fsckcheck.py arguments for the mutants below
 try() {
     # Delimiter is @: both / and | appear in the C being matched.
     local desc="$1" expr="$2" expect_miss="${3:-}"
-    cp "$HERE/ext4_alloc.c" "$WORK/m.c"
-    sed -i "$expr" "$WORK/m.c"
-    if cmp -s "$HERE/ext4_alloc.c" "$WORK/m.c"; then
+    mutant_reset "$HERE" "$WORK"
+    sed -i "$expr" "$WORK/ext4_alloc.c"
+    if ! mutant_changed "$HERE" "$WORK"; then
         echo "  SKIP  $desc - the pattern did not match, so nothing was mutated"
         fail=1
         return
     fi
-    if ! (cd "$WORK" && cc -O2 -std=c99 -o am alloc.c m.c ext4_ialloc.c ext4_csum.c 2>/dev/null); then
+    if ! mutant_build "$WORK" alloc.c am; then
         echo "  SKIP  $desc - mutant did not build"
         fail=1
         return

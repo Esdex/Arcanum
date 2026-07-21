@@ -19,22 +19,22 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-cp "$HERE/ext4_extwrite.h" "$HERE/ext4_alloc.h" "$HERE/ext4_alloc.c" \
-   "$HERE/ext4_csum.h" "$HERE/ext4_csum.c" "$HERE/extwrite.c" "$WORK/"
+. "$HERE/sources.sh"
+mutant_stage "$HERE" "$WORK" extwrite.c
 
 fail=0
 MODE=half
 
 try() {
     local desc="$1" expr="$2" expect_miss="${3:-}"
-    cp "$HERE/ext4_extwrite.c" "$WORK/m.c"
-    sed -i "$expr" "$WORK/m.c"
-    if cmp -s "$HERE/ext4_extwrite.c" "$WORK/m.c"; then
+    mutant_reset "$HERE" "$WORK"
+    sed -i "$expr" "$WORK/ext4_extwrite.c"
+    if ! mutant_changed "$HERE" "$WORK"; then
         echo "  SKIP  $desc - the pattern did not match, so nothing was mutated"
         fail=1
         return
     fi
-    if ! (cd "$WORK" && cc -O2 -std=c99 -o ew extwrite.c m.c ext4_alloc.c ext4_csum.c 2>/dev/null); then
+    if ! mutant_build "$WORK" extwrite.c ew; then
         echo "  SKIP  $desc - mutant did not build"
         fail=1
         return
