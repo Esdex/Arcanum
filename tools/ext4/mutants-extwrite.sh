@@ -69,10 +69,10 @@ try "i_size not updated" \
     's@    inode_size_set(inode, (uint64_t)next_logical \* fs->block_size);@@'
 
 try "i_blocks not updated" \
-    's@    inode_blocks_set(inode, inode_blocks_get(inode) + added \* (fs->block_size / 512));@@'
+    's@    inode_blocks_set(inode, inode_blocks_get(inode) +@    if (0) inode_blocks_set(inode, inode_blocks_get(inode) +@'
 
 try "i_blocks counted in filesystem blocks, not 512-byte sectors" \
-    's@inode_blocks_get(inode) + added \* (fs->block_size / 512)@inode_blocks_get(inode) + added@'
+    's@(data_blocks + meta_blocks) \* (fs->block_size / 512));@(data_blocks + meta_blocks));@'
 
 try "inode checksum not recomputed after the tree changes" \
     's@    wr16(buf + EXT4_INODE_CSUM_LO_OFF, (uint16_t)c);@@'
@@ -91,7 +91,7 @@ try "new extent records the wrong logical block" \
     's@            wr32(slot + EE_BLOCK_OFF, next_logical);@            wr32(slot + EE_BLOCK_OFF, next_logical + 1);@'
 
 try "entry count not increased after adding an extent" \
-    's@            wr16(root + EH_ENTRIES_OFF, entries);@@'
+    's@            wr16(n.buf + EH_ENTRIES_OFF, (uint16_t)(ent + 1));@@'
 
 try "extents never merged, a new entry every time" \
     's@        if (last && logically_next && !last_uninit && (uint64_t)got == goal &&@        if (0 \&\& last \&\& logically_next \&\& !last_uninit \&\& (uint64_t)got == goal \&\&@'
@@ -107,6 +107,37 @@ try "data block never written" \
 
 try "every appended block written to the first one's address" \
     's@        rc = write_data_block(fs, (uint64_t)got, block);@        rc = write_data_block(fs, (uint64_t)got - i, block);@'
+
+# Pushing a full root down into a block of its own. Reached by the 28 files whose
+# root already held four extents, which before this existed were skipped outright.
+
+try "new node written without its tail checksum" \
+    's@    wr32(buf + off, ext4_extent_block_csum(inode_seed, buf, fs->block_size));@@'
+
+try "root depth not increased after the split" \
+    's@    wr16(root + EH_DEPTH_OFF, (uint16_t)(depth + 1));@@'
+
+try "index keyed on the wrong logical block" \
+    's@    wr32(root + 12 + EI_BLOCK_OFF, first_logical);@    wr32(root + 12 + EI_BLOCK_OFF, first_logical + 1);@'
+
+try "index points one block past the node it moved" \
+    's@    ei_set_child(root + 12, (uint64_t)blk);@    ei_set_child(root + 12, (uint64_t)blk + 1);@'
+
+try "moved node claims one entry fewer than it holds" \
+    's@    wr16(scratch + EH_ENTRIES_OFF, ent);@    wr16(scratch + EH_ENTRIES_OFF, (uint16_t)(ent - 1));@'
+
+try "moved node keeps the root's capacity of four" \
+    's@    wr16(scratch + EH_MAX_OFF, (uint16_t)entries_per_extent_block(fs));@    wr16(scratch + EH_MAX_OFF, 4);@'
+
+try "the tree's own block not counted in i_blocks" \
+    's@    (\*meta_blocks)++;@@'
+
+try "capacity computed without reserving the tail" \
+    's@    return (fs->block_size - 12 - 4) / 12;@    return (fs->block_size - 12) / 12;@' \
+    "At 1 KiB, 2 KiB and 4 KiB the two forms give the same answer - 84, 169 and 340 -
+              because the division discards the remainder the tail would have used. Only a
+              block size where 12 divides differently would push the tail past the end of
+              the block, and mke2fs will not make one here. Held up by review alone."
 
 echo
 if [ "$fail" -ne 0 ]; then

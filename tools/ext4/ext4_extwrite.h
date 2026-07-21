@@ -30,10 +30,13 @@ typedef int (*ext4_fill_fn)(void *user, uint32_t logical, uint8_t *buf);
 /*
  * Appends `count` blocks to the end of the file at `ino`.
  *
- * Handles a tree of depth 0 only - the root that lives in the inode's 60 bytes of
- * i_block, holding at most four extents. Growing past that means splitting the
- * root into a real tree, which is the next piece of work and not this one; it is
- * refused with EXTW_ERR_FULL rather than half-done.
+ * Appends into the rightmost leaf of the tree, whatever its depth. When the root
+ * inside the inode fills - it holds four entries, all its 60 bytes allow - it is
+ * pushed down into a block of its own and the tree gains a level.
+ *
+ * A leaf block that fills is not yet split, and is refused with EXTW_ERR_FULL
+ * rather than half-done. That needs a second leaf and a new index entry in the
+ * parent, which is the next piece of work.
  *
  * The new size is the number of blocks now mapped times the block size, so a file
  * whose length was not a multiple of the block size gains the remainder of its
