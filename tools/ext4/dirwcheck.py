@@ -58,6 +58,63 @@ def fsck_same(base_rc, base_lines, img, problems, when):
         problems.append(f"fsck stopped saying, {when}: {vanished[:3]}")
 
 
+def dir_size(img, dir_ino):
+    from dircheck import debugfs
+    import re as _re
+    text = debugfs(img, f"stat <{dir_ino}>\n")
+    m = _re.search(r"Size:\s*(\d+)", text)
+    return int(m.group(1)) if m else None
+
+
+def grow_pass(img, dir_ino, bench, dirwrite, target, base_rc, base_lines, before):
+    """Adds names until the directory has to take a new block, then removes them.
+
+    Growth is the path that formats a block from scratch - a dead entry spanning
+    it and a tail with a checksum - and nothing else exercises it. Most
+    directories in the corpus have gaps left by deleted filler files, so without
+    pushing until the size moves, only the one already-full directory would ever
+    reach it.
+    """
+    problems = []
+    start_size = dir_size(img, dir_ino)
+    added = []
+
+    for i in range(400):
+        name = f"grow-{i:04d}"
+        rc, err = run(dirwrite, img, dir_ino, "add", name, target, 1)
+        if rc != 0:
+            problems.append(f"adding {name} failed: {err}")
+            break
+        added.append(name)
+        if dir_size(img, dir_ino) != start_size:
+            break
+    else:
+        problems.append("400 entries added and the directory never grew")
+
+    if added and not problems:
+        fsck_same(base_rc, base_lines, img, problems, "after growing")
+        ok, _ = dir_csum_ok(bench, img, dir_ino)
+        if not ok:
+            problems.append("a directory block checksum does not verify after growing")
+        got = our_listing(bench, img, dir_ino)
+        if got is not None:
+            missing = [n for n in added if not any(e[2] == n for e in got)]
+            if missing:
+                problems.append(f"entries lost after growing: {missing[:3]}")
+
+    for name in added:
+        rc, err = run(dirwrite, img, dir_ino, "remove", name)
+        if rc != 0:
+            problems.append(f"removing {name} failed: {err}")
+            break
+    else:
+        fsck_same(base_rc, base_lines, img, problems, "after removing everything")
+        if our_listing(bench, img, dir_ino) != before:
+            problems.append("the listing did not come back after growing and "
+                            "emptying again")
+    return problems
+
+
 def short_name_pass(img, dir_ino, bench, dirwrite, target,
                     base_rc, base_lines, before):
     """Add and remove a name needing only 12 bytes - the size of the checksum
@@ -86,7 +143,7 @@ def short_name_pass(img, dir_ino, bench, dirwrite, target,
     return problems, None
 
 
-def check_dir(img, dir_ino, bench, dirwrite, name="harness-entry"):
+def check_dir(img, dir_ino, bench, dirwrite, name="harness-entry", grow=False):
     """`name` is deliberately long enough to need 24 bytes. A second pass with a
     short one follows, because an entry needing only 12 is exactly the size that
     fits inside the checksum tail - a writer that does not stop the chain short of
@@ -162,6 +219,9 @@ def check_dir(img, dir_ino, bench, dirwrite, name="harness-entry"):
     extra, _ = short_name_pass(img, dir_ino, bench, dirwrite, target,
                                base_rc, base_lines, before)
     problems += extra
+    if grow:
+        problems += grow_pass(img, dir_ino, bench, dirwrite, target,
+                              base_rc, base_lines, before)
     return problems, None
 
 
@@ -172,6 +232,9 @@ def main():
     ap.add_argument("--bench", default=os.path.join(here, "bench"))
     ap.add_argument("--dirwrite", default=os.path.join(here, "dirwrite"))
     ap.add_argument("--limit", type=int)
+    ap.add_argument("--grow", action="store_true",
+                    help="also push each directory until it takes a new block, "
+                         "which is the only way the block-formatting path runs")
     # Zero, and it stays zero. The densest directory in the corpus - case-014's
     # root, 601 entries in seven blocks - has no gap of 24 bytes but does have the
     # 12 a short name needs, so it is exercised rather than skipped. A writer that
@@ -200,7 +263,7 @@ def main():
                 img = os.path.join(tmp, "fs.img")
                 shutil.copy(src, img)
                 problems, skip_reason = check_dir(img, dir_ino, args.bench,
-                                                  args.dirwrite)
+                                                  args.dirwrite, grow=args.grow)
             if skip_reason in ("no-target", "refused"):
                 skips[skip_reason] += 1
                 if skip_reason == "refused":

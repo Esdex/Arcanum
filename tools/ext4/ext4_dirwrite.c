@@ -21,6 +21,7 @@
 
 #include "ext4_dirwrite.h"
 #include "ext4_csum.h"
+#include "ext4_extwrite.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -152,6 +153,55 @@ int ext4_dir_lookup(const ext4_fs *r, uint32_t dir_ino, const char *name,
     return EXT4_DIRW_OK;
 }
 
+typedef struct {
+    uint32_t block_size;
+    uint32_t seed;
+} empty_block_ctx;
+
+/*
+ * Formats a block so that it is an empty directory block rather than a block of
+ * whatever was there before: one dead entry claiming everything up to the tail,
+ * and the tail itself.
+ *
+ * Both halves matter. Without the dead entry spanning the block, a reader
+ * starting at offset zero finds a rec_len of nothing and stops - or worse, walks
+ * on whatever bytes are there. Without the tail, the block has no checksum and
+ * e2fsck says so the moment the directory is next read.
+ */
+static int fill_empty_dir_block(void *user, uint32_t logical, uint8_t *buf) {
+    const empty_block_ctx *c = (const empty_block_ctx *)user;
+    (void)logical;
+
+    memset(buf, 0, c->block_size);
+    wr32(buf, 0);                                             /* dead */
+    wr16(buf + 4, (uint16_t)(c->block_size - DIR_TAIL_SIZE));
+
+    uint8_t *tail = buf + c->block_size - DIR_TAIL_SIZE;
+    wr32(tail, 0);
+    wr16(tail + 4, DIR_TAIL_SIZE);
+    tail[6] = 0;
+    tail[7] = EXT4_FT_DIR_CSUM;
+    wr32(tail + 8, ext4_crc32c(c->seed, buf, c->block_size - DIR_TAIL_SIZE));
+    return 0;
+}
+
+/*
+ * Adds one block to the end of a directory, formatted and ready to hold entries.
+ *
+ * The size a directory reports has to stay a whole number of blocks: the walk
+ * stops at i_size, so a size that stopped short would make the new block
+ * invisible and a size that ran over would make the walk read past the last one.
+ * ext4_append_blocks sets the size from the blocks now mapped, which is exactly
+ * that, but it is the property to check if this ever goes wrong.
+ */
+static int grow_directory(ext4_wfs *w, uint32_t dir_ino, uint32_t seed) {
+    empty_block_ctx ctx = { w->block_size, seed };
+    uint32_t added = 0;
+    int rc = ext4_append_blocks(w, dir_ino, 1, fill_empty_dir_block, &ctx, &added);
+    if (rc != EXTW_OK || added != 1) return EXT4_DIRW_ERR_NOROOM;
+    return EXT4_DIRW_OK;
+}
+
 int ext4_dir_add(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
                  uint32_t ino, uint8_t file_type, const char *name) {
     uint8_t name_len;
@@ -170,6 +220,9 @@ int ext4_dir_add(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     if (!buf) return EXT4_DIRW_ERR_IO;
 
     int rc = EXT4_DIRW_ERR_NOROOM;
+    int grown = 0;
+
+again:
 
     /* Two passes. The name has to be unique across the whole directory, so every
      * block is scanned for a clash before any of them is written to - finding room
@@ -235,6 +288,21 @@ int ext4_dir_add(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
             }
             off += rec;
         }
+    }
+
+    /* Nowhere to put it in what the directory already has. Grow it by one block
+     * and look again - once. A second failure is not a full directory, it is a
+     * block that came back unusable, and retrying would spin. */
+    if (rc == EXT4_DIRW_ERR_NOROOM && !grown) {
+        grown = 1;
+        int grc = grow_directory(w, dir_ino, seed);
+        if (grc != EXT4_DIRW_OK) { rc = grc; goto done; }
+        if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK) {
+            rc = EXT4_DIRW_ERR_IO;
+            goto done;
+        }
+        blocks = dir_block_count(r, dir);
+        goto again;
     }
 
 done:
