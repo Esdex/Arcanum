@@ -143,10 +143,28 @@ int ext4_fs_open(ext4_wfs *fs, const char *path) {
     fs->inode_size       = rd16(fs->sb + EXT4_SB_INODE_SIZE_OFF);
     fs->blocks_count     = (uint64_t)rd32(fs->sb + EXT4_SB_BLOCKS_LO_OFF) |
                            ((uint64_t)rd32(fs->sb + EXT4_SB_BLOCKS_HI_OFF) << 32);
-    fs->desc_size = (rd32(fs->sb + EXT4_SB_FEATURE_INCOMPAT_OFF) &
-                     EXT4_FEATURE_INCOMPAT_64BIT)
+    uint32_t incompat = rd32(fs->sb + EXT4_SB_FEATURE_INCOMPAT_OFF);
+    fs->desc_size = (incompat & EXT4_FEATURE_INCOMPAT_64BIT)
                     ? rd16(fs->sb + EXT4_SB_DESC_SIZE_OFF) : 32;
     if (!fs->blocks_per_group || !fs->desc_size) goto fail;
+
+    /*
+     * Refuse a filesystem whose journal still has work in it.
+     *
+     * Nothing here writes through the journal, which is safe only while there is
+     * nothing in it to replay. If there is - the flag is set on a mount and
+     * cleared on a clean unmount, so it survives a crash or a pulled cable -
+     * then every write made around it is provisional: the next thing to mount
+     * this filesystem will replay those transactions over the top and quietly
+     * undo them. Blocks we allocated come back marked free, entries we added
+     * disappear, and nothing reports an error because replay is exactly what is
+     * supposed to happen.
+     *
+     * That is silent data loss, and the filesystem cannot be written safely
+     * until something replays the journal. Refusing to open it is the honest
+     * answer until this can journal its own writes.
+     */
+    if (incompat & EXT4_FEATURE_INCOMPAT_RECOVER) goto fail;
 
     fs->groups = (uint32_t)((fs->blocks_count - fs->first_data_block +
                              fs->blocks_per_group - 1) / fs->blocks_per_group);

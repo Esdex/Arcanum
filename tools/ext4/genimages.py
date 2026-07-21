@@ -100,7 +100,7 @@ def stat_file(img, name):
             int(gen.group(1)) if gen else 0)
 
 
-def make_case(case_dir, blob_dir, rng, keep_blobs):
+def make_case(case_dir, blob_dir, rng, keep_blobs, case_index=0):
     os.makedirs(case_dir, exist_ok=True)
     img = os.path.join(case_dir, "fs.img")
 
@@ -126,7 +126,28 @@ def make_case(case_dir, blob_dir, rng, keep_blobs):
     if os.path.exists(img):
         os.remove(img)
     subprocess.run(["truncate", "-s", f"{size_mb}M", img], check=True)
-    r = run(["mkfs.ext4", "-q", "-F", "-b", str(block_size), img])
+    # Two feature sets, both wanted for different reasons.
+    #
+    # The default is what a container made anywhere else looks like, and it is
+    # what the guards have to be exercised against: it carries has_journal,
+    # dir_index and orphan_file, all of which describe structures this
+    # implementation deliberately refuses rather than handles.
+    #
+    # The other is what Arcanum creates. dir_index is off because it does not
+    # mean directories are indexed, it means the kernel may index them - so a
+    # container mounted on a real Linux and filled up would come back with an
+    # htree directory this cannot write to, with no update from us involved.
+    # has_journal is off because nothing here writes through a journal, and a
+    # journal that is written around is worse than none. Dropping it also drops
+    # orphan_file, which needs it.
+    #
+    # Both are valid ext4 and both mount read-write in another driver; see
+    # interopcheck.py, which proves that rather than asserting it.
+    arcanum_features = (case_index % 4 == 3)
+    opts = ["mkfs.ext4", "-q", "-F", "-b", str(block_size)]
+    if arcanum_features:
+        opts += ["-O", "^has_journal,^dir_index"]
+    r = run(opts + [img])
     if r.returncode != 0:
         return None, f"mkfs failed: {r.stderr.strip()[:120]}"
 
@@ -267,6 +288,7 @@ def make_case(case_dir, blob_dir, rng, keep_blobs):
 
     truth = {
         "profile": profile,
+        "arcanum_features": arcanum_features,
         "block_size": block_size,
         "size_mb": size_mb,
         "chunk_kb": chunk_kb,
@@ -301,7 +323,7 @@ def main():
     failures = []
     for i in range(args.count):
         case_dir = os.path.join(args.out, f"case-{i:03d}")
-        truth, err = make_case(case_dir, blob_dir, rng, args.keep_blobs)
+        truth, err = make_case(case_dir, blob_dir, rng, args.keep_blobs, i)
         if err:
             failures.append((case_dir, err))
             continue
