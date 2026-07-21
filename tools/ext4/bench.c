@@ -16,6 +16,7 @@
 
 #include "ext4_extents.h"
 #include "ext4_csum.h"
+#include "ext4_dir.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,6 +35,12 @@ static int img_read(void *ctx, uint64_t block, void *buf) {
     return EXT4_OK;
 }
 
+static int print_entry(void *user, const ext4_dir_entry *e) {
+    (void)user;
+    printf("%u %u %s\n", e->inode, e->file_type, e->name);
+    return 0;
+}
+
 static int print_run(void *user, const ext4_extent_run *run) {
     (void)user;
     printf("%u %llu %u %d\n", run->logical,
@@ -44,8 +51,11 @@ static int print_run(void *user, const ext4_extent_run *run) {
 int main(int argc, char **argv) {
     int read_mode = (argc == 4 && strcmp(argv[3], "--read") == 0);
     int csum_mode = (argc == 4 && strcmp(argv[3], "--csum") == 0);
-    if (argc != 3 && !read_mode && !csum_mode) {
-        fprintf(stderr, "usage: %s <image> <inode> [--read|--csum]\n", argv[0]);
+    int ls_mode   = (argc == 4 && strcmp(argv[3], "--ls") == 0);
+    int dcsum_mode = (argc == 4 && strcmp(argv[3], "--dircsum") == 0);
+    if (argc != 3 && !read_mode && !csum_mode && !ls_mode && !dcsum_mode) {
+        fprintf(stderr, "usage: %s <image> <inode> [--read|--csum|--ls|--dircsum]\n",
+                argv[0]);
         return 2;
     }
     img_ctx ctx = { fopen(argv[1], "rb"), 1024 };
@@ -88,6 +98,24 @@ int main(int argc, char **argv) {
         printf("%d %d %d\n", rc, checked, inode_ok);
         fclose(ctx.fp);
         return rc == EXT4_OK ? 0 : 1;
+    }
+
+    if (dcsum_mode) {
+        uint32_t generation = (uint32_t)inode[0x64] | ((uint32_t)inode[0x65] << 8) |
+                              ((uint32_t)inode[0x66] << 16) | ((uint32_t)inode[0x67] << 24);
+        int checked = 0;
+        rc = ext4_dir_check_csums(&fs, (uint32_t)strtoul(argv[2], NULL, 10),
+                                  generation, inode, &checked);
+        printf("%d %d\n", rc, checked);
+        fclose(ctx.fp);
+        return rc == EXT4_OK ? 0 : 1;
+    }
+
+    if (ls_mode) {
+        rc = ext4_dir_iterate(&fs, inode, print_entry, NULL);
+        if (rc != EXT4_OK) { fprintf(stderr, "ls: %d\n", rc); return 1; }
+        fclose(ctx.fp);
+        return 0;
     }
 
     if (read_mode) {
