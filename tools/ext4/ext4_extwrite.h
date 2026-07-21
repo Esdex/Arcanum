@@ -34,17 +34,22 @@ typedef int (*ext4_fill_fn)(void *user, uint32_t logical, uint8_t *buf);
  * inside the inode fills - it holds four entries, all its 60 bytes allow - it is
  * pushed down into a block of its own and the tree gains a level.
  *
- * A leaf block that fills is not yet split, and is refused with EXTW_ERR_FULL
- * rather than half-done. That needs a second leaf and a new index entry in the
- * parent, which is the next piece of work.
+ * A leaf block that fills gets an empty sibling rather than being divided, since
+ * an append only ever adds at the end. That costs an index entry in its parent,
+ * and a full parent below the root is still refused with EXTW_ERR_FULL.
  *
  * The new size is the number of blocks now mapped times the block size, so a file
  * whose length was not a multiple of the block size gains the remainder of its
  * last block as well. Appending to a block-aligned file - which is every file this
  * writer creates after its first call - grows it by exactly count blocks.
+ *
+ * `appended` receives how many blocks actually landed, which can be fewer than
+ * asked for when the filesystem fills. A short append is committed rather than
+ * abandoned: the blocks it did place are already on disk and referenced, so the
+ * inode and the free counts have to agree with that before returning.
  */
 int ext4_append_blocks(ext4_wfs *fs, uint32_t ino, uint32_t count,
-                       ext4_fill_fn fill, void *user);
+                       ext4_fill_fn fill, void *user, uint32_t *appended);
 
 #ifdef __cplusplus
 }

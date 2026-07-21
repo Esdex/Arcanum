@@ -25,6 +25,7 @@ cp "$HERE/ext4_extwrite.h" "$HERE/ext4_alloc.h" "$HERE/ext4_alloc.c" \
    "$HERE/ext4_csum.h" "$HERE/ext4_csum.c" "$HERE/extwrite.c" "$WORK/"
 
 fail=0
+CHECK_EXTRA=()          # extra appendcheck.py arguments for the mutants below
 
 # try <description> <sed-script> [expect-miss-reason]
 try() {
@@ -43,7 +44,7 @@ try() {
     fi
     if "$HERE/appendcheck.py" --cases "$CASES" --bench "$HERE/bench" \
                               --extwrite "$WORK/ew" --fsmeta "$HERE/fsmeta" \
-                              >/dev/null 2>&1; then
+                              ${CHECK_EXTRA[@]+"${CHECK_EXTRA[@]}"} >/dev/null 2>&1; then
         if [ -n "$expect_miss" ]; then
             echo "  untestable: $desc"
             echo "              $expect_miss"
@@ -91,7 +92,7 @@ try "new extent records the wrong logical block" \
     's@            wr32(slot + EE_BLOCK_OFF, next_logical);@            wr32(slot + EE_BLOCK_OFF, next_logical + 1);@'
 
 try "entry count not increased after adding an extent" \
-    's@            wr16(n.buf + EH_ENTRIES_OFF, (uint16_t)(ent + 1));@@'
+    's@            wr16(leaf + EH_ENTRIES_OFF, (uint16_t)(ent + 1));@@'
 
 try "extents never merged, a new entry every time" \
     's@        if (last && logically_next && !last_uninit && (uint64_t)got == goal &&@        if (0 \&\& last \&\& logically_next \&\& !last_uninit \&\& (uint64_t)got == goal \&\&@'
@@ -138,6 +139,39 @@ try "capacity computed without reserving the tail" \
               because the division discards the remainder the tail would have used. Only a
               block size where 12 divides differently would push the tail past the end of
               the block, and mke2fs will not make one here. Held up by review alone."
+
+# Giving a full leaf an empty sibling. Only reached once a leaf actually fills,
+# which three blocks never do - hence the larger append for this group.
+
+CHECK_EXTRA=(--count 900 --limit 8)
+
+try "new sibling leaf keyed on the wrong logical block" \
+    's@        wr32(slot + EI_BLOCK_OFF, next_logical);@        wr32(slot + EI_BLOCK_OFF, next_logical + 1);@'
+
+try "new sibling leaf not marked empty" \
+    's@        wr16(leaf + EH_ENTRIES_OFF, 0);@        wr16(leaf + EH_ENTRIES_OFF, 1);@'
+
+try "parent not told it gained a child" \
+    's@        wr16(pn + EH_ENTRIES_OFF, (uint16_t)(pe + 1));@@'
+
+try "parent left unwritten after gaining a child" \
+    's@        rc = flush_level(fs, p, parent, inode_seed);@        rc = EXTW_OK;@'
+
+try "new sibling given the depth of a leaf it is not" \
+    's@        wr16(leaf + EH_DEPTH_OFF, 0);@        wr16(leaf + EH_DEPTH_OFF, 1);@'
+
+# Running out of space part way. Needs an append far larger than the image, so
+# that the short-write path is the one being exercised.
+
+CHECK_EXTRA=(--count 100000 --limit 4)
+
+try "a short append abandoned instead of committed" \
+    's@    rc = write_inode(fs, ino, inode);@    if (append_rc != EXTW_OK) goto out;\n    rc = write_inode(fs, ino, inode);@'
+
+try "a short append reports the full count as written" \
+    's@    if (appended) \*appended = (uint32_t)data_blocks;@    if (appended) *appended = count;@'
+
+CHECK_EXTRA=()
 
 echo
 if [ "$fail" -ne 0 ]; then

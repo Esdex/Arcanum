@@ -60,9 +60,17 @@ int main(int argc, char **argv) {
     uint32_t ino   = (uint32_t)strtoul(argv[2], NULL, 10);
     uint32_t count = (uint32_t)strtoul(argv[4], NULL, 10);
 
-    int rc = ext4_append_blocks(&fs, ino, count, fill_pattern, &fs.block_size);
+    uint32_t appended = 0;
+    int rc = ext4_append_blocks(&fs, ino, count, fill_pattern, &fs.block_size,
+                                &appended);
+    ext4_fs_close(&fs);
+
+    /* The count goes to stdout either way: a short append is still committed, and
+     * whatever checks this needs to know how far it got rather than assuming. */
+    printf("%u\n", appended);
     if (rc != EXTW_OK) fprintf(stderr, "append: %s\n", strerr(rc));
 
-    ext4_fs_close(&fs);
-    return rc == EXTW_OK ? 0 : 1;
+    if (rc == EXTW_OK)        return 0;
+    if (rc == EXTW_ERR_NOSPACE) return 3;   /* short, but consistent */
+    return 1;
 }

@@ -74,6 +74,33 @@ def fsck(img):
     return r.returncode, lines, used
 
 
+# e2fsck's one suggestion rather than complaint, plus the blank line after it.
+#
+# Measured, not assumed: across the pristine corpus this fires on exactly the
+# trees that are depth 2 with a single index entry in the root, and on nothing
+# else - 6 of the first 14 cases carry it straight from mke2fs. Splitting a root
+# necessarily leaves it holding one entry, so any tree that reaches depth 2 lands
+# in that shape, whoever built it. rc stays 0 either way.
+#
+# So it is tolerated in both directions: appearing when a file grows deep enough,
+# and disappearing when a file grows past the shape that triggered it. Every other
+# line remains fatal in both directions.
+BENIGN_REMARK = re.compile(
+    r"^\s*$|^Inode \d+ extent tree \(at level \d+\) could be narrower\.\s+Optimize\? no$")
+
+
+def line_delta(before, after):
+    """-> (lines added, lines removed), counting duplicates properly."""
+    rest = list(before)
+    added = []
+    for line in after:
+        if line in rest:
+            rest.remove(line)
+        else:
+            added.append(line)
+    return added, rest
+
+
 def bench_map(bench, img, ino):
     r = subprocess.run([bench, img, str(ino)], capture_output=True, text=True)
     if r.returncode != 0:
@@ -165,17 +192,38 @@ def check_file(case, truth, f, img, bench, extwrite, fsmeta, count):
 
     r = subprocess.run([extwrite, img, str(ino), "append", str(count)],
                        capture_output=True, text=True)
-    if r.returncode != 0:
-        err = r.stderr.strip()
+    err = r.stderr.strip()
+    if r.returncode not in (0, 3):
         if "would have to be split" in err:
             return [], True         # deliberate refusal, not a failure
         return [f"append failed: {err}"], False
 
+    # Exit 3 means the filesystem filled part way. That is not a defect, but the
+    # result still has to be exactly as consistent as a complete run - the blocks
+    # it did place are on disk and referenced - so the checks below simply run
+    # against however many actually landed.
+    try:
+        count = int(r.stdout.split()[0])
+    except (IndexError, ValueError):
+        return [f"append did not report how many blocks it wrote: {err}"], False
+    if count == 0:
+        return [], True
+
     rc, lines, used = fsck(img)
-    if rc != base_rc or lines != base_lines:
-        new = [l for l in lines if l not in base_lines]
-        problems.append(f"fsck changed (rc {base_rc} -> {rc}): "
-                        f"{new[:4] if new else 'output differs'}")
+    if rc != base_rc:
+        problems.append(f"fsck return code changed: {base_rc} -> {rc}")
+
+    # Any line that appears or disappears is a failure, apart from the one
+    # optimisation suggestion described at BENIGN_REMARK. A check that went quiet
+    # is exactly as suspicious as one that started complaining, so both directions
+    # are reported.
+    new, gone = line_delta(base_lines, lines)
+    appeared = [l for l in new  if not BENIGN_REMARK.match(l)]
+    vanished = [l for l in gone if not BENIGN_REMARK.match(l)]
+    if appeared:
+        problems.append(f"fsck now complains: {appeared[:4]}")
+    if vanished:
+        problems.append(f"fsck stopped saying: {vanished[:4]}")
     # A root split adds a tree block, which counts everywhere a data block does.
     grew = debugfs_tree_blocks(img, ino) - before_tree
     if grew < 0:
