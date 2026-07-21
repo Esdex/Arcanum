@@ -11,8 +11,8 @@
 # So the lists live here once. Adding a module means adding it here, and every
 # suite picks it up.
 
-EXT4_HEADERS="ext4_csum.h ext4_extents.h ext4_alloc.h ext4_extwrite.h"
-EXT4_SOURCES="ext4_csum.c ext4_extents.c ext4_alloc.c ext4_ialloc.c ext4_extwrite.c"
+EXT4_HEADERS="ext4_csum.h ext4_extents.h ext4_alloc.h ext4_extwrite.h ext4_dir.h"
+EXT4_SOURCES="ext4_csum.c ext4_extents.c ext4_alloc.c ext4_ialloc.c ext4_extwrite.c ext4_dir.c"
 
 # mutant_stage <here> <work> <driver.c>
 #   Puts everything needed to build <driver.c> into <work>.
