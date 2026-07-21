@@ -147,13 +147,31 @@ def make_case(case_dir, blob_dir, rng, keep_blobs):
         ("medium", rng.randint(300_000, 900_000)),
         ("large",  rng.randint(2_000_000, 5_000_000) if profile == "shred"
                     else rng.randint(2_000_000, 9_000_000)),
+        # Two tails the four shapes above never produce, both found missing by
+        # mutants-extwrite.sh. They are deliberately last, so that the blocks
+        # immediately after them are still free - which is what makes the writer's
+        # merge decision reachable at all. With the frontier already occupied, a
+        # merge is refused for lack of an adjacent block and any bug in deciding
+        # whether it *should* merge stays invisible.
+        #
+        #   tailhole      i_size runs past the last extent, so appending at the
+        #                 last extent would write into the middle of the file
+        #   tailprealloc  ends in a preallocated extent with a free block after
+        #                 it, so merging into it is possible and must not happen
+        ("tailhole",     block_size * rng.randint(12, 20)),
+        ("tailprealloc", block_size * rng.randint(2, 6)),
     ]
+    # Pass one: create every file and shape the ones whose shaping has to happen
+    # while blocks are still being handed out in order.
+    written = []
+    tailhole_punch = None
     for name, nbytes in shapes:
         blob = os.path.join(blob_dir, f"{name}.bin")
         data = os.urandom(nbytes)
         with open(blob, "wb") as f:
             f.write(data)
         debugfs(img, f"write {blob} {name}\n", write=True)
+        written.append((name, blob, hashlib.sha256(data).hexdigest()))
 
         # Two shapes a plain write never produces, and both were invisible to the
         # corpus until a mutation test showed the reader could ignore the
@@ -179,6 +197,32 @@ def make_case(case_dir, blob_dir, rng, keep_blobs):
             debugfs(img, f"fallocate {name} {blocks + 16} {blocks + 16 + rng.randint(8, 200)}\n",
                     write=True)
 
+        # Punching the tail leaves i_size where it was and takes the blocks away,
+        # which is the one arrangement where the extents end before the file does.
+        # Deferred to after every other file exists - see below.
+        if name == "tailhole" and blocks > 6:
+            tailhole_punch = (blocks - rng.randint(3, 5), blocks - 1)
+
+        # Preallocation starting exactly where the data ends, so the file's last
+        # extent is uninitialised and physically adjacent to what follows it.
+        if name == "tailprealloc":
+            debugfs(img, f"fallocate {name} {blocks} {blocks + rng.randint(2, 6)}\n",
+                    write=True)
+
+    # The punch goes last, once nothing else will ask for a block. Doing it inside
+    # the loop frees a run that the very next file takes straight back, which
+    # leaves the surviving extent with no free space after it - and a writer that
+    # merges on physical adjacency alone then has nothing to merge with, so the
+    # bug it would cause stays invisible. Both of those states were observed:
+    # tailhole's freed tail was reused by tailprealloc, and the mutation test went
+    # from MISS to caught once this moved down here.
+    if tailhole_punch:
+        debugfs(img, f"punch tailhole {tailhole_punch[0]} {tailhole_punch[1]}\n",
+                write=True)
+
+    # Pass two: record what each file actually became, now that they all have
+    # their final shape.
+    for name, blob, sha_written in written:
         inode, size, generation = stat_file(img, name)
         if inode is None:
             return None, f"could not stat {name} after writing it"
@@ -203,7 +247,7 @@ def make_case(case_dir, blob_dir, rng, keep_blobs):
             "inode": inode,
             "generation": generation,
             "size": size,
-            "sha256_written": hashlib.sha256(data).hexdigest(),
+            "sha256_written": sha_written,
             "sha256_ondisk": sha_ondisk,
             "size_ondisk": size_ondisk,
             "max_depth": max((e["depth"] for e in extents), default=0),
