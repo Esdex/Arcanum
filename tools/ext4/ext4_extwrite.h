@@ -72,6 +72,12 @@ int ext4_truncate_blocks(ext4_wfs *fs, uint32_t ino, uint32_t keep_blocks);
  */
 int ext4_inode_adjust_links(ext4_wfs *fs, uint32_t ino, int delta);
 
+/*
+ * Writes a whole inode, stamping its checksum in first so the two cannot reach
+ * disk apart. The buffer must be inode_size bytes.
+ */
+int ext4_write_inode_raw(ext4_wfs *fs, uint32_t ino, uint8_t *inode);
+
 #ifdef __cplusplus
 }
 #endif
