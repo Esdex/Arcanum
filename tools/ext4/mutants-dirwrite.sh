@@ -20,6 +20,7 @@ trap 'rm -rf "$WORK"' EXIT
 mutant_stage "$HERE" "$WORK" dirwrite.c
 
 fail=0
+GROW=()
 
 try() {
     local desc="$1" expr="$2" expect_miss="${3:-}"
@@ -36,7 +37,8 @@ try() {
         return
     fi
     if "$HERE/dirwcheck.py" --cases "$CASES" --bench "$HERE/bench" \
-                            --dirwrite "$WORK/dw" >/dev/null 2>&1; then
+                            --dirwrite "$WORK/dw" \
+                            ${GROW[@]+"${GROW[@]}"} >/dev/null 2>&1; then
         if [ -n "$expect_miss" ]; then
             echo "  untestable: $desc"
             echo "              $expect_miss"
@@ -88,13 +90,12 @@ try "file type and name length written to each other.s field" \
 # up and every reader steps over it - it is a different valid strategy, not a
 # defect, and the harness rightly cannot tell the two apart.
 
+# This was marked untestable while the suite only added one long name, which never
+# landed at offset zero. Widening what the harness does made it reachable; the
+# suite reported UNEXPECTED CATCH rather than letting the stale note stand, which
+# is the half of that mechanism that usually goes unused.
 try "removal of the first entry shortens the chain" \
-    's@                    wr32(buf + off, 0);@                    wr32(buf + off, 0); wr16(buf + off + 4, DIRENT_HEADER);@' \
-    "Only fires when the entry being removed is the first in its block, and the
-              harness's entry never is - it is placed into whatever gap exists, which is
-              never at offset zero because \".\" and the entries before it are live. Reaching
-              it needs an entry deliberately placed first, which means emptying a block
-              first. Held up by review alone." 
+    's@                    wr32(buf + off, 0);@                    wr32(buf + off, 0); wr16(buf + off + 4, DIRENT_HEADER);@' 
 
 try "removal gives back one record too many" \
     's@(uint16_t)(rd16(buf + prev + 4) + rec)@(uint16_t)(rd16(buf + prev + 4) + rec + 4)@'
@@ -116,6 +117,38 @@ try "chain allowed to run into the checksum tail" \
               with no free gap at all, which nothing here produces. The guard is what stops
               a name being written over the checksum; held up by review alone."
 
+
+# Growing the directory by a block. Only reached once no gap is left, so the
+# suite pushes each directory until the size moves - most have gaps from the
+# generator's deleted filler files and would never get there.
+
+GROW=(--grow --limit 6)
+
+try "new block left unformatted" \
+    's@    memset(buf, 0, c->block_size);@    memset(buf, 0, c->block_size); if (1) return 0;@'
+
+try "new block has no entry spanning it" \
+    's@    wr16(buf + 4, (uint16_t)(c->block_size - DIR_TAIL_SIZE));@@'
+
+try "spanning entry runs over the tail" \
+    's@    wr16(buf + 4, (uint16_t)(c->block_size - DIR_TAIL_SIZE));@    wr16(buf + 4, (uint16_t)c->block_size);@'
+
+try "new block given no checksum tail" \
+    's@    tail\[7\] = EXT4_FT_DIR_CSUM;@@'
+
+try "new block's checksum covers the tail as well" \
+    's@    wr32(tail + 8, ext4_crc32c(c->seed, buf, c->block_size - DIR_TAIL_SIZE));@    wr32(tail + 8, ext4_crc32c(c->seed, buf, c->block_size));@' \
+    "Masked by what happens next: growth is always followed immediately by placing the
+              entry that needed it, and that write restamps the block correctly. The value
+              of getting it right here is not steady state, it is the moment in between -
+              a block that reached disk formatted but not yet used has to already verify,
+              or a crash there leaves a directory e2fsck has to repair. Not reachable
+              without interrupting the pair."
+
+try "growth adds nothing and reports success" \
+    's@    int rc = ext4_append_blocks(w, dir_ino, 1, fill_empty_dir_block, \&ctx, \&added);@    int rc = ext4_append_blocks(w, dir_ino, 0, fill_empty_dir_block, \&ctx, \&added); added = 1;@'
+
+GROW=()
 
 echo
 if [ "$fail" -ne 0 ]; then
