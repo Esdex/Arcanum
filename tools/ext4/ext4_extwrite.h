@@ -51,6 +51,16 @@ typedef int (*ext4_fill_fn)(void *user, uint32_t logical, uint8_t *buf);
 int ext4_append_blocks(ext4_wfs *fs, uint32_t ino, uint32_t count,
                        ext4_fill_fn fill, void *user, uint32_t *appended);
 
+/*
+ * Keeps logical blocks [0, keep_blocks) and releases the rest, along with any
+ * extent-tree node left holding nothing. The new size is the smaller of what the
+ * file already was and keep_blocks worth of it, so this only ever shrinks.
+ *
+ * keep_blocks of 0 empties the file: every block goes back and the root returns
+ * to depth 0 with no entries, which is what deleting a file's contents needs.
+ */
+int ext4_truncate_blocks(ext4_wfs *fs, uint32_t ino, uint32_t keep_blocks);
+
 #ifdef __cplusplus
 }
 #endif

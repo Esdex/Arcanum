@@ -514,3 +514,227 @@ out:
     free(storage);
     return rc;
 }
+
+/* ── Shrinking ────────────────────────────────────────────────────────────── */
+
+/*
+ * Freeing is where a writer does its real damage if it is wrong. An extent that
+ * is dropped without its blocks being released leaks them silently - nothing
+ * complains, the space is simply gone. Blocks released while something still
+ * points at them is worse: the next allocation hands them to a second file and
+ * two inodes share storage, which e2fsck reports as multiply-claimed.
+ *
+ * So the two halves are kept together here. A node is never dropped before the
+ * blocks under it have been freed, and an entry is never freed before it has been
+ * taken out of the tree.
+ */
+
+/* Releases every data block a subtree owns, and then the blocks holding the
+ * subtree itself. Depth-first, so a node is freed only once it is empty. */
+static int free_subtree(ext4_wfs *fs, uint8_t *node, uint16_t depth,
+                        uint8_t *storage, int level,
+                        uint64_t *freed_data, uint64_t *freed_meta) {
+    if (level > EXT4_MAX_DEPTH) return EXTW_ERR_DEPTH;
+    uint16_t ent = node_entries(node);
+
+    if (depth == 0) {
+        for (uint16_t i = 0; i < ent; i++) {
+            const uint8_t *e = node + 12 + (size_t)i * 12;
+            uint16_t raw = rd16(e + EE_LEN_OFF);
+            uint32_t len = raw > EXT4_MAX_INIT_LEN ? raw - EXT4_MAX_INIT_LEN : raw;
+            uint64_t phys = ee_physical(e);
+            /* A preallocated extent owns its blocks as much as a written one
+             * does - reading as zeroes does not make them free. */
+            for (uint32_t k = 0; k < len; k++) {
+                if (ext4_free_block(fs, phys + k)) return EXTW_ERR_FORMAT;
+                (*freed_data)++;
+            }
+        }
+        return EXTW_OK;
+    }
+
+    for (uint16_t i = 0; i < ent; i++) {
+        uint64_t child = ei_child(node + 12 + (size_t)i * 12);
+        if (child == 0 || child >= fs->blocks_count) return EXTW_ERR_FORMAT;
+        uint8_t *buf = storage + (size_t)level * fs->block_size;
+        int rc = read_block_at(fs, child, buf);
+        if (rc != EXTW_OK) return rc;
+        if (rd16(buf) != EXT4_EXTENT_MAGIC) return EXTW_ERR_FORMAT;
+        rc = free_subtree(fs, buf, (uint16_t)(depth - 1), storage, level + 1,
+                          freed_data, freed_meta);
+        if (rc != EXTW_OK) return rc;
+        if (ext4_free_block(fs, child)) return EXTW_ERR_FORMAT;
+        (*freed_meta)++;
+    }
+    return EXTW_OK;
+}
+
+/*
+ * Cuts a node down to the blocks below `keep`.
+ *
+ * Entries are in logical order, so what survives is always a prefix: entries that
+ * end before the cut are untouched, at most one straddles it and is shortened,
+ * and everything after is released. Trimming preserves the preallocation marker,
+ * which lives in the length field - rewriting a length without it would turn a
+ * preallocated extent into one claiming to hold data.
+ */
+static int truncate_node(ext4_wfs *fs, uint8_t *node, uint16_t depth, uint32_t keep,
+                         uint8_t *storage, int level, uint32_t inode_seed,
+                         uint64_t *freed_data, uint64_t *freed_meta) {
+    if (level > EXT4_MAX_DEPTH) return EXTW_ERR_DEPTH;
+    uint16_t ent  = node_entries(node);
+    uint16_t kept = 0;
+
+    if (depth == 0) {
+        for (uint16_t i = 0; i < ent; i++) {
+            uint8_t *e   = node + 12 + (size_t)i * 12;
+            uint32_t lo  = rd32(e + EE_BLOCK_OFF);
+            uint16_t raw = rd16(e + EE_LEN_OFF);
+            int uninit   = raw > EXT4_MAX_INIT_LEN;
+            uint32_t len = uninit ? raw - EXT4_MAX_INIT_LEN : raw;
+            uint64_t phys = ee_physical(e);
+
+            if (lo >= keep) {
+                for (uint32_t k = 0; k < len; k++) {
+                    if (ext4_free_block(fs, phys + k)) return EXTW_ERR_FORMAT;
+                    (*freed_data)++;
+                }
+            } else if (lo + len > keep) {
+                uint32_t nlen = keep - lo;
+                for (uint32_t k = nlen; k < len; k++) {
+                    if (ext4_free_block(fs, phys + k)) return EXTW_ERR_FORMAT;
+                    (*freed_data)++;
+                }
+                wr16(e + EE_LEN_OFF,
+                     (uint16_t)(uninit ? nlen + EXT4_MAX_INIT_LEN : nlen));
+                kept = (uint16_t)(i + 1);
+            } else {
+                kept = (uint16_t)(i + 1);
+            }
+        }
+        wr16(node + EH_ENTRIES_OFF, kept);
+        return EXTW_OK;
+    }
+
+    for (uint16_t i = 0; i < ent; i++) {
+        uint8_t *e      = node + 12 + (size_t)i * 12;
+        uint32_t lo     = rd32(e + EI_BLOCK_OFF);
+        uint64_t child  = ei_child(e);
+        if (child == 0 || child >= fs->blocks_count) return EXTW_ERR_FORMAT;
+        uint8_t *buf    = storage + (size_t)level * fs->block_size;
+
+        int rc = read_block_at(fs, child, buf);
+        if (rc != EXTW_OK) return rc;
+        if (rd16(buf) != EXT4_EXTENT_MAGIC) return EXTW_ERR_FORMAT;
+
+        if (lo >= keep) {
+            rc = free_subtree(fs, buf, (uint16_t)(depth - 1), storage, level + 1,
+                              freed_data, freed_meta);
+            if (rc != EXTW_OK) return rc;
+            if (ext4_free_block(fs, child)) return EXTW_ERR_FORMAT;
+            (*freed_meta)++;
+            continue;
+        }
+
+        rc = truncate_node(fs, buf, (uint16_t)(depth - 1), keep, storage, level + 1,
+                           inode_seed, freed_data, freed_meta);
+        if (rc != EXTW_OK) return rc;
+
+        if (node_entries(buf) == 0) {
+            /* An index key is the first logical block of its subtree, so a child
+             * keyed below the cut keeps at least that block and this should not
+             * happen. Handled rather than asserted, since the key comes off disk. */
+            if (ext4_free_block(fs, child)) return EXTW_ERR_FORMAT;
+            (*freed_meta)++;
+        } else {
+            rc = write_extent_block(fs, child, buf, inode_seed);
+            if (rc != EXTW_OK) return rc;
+            kept = (uint16_t)(i + 1);
+        }
+    }
+    wr16(node + EH_ENTRIES_OFF, kept);
+    return EXTW_OK;
+}
+
+/*
+ * The reverse of split_root: while the root holds a single child small enough to
+ * fit back inside it, pull that child up and give its block back.
+ *
+ * Not cosmetic. Cutting a file down leaves the tree at whatever depth it grew to,
+ * and e2fsck says so - "extent tree could be shorter" - because a root pointing
+ * at one small node is a level that earns nothing. Left alone it also strands a
+ * metadata block per redundant level for as long as the file exists.
+ */
+static int collapse_root(ext4_wfs *fs, uint8_t *root, uint8_t *storage,
+                         uint64_t *freed_meta) {
+    while (rd16(root + EH_DEPTH_OFF) > 0 && node_entries(root) == 1) {
+        uint64_t child = ei_child(root + 12);
+        if (child == 0 || child >= fs->blocks_count) return EXTW_ERR_FORMAT;
+
+        int rc = read_block_at(fs, child, storage);
+        if (rc != EXTW_OK) return rc;
+        if (rd16(storage) != EXT4_EXTENT_MAGIC) return EXTW_ERR_FORMAT;
+
+        uint16_t cent = node_entries(storage);
+        if (cent > node_capacity(root)) return EXTW_OK;   /* would not fit */
+
+        memcpy(root + 12, storage + 12, (size_t)cent * 12);
+        memset(root + 12 + (size_t)cent * 12, 0,
+               INODE_IBLOCK_SIZE - 12 - (size_t)cent * 12);
+        wr16(root + EH_ENTRIES_OFF, cent);
+        wr16(root + EH_DEPTH_OFF, rd16(storage + EH_DEPTH_OFF));
+
+        if (ext4_free_block(fs, child)) return EXTW_ERR_FORMAT;
+        (*freed_meta)++;
+    }
+    return EXTW_OK;
+}
+
+int ext4_truncate_blocks(ext4_wfs *fs, uint32_t ino, uint32_t keep_blocks) {
+    uint8_t *inode   = malloc(fs->inode_size);
+    uint8_t *storage = malloc((size_t)(EXT4_MAX_DEPTH + 1) * fs->block_size);
+    if (!inode || !storage) { free(inode); free(storage); return EXTW_ERR_IO; }
+
+    int rc = read_inode(fs, ino, inode);
+    if (rc != EXTW_OK) goto out;
+
+    rc = EXTW_ERR_FORMAT;
+    if (!(rd32(inode + INODE_FLAGS_OFF) & EXT4_INODE_FLAG_EXTENTS)) goto out;
+
+    uint8_t *root = inode + INODE_IBLOCK_OFF;
+    if (rd16(root) != EXT4_EXTENT_MAGIC) goto out;
+
+    uint16_t depth = rd16(root + EH_DEPTH_OFF);
+    if (depth > EXT4_MAX_DEPTH) { rc = EXTW_ERR_DEPTH; goto out; }
+
+    uint32_t inode_seed = ext4_inode_csum_seed(fs->csum_seed, ino,
+                                               rd32(inode + INODE_GENERATION_OFF));
+    uint64_t freed_data = 0, freed_meta = 0;
+
+    rc = truncate_node(fs, root, depth, keep_blocks, storage, 0, inode_seed,
+                       &freed_data, &freed_meta);
+    if (rc != EXTW_OK) goto out;
+
+    /* A root with nothing left in it is a depth-0 root. Leaving the old depth
+     * behind would describe a tree of index entries that are no longer there. */
+    if (node_entries(root) == 0) wr16(root + EH_DEPTH_OFF, 0);
+
+    rc = collapse_root(fs, root, storage, &freed_meta);
+    if (rc != EXTW_OK) goto out;
+
+    uint64_t want = (uint64_t)keep_blocks * fs->block_size;
+    uint64_t have = inode_size_get(inode);
+    inode_size_set(inode, want < have ? want : have);
+
+    uint64_t sectors = (freed_data + freed_meta) * (fs->block_size / 512);
+    uint64_t blocks  = inode_blocks_get(inode);
+    inode_blocks_set(inode, blocks > sectors ? blocks - sectors : 0);
+
+    rc = write_inode(fs, ino, inode);
+    if (rc == EXTW_OK) rc = ext4_fs_flush(fs) ? EXTW_ERR_IO : EXTW_OK;
+
+out:
+    free(inode);
+    free(storage);
+    return rc;
+}
