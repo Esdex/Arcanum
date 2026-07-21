@@ -28,6 +28,7 @@ extern "C" {
 #define EXT4_DIRW_ERR_ABSENT -4   /* nothing by that name to remove */
 #define EXT4_DIRW_ERR_NOROOM -5   /* no gap big enough in any existing block */
 #define EXT4_DIRW_ERR_NAME   -6   /* empty, too long, or contains / or NUL */
+#define EXT4_DIRW_ERR_HTREE  -8   /* hash-indexed directory, which this cannot write */
 
 /*
  * Puts `name` in `dir_ino`, pointing at `ino`.

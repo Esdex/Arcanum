@@ -150,6 +150,12 @@ try "growth adds nothing and reports success" \
 
 GROW=()
 
+# The hash-indexed guard. Checked with a synthetic flag rather than a real htree,
+# because nothing here can build one - see check_htree_refused in dirwcheck.py.
+
+try "hash-indexed directories written to anyway" \
+    's@    if (is_htree(dir)) return EXT4_DIRW_ERR_HTREE;@@'
+
 echo
 if [ "$fail" -ne 0 ]; then
     echo "RESULT: the harness has a gap - a broken writer passed it"
