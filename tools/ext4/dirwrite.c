@@ -42,6 +42,7 @@ static const char *strerr(int rc) {
     case EXT4_DIRW_ERR_NOROOM: return "no gap big enough in any existing block";
     case EXT4_DIRW_ERR_NAME:   return "not a usable name";
     case EXT4_CREATE_ERR_NOINODE: return "no free inode left";
+    case EXT4_DIRW_ERR_HTREE:  return "hash-indexed directory, refused rather than corrupted";
     default:                   return "unknown error";
     }
 }

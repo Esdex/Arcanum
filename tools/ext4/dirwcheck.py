@@ -143,6 +143,41 @@ def short_name_pass(img, dir_ino, bench, dirwrite, target,
     return problems, None
 
 
+def check_htree_refused(img, dir_ino, dirwrite, existing_name):
+    """A directory marked hash-indexed must be refused, not written to.
+
+    The flag is set here with debugfs rather than by building a real hash-indexed
+    directory, because nothing available can build one: mke2fs -d with 3000 files
+    and fuse2fs with 2000 both leave INDEX_FL clear, since everything here is
+    libext2fs and only the kernel builds them. So this checks the guard, not htree
+    support - which is the honest limit of what can be checked, and better than
+    leaving the guard resting on review alone.
+
+    The image is left inconsistent by the flag alone, so fsck is not consulted;
+    the only question asked is whether the writer declines.
+    """
+    r = subprocess.run(["debugfs", "-w", "-R", f"sif <{dir_ino}> flags 0x81000", img],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return ["could not mark the directory hash-indexed for the refusal check"]
+
+    # The name to remove has to be one that is actually there. A name that is
+    # not gets turned away by the lookup that precedes the removal, which never
+    # reaches the guard - so testing with a made-up name would pass whether the
+    # guard existed or not.
+    problems = []
+    for verb, args in (("add", ["add", "probe", "13", "1"]),
+                       ("create", ["create", "probe2", "1784639915"]),
+                       ("remove", ["remove", existing_name])):
+        rc, err = run(dirwrite, img, dir_ino, *args)
+        if rc == 0:
+            problems.append(f"{verb} went ahead on a hash-indexed directory")
+        elif "hash-indexed" not in err:
+            problems.append(f"{verb} refused a hash-indexed directory for the "
+                            f"wrong reason: {err}")
+    return problems
+
+
 def check_dir(img, dir_ino, bench, dirwrite, name="harness-entry", grow=False):
     """`name` is deliberately long enough to need 24 bytes. A second pass with a
     short one follows, because an entry needing only 12 is exactly the size that
@@ -264,6 +299,22 @@ def main():
                 shutil.copy(src, img)
                 problems, skip_reason = check_dir(img, dir_ino, args.bench,
                                                   args.dirwrite, grow=args.grow)
+            # Done on its own copy: setting the flag makes the image invalid, so
+            # it must not be the copy the other checks run against.
+            with tempfile.TemporaryDirectory() as tmp:
+                himg = os.path.join(tmp, "fs.img")
+                shutil.copy(src, himg)
+                listing = our_listing(args.bench, himg, dir_ino) or []
+                real = next((n for _, ft, n in listing
+                             if ft == 1 and n not in (".", "..")), None)
+                hproblems = ([] if real is None else
+                             check_htree_refused(himg, dir_ino, args.dirwrite, real))
+            if hproblems:
+                failed += 1
+                print(f"FAIL {os.path.basename(case)} inode {dir_ino} (htree guard)")
+                for p in hproblems:
+                    print(f"     {p}")
+
             if skip_reason in ("no-target", "refused"):
                 skips[skip_reason] += 1
                 if skip_reason == "refused":

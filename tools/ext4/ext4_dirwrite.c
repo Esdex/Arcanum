@@ -30,6 +30,9 @@
 #define DIRENT_HEADER   8
 #define DIR_TAIL_SIZE  12
 #define INODE_GENERATION_OFF 0x64
+#define INODE_FLAGS_OFF      0x20
+#define EXT4_INODE_FLAG_INDEX 0x00001000u
+
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
 static uint32_t rd32(const uint8_t *p) {
@@ -40,6 +43,28 @@ static void wr16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v
 static void wr32(uint8_t *p, uint32_t v) {
     p[0] = (uint8_t)v;         p[1] = (uint8_t)(v >> 8);
     p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24);
+}
+
+/*
+ * A hash-indexed directory is refused rather than written to.
+ *
+ * Everything here places an entry by walking blocks and taking the first gap
+ * that fits. In an indexed directory that is not merely suboptimal, it is wrong:
+ * which leaf a name belongs in is decided by the hash of the name, and a name put
+ * in a leaf whose hash range does not cover it is invisible to every lookup that
+ * goes through the index - while still being listed by a linear walk. The
+ * directory would look fine and behave as though the file were missing.
+ *
+ * The refusal cannot be exercised by this corpus, and that was established rather
+ * than assumed: mke2fs -d with 3000 files, and fuse2fs with 2000 created through
+ * a mount, both leave INDEX_FL clear. Everything available here is built on
+ * libext2fs, which reads hash-indexed directories but does not build them - only
+ * the kernel does, and mounting for real needs privileges this has no business
+ * requiring. So the guard is held up by review, and by the fact that the
+ * alternative to refusing is silent corruption.
+ */
+static int is_htree(const uint8_t *inode) {
+    return (rd32(inode + INODE_FLAGS_OFF) & EXT4_INODE_FLAG_INDEX) != 0;
 }
 
 /* What an entry actually occupies: header plus name, rounded up to 4 because
@@ -213,6 +238,8 @@ int ext4_dir_add(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
 
+    if (is_htree(dir)) return EXT4_DIRW_ERR_HTREE;
+
     uint32_t need   = entry_size(name_len);
     uint32_t blocks = dir_block_count(r, dir);
     uint32_t seed   = inode_seed_of(w, r, dir_ino);
@@ -319,6 +346,8 @@ int ext4_dir_remove(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     memset(dir, 0, sizeof(dir));
     if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
+
+    if (is_htree(dir)) return EXT4_DIRW_ERR_HTREE;
 
     uint32_t blocks = dir_block_count(r, dir);
     uint32_t seed   = inode_seed_of(w, r, dir_ino);
