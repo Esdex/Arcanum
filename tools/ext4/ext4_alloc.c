@@ -1,0 +1,237 @@
+/*
+ * Block allocation.
+ *
+ * Clean-room, from the published on-disk format. Taking a block is not one edit
+ * but five, and they are a dependency chain rather than a list:
+ *
+ *   1. set the bit in the group's block bitmap
+ *   2. recompute the bitmap checksum, into the group descriptor
+ *   3. decrement bg_free_blocks_count in that descriptor
+ *   4. recompute the descriptor checksum - it has to cover both 2 and 3
+ *   5. decrement s_free_blocks_count, then recompute the superblock checksum last
+ *
+ * Doing 4 before 3 gives a descriptor that is internally consistent and still
+ * wrong, which is the failure mode this whole layer has to be defended against:
+ * every structure well-formed with a valid checksum, and no agreement between
+ * them. That is invisible to a reader and invisible to a checksum verifier. Only
+ * e2fsck sees it, which is why fsckcheck.py runs it after every write.
+ *
+ * Two groups are refused rather than handled:
+ *
+ *   BLOCK_UNINIT - the bitmap block was never written out, so what is on disk is
+ *   not a bitmap. Allocating from it would mean synthesising the whole thing
+ *   first, including the metadata blocks the group owns. That is its own piece of
+ *   work and it is not this one.
+ *
+ *   Anything past the end of the filesystem. The final group is usually partial,
+ *   and the bits covering blocks that do not exist are already set to 1, so a
+ *   find-first-zero scan avoids them without being told to. The explicit clamp is
+ *   what makes that true by construction instead of by luck.
+ *
+ * The backup superblocks and descriptor tables are deliberately left stale. The
+ * kernel does the same, refreshing them on unmount and resize rather than on every
+ * allocation. What matters here is that this decision cannot be checked the way
+ * everything else in this file is: `e2fsck -fn` never reads the backups at all -
+ * corrupting one on purpose produces byte-identical output - so no test can tell
+ * a considered deferral from an oversight. It is written down instead.
+ */
+#define _POSIX_C_SOURCE 200809L
+#define _FILE_OFFSET_BITS 64
+
+#include "ext4_alloc.h"
+#include "ext4_csum.h"
+
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+
+static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
+static uint32_t rd32(const uint8_t *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+static void wr16(uint8_t *p, uint16_t v) {
+    p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8);
+}
+static void wr32(uint8_t *p, uint32_t v) {
+    p[0] = (uint8_t)v;         p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24);
+}
+
+static uint8_t *group_desc(const ext4_fs *fs, uint32_t g) {
+    return fs->desc + (size_t)g * fs->desc_size;
+}
+
+static int is_64bit(const ext4_fs *fs) { return fs->desc_size >= 64; }
+
+/* Blocks this group actually covers. Every group holds blocks_per_group except
+ * the last, which stops where the filesystem does. */
+static uint32_t group_block_count(const ext4_fs *fs, uint32_t g) {
+    uint64_t start  = (uint64_t)fs->first_data_block +
+                      (uint64_t)g * fs->blocks_per_group;
+    uint64_t remain = fs->blocks_count - start;
+    return remain < fs->blocks_per_group ? (uint32_t)remain : fs->blocks_per_group;
+}
+
+static uint64_t group_bitmap_block(const ext4_fs *fs, const uint8_t *d) {
+    uint64_t b = rd32(d + EXT4_GD_BLOCK_BITMAP_LO_OFF);
+    if (is_64bit(fs)) b |= (uint64_t)rd32(d + EXT4_GD_BLOCK_BITMAP_HI_OFF) << 32;
+    return b;
+}
+
+static uint32_t group_free_blocks(const ext4_fs *fs, const uint8_t *d) {
+    uint32_t v = rd16(d + EXT4_GD_FREE_BLOCKS_LO_OFF);
+    if (is_64bit(fs)) v |= (uint32_t)rd16(d + EXT4_GD_FREE_BLOCKS_HI_OFF) << 16;
+    return v;
+}
+
+static void group_set_free_blocks(const ext4_fs *fs, uint8_t *d, uint32_t v) {
+    wr16(d + EXT4_GD_FREE_BLOCKS_LO_OFF, (uint16_t)v);
+    if (is_64bit(fs)) wr16(d + EXT4_GD_FREE_BLOCKS_HI_OFF, (uint16_t)(v >> 16));
+}
+
+uint64_t ext4_sb_free_blocks(const ext4_fs *fs) {
+    return (uint64_t)rd32(fs->sb + EXT4_SB_FREE_BLOCKS_LO_OFF) |
+           ((uint64_t)rd32(fs->sb + EXT4_SB_FREE_BLOCKS_HI_OFF) << 32);
+}
+
+static void sb_set_free_blocks(ext4_fs *fs, uint64_t v) {
+    wr32(fs->sb + EXT4_SB_FREE_BLOCKS_LO_OFF, (uint32_t)v);
+    wr32(fs->sb + EXT4_SB_FREE_BLOCKS_HI_OFF, (uint32_t)(v >> 32));
+}
+
+static int read_bitmap(ext4_fs *fs, const uint8_t *d) {
+    off_t at = (off_t)group_bitmap_block(fs, d) * fs->block_size;
+    if (fseeko(fs->fp, at, SEEK_SET)) return -1;
+    return fread(fs->bitmap, 1, fs->bitmap_bytes, fs->fp) == fs->bitmap_bytes ? 0 : -1;
+}
+
+static int write_bitmap(ext4_fs *fs, const uint8_t *d) {
+    off_t at = (off_t)group_bitmap_block(fs, d) * fs->block_size;
+    if (fseeko(fs->fp, at, SEEK_SET)) return -1;
+    return fwrite(fs->bitmap, 1, fs->bitmap_bytes, fs->fp) == fs->bitmap_bytes ? 0 : -1;
+}
+
+/* Step 2: the bitmap's checksum is stored in the descriptor that owns it, split
+ * in half, and the high half only exists on a 64-bit filesystem. */
+static void store_bitmap_csum(const ext4_fs *fs, uint8_t *d) {
+    uint32_t c = ext4_bitmap_csum(fs->csum_seed, fs->bitmap, fs->bitmap_bytes);
+    wr16(d + EXT4_GD_BBITMAP_CSUM_LO_OFF, (uint16_t)c);
+    if (is_64bit(fs)) wr16(d + EXT4_GD_BBITMAP_CSUM_HI_OFF, (uint16_t)(c >> 16));
+}
+
+/* Step 4. Must run after both the bitmap checksum and the free count are in
+ * place, since it covers the bytes they live in. */
+static void store_desc_csum(const ext4_fs *fs, uint32_t g, uint8_t *d) {
+    wr16(d + EXT4_GD_CSUM_OFF, 0);
+    wr16(d + EXT4_GD_CSUM_OFF,
+         (uint16_t)ext4_group_desc_csum(fs->csum_seed, g, d, fs->desc_size));
+}
+
+int ext4_fs_open(ext4_fs *fs, const char *path) {
+    memset(fs, 0, sizeof(*fs));
+    fs->fp = fopen(path, "r+b");
+    if (!fs->fp) return -1;
+    if (fseeko(fs->fp, EXT4_SB_OFFSET, SEEK_SET) ||
+        fread(fs->sb, 1, sizeof(fs->sb), fs->fp) != sizeof(fs->sb)) goto fail;
+
+    fs->block_size       = 1024u << rd32(fs->sb + EXT4_SB_LOG_BLOCK_SIZE_OFF);
+    fs->blocks_per_group = rd32(fs->sb + EXT4_SB_BLOCKS_PER_GRP_OFF);
+    fs->first_data_block = rd32(fs->sb + EXT4_SB_FIRST_DATA_BLK_OFF);
+    fs->csum_seed        = rd32(fs->sb + EXT4_SB_CSUM_SEED_OFF);
+    fs->blocks_count     = (uint64_t)rd32(fs->sb + EXT4_SB_BLOCKS_LO_OFF) |
+                           ((uint64_t)rd32(fs->sb + EXT4_SB_BLOCKS_HI_OFF) << 32);
+    fs->desc_size = (rd32(fs->sb + EXT4_SB_FEATURE_INCOMPAT_OFF) &
+                     EXT4_FEATURE_INCOMPAT_64BIT)
+                    ? rd16(fs->sb + EXT4_SB_DESC_SIZE_OFF) : 32;
+    if (!fs->blocks_per_group || !fs->desc_size) goto fail;
+
+    fs->groups = (uint32_t)((fs->blocks_count - fs->first_data_block +
+                             fs->blocks_per_group - 1) / fs->blocks_per_group);
+    fs->bitmap_bytes = fs->blocks_per_group / 8;
+
+    fs->desc   = malloc((size_t)fs->groups * fs->desc_size);
+    fs->bitmap = malloc(fs->bitmap_bytes);
+    if (!fs->desc || !fs->bitmap) goto fail;
+
+    off_t desc_at = (off_t)(fs->first_data_block + 1) * fs->block_size;
+    size_t desc_len = (size_t)fs->groups * fs->desc_size;
+    if (fseeko(fs->fp, desc_at, SEEK_SET) ||
+        fread(fs->desc, 1, desc_len, fs->fp) != desc_len) goto fail;
+    return 0;
+
+fail:
+    ext4_fs_close(fs);
+    return -1;
+}
+
+/* Step 5's second half. The superblock checksum is computed over the superblock
+ * as it will be written, so this is the last thing to happen. */
+int ext4_fs_flush(ext4_fs *fs) {
+    off_t desc_at = (off_t)(fs->first_data_block + 1) * fs->block_size;
+    size_t desc_len = (size_t)fs->groups * fs->desc_size;
+    if (fseeko(fs->fp, desc_at, SEEK_SET)) return -1;
+    if (fwrite(fs->desc, 1, desc_len, fs->fp) != desc_len) return -1;
+
+    wr32(fs->sb + EXT4_SB_CSUM_OFF, ext4_superblock_csum(fs->sb));
+    if (fseeko(fs->fp, EXT4_SB_OFFSET, SEEK_SET)) return -1;
+    if (fwrite(fs->sb, 1, sizeof(fs->sb), fs->fp) != sizeof(fs->sb)) return -1;
+    return fflush(fs->fp);
+}
+
+void ext4_fs_close(ext4_fs *fs) {
+    if (fs->fp) fclose(fs->fp);
+    free(fs->desc);
+    free(fs->bitmap);
+    memset(fs, 0, sizeof(*fs));
+}
+
+int64_t ext4_alloc_block(ext4_fs *fs) {
+    for (uint32_t g = 0; g < fs->groups; g++) {
+        uint8_t *d = group_desc(fs, g);
+        if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_BLOCK_UNINIT) continue;
+        if (group_free_blocks(fs, d) == 0) continue;
+        if (read_bitmap(fs, d)) return -1;
+
+        uint32_t limit = group_block_count(fs, g);
+        for (uint32_t bit = 0; bit < limit; bit++) {
+            if (fs->bitmap[bit >> 3] & (1u << (bit & 7))) continue;
+
+            fs->bitmap[bit >> 3] |= (uint8_t)(1u << (bit & 7));   /* 1 */
+            if (write_bitmap(fs, d)) return -1;
+            store_bitmap_csum(fs, d);                             /* 2 */
+            group_set_free_blocks(fs, d, group_free_blocks(fs, d) - 1);  /* 3 */
+            store_desc_csum(fs, g, d);                            /* 4 */
+            sb_set_free_blocks(fs, ext4_sb_free_blocks(fs) - 1);   /* 5 */
+
+            return (int64_t)((uint64_t)fs->first_data_block +
+                             (uint64_t)g * fs->blocks_per_group + bit);
+        }
+        /* bg_free_blocks_count promised space the bitmap does not have. Rather
+         * than quietly move on, refuse - the two disagreeing is corruption. */
+        return -1;
+    }
+    return -1;
+}
+
+int ext4_free_block(ext4_fs *fs, uint64_t block) {
+    if (block < fs->first_data_block || block >= fs->blocks_count) return -1;
+
+    uint64_t rel = block - fs->first_data_block;
+    uint32_t g   = (uint32_t)(rel / fs->blocks_per_group);
+    uint32_t bit = (uint32_t)(rel % fs->blocks_per_group);
+    if (g >= fs->groups || bit >= group_block_count(fs, g)) return -1;
+
+    uint8_t *d = group_desc(fs, g);
+    if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_BLOCK_UNINIT) return -1;
+    if (read_bitmap(fs, d)) return -1;
+    if (!(fs->bitmap[bit >> 3] & (1u << (bit & 7)))) return -1;   /* already free */
+
+    fs->bitmap[bit >> 3] &= (uint8_t)~(1u << (bit & 7));
+    if (write_bitmap(fs, d)) return -1;
+    store_bitmap_csum(fs, d);
+    group_set_free_blocks(fs, d, group_free_blocks(fs, d) + 1);
+    store_desc_csum(fs, g, d);
+    sb_set_free_blocks(fs, ext4_sb_free_blocks(fs) + 1);
+    return 0;
+}

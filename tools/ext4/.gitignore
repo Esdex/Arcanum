@@ -1,5 +1,6 @@
 # Compiled harness binaries. Rebuilt with the commands in each tool's header
 # comment; listed by name because they have no extension to glob on.
+alloc
 bench
 fsmeta
 
