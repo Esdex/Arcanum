@@ -165,8 +165,12 @@ try "new sibling given the depth of a leaf it is not" \
 
 CHECK_EXTRA=(--count 100000 --limit 4)
 
+# Anchored on `int append_rc`, which only the append path has. The obvious
+# anchor - the write_inode call - now appears in the truncation path too, where
+# there is no append_rc, so mutating both stopped compiling and the suite
+# reported SKIP rather than quietly testing nothing.
 try "a short append abandoned instead of committed" \
-    's@    rc = write_inode(fs, ino, inode);@    if (append_rc != EXTW_OK) goto out;\n    rc = write_inode(fs, ino, inode);@'
+    's@    int append_rc = rc;@    int append_rc = rc; if (rc != EXTW_OK) goto out;@'
 
 try "a short append reports the full count as written" \
     's@    if (appended) \*appended = (uint32_t)data_blocks;@    if (appended) *appended = count;@'
