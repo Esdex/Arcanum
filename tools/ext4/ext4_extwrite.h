@@ -61,6 +61,17 @@ int ext4_append_blocks(ext4_wfs *fs, uint32_t ino, uint32_t count,
  */
 int ext4_truncate_blocks(ext4_wfs *fs, uint32_t ino, uint32_t keep_blocks);
 
+/*
+ * Moves an inode's link count by `delta` and restamps its checksum.
+ *
+ * A directory entry is only half of a link; this is the other half. e2fsck checks
+ * the two against each other, so a name added without this leaves a count that is
+ * short, and a name removed without it leaves an inode nothing can ever reclaim.
+ * Kept apart from the entry itself because a caller adding a second name to one
+ * inode - a hard link - does one of these and two of those.
+ */
+int ext4_inode_adjust_links(ext4_wfs *fs, uint32_t ino, int delta);
+
 #ifdef __cplusplus
 }
 #endif
