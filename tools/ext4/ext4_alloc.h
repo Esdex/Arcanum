@@ -25,11 +25,19 @@ extern "C" {
 
 #define EXT4_FEATURE_INCOMPAT_64BIT 0x80
 
+#define EXT4_SB_INODES_COUNT_OFF    0x00
+#define EXT4_SB_FREE_INODES_OFF     0x10
 #define EXT4_SB_INODES_PER_GRP_OFF  0x28
 #define EXT4_SB_INODE_SIZE_OFF      0x58
 
 /* Group descriptor */
 #define EXT4_GD_BLOCK_BITMAP_LO_OFF 0x00
+#define EXT4_GD_INODE_BITMAP_LO_OFF 0x04
+#define EXT4_GD_FREE_INODES_LO_OFF  0x0E
+#define EXT4_GD_ITABLE_UNUSED_LO_OFF 0x1C
+#define EXT4_GD_INODE_BITMAP_HI_OFF 0x24
+#define EXT4_GD_FREE_INODES_HI_OFF  0x2E
+#define EXT4_GD_ITABLE_UNUSED_HI_OFF 0x32
 #define EXT4_GD_INODE_TABLE_LO_OFF  0x08
 #define EXT4_GD_FREE_BLOCKS_LO_OFF  0x0C
 #define EXT4_GD_FLAGS_OFF           0x12
@@ -89,6 +97,22 @@ int64_t ext4_alloc_block_goal(ext4_wfs *fs, uint64_t goal);
 int  ext4_free_block(ext4_wfs *fs, uint64_t block);
 
 uint64_t ext4_sb_free_blocks(const ext4_wfs *fs);
+uint32_t ext4_sb_free_inodes(const ext4_wfs *fs);
+
+/*
+ * Takes one inode, returning its number - which is 1-based, unlike everything
+ * else here. Returns -1 when there is none to take.
+ *
+ * The inode is zeroed on the way out. An allocator that left the previous
+ * tenant's bytes behind would hand a caller a file already claiming a size and a
+ * set of extents, and on a filesystem meant to hide its contents that is a leak
+ * as much as a bug.
+ */
+int64_t ext4_alloc_inode(ext4_wfs *fs);
+
+/* Gives one back. Returns 0, or -1 if it is out of range, reserved, in a group
+ * whose bitmap was never written, or was not allocated in the first place. */
+int ext4_free_inode(ext4_wfs *fs, uint32_t ino);
 
 #ifdef __cplusplus
 }

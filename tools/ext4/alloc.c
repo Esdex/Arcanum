@@ -3,6 +3,10 @@
  *
  *   alloc <image> alloc <count>     takes count blocks, prints one per line
  *   alloc <image> fill              takes blocks until there are none left
+ *   alloc <image> ialloc <count>    takes count inodes, prints one per line
+ *   alloc <image> ifill             takes inodes until there are none left
+ *   alloc <image> ifree <inode>...  gives the listed inodes back
+ *   alloc <image> ifree -           the same, reading inode numbers from stdin
  *   alloc <image> free <block>...   gives the listed blocks back
  *   alloc <image> free -            the same, reading block numbers from stdin
  *
@@ -27,7 +31,9 @@
 static int usage(const char *me) {
     fprintf(stderr, "usage: %s <image> alloc <count>\n"
                     "       %s <image> fill\n"
-                    "       %s <image> free <block>... | -\n", me, me, me);
+                    "       %s <image> free <block>... | -\n"
+                    "       %s <image> ialloc <count>\n"
+                    "       %s <image> ifree <inode>...\n", me, me, me, me, me);
     return 2;
 }
 
@@ -73,6 +79,79 @@ static int do_fill(ext4_wfs *fs) {
     if (ext4_fs_flush(fs)) { perror("flush"); free(taken); return 1; }
     for (size_t i = 0; i < n; i++) printf("%lld\n", (long long)taken[i]);
     free(taken);
+    return 0;
+}
+
+static int do_ialloc(ext4_wfs *fs, long count) {
+    int64_t *taken = calloc((size_t)(count ? count : 1), sizeof(*taken));
+    if (!taken) return 2;
+
+    long n = 0;
+    for (; n < count; n++) {
+        taken[n] = ext4_alloc_inode(fs);
+        if (taken[n] < 0) {
+            fprintf(stderr, "inode allocation failed after %ld of %ld\n", n, count);
+            for (long i = 0; i < n; i++) ext4_free_inode(fs, (uint32_t)taken[i]);
+            free(taken);
+            return 1;
+        }
+    }
+    if (ext4_fs_flush(fs)) { perror("flush"); free(taken); return 1; }
+    for (long i = 0; i < n; i++) printf("%lld\n", (long long)taken[i]);
+    free(taken);
+    return 0;
+}
+
+/* Takes every inode it can reach, which is every group whose bitmap exists.
+ * Stops when ext4_alloc_inode refuses, leaving the inodes inside INODE_UNINIT
+ * groups untouched and still counted as free in the superblock. */
+static int do_ifill(ext4_wfs *fs) {
+    size_t cap = 4096, n = 0;
+    int64_t *taken = malloc(cap * sizeof(*taken));
+    if (!taken) return 2;
+
+    for (;;) {
+        int64_t v = ext4_alloc_inode(fs);
+        if (v < 0) break;
+        if (n == cap) {
+            size_t ncap = cap * 2;
+            int64_t *grown = realloc(taken, ncap * sizeof(*taken));
+            if (!grown) { free(taken); return 2; }
+            taken = grown; cap = ncap;
+        }
+        taken[n++] = v;
+    }
+    if (ext4_fs_flush(fs)) { perror("flush"); free(taken); return 1; }
+    for (size_t i = 0; i < n; i++) printf("%lld\n", (long long)taken[i]);
+    free(taken);
+    return 0;
+}
+
+static int ifree_one(ext4_wfs *fs, const char *tok) {
+    char *end;
+    unsigned long long v = strtoull(tok, &end, 10);
+    if (*end && *end != '\n') {
+        fprintf(stderr, "not an inode number: %s\n", tok);
+        return 2;
+    }
+    if (ext4_free_inode(fs, (uint32_t)v)) {
+        fprintf(stderr, "cannot free inode %llu\n", v);
+        return 1;
+    }
+    return 0;
+}
+
+static int do_ifree(ext4_wfs *fs, int argc, char **argv) {
+    int rc;
+    if (argc == 1 && !strcmp(argv[0], "-")) {
+        char line[64];
+        while (fgets(line, sizeof(line), stdin))
+            if ((rc = ifree_one(fs, line))) return rc;
+    } else {
+        for (int i = 0; i < argc; i++)
+            if ((rc = ifree_one(fs, argv[i]))) return rc;
+    }
+    if (ext4_fs_flush(fs)) { perror("flush"); return 1; }
     return 0;
 }
 
@@ -123,6 +202,18 @@ int main(int argc, char **argv) {
     } else if (!strcmp(argv[2], "fill")) {
         if (argc != 3) { ext4_fs_close(&fs); return usage(argv[0]); }
         rc = do_fill(&fs);
+    } else if (!strcmp(argv[2], "ialloc")) {
+        if (argc != 4) { ext4_fs_close(&fs); return usage(argv[0]); }
+        char *end;
+        long count = strtol(argv[3], &end, 10);
+        if (*end || count < 0) { ext4_fs_close(&fs); return usage(argv[0]); }
+        rc = do_ialloc(&fs, count);
+    } else if (!strcmp(argv[2], "ifill")) {
+        if (argc != 3) { ext4_fs_close(&fs); return usage(argv[0]); }
+        rc = do_ifill(&fs);
+    } else if (!strcmp(argv[2], "ifree")) {
+        if (argc < 4) { ext4_fs_close(&fs); return usage(argv[0]); }
+        rc = do_ifree(&fs, argc - 3, argv + 3);
     } else if (!strcmp(argv[2], "free")) {
         if (argc < 4) { ext4_fs_close(&fs); return usage(argv[0]); }
         rc = do_free(&fs, argc - 3, argv + 3);

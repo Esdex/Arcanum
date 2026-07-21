@@ -18,7 +18,7 @@
 
 /* bg_flags, at offset 0x12 of the group descriptor. Named rather than inlined
  * because the two uninit bits are easy to mistake for each other. */
-#define EXT4_BG_INODE_UNINIT  0x0001  /* inode table and bitmap are not initialised */
+#define EXT4_BG_INODE_UNINIT  0x0001  /* inode bitmap and table are not initialised */
 #define EXT4_BG_BLOCK_UNINIT  0x0002  /* block bitmap is not initialised */
 #define EXT4_BG_INODE_ZEROED  0x0004  /* inode table has been zeroed */
 
@@ -41,11 +41,13 @@ int main(int argc, char **argv) {
     uint32_t incompat  = rd32(sb + 0x60);
     uint32_t desc_size = (incompat & 0x80) ? rd16(sb + 0xFE) : 32;
     uint32_t seed      = rd32(sb + 0x270);
+    uint32_t ipg       = rd32(sb + 0x28);
     uint32_t first_db  = rd32(sb + 0x14);
     uint64_t blocks    = (uint64_t)rd32(sb + 0x04) | ((uint64_t)rd32(sb + 0x150) << 32);
     uint32_t groups    = (uint32_t)((blocks - first_db + bpg - 1) / bpg);
 
     int bad = 0, checked_desc = 0, checked_bmap = 0, skipped_uninit = 0;
+    int checked_imap = 0, skipped_iuninit = 0;
 
     if (ext4_superblock_csum(sb) != rd32(sb + EXT4_SB_CSUM_OFF)) {
         printf("superblock checksum mismatch\n");
@@ -54,7 +56,8 @@ int main(int argc, char **argv) {
 
     uint8_t *desc_area = malloc((size_t)groups * desc_size);
     uint8_t *bitmap    = malloc(bpg / 8);
-    if (!desc_area || !bitmap) return 2;
+    uint8_t *ibitmap   = malloc(ipg / 8);
+    if (!desc_area || !bitmap || !ibitmap) return 2;
     if (fseeko(fp, (off_t)(first_db + 1) * bs, SEEK_SET)) return 2;
     if (fread(desc_area, 1, (size_t)groups * desc_size, fp) != (size_t)groups * desc_size) return 2;
 
@@ -64,6 +67,36 @@ int main(int argc, char **argv) {
         if (ext4_group_desc_csum(seed, g, d, desc_size) != rd16(d + EXT4_GD_CSUM_OFF)) {
             printf("group %u: descriptor checksum mismatch\n", g);
             bad++;
+        }
+
+        /*
+         * The inode bitmap, checked before the block bitmap because the two are
+         * skipped for different reasons and conflating them is what went wrong
+         * here once already. INODE_UNINIT is what makes an inode bitmap
+         * meaningless; BLOCK_UNINIT does the same for the block bitmap. A group
+         * can carry either without the other.
+         *
+         * The checksum covers inodes_per_group / 8 bytes, which is the used part
+         * of the block rather than all of it - the bitmap rarely fills its block.
+         */
+        if (rd16(d + 0x12) & EXT4_BG_INODE_UNINIT) {
+            skipped_iuninit++;
+        } else {
+            uint64_t imap = rd32(d + 0x04) |
+                            ((desc_size >= 64) ? ((uint64_t)rd32(d + 0x24) << 32) : 0);
+            if (fseeko(fp, (off_t)imap * bs, SEEK_SET)) return 2;
+            if (fread(ibitmap, 1, ipg / 8, fp) != ipg / 8) return 2;
+
+            uint32_t iwant = ext4_bitmap_csum(seed, ibitmap, ipg / 8);
+            uint32_t igot  = rd16(d + EXT4_GD_IBITMAP_CSUM_LO_OFF);
+            if (desc_size >= 64) igot |= (uint32_t)rd16(d + EXT4_GD_IBITMAP_CSUM_HI_OFF) << 16;
+            else                 iwant &= 0xFFFFu;
+            checked_imap++;
+            if (iwant != igot) {
+                printf("group %u: inode bitmap checksum mismatch (want %08X got %08X)\n",
+                       g, iwant, igot);
+                bad++;
+            }
         }
 
         /* BLOCK_UNINIT means the bitmap block was never written out, so its
@@ -93,8 +126,10 @@ int main(int argc, char **argv) {
         }
     }
 
-    printf("%s: %u descriptors, %u bitmaps checked, %u uninit skipped, %d bad\n",
-           argv[1], checked_desc, checked_bmap, skipped_uninit, bad);
-    free(desc_area); free(bitmap); fclose(fp);
+    printf("%s: %u descriptors, %u block bitmaps (%u uninit skipped), "
+           "%u inode bitmaps (%u uninit skipped), %d bad\n",
+           argv[1], checked_desc, checked_bmap, skipped_uninit,
+           checked_imap, skipped_iuninit, bad);
+    free(desc_area); free(bitmap); free(ibitmap); fclose(fp);
     return bad ? 1 : 0;
 }

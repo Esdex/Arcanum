@@ -16,6 +16,8 @@ extern "C" {
 #define EXT4_GD_CSUM_OFF            0x1E
 #define EXT4_GD_BBITMAP_CSUM_LO_OFF 0x18
 #define EXT4_GD_BBITMAP_CSUM_HI_OFF 0x38
+#define EXT4_GD_IBITMAP_CSUM_LO_OFF 0x1A
+#define EXT4_GD_IBITMAP_CSUM_HI_OFF 0x3A
 #define EXT4_SB_CSUM_OFF            0x3FC
 
 uint32_t ext4_crc32c(uint32_t crc, const void *data, size_t len);

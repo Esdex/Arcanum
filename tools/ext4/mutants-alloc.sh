@@ -18,7 +18,11 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-cp "$HERE/ext4_alloc.h" "$HERE/ext4_csum.h" "$HERE/ext4_csum.c" "$HERE/alloc.c" "$WORK/"
+# ext4_ialloc.c comes along unmutated because alloc.c calls into it. Leaving it
+# out does not fail loudly - every mutant simply stops linking and the suite
+# reports SKIP, which is how a stale build list here was found the first time.
+cp "$HERE/ext4_alloc.h" "$HERE/ext4_csum.h" "$HERE/ext4_csum.c" \
+   "$HERE/ext4_ialloc.c" "$HERE/alloc.c" "$WORK/"
 
 fail=0
 CHECK_EXTRA=()          # extra fsckcheck.py arguments for the mutants below
@@ -38,7 +42,7 @@ try() {
         fail=1
         return
     fi
-    if ! (cd "$WORK" && cc -O2 -std=c99 -o am alloc.c m.c ext4_csum.c 2>/dev/null); then
+    if ! (cd "$WORK" && cc -O2 -std=c99 -o am alloc.c m.c ext4_ialloc.c ext4_csum.c 2>/dev/null); then
         echo "  SKIP  $desc - mutant did not build"
         fail=1
         return
