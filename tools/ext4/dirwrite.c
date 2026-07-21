@@ -14,6 +14,7 @@
 
 #include "ext4_dirwrite.h"
 #include "ext4_extwrite.h"
+#include "ext4_create.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,17 +41,23 @@ static const char *strerr(int rc) {
     case EXT4_DIRW_ERR_ABSENT: return "no entry by that name";
     case EXT4_DIRW_ERR_NOROOM: return "no gap big enough in any existing block";
     case EXT4_DIRW_ERR_NAME:   return "not a usable name";
+    case EXT4_CREATE_ERR_NOINODE: return "no free inode left";
     default:                   return "unknown error";
     }
 }
 
 int main(int argc, char **argv) {
-    int adding = (argc == 7 && !strcmp(argv[3], "add"));
-    int removing = (argc == 5 && !strcmp(argv[3], "remove"));
-    if (!adding && !removing) {
+    int adding    = (argc == 7 && !strcmp(argv[3], "add"));
+    int removing  = (argc == 5 && !strcmp(argv[3], "remove"));
+    int creating  = (argc == 6 && !strcmp(argv[3], "create"));
+    int unlinking = (argc == 6 && !strcmp(argv[3], "unlink"));
+    if (!adding && !removing && !creating && !unlinking) {
         fprintf(stderr,
                 "usage: %s <image> <dir-inode> add <name> <inode> <file-type>\n"
-                "       %s <image> <dir-inode> remove <name>\n", argv[0], argv[0]);
+                "       %s <image> <dir-inode> remove <name>\n"
+                "       %s <image> <dir-inode> create <name> <when>\n"
+                "       %s <image> <dir-inode> unlink <name> <when>\n",
+                argv[0], argv[0], argv[0], argv[0]);
         return 2;
     }
 
@@ -75,7 +82,15 @@ int main(int argc, char **argv) {
      * them against each other. The driver does both so that a correct run leaves
      * nothing for the harness to excuse. */
     int rc;
-    if (adding) {
+    if (creating) {
+        uint32_t made = 0;
+        rc = ext4_create_file(&w, &r, dir_ino, argv[4], 0644,
+                              (uint32_t)strtoul(argv[5], NULL, 10), &made);
+        if (rc == EXT4_DIRW_OK) printf("%u\n", made);
+    } else if (unlinking) {
+        rc = ext4_unlink_file(&w, &r, dir_ino, argv[4],
+                              (uint32_t)strtoul(argv[5], NULL, 10));
+    } else if (adding) {
         uint32_t target = (uint32_t)strtoul(argv[5], NULL, 10);
         rc = ext4_dir_add(&w, &r, dir_ino, target,
                           (uint8_t)strtoul(argv[6], NULL, 10), argv[4]);

@@ -760,3 +760,7 @@ out:
     free(inode);
     return rc;
 }
+
+int ext4_write_inode_raw(ext4_wfs *fs, uint32_t ino, uint8_t *inode) {
+    return write_inode(fs, ino, inode);
+}
