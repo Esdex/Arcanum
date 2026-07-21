@@ -16,6 +16,12 @@
 #include <string.h>
 #include <sys/types.h>
 
+/* bg_flags, at offset 0x12 of the group descriptor. Named rather than inlined
+ * because the two uninit bits are easy to mistake for each other. */
+#define EXT4_BG_INODE_UNINIT  0x0001  /* inode table and bitmap are not initialised */
+#define EXT4_BG_BLOCK_UNINIT  0x0002  /* block bitmap is not initialised */
+#define EXT4_BG_INODE_ZEROED  0x0004  /* inode table has been zeroed */
+
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
 static uint32_t rd32(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
@@ -60,9 +66,16 @@ int main(int argc, char **argv) {
             bad++;
         }
 
-        /* BLOCK_UNINIT (bg_flags bit 0) means the bitmap block was never written
-         * out, so its contents are not a bitmap and checking them is meaningless. */
-        if (rd16(d + 0x12) & 0x0001) { skipped_uninit++; continue; }
+        /* BLOCK_UNINIT means the bitmap block was never written out, so its
+         * contents are not a bitmap and checking them is meaningless.
+         *
+         * It is bit 1 of bg_flags, not bit 0 - bit 0 is INODE_UNINIT, which says
+         * nothing about the block bitmap. Testing bit 0 here still passed on every
+         * image, because mke2fs sets INODE_UNINIT on every group it sets
+         * BLOCK_UNINIT on, so the wrong test skipped a superset of the right one.
+         * What it cost was coverage, silently: 55 of 160 bitmaps checked instead of
+         * 141, with the other 86 reported as "uninit skipped". */
+        if (rd16(d + 0x12) & EXT4_BG_BLOCK_UNINIT) { skipped_uninit++; continue; }
 
         uint64_t bmap = rd32(d) | ((desc_size >= 64) ? ((uint64_t)rd32(d + 0x20) << 32) : 0);
         if (fseeko(fp, (off_t)bmap * bs, SEEK_SET)) return 2;
