@@ -23,7 +23,8 @@ extern "C" {
 #define EXT4_SB_FREE_BLOCKS_HI_OFF  0x158
 #define EXT4_SB_CSUM_SEED_OFF       0x270
 
-#define EXT4_FEATURE_INCOMPAT_64BIT 0x80
+#define EXT4_FEATURE_INCOMPAT_64BIT   0x80
+#define EXT4_FEATURE_INCOMPAT_RECOVER 0x04   /* the journal has work outstanding */
 
 #define EXT4_SB_INODES_COUNT_OFF    0x00
 #define EXT4_SB_FREE_INODES_OFF     0x10

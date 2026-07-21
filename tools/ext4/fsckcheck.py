@@ -147,6 +147,36 @@ def sb_free_blocks(img):
 EXT4_BG_BLOCK_UNINIT = 0x0002
 
 
+def crc32c(crc, data):
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            crc = ((crc >> 1) ^ (0x82F63B78 & -(crc & 1))) & 0xFFFFFFFF
+    return crc
+
+
+def check_recover_refused(alloc, img):
+    """A filesystem whose journal still needs replaying must be refused.
+
+    The INCOMPAT_RECOVER flag is set synthetically - and the superblock checksum
+    fixed up so the image is otherwise valid - rather than by producing a real
+    dirty journal, which needs a kernel mount and a crash under it. That checks
+    the guard, which is a real guard: writing around an unreplayed journal loses
+    the writes at the next replay. It does not check journal support, which does
+    not exist. Same shape as the htree guard.
+    """
+    with open(img, "r+b") as f:
+        f.seek(1024)
+        sb = bytearray(f.read(1024))
+        incompat = struct.unpack_from("<I", sb, 0x60)[0] | 0x4
+        struct.pack_into("<I", sb, 0x60, incompat)
+        struct.pack_into("<I", sb, 0x3FC, crc32c(0xFFFFFFFF, sb[:0x3FC]))
+        f.seek(1024)
+        f.write(sb)
+    r = subprocess.run([alloc, img, "alloc", "1"], capture_output=True, text=True)
+    return r.returncode != 0
+
+
 def read_groups(img):
     """-> (first_data_block, blocks_per_group, [(flags, free_blocks), ...])
 
@@ -433,6 +463,16 @@ def main():
         sys.exit(f"no cases under {args.cases}")
     if args.limit:
         cases = cases[:args.limit]
+
+    # One standalone check, on its own copy so the synthetic flag does not touch
+    # what the per-case runs see: a filesystem needing journal recovery is refused.
+    import shutil as _shutil, tempfile as _tempfile
+    with _tempfile.TemporaryDirectory() as _t:
+        _img = os.path.join(_t, "fs.img")
+        _shutil.copy(os.path.join(cases[0], "fs.img"), _img)
+        if not check_recover_refused(args.alloc, _img):
+            print("FAIL a filesystem needing journal recovery was opened for writing")
+            return 1
 
     failed = 0
     for case in cases:

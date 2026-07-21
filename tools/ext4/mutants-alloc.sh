@@ -135,6 +135,9 @@ try "bit search not clamped to the group's real block count" \
               whose padding was never written - one we format ourselves, later. Held up by
               review alone."
 
+try "a filesystem needing journal recovery opened anyway" \
+    's@    if (incompat & EXT4_FEATURE_INCOMPAT_RECOVER) goto fail;@@'
+
 try "high half of the 64-bit group free count dropped" \
     's@if (is_64bit(fs)) wr16(d + EXT4_GD_FREE_BLOCKS_HI_OFF, (uint16_t)(v >> 16));@@' \
     "bg_free_blocks_count cannot exceed blocks_per_group, which is 8 * block_size and so
