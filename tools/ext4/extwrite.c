@@ -39,8 +39,8 @@ static const char *strerr(int rc) {
     case EXTW_ERR_IO:      return "I/O error";
     case EXTW_ERR_FORMAT:  return "inode is not an extent inode, or its root is malformed";
     case EXTW_ERR_NOSPACE: return "no free blocks left";
-    case EXTW_ERR_DEPTH:   return "extent tree is deeper than depth 0";
-    case EXTW_ERR_FULL:    return "extent root is full and would have to be split";
+    case EXTW_ERR_DEPTH:   return "extent tree is deeper than the format allows";
+    case EXTW_ERR_FULL:    return "the rightmost leaf is full and would have to be split";
     default:               return "unknown error";
     }
 }

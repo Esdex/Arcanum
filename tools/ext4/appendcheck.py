@@ -25,9 +25,10 @@ Five checks per file, each answering something the others cannot:
   checksums   the inode's own checksum covers the extent root, so a correct tree
               with a stale checksum is caught here rather than at mount time
 
-Only files whose tree is depth 0 are used, because that is all the writer handles
-so far. A file whose root already holds four extents is reported as skipped rather
-than failed: refusing to split the root is deliberate, not a defect.
+Every file is used, at whatever depth. A file whose rightmost leaf block is full
+is reported as skipped rather than failed: refusing to split a leaf is deliberate,
+not a defect. A full root is not skipped - that one the writer handles, by pushing
+the root down into a block of its own.
 """
 
 import argparse
@@ -93,6 +94,19 @@ def debugfs_map(img, ino):
                   for e in rows if not e["is_index"])
 
 
+def debugfs_tree_blocks(img, ino):
+    """How many blocks the extent tree itself occupies.
+
+    Every node except the root lives in a block and is pointed at by exactly one
+    index entry, so counting index rows counts tree blocks. Needed because a root
+    split allocates one - which e2fsck rightly counts in i_blocks and in its own
+    blocks-in-use total, and an expectation of "count blocks appended" would then
+    be short by one for every file whose root was full.
+    """
+    rows = parse_extents(debugfs(img, f"dump_extents <{ino}>\n"))
+    return sum(1 for e in rows if e["is_index"])
+
+
 def bench_read(bench, img, ino):
     r = subprocess.run([bench, img, str(ino), "--read"], capture_output=True)
     return r.stdout if r.returncode == 0 else None
@@ -140,6 +154,7 @@ def check_file(case, truth, f, img, bench, extwrite, fsmeta, count):
     before_map = bench_map(bench, img, ino)
     before_data = bench_read(bench, img, ino)
     before_size, before_blocks = debugfs_stat(img, ino)
+    before_tree = debugfs_tree_blocks(img, ino)
     if before_map is None or before_data is None:
         return ["could not read the file before appending"], False
 
@@ -152,7 +167,7 @@ def check_file(case, truth, f, img, bench, extwrite, fsmeta, count):
                        capture_output=True, text=True)
     if r.returncode != 0:
         err = r.stderr.strip()
-        if "root is full" in err:
+        if "would have to be split" in err:
             return [], True         # deliberate refusal, not a failure
         return [f"append failed: {err}"], False
 
@@ -161,9 +176,14 @@ def check_file(case, truth, f, img, bench, extwrite, fsmeta, count):
         new = [l for l in lines if l not in base_lines]
         problems.append(f"fsck changed (rc {base_rc} -> {rc}): "
                         f"{new[:4] if new else 'output differs'}")
-    if base_used is not None and used is not None and used - base_used != count:
+    # A root split adds a tree block, which counts everywhere a data block does.
+    grew = debugfs_tree_blocks(img, ino) - before_tree
+    if grew < 0:
+        problems.append(f"the extent tree lost {-grew} blocks")
+    want_new = count + grew
+    if base_used is not None and used is not None and used - base_used != want_new:
         problems.append(f"e2fsck counts {used - base_used} more blocks in use, "
-                        f"expected {count}")
+                        f"expected {want_new}")
 
     ours = bench_map(bench, img, ino)
     theirs = debugfs_map(img, ino)
@@ -193,7 +213,7 @@ def check_file(case, truth, f, img, bench, extwrite, fsmeta, count):
     if after_size != want_size:
         problems.append(f"i_size is {after_size}, expected {want_size}")
     if before_blocks is not None and after_blocks is not None:
-        want_blocks = before_blocks + count * (bs // 512)
+        want_blocks = before_blocks + want_new * (bs // 512)
         if after_blocks != want_blocks:
             problems.append(f"i_blocks is {after_blocks}, expected {want_blocks}")
 
@@ -227,6 +247,11 @@ def main():
     ap.add_argument("--fsmeta", default=os.path.join(here, "fsmeta"))
     ap.add_argument("--count", type=int, default=3, help="blocks to append")
     ap.add_argument("--limit", type=int)
+    ap.add_argument("--max-skipped", type=int, default=0,
+                    help="how many files may legitimately be refused. Zero, "
+                         "because nothing in the corpus currently fills a leaf - "
+                         "a writer that declines work would otherwise look the "
+                         "same as one that had nothing to do")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -244,8 +269,6 @@ def main():
     for case in cases:
         truth = json.load(open(os.path.join(case, "truth.json")))
         for f in truth["files"]:
-            if f["max_depth"] != 0:
-                continue          # the writer refuses deeper trees, by design
             with tempfile.TemporaryDirectory() as tmp:
                 img = os.path.join(tmp, "fs.img")
                 shutil.copy(os.path.join(case, "fs.img"), img)
@@ -264,9 +287,16 @@ def main():
             elif args.verbose:
                 print(f"ok   {os.path.basename(case)}/{f['name']}")
 
-    print(f"\nappended {args.count} blocks to {checked} depth-0 files, {failed} failed"
-          + (f", {skipped} skipped with a full root" if skipped else ""))
-    return 1 if failed else 0
+    print(f"\nappended {args.count} blocks to {checked} files, {failed} failed"
+          + (f", {skipped} skipped with a full leaf" if skipped else ""))
+
+    # A refusal is a legitimate answer, but only a known number of them is. Left
+    # uncounted, a writer that refused everything would report zero failures and
+    # look identical to one with nothing to refuse.
+    if skipped > args.max_skipped:
+        print(f"     {skipped} files were refused, more than the {args.max_skipped} "
+              f"allowed - a refusal that was not expected is a failure")
+    return 1 if failed or skipped > args.max_skipped else 0
 
 
 if __name__ == "__main__":
