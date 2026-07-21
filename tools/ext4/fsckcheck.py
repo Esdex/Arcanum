@@ -68,8 +68,8 @@ def fsck(img):
     return r.returncode, r.stdout.splitlines()
 
 
-def split_bitmap_diff(lines):
-    """Separate the block-bitmap differences report from everything else.
+def split_bitmap_diff(lines, header="Block bitmap differences:"):
+    """Separate the bitmap differences report from everything else.
 
     The list can wrap onto continuation lines, so it runs from the header up to
     the `Fix?` that closes it rather than being a single line.
@@ -77,7 +77,7 @@ def split_bitmap_diff(lines):
     rest, diff_lines = [], []
     i = 0
     while i < len(lines):
-        if lines[i].startswith("Block bitmap differences:"):
+        if lines[i].startswith(header):
             while i < len(lines) and not lines[i].startswith("Fix?"):
                 diff_lines.append(lines[i])
                 i += 1
@@ -100,19 +100,20 @@ def parse_diff(diff_lines):
     return marked, missing
 
 
-def residual_ok(new_lines, expect_blocks, img):
+def residual_ok(new_lines, expect_blocks, img, header="Block bitmap differences:",
+                noun="blocks"):
     """The only permitted new output after an allocation, and nothing else."""
-    diff_lines, rest = split_bitmap_diff(new_lines)
+    diff_lines, rest = split_bitmap_diff(new_lines, header)
     marked, missing = parse_diff(diff_lines)
     problems = []
 
     if marked != set(expect_blocks):
         extra = sorted(marked - set(expect_blocks))[:8]
         absent = sorted(set(expect_blocks) - marked)[:8]
-        problems.append(f"orphan list does not match what was allocated: "
+        problems.append(f"orphan {noun} list does not match what was allocated: "
                         f"fsck-only={extra} allocator-only={absent}")
     if missing:
-        problems.append(f"fsck says blocks should be marked but are not: "
+        problems.append(f"fsck says {noun} should be marked but are not: "
                         f"{sorted(missing)[:8]}")
 
     base = os.path.basename(img)
@@ -125,6 +126,13 @@ def residual_ok(new_lines, expect_blocks, img):
             continue
         problems.append(f"unexpected fsck output: {line.strip()}")
     return problems
+
+
+def sb_free_inodes(img):
+    with open(img, "rb") as f:
+        f.seek(1024)
+        sb = f.read(1024)
+    return struct.unpack_from("<I", sb, 0x10)[0]
 
 
 def sb_free_blocks(img):
@@ -199,6 +207,127 @@ def check_fill(img, blocks, problems):
     if got != want:
         problems.append(f"after filling, {got} blocks are still free but the "
                         f"BLOCK_UNINIT groups only hold {want}")
+
+
+EXT4_BG_INODE_UNINIT = 0x0001
+
+
+def read_inode_groups(img):
+    """-> (inodes_per_group, [(flags, free_inodes), ...]), read independently."""
+    with open(img, "rb") as f:
+        f.seek(1024)
+        sb = f.read(1024)
+        u32 = lambda o: struct.unpack_from("<I", sb, o)[0]
+        u16 = lambda o: struct.unpack_from("<H", sb, o)[0]
+        bs = 1024 << u32(0x18)
+        bpg, ipg, first = u32(0x20), u32(0x28), u32(0x14)
+        blocks = u32(0x04) | (u32(0x150) << 32)
+        dsz = u16(0xFE) if (u32(0x60) & 0x80) else 32
+        ngroups = (blocks - first + bpg - 1) // bpg
+        f.seek((first + 1) * bs)
+        desc = f.read(ngroups * dsz)
+    out = []
+    for g in range(ngroups):
+        d = desc[g * dsz:(g + 1) * dsz]
+        flags = struct.unpack_from("<H", d, 0x12)[0]
+        free = struct.unpack_from("<H", d, 0x0E)[0]
+        if dsz >= 64:
+            free |= struct.unpack_from("<H", d, 0x2E)[0] << 16
+        out.append((flags, free))
+    return ipg, out
+
+
+def check_ifill(img, inodes, problems):
+    """Filling pins down the rule four inodes never reach: a group whose bitmap
+    was never written must be left alone, so what stays free is exactly what
+    those groups hold - no more, and no less either."""
+    ipg, groups = read_inode_groups(img)
+    uninit = {g for g, (flags, _) in enumerate(groups) if flags & EXT4_BG_INODE_UNINIT}
+
+    trespass = sorted({(i - 1) // ipg for i in inodes} & uninit)
+    if trespass:
+        problems.append(f"allocated inside INODE_UNINIT groups {trespass} - "
+                        f"those bitmaps were never written")
+
+    want = sum(free for g, (_, free) in enumerate(groups) if g in uninit)
+    got = sb_free_inodes(img)
+    if got != want:
+        problems.append(f"after filling, {got} inodes are still free but the "
+                        f"INODE_UNINIT groups only hold {want}")
+
+
+def check_inode_case(case, alloc, fsmeta, count):
+    """The same gate, for inodes.
+
+    An inode taken from the bitmap and named in no directory is the exact
+    counterpart of a block attached to no inode, and e2fsck reports it the same
+    way - an "Inode bitmap differences" list. So the residual is pinned to the
+    inodes the allocator says it took, and everything else stays fatal.
+
+    The round trip cannot ask for the image back byte for byte here, because
+    allocation deliberately zeroes the inode it hands out and a reused one rarely
+    held zeroes before. Freeing has to return the filesystem to its baseline
+    instead, which is the property that actually matters.
+    """
+    img_src = os.path.join(case, "fs.img")
+    problems = []
+    with tempfile.TemporaryDirectory() as tmp:
+        img = os.path.join(tmp, "fs.img")
+        shutil.copy(img_src, img)
+
+        base_rc, base_lines = fsck(img)
+        if base_rc != FSCK_OK:
+            return [f"pristine image is not fsck-clean (rc={base_rc})"]
+        free_before = sb_free_inodes(img)
+
+        inodes, err = (run_alloc(alloc, img, "ifill") if count is None
+                       else run_alloc(alloc, img, "ialloc", count))
+        if err:
+            return [f"inode allocator failed: {err}"]
+        if len(inodes) != len(set(inodes)):
+            problems.append("allocator returned the same inode twice")
+        if any(i < 11 for i in inodes):
+            problems.append(f"allocator handed out a reserved inode: "
+                            f"{sorted(i for i in inodes if i < 11)}")
+
+        rc, lines = fsck(img)
+        baseline = list(base_lines)
+        new = []
+        for line in lines:
+            if line in baseline:
+                baseline.remove(line)
+            else:
+                new.append(line)
+        problems += residual_ok(new, inodes, img,
+                                header="Inode bitmap differences:", noun="inodes")
+        if inodes and rc != FSCK_UNCORRECTED:
+            problems.append(f"expected fsck rc={FSCK_UNCORRECTED} after allocating, got {rc}")
+
+        if free_before - sb_free_inodes(img) != len(inodes):
+            problems.append(f"superblock free inode count moved by "
+                            f"{free_before - sb_free_inodes(img)}, "
+                            f"expected {len(inodes)}")
+
+        if count is None:
+            check_ifill(img, inodes, problems)
+
+        m = subprocess.run([fsmeta, img], capture_output=True, text=True)
+        if m.returncode != 0:
+            problems.append(f"checksums no longer verify: {m.stdout.strip()}")
+
+        _, err = run_alloc(alloc, img, "ifree", "-",
+                           stdin="".join(f"{i}\n" for i in inodes))
+        if err:
+            problems.append(f"ifree failed: {err}")
+        else:
+            rt_rc, rt_lines = fsck(img)
+            if rt_rc != FSCK_OK or rt_lines != base_lines:
+                left = [l for l in rt_lines if l not in base_lines]
+                problems.append(f"freeing did not return the filesystem to its "
+                                f"baseline (rc={rt_rc}): {left[:3]}")
+            if sb_free_inodes(img) != free_before:
+                problems.append("free inode count did not come back")
+    return problems
 
 
 def check_case(case, alloc, fsmeta, count, keep, fill=False):
@@ -286,6 +415,11 @@ def main():
                          "way the BLOCK_UNINIT rule gets exercised")
     ap.add_argument("--limit", type=int,
                     help="stop after this many images")
+    ap.add_argument("--inodes", type=int, metavar="N",
+                    help="allocate N inodes instead of blocks")
+    ap.add_argument("--ifill", action="store_true",
+                    help="take every reachable inode instead, which is the only "
+                         "way the INODE_UNINIT rule gets exercised")
     ap.add_argument("--keep", help="copy a failing image here for inspection")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
@@ -302,8 +436,12 @@ def main():
 
     failed = 0
     for case in cases:
-        problems = check_case(case, args.alloc, args.fsmeta, args.count,
-                              args.keep, fill=args.fill)
+        if args.inodes is not None or args.ifill:
+            problems = check_inode_case(case, args.alloc, args.fsmeta,
+                                        None if args.ifill else args.inodes)
+        else:
+            problems = check_case(case, args.alloc, args.fsmeta, args.count,
+                                  args.keep, fill=args.fill)
         if problems:
             failed += 1
             print(f"FAIL {os.path.basename(case)}")
@@ -312,7 +450,9 @@ def main():
         elif args.verbose:
             print(f"ok   {os.path.basename(case)}")
 
-    what = "fill" if args.fill else f"allocate {args.count}"
+    what = ("take every inode" if args.ifill
+            else f"allocate {args.inodes} inodes" if args.inodes is not None
+            else "fill" if args.fill else f"allocate {args.count}")
     print(f"\n{len(cases) - failed}/{len(cases)} images survived "
           f"{what} + fsck + checksums + round trip")
     return 1 if failed else 0
