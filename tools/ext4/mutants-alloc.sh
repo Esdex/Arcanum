@@ -116,7 +116,7 @@ try "free does not give the block back to the group count" \
 CHECK_EXTRA=(--fill --limit 4)
 
 try "BLOCK_UNINIT groups allocated from anyway" \
-    's@if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_BLOCK_UNINIT) continue;@@'
+    's@if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_BLOCK_UNINIT) return ALLOC_NONE;@@'
 
 try "allocation stops one group early" \
     's@for (uint32_t g = 0; g < fs->groups; g++) {@for (uint32_t g = 0; g + 1 < fs->groups; g++) {@'
