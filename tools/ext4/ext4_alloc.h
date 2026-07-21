@@ -25,11 +25,16 @@ extern "C" {
 
 #define EXT4_FEATURE_INCOMPAT_64BIT 0x80
 
+#define EXT4_SB_INODES_PER_GRP_OFF  0x28
+#define EXT4_SB_INODE_SIZE_OFF      0x58
+
 /* Group descriptor */
 #define EXT4_GD_BLOCK_BITMAP_LO_OFF 0x00
+#define EXT4_GD_INODE_TABLE_LO_OFF  0x08
 #define EXT4_GD_FREE_BLOCKS_LO_OFF  0x0C
 #define EXT4_GD_FLAGS_OFF           0x12
 #define EXT4_GD_BLOCK_BITMAP_HI_OFF 0x20
+#define EXT4_GD_INODE_TABLE_HI_OFF  0x28
 #define EXT4_GD_FREE_BLOCKS_HI_OFF  0x2C
 
 /* bg_flags. The two uninit bits are easy to mistake for each other, and doing so
@@ -38,6 +43,14 @@ extern "C" {
 #define EXT4_BG_BLOCK_UNINIT        0x0002
 #define EXT4_BG_INODE_ZEROED        0x0004
 
+/*
+ * A writable handle on a whole image, holding the descriptor table in memory.
+ *
+ * Distinct from the reader's `ext4_fs` in ext4_extents.h on purpose: that one
+ * reaches the disk through a block callback so the same code can run over an
+ * encrypted container, and it never writes. This one owns a FILE* and mutates.
+ * A caller that needs both - the extent writer does - keeps one of each.
+ */
 typedef struct {
     FILE    *fp;
     uint8_t  sb[1024];
@@ -50,21 +63,32 @@ typedef struct {
     uint32_t groups;
     uint32_t csum_seed;
     uint32_t bitmap_bytes;
+    uint32_t inode_size;
+    uint32_t inodes_per_group;
     uint64_t blocks_count;
-} ext4_fs;
+} ext4_wfs;
 
-int  ext4_fs_open(ext4_fs *fs, const char *path);
-int  ext4_fs_flush(ext4_fs *fs);
-void ext4_fs_close(ext4_fs *fs);
+int  ext4_fs_open(ext4_wfs *fs, const char *path);
+int  ext4_fs_flush(ext4_wfs *fs);
+void ext4_fs_close(ext4_wfs *fs);
 
 /* Takes one block. Returns its number, or -1 when there is nowhere to put it. */
-int64_t ext4_alloc_block(ext4_fs *fs);
+int64_t ext4_alloc_block(ext4_wfs *fs);
+
+/*
+ * The same, but tries `goal` first, then the rest of goal's group, before falling
+ * back to a scan from the start. Passing the block after a file's last one is what
+ * keeps an appended block adjacent to the data in front of it, which is the
+ * difference between extending an existing extent and needing a new entry - and
+ * the root inside an inode only holds four.
+ */
+int64_t ext4_alloc_block_goal(ext4_wfs *fs, uint64_t goal);
 
 /* Gives one back. Returns 0, or -1 if the block is out of range, in a group whose
  * bitmap was never written, or was not allocated in the first place. */
-int  ext4_free_block(ext4_fs *fs, uint64_t block);
+int  ext4_free_block(ext4_wfs *fs, uint64_t block);
 
-uint64_t ext4_sb_free_blocks(const ext4_fs *fs);
+uint64_t ext4_sb_free_blocks(const ext4_wfs *fs);
 
 #ifdef __cplusplus
 }

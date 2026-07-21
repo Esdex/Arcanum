@@ -31,7 +31,7 @@ static int usage(const char *me) {
     return 2;
 }
 
-static int do_alloc(ext4_fs *fs, long count) {
+static int do_alloc(ext4_wfs *fs, long count) {
     int64_t *taken = calloc((size_t)count, sizeof(*taken));
     if (!taken) return 2;
 
@@ -54,7 +54,7 @@ static int do_alloc(ext4_fs *fs, long count) {
 /* Takes everything it can reach, which is every group whose bitmap exists. Stops
  * when ext4_alloc_block refuses, leaving the blocks inside BLOCK_UNINIT groups
  * untouched and still counted as free in the superblock. */
-static int do_fill(ext4_fs *fs) {
+static int do_fill(ext4_wfs *fs) {
     size_t cap = 4096, n = 0;
     int64_t *taken = malloc(cap * sizeof(*taken));
     if (!taken) return 2;
@@ -76,7 +76,7 @@ static int do_fill(ext4_fs *fs) {
     return 0;
 }
 
-static int free_one(ext4_fs *fs, const char *tok) {
+static int free_one(ext4_wfs *fs, const char *tok) {
     char *end;
     unsigned long long b = strtoull(tok, &end, 10);
     if (*end && *end != '\n') {
@@ -90,7 +90,7 @@ static int free_one(ext4_fs *fs, const char *tok) {
     return 0;
 }
 
-static int do_free(ext4_fs *fs, int argc, char **argv) {
+static int do_free(ext4_wfs *fs, int argc, char **argv) {
     int rc;
     if (argc == 1 && !strcmp(argv[0], "-")) {
         char line[64];
@@ -107,7 +107,7 @@ static int do_free(ext4_fs *fs, int argc, char **argv) {
 int main(int argc, char **argv) {
     if (argc < 3) return usage(argv[0]);
 
-    ext4_fs fs;
+    ext4_wfs fs;
     if (ext4_fs_open(&fs, argv[1])) {
         fprintf(stderr, "cannot open %s as an ext4 image\n", argv[1]);
         return 2;
