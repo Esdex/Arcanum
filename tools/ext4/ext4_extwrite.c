@@ -52,6 +52,7 @@
 #define INODE_GENERATION_OFF 0x64
 #define INODE_SIZE_HI_OFF   0x6C
 #define INODE_BLOCKS_HI_OFF 0x74   /* osd2.linux2.l_i_blocks_hi */
+#define INODE_LINKS_COUNT_OFF 0x1A
 
 #define EH_ENTRIES_OFF 0x02
 #define EH_MAX_OFF     0x04
@@ -736,5 +737,26 @@ int ext4_truncate_blocks(ext4_wfs *fs, uint32_t ino, uint32_t keep_blocks) {
 out:
     free(inode);
     free(storage);
+    return rc;
+}
+
+int ext4_inode_adjust_links(ext4_wfs *fs, uint32_t ino, int delta) {
+    uint8_t *inode = malloc(fs->inode_size);
+    if (!inode) return EXTW_ERR_IO;
+
+    int rc = read_inode(fs, ino, inode);
+    if (rc != EXTW_OK) goto out;
+
+    int32_t links = (int32_t)rd16(inode + INODE_LINKS_COUNT_OFF) + delta;
+    /* Refused rather than wrapped. A count that went negative would come back as
+     * 65535 and read as a file with tens of thousands of names. */
+    if (links < 0 || links > 0xFFFF) { rc = EXTW_ERR_FORMAT; goto out; }
+    wr16(inode + INODE_LINKS_COUNT_OFF, (uint16_t)links);
+
+    rc = write_inode(fs, ino, inode);
+    if (rc == EXTW_OK) rc = ext4_fs_flush(fs) ? EXTW_ERR_IO : EXTW_OK;
+
+out:
+    free(inode);
     return rc;
 }
