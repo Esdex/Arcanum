@@ -50,17 +50,39 @@ def sh(*args, **kw):
 
 
 def mount_fuse(img, mnt, rw=True):
+    """Mounts and returns the fuse2fs process, or None if it never came up.
+
+    Run in the foreground so that there is a process to wait for. That matters at
+    unmount rather than here: `fusermount -u` detaches the mount point and
+    returns, while the daemon is still writing its cache back into the image, so
+    os.path.ismount reports "unmounted" some time before the image has stopped
+    changing. Reading it in that window shows a filesystem missing whatever was
+    written last - an intermittent failure that looks exactly like a bug in the
+    thing under test, which is how it was found.
+    """
     opts = "rw,fakeroot" if rw else "ro"
-    sh("fuse2fs", img, mnt, "-o", opts)
-    for _ in range(40):
+    proc = subprocess.Popen(["fuse2fs", img, mnt, "-o", opts, "-f"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(60):
         if os.path.ismount(mnt):
-            return True
+            return proc
+        if proc.poll() is not None:
+            return None
         time.sleep(0.1)
-    return False
+    proc.kill()
+    return None
 
 
-def unmount_fuse(mnt):
+def unmount_fuse(mnt, proc=None):
+    """Unmounts and waits for the image to be settled, not merely detached."""
     sh("fusermount", "-u", mnt)
+    if proc is not None:
+        try:
+            proc.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            return False
+        return not os.path.ismount(mnt)
     for _ in range(40):
         if not os.path.ismount(mnt):
             return True
@@ -101,14 +123,15 @@ def main():
             problems.append("the container lost a feature it is supposed to have")
 
         # Direction one: the other driver writes, we read.
-        if not mount_fuse(img, mnt):
+        proc = mount_fuse(img, mnt)
+        if not proc:
             sys.exit("fuse2fs would not mount a container we created - that is "
                      "the interop claim failing outright")
         with open(os.path.join(mnt, "from-the-other-side.txt"), "w") as f:
             f.write("written by fuse2fs\n")
         os.makedirs(os.path.join(mnt, "subdir"), exist_ok=True)
         sh("sync")
-        if not unmount_fuse(mnt):
+        if not unmount_fuse(mnt, proc):
             problems.append("fuse2fs would not unmount")
 
         listing = sh(bench, img, "2", "--ls").stdout.split()
@@ -128,7 +151,8 @@ def main():
             problems.append(f"e2fsck rejects the container after we wrote to it "
                             f"(rc={r.returncode})")
 
-        if not mount_fuse(img, mnt, rw=False):
+        proc = mount_fuse(img, mnt, rw=False)
+        if not proc:
             problems.append("fuse2fs would not mount the container after we wrote "
                             "to it - which is the failure that matters most here")
         else:
@@ -137,7 +161,7 @@ def main():
                 problems.append("the other driver cannot see the file we created")
             if "from-the-other-side.txt" not in names:
                 problems.append("its own file went missing after we wrote")
-            unmount_fuse(mnt)
+            unmount_fuse(mnt, proc)
 
     if problems:
         print("FAIL")
