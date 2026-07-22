@@ -28,6 +28,7 @@
 
 #include "ext4_create.h"
 #include "ext4_csum.h"
+#include "ext4_log.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -105,15 +106,26 @@ static void init_regular_inode(uint8_t *inode, uint32_t inode_size,
 int ext4_create_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
                      const char *name, uint16_t mode, uint32_t when,
                      uint32_t *ino_out) {
+    EXT4_LOGI("create '%s' in dir inode %u", name, dir_ino);
+
     /* Checked before an inode is taken. Finding the clash afterwards would mean
      * handing one back, and a rollback that is never needed cannot be wrong. */
     uint32_t existing = 0;
     int rc = ext4_dir_lookup(r, dir_ino, name, &existing);
-    if (rc == EXT4_DIRW_OK) return EXT4_DIRW_ERR_EXISTS;
-    if (rc != EXT4_DIRW_ERR_ABSENT) return rc;
+    if (rc == EXT4_DIRW_OK) {
+        EXT4_LOGE("create '%s': a name already points at inode %u", name, existing);
+        return EXT4_DIRW_ERR_EXISTS;
+    }
+    if (rc != EXT4_DIRW_ERR_ABSENT) {
+        EXT4_LOGE("create '%s': lookup failed (%d)", name, rc);
+        return rc;
+    }
 
     int64_t ino = ext4_alloc_inode(w);
-    if (ino < 0) return EXT4_CREATE_ERR_NOINODE;
+    if (ino < 0) {
+        EXT4_LOGE("create '%s': no free inode", name);
+        return EXT4_CREATE_ERR_NOINODE;
+    }
 
     uint8_t *inode = malloc(w->inode_size);
     if (!inode) { ext4_free_inode(w, (uint32_t)ino); return EXT4_DIRW_ERR_IO; }
@@ -122,6 +134,8 @@ int ext4_create_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     rc = ext4_write_inode_raw(w, (uint32_t)ino, inode);
     free(inode);
     if (rc != EXT4_DIRW_OK) {
+        EXT4_LOGE("create '%s': writing inode %lld failed (%d), freeing it",
+                  name, (long long)ino, rc);
         ext4_free_inode(w, (uint32_t)ino);
         return rc;
     }
@@ -130,25 +144,38 @@ int ext4_create_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
      * is already accounted for. Only now does anything point at it. */
     rc = ext4_dir_add(w, r, dir_ino, (uint32_t)ino, EXT4_FT_REG_FILE, name);
     if (rc != EXT4_DIRW_OK) {
+        EXT4_LOGE("create '%s': adding the directory entry failed (%d), freeing "
+                  "inode %lld", name, rc, (long long)ino);
         ext4_free_inode(w, (uint32_t)ino);
         return rc;
     }
 
     if (ino_out) *ino_out = (uint32_t)ino;
-    return ext4_fs_flush(w) ? EXT4_DIRW_ERR_IO : EXT4_DIRW_OK;
+    rc = ext4_fs_flush(w) ? EXT4_DIRW_ERR_IO : EXT4_DIRW_OK;
+    EXT4_LOGI("create '%s': inode %lld, %s", name, (long long)ino,
+              rc == EXT4_DIRW_OK ? "ok" : "flush failed");
+    return rc;
 }
 
 int ext4_unlink_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
                      const char *name, uint32_t when) {
+    EXT4_LOGI("unlink '%s' from dir inode %u", name, dir_ino);
+
     uint32_t ino = 0;
     int rc = ext4_dir_lookup(r, dir_ino, name, &ino);
-    if (rc != EXT4_DIRW_OK) return rc;
+    if (rc != EXT4_DIRW_OK) {
+        EXT4_LOGE("unlink '%s': not found (%d)", name, rc);
+        return rc;
+    }
 
     /* Name first. A crash after this leaves an inode nothing refers to, which
      * e2fsck can tidy; the other order leaves a name pointing at blocks that
      * have already been handed to somebody else. */
     rc = ext4_dir_remove(w, r, dir_ino, name);
-    if (rc != EXT4_DIRW_OK) return rc;
+    if (rc != EXT4_DIRW_OK) {
+        EXT4_LOGE("unlink '%s': removing the entry failed (%d)", name, rc);
+        return rc;
+    }
 
     uint8_t inode[256];
     memset(inode, 0, sizeof(inode));
@@ -158,9 +185,13 @@ int ext4_unlink_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     uint16_t links = rd16(inode + INODE_LINKS_COUNT_OFF);
     if (links > 1) {
         /* Another name still refers to it, so only the count moves. */
+        EXT4_LOGI("unlink '%s': inode %u had %u links, dropping one", name, ino, links);
         return ext4_inode_adjust_links(w, ino, -1) == EXTW_OK
                    ? EXT4_DIRW_OK : EXT4_DIRW_ERR_IO;
     }
+
+    EXT4_LOGI("unlink '%s': last name for inode %u, freeing its blocks and the inode",
+              name, ino);
 
     /* The last name is gone: the blocks go back, then the inode. Blocks first -
      * an inode marked free while its blocks are still claimed leaks them with

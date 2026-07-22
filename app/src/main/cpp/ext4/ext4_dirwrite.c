@@ -21,6 +21,7 @@
 
 #include "ext4_dirwrite.h"
 #include "ext4_csum.h"
+#include "ext4_log.h"
 #include "ext4_extwrite.h"
 
 #include <stdlib.h>
@@ -238,7 +239,11 @@ int ext4_dir_add(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
 
-    if (is_htree(dir)) return EXT4_DIRW_ERR_HTREE;
+    if (is_htree(dir)) {
+        EXT4_LOGE("dir inode %u is hash-indexed (htree); refusing to write to it "
+                  "rather than corrupting it", dir_ino);
+        return EXT4_DIRW_ERR_HTREE;
+    }
 
     uint32_t need   = entry_size(name_len);
     uint32_t blocks = dir_block_count(r, dir);
@@ -347,7 +352,11 @@ int ext4_dir_remove(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
 
-    if (is_htree(dir)) return EXT4_DIRW_ERR_HTREE;
+    if (is_htree(dir)) {
+        EXT4_LOGE("dir inode %u is hash-indexed (htree); refusing to write to it "
+                  "rather than corrupting it", dir_ino);
+        return EXT4_DIRW_ERR_HTREE;
+    }
 
     uint32_t blocks = dir_block_count(r, dir);
     uint32_t seed   = inode_seed_of(w, r, dir_ino);

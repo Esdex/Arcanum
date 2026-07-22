@@ -40,6 +40,7 @@
 
 #include "ext4_alloc.h"
 #include "ext4_csum.h"
+#include "ext4_log.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -187,7 +188,11 @@ static int fs_finish_open(ext4_wfs *fs) {
      * until something replays the journal. Refusing to open it is the honest
      * answer until this can journal its own writes.
      */
-    if (incompat & EXT4_FEATURE_INCOMPAT_RECOVER) goto fail;
+    if (incompat & EXT4_FEATURE_INCOMPAT_RECOVER) {
+        EXT4_LOGE("refusing to open: journal needs recovery (INCOMPAT_RECOVER); "
+                  "writing around an unreplayed journal would lose the writes");
+        goto fail;
+    }
 
     fs->groups = (uint32_t)((fs->blocks_count - fs->first_data_block +
                              fs->blocks_per_group - 1) / fs->blocks_per_group);
@@ -200,9 +205,14 @@ static int fs_finish_open(ext4_wfs *fs) {
     uint64_t desc_at = (fs->first_data_block + 1) * (uint64_t)fs->block_size;
     size_t desc_len = (size_t)fs->groups * fs->desc_size;
     if (ext4_io_pread(&fs->io, desc_at, fs->desc, desc_len)) goto fail;
+
+    EXT4_LOGI("opened: block_size=%u blocks=%llu groups=%u inodes/group=%u "
+              "desc_size=%u", fs->block_size, (unsigned long long)fs->blocks_count,
+              fs->groups, fs->inodes_per_group, fs->desc_size);
     return 0;
 
 fail:
+    EXT4_LOGE("open failed: not an openable ext4 image for writing");
     ext4_fs_close(fs);
     return -1;
 }

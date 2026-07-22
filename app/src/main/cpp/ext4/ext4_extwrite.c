@@ -35,6 +35,7 @@
 
 #include "ext4_extwrite.h"
 #include "ext4_csum.h"
+#include "ext4_log.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -369,6 +370,7 @@ static int grow_right_edge(ext4_wfs *fs, uint8_t *root, uint8_t *storage,
 
 int ext4_append_blocks(ext4_wfs *fs, uint32_t ino, uint32_t count,
                        ext4_fill_fn fill, void *user, uint32_t *appended) {
+    EXT4_LOGI("append %u block(s) to inode %u", count, ino);
     uint8_t *inode   = malloc(fs->inode_size);
     uint8_t *block   = malloc(fs->block_size);
     /* One buffer per level below the root, so the whole rightmost path can be
@@ -504,11 +506,15 @@ int ext4_append_blocks(ext4_wfs *fs, uint32_t ino, uint32_t count,
     if (rc == EXTW_OK) rc = ext4_fs_flush(fs) ? EXTW_ERR_IO : EXTW_OK;
     if (append_rc != EXTW_OK) rc = append_rc;
     if (appended) *appended = (uint32_t)data_blocks;
+    EXT4_LOGI("append to inode %u: %llu block(s) landed (%d)", ino,
+              (unsigned long long)data_blocks, rc);
 
 out:
     free(inode);
     free(block);
     free(storage);
+    if (rc != EXTW_OK && rc != EXTW_ERR_FULL)
+        EXT4_LOGE("append to inode %u failed early (%d)", ino, rc);
     return rc;
 }
 
@@ -688,6 +694,7 @@ static int collapse_root(ext4_wfs *fs, uint8_t *root, uint8_t *storage,
 }
 
 int ext4_truncate_blocks(ext4_wfs *fs, uint32_t ino, uint32_t keep_blocks) {
+    EXT4_LOGI("truncate inode %u to %u block(s)", ino, keep_blocks);
     uint8_t *inode   = malloc(fs->inode_size);
     uint8_t *storage = malloc((size_t)(EXT4_MAX_DEPTH + 1) * fs->block_size);
     if (!inode || !storage) { free(inode); free(storage); return EXTW_ERR_IO; }

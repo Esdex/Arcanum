@@ -136,7 +136,7 @@ try "bit search not clamped to the group's real block count" \
               review alone."
 
 try "a filesystem needing journal recovery opened anyway" \
-    's@    if (incompat & EXT4_FEATURE_INCOMPAT_RECOVER) goto fail;@@'
+    's@if (incompat & EXT4_FEATURE_INCOMPAT_RECOVER) {@if (0) {@'
 
 try "high half of the 64-bit group free count dropped" \
     's@if (is_64bit(fs)) wr16(d + EXT4_GD_FREE_BLOCKS_HI_OFF, (uint16_t)(v >> 16));@@' \

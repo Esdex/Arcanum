@@ -154,7 +154,7 @@ GROW=()
 # because nothing here can build one - see check_htree_refused in dirwcheck.py.
 
 try "hash-indexed directories written to anyway" \
-    's@    if (is_htree(dir)) return EXT4_DIRW_ERR_HTREE;@@'
+    's@if (is_htree(dir)) {@if (0) {@'
 
 echo
 if [ "$fail" -ne 0 ]; then
