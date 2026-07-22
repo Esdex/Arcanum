@@ -91,16 +91,12 @@ static void sb_set_free_inodes(ext4_wfs *fs, uint32_t v) {
 }
 
 static int read_inode_bitmap(ext4_wfs *fs, const uint8_t *d, uint8_t *buf) {
-    off_t at = (off_t)inode_bitmap_block(fs, d) * fs->block_size;
-    size_t len = fs->inodes_per_group / 8;
-    if (fseeko(fs->fp, at, SEEK_SET)) return -1;
-    return fread(buf, 1, len, fs->fp) == len ? 0 : -1;
+    uint64_t at = inode_bitmap_block(fs, d) * (uint64_t)fs->block_size;
+    return ext4_io_pread(&fs->io, at, buf, fs->inodes_per_group / 8);
 }
 static int write_inode_bitmap(ext4_wfs *fs, const uint8_t *d, const uint8_t *buf) {
-    off_t at = (off_t)inode_bitmap_block(fs, d) * fs->block_size;
-    size_t len = fs->inodes_per_group / 8;
-    if (fseeko(fs->fp, at, SEEK_SET)) return -1;
-    return fwrite(buf, 1, len, fs->fp) == len ? 0 : -1;
+    uint64_t at = inode_bitmap_block(fs, d) * (uint64_t)fs->block_size;
+    return ext4_io_pwrite(&fs->io, at, buf, fs->inodes_per_group / 8);
 }
 
 static void store_inode_bitmap_csum(const ext4_wfs *fs, uint8_t *d, const uint8_t *buf) {
@@ -120,11 +116,11 @@ static void store_desc_csum(const ext4_wfs *fs, uint32_t g, uint8_t *d) {
 static int zero_inodes(ext4_wfs *fs, const uint8_t *d, uint32_t from, uint32_t to) {
     uint8_t *blank = calloc(1, fs->inode_size);
     if (!blank) return -1;
-    off_t base = (off_t)inode_table_block(fs, d) * fs->block_size;
+    uint64_t base = inode_table_block(fs, d) * (uint64_t)fs->block_size;
     int rc = 0;
     for (uint32_t i = from; i <= to && rc == 0; i++) {
-        if (fseeko(fs->fp, base + (off_t)i * fs->inode_size, SEEK_SET)) rc = -1;
-        else if (fwrite(blank, 1, fs->inode_size, fs->fp) != fs->inode_size) rc = -1;
+        if (ext4_io_pwrite(&fs->io, base + (uint64_t)i * fs->inode_size,
+                           blank, fs->inode_size)) rc = -1;
     }
     free(blank);
     return rc;

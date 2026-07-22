@@ -101,15 +101,13 @@ static void sb_set_free_blocks(ext4_wfs *fs, uint64_t v) {
 }
 
 static int read_bitmap(ext4_wfs *fs, const uint8_t *d) {
-    off_t at = (off_t)group_bitmap_block(fs, d) * fs->block_size;
-    if (fseeko(fs->fp, at, SEEK_SET)) return -1;
-    return fread(fs->bitmap, 1, fs->bitmap_bytes, fs->fp) == fs->bitmap_bytes ? 0 : -1;
+    uint64_t at = group_bitmap_block(fs, d) * (uint64_t)fs->block_size;
+    return ext4_io_pread(&fs->io, at, fs->bitmap, fs->bitmap_bytes);
 }
 
 static int write_bitmap(ext4_wfs *fs, const uint8_t *d) {
-    off_t at = (off_t)group_bitmap_block(fs, d) * fs->block_size;
-    if (fseeko(fs->fp, at, SEEK_SET)) return -1;
-    return fwrite(fs->bitmap, 1, fs->bitmap_bytes, fs->fp) == fs->bitmap_bytes ? 0 : -1;
+    uint64_t at = group_bitmap_block(fs, d) * (uint64_t)fs->block_size;
+    return ext4_io_pwrite(&fs->io, at, fs->bitmap, fs->bitmap_bytes);
 }
 
 /* Step 2: the bitmap's checksum is stored in the descriptor that owns it, split
@@ -128,14 +126,39 @@ static void store_desc_csum(const ext4_wfs *fs, uint32_t g, uint8_t *d) {
          (uint16_t)ext4_group_desc_csum(fs->csum_seed, g, d, fs->desc_size));
 }
 
-int ext4_fs_open(ext4_wfs *fs, const char *path) {
-    memset(fs, 0, sizeof(*fs));
-    fs->fp = fopen(path, "r+b");
-    if (!fs->fp) return -1;
-    if (fseeko(fs->fp, EXT4_SB_OFFSET, SEEK_SET) ||
-        fread(fs->sb, 1, sizeof(fs->sb), fs->fp) != sizeof(fs->sb)) goto fail;
+/* Host block callbacks, backing ext4_fs_open with a plain file. The device
+ * supplies its own; these are why the tools need no container to run. */
+static int host_read_block(void *user, uint64_t block, void *buf) {
+    ext4_wfs *fs = (ext4_wfs *)user;
+    off_t at = (off_t)block * fs->io.block_size;
+    if (fseeko(fs->host_fp, at, SEEK_SET)) return -1;
+    return fread(buf, 1, fs->io.block_size, fs->host_fp) == fs->io.block_size ? 0 : -1;
+}
+static int host_write_block(void *user, uint64_t block, const void *buf) {
+    ext4_wfs *fs = (ext4_wfs *)user;
+    off_t at = (off_t)block * fs->io.block_size;
+    if (fseeko(fs->host_fp, at, SEEK_SET)) return -1;
+    return fwrite(buf, 1, fs->io.block_size, fs->host_fp) == fs->io.block_size ? 0 : -1;
+}
+static int host_flush(void *user) {
+    return fflush(((ext4_wfs *)user)->host_fp);
+}
+
+/*
+ * Shared tail of both openers. `io` is already wired to its block callbacks; this
+ * parses the superblock through it and fills the rest in.
+ *
+ * The superblock lives at byte 1024, which is not a block boundary once blocks
+ * are bigger than 1 KiB, so it cannot be read until the block size is known - the
+ * chicken-and-egg the reader has too. It is broken the same way: read at a
+ * provisional 1 KiB block size, then switch io to the real one.
+ */
+static int fs_finish_open(ext4_wfs *fs) {
+    fs->io.block_size = 1024;
+    if (ext4_io_pread(&fs->io, EXT4_SB_OFFSET, fs->sb, sizeof(fs->sb))) goto fail;
 
     fs->block_size       = 1024u << rd32(fs->sb + EXT4_SB_LOG_BLOCK_SIZE_OFF);
+    fs->io.block_size    = fs->block_size;
     fs->blocks_per_group = rd32(fs->sb + EXT4_SB_BLOCKS_PER_GRP_OFF);
     fs->first_data_block = rd32(fs->sb + EXT4_SB_FIRST_DATA_BLK_OFF);
     fs->csum_seed        = rd32(fs->sb + EXT4_SB_CSUM_SEED_OFF);
@@ -174,10 +197,9 @@ int ext4_fs_open(ext4_wfs *fs, const char *path) {
     fs->bitmap = malloc(fs->bitmap_bytes);
     if (!fs->desc || !fs->bitmap) goto fail;
 
-    off_t desc_at = (off_t)(fs->first_data_block + 1) * fs->block_size;
+    uint64_t desc_at = (fs->first_data_block + 1) * (uint64_t)fs->block_size;
     size_t desc_len = (size_t)fs->groups * fs->desc_size;
-    if (fseeko(fs->fp, desc_at, SEEK_SET) ||
-        fread(fs->desc, 1, desc_len, fs->fp) != desc_len) goto fail;
+    if (ext4_io_pread(&fs->io, desc_at, fs->desc, desc_len)) goto fail;
     return 0;
 
 fail:
@@ -185,22 +207,38 @@ fail:
     return -1;
 }
 
+int ext4_fs_open(ext4_wfs *fs, const char *path) {
+    memset(fs, 0, sizeof(*fs));
+    fs->host_fp = fopen(path, "r+b");
+    if (!fs->host_fp) return -1;
+    fs->io.read_block  = host_read_block;
+    fs->io.write_block = host_write_block;
+    fs->io.flush       = host_flush;
+    fs->io.user        = fs;
+    return fs_finish_open(fs);
+}
+
+int ext4_fs_open_io(ext4_wfs *fs, ext4_io io) {
+    memset(fs, 0, sizeof(*fs));
+    fs->host_fp = NULL;
+    fs->io      = io;
+    return fs_finish_open(fs);
+}
+
 /* Step 5's second half. The superblock checksum is computed over the superblock
  * as it will be written, so this is the last thing to happen. */
 int ext4_fs_flush(ext4_wfs *fs) {
-    off_t desc_at = (off_t)(fs->first_data_block + 1) * fs->block_size;
+    uint64_t desc_at = (fs->first_data_block + 1) * (uint64_t)fs->block_size;
     size_t desc_len = (size_t)fs->groups * fs->desc_size;
-    if (fseeko(fs->fp, desc_at, SEEK_SET)) return -1;
-    if (fwrite(fs->desc, 1, desc_len, fs->fp) != desc_len) return -1;
+    if (ext4_io_pwrite(&fs->io, desc_at, fs->desc, desc_len)) return -1;
 
     wr32(fs->sb + EXT4_SB_CSUM_OFF, ext4_superblock_csum(fs->sb));
-    if (fseeko(fs->fp, EXT4_SB_OFFSET, SEEK_SET)) return -1;
-    if (fwrite(fs->sb, 1, sizeof(fs->sb), fs->fp) != sizeof(fs->sb)) return -1;
-    return fflush(fs->fp);
+    if (ext4_io_pwrite(&fs->io, EXT4_SB_OFFSET, fs->sb, sizeof(fs->sb))) return -1;
+    return ext4_io_flush(&fs->io);
 }
 
 void ext4_fs_close(ext4_wfs *fs) {
-    if (fs->fp) fclose(fs->fp);
+    if (fs->host_fp) fclose(fs->host_fp);
     free(fs->desc);
     free(fs->bitmap);
     memset(fs, 0, sizeof(*fs));

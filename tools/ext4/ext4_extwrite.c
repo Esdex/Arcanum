@@ -103,9 +103,8 @@ static int read_inode(ext4_wfs *fs, uint32_t ino, uint8_t *buf) {
     off_t at;
     int rc = inode_offset(fs, ino, &at);
     if (rc != EXTW_OK) return rc;
-    if (fseeko(fs->fp, at, SEEK_SET)) return EXTW_ERR_IO;
-    if (fread(buf, 1, fs->inode_size, fs->fp) != fs->inode_size) return EXTW_ERR_IO;
-    return EXTW_OK;
+    return ext4_io_pread(&fs->io, (uint64_t)at, buf, fs->inode_size)
+               ? EXTW_ERR_IO : EXTW_OK;
 }
 
 /* Stamps the checksum in before writing, so the two can never be written apart. */
@@ -120,9 +119,8 @@ static int write_inode(ext4_wfs *fs, uint32_t ino, uint8_t *buf) {
     off_t at;
     int rc = inode_offset(fs, ino, &at);
     if (rc != EXTW_OK) return rc;
-    if (fseeko(fs->fp, at, SEEK_SET)) return EXTW_ERR_IO;
-    if (fwrite(buf, 1, fs->inode_size, fs->fp) != fs->inode_size) return EXTW_ERR_IO;
-    return EXTW_OK;
+    return ext4_io_pwrite(&fs->io, (uint64_t)at, buf, fs->inode_size)
+               ? EXTW_ERR_IO : EXTW_OK;
 }
 
 static uint64_t inode_size_get(const uint8_t *inode) {
@@ -149,15 +147,13 @@ static void inode_blocks_set(uint8_t *inode, uint64_t v) {
 /* ── The extent root ──────────────────────────────────────────────────────── */
 
 static int write_data_block(ext4_wfs *fs, uint64_t block, const uint8_t *buf) {
-    if (fseeko(fs->fp, (off_t)block * fs->block_size, SEEK_SET)) return EXTW_ERR_IO;
-    if (fwrite(buf, 1, fs->block_size, fs->fp) != fs->block_size) return EXTW_ERR_IO;
-    return EXTW_OK;
+    return ext4_io_pwrite(&fs->io, block * (uint64_t)fs->block_size,
+                          buf, fs->block_size) ? EXTW_ERR_IO : EXTW_OK;
 }
 
 static int read_block_at(ext4_wfs *fs, uint64_t block, uint8_t *buf) {
-    if (fseeko(fs->fp, (off_t)block * fs->block_size, SEEK_SET)) return EXTW_ERR_IO;
-    if (fread(buf, 1, fs->block_size, fs->fp) != fs->block_size) return EXTW_ERR_IO;
-    return EXTW_OK;
+    return ext4_io_pread(&fs->io, block * (uint64_t)fs->block_size,
+                         buf, fs->block_size) ? EXTW_ERR_IO : EXTW_OK;
 }
 
 static uint64_t ee_physical(const uint8_t *e) {

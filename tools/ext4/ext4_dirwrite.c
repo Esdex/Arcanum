@@ -105,8 +105,8 @@ static int read_dir_block(ext4_wfs *w, const ext4_fs *r, const uint8_t *inode,
      * would have to be allocated and formatted first, which is the growth path. */
     if (phys == 0 || uninit) return EXT4_DIRW_ERR_NOROOM;
 
-    if (fseeko(w->fp, (off_t)phys * w->block_size, SEEK_SET)) return EXT4_DIRW_ERR_IO;
-    if (fread(buf, 1, w->block_size, w->fp) != w->block_size) return EXT4_DIRW_ERR_IO;
+    if (ext4_io_pread(&w->io, phys * (uint64_t)w->block_size, buf, w->block_size))
+        return EXT4_DIRW_ERR_IO;
     *phys_out = phys;
     return EXT4_DIRW_OK;
 }
@@ -120,8 +120,8 @@ static int write_dir_block(ext4_wfs *w, uint64_t phys, uint8_t *buf, uint32_t se
         tail[7] == EXT4_FT_DIR_CSUM)
         wr32(tail + 8, ext4_crc32c(seed, buf, w->block_size - DIR_TAIL_SIZE));
 
-    if (fseeko(w->fp, (off_t)phys * w->block_size, SEEK_SET)) return EXT4_DIRW_ERR_IO;
-    if (fwrite(buf, 1, w->block_size, w->fp) != w->block_size) return EXT4_DIRW_ERR_IO;
+    if (ext4_io_pwrite(&w->io, phys * (uint64_t)w->block_size, buf, w->block_size))
+        return EXT4_DIRW_ERR_IO;
     return EXT4_DIRW_OK;
 }
 

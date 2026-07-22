@@ -3,6 +3,8 @@
 #ifndef ARCANUM_EXT4_ALLOC_H
 #define ARCANUM_EXT4_ALLOC_H
 
+#include "ext4_io.h"
+
 #include <stdint.h>
 #include <stdio.h>
 
@@ -56,12 +58,18 @@ extern "C" {
  * A writable handle on a whole image, holding the descriptor table in memory.
  *
  * Distinct from the reader's `ext4_fs` in ext4_extents.h on purpose: that one
- * reaches the disk through a block callback so the same code can run over an
- * encrypted container, and it never writes. This one owns a FILE* and mutates.
- * A caller that needs both - the extent writer does - keeps one of each.
+ * reaches the disk through a read-only block callback, and this one mutates. Both
+ * now reach the disk the same way - through block callbacks - so both can run
+ * over an encrypted container; `io` is where this one's writes go. A caller that
+ * needs both keeps one of each.
+ *
+ * `host_fp` is set only by ext4_fs_open, the convenience opener that backs `io`
+ * with a plain file for the host tools. On the device ext4_fs_open_io is used
+ * instead and host_fp stays NULL.
  */
 typedef struct {
-    FILE    *fp;
+    ext4_io  io;
+    FILE    *host_fp;
     uint8_t  sb[1024];
     uint8_t *desc;             /* the whole descriptor table, held in memory */
     uint8_t *bitmap;           /* scratch for one group's block bitmap */
@@ -77,7 +85,15 @@ typedef struct {
     uint64_t blocks_count;
 } ext4_wfs;
 
+/* Opens `path` for writing, backing the block callbacks with that file. This is
+ * the host tools' opener; the device uses ext4_fs_open_io. */
 int  ext4_fs_open(ext4_wfs *fs, const char *path);
+
+/* Opens over a caller-supplied block interface - the device path. `io.block_size`
+ * may be left 0; it is set from the superblock. The caller keeps ownership of
+ * whatever `io.user` points at. */
+int  ext4_fs_open_io(ext4_wfs *fs, ext4_io io);
+
 int  ext4_fs_flush(ext4_wfs *fs);
 void ext4_fs_close(ext4_wfs *fs);
 
