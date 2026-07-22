@@ -20,6 +20,7 @@
  *                 the FatFs path does
  */
 #include "ext4_device.h"
+#include "ext4_log.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -33,8 +34,16 @@
  */
 static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
                   void *buf, bool writing) {
-    if (!ctx->active) return -1;
-    if (block_size == 0 || (block_size % VC_SECTOR_SIZE) != 0) return -1;
+    if (!ctx->active) {
+        EXT4_LOGE("%s block %llu on an inactive drive",
+                  writing ? "write" : "read", (unsigned long long)block);
+        return -1;
+    }
+    if (block_size == 0 || (block_size % VC_SECTOR_SIZE) != 0) {
+        EXT4_LOGE("block_size %u is not a multiple of the %d-byte sector",
+                  block_size, VC_SECTOR_SIZE);
+        return -1;
+    }
 
     uint32_t nsec       = block_size / VC_SECTOR_SIZE;
     uint64_t baseSector = ctx->dataOffset / VC_SECTOR_SIZE;
@@ -42,17 +51,26 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
     uint64_t byteOff    = ctx->dataOffset + firstSector * (uint64_t)VC_SECTOR_SIZE;
 
     if (!writing) {
-        if (!pread_all(ctx->fd, buf, block_size, (long long)byteOff)) return -1;
+        if (!pread_all(ctx->fd, buf, block_size, (long long)byteOff)) {
+            EXT4_LOGE("read block %llu (%u sectors at offset %llu) failed",
+                      (unsigned long long)block, nsec, (unsigned long long)byteOff);
+            return -1;
+        }
         uint8_t *p = static_cast<uint8_t *>(buf);
         for (uint32_t i = 0; i < nsec; i++)
             vc_crypt_sector(ctx->cipherCtx, p + (size_t)i * VC_SECTOR_SIZE,
                             baseSector + firstSector + i, /*encrypt=*/false);
+        EXT4_LOGD("read block %llu (%u sectors)", (unsigned long long)block, nsec);
         return 0;
     }
 
     /* Refused at the block layer, matching diskio.cpp: the fd being O_RDONLY is
      * not enough on its own to be sure a write never leaves this code. */
-    if (ctx->readOnly) return -1;
+    if (ctx->readOnly) {
+        EXT4_LOGE("write block %llu refused: drive is read-only",
+                  (unsigned long long)block);
+        return -1;
+    }
 
     /* A write must not reach into the hidden volume's territory when the outer
      * volume is what is mounted. Same check, same tripped-flag, as FatFs. */
@@ -60,6 +78,9 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
         uint64_t writeEnd = byteOff + block_size;
         if (writeEnd > ctx->hiddenBoundary) {
             ctx->hiddenBoundaryTripped = true;
+            EXT4_LOGE("write block %llu refused: would reach into the hidden "
+                      "volume (end %llu > boundary %llu)", (unsigned long long)block,
+                      (unsigned long long)writeEnd, (unsigned long long)ctx->hiddenBoundary);
             return -1;
         }
     }
@@ -67,14 +88,24 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
     /* Encrypt into a scratch copy - the caller's buffer is plaintext it may still
      * be using, and encrypting in place would corrupt it. */
     uint8_t *enc = static_cast<uint8_t *>(malloc(block_size));
-    if (!enc) return -1;
+    if (!enc) {
+        EXT4_LOGE("write block %llu: out of memory for the %u-byte encrypt buffer",
+                  (unsigned long long)block, block_size);
+        return -1;
+    }
     memcpy(enc, buf, block_size);
     for (uint32_t i = 0; i < nsec; i++)
         vc_crypt_sector(ctx->cipherCtx, enc + (size_t)i * VC_SECTOR_SIZE,
                         baseSector + firstSector + i, /*encrypt=*/true);
     bool ok = write_all_at(ctx->fd, enc, block_size, (long long)byteOff);
     free(enc);
-    return ok ? 0 : -1;
+    if (!ok) {
+        EXT4_LOGE("write block %llu (%u sectors at offset %llu) failed",
+                  (unsigned long long)block, nsec, (unsigned long long)byteOff);
+        return -1;
+    }
+    EXT4_LOGD("wrote block %llu (%u sectors)", (unsigned long long)block, nsec);
+    return 0;
 }
 
 static int dev_read_block(void *user, uint64_t block, uint32_t block_size, void *buf) {
