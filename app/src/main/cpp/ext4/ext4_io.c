@@ -30,19 +30,20 @@ static int io_range(ext4_io *io, uint64_t off, void *buf, size_t len, int writin
 
         int whole = (inpart == 0 && chunk == io->block_size);
 
+        uint32_t bs = io->block_size;
         if (!writing) {
-            if (io->read_block(io->user, blk, block)) { rc = -1; break; }
+            if (io->read_block(io->user, blk, bs, block)) { rc = -1; break; }
             memcpy(p, block + inpart, chunk);
         } else if (whole) {
             /* No surrounding bytes to preserve, so no read is needed. */
-            if (io->write_block(io->user, blk, p)) { rc = -1; break; }
+            if (io->write_block(io->user, blk, bs, p)) { rc = -1; break; }
         } else {
             /* Partial: the bytes outside [inpart, inpart+chunk) have to survive,
              * so the block is fetched before the splice. Skipping this read is
              * what turns a small update into wiping its neighbours. */
-            if (io->read_block(io->user, blk, block)) { rc = -1; break; }
+            if (io->read_block(io->user, blk, bs, block)) { rc = -1; break; }
             memcpy(block + inpart, p, chunk);
-            if (io->write_block(io->user, blk, block)) { rc = -1; break; }
+            if (io->write_block(io->user, blk, bs, block)) { rc = -1; break; }
         }
 
         p   += chunk;

@@ -27,6 +27,26 @@ set(FATFS_SOURCES
     fatfs/diskio.cpp
 )
 
+# ── ext4 sources ──────────────────────────────────────────────────────
+# Clean-room, from the published on-disk format (issue #7): no GPL ext4 source
+# was consulted. The same files are mutation-tested on the host by the harness in
+# tools/ext4/ - this is the one copy, and that harness compiles it directly, so
+# what ships is what is tested. ext4_device.cpp is the container block backend,
+# the counterpart of fatfs/diskio.cpp. The .c files are -Wall clean and take no
+# suppressions, unlike the VeraCrypt sources below.
+set(EXT4_SOURCES
+    ext4/ext4_csum.c
+    ext4/ext4_io.c
+    ext4/ext4_extents.c
+    ext4/ext4_alloc.c
+    ext4/ext4_ialloc.c
+    ext4/ext4_extwrite.c
+    ext4/ext4_dir.c
+    ext4/ext4_dirwrite.c
+    ext4/ext4_create.c
+    ext4/ext4_device.cpp
+)
+
 # ── Arcanum native module sources (split from the former monolithic
 # arcanum_jni.cpp — see arcanum_internal.h for the cross-module contract) ──
 set(ARCANUM_SOURCES
@@ -58,6 +78,7 @@ add_library(
     ${ARCANUM_SOURCES}
     ${VERACRYPT_SOURCES}
     ${FATFS_SOURCES}
+    ${EXT4_SOURCES}
 )
 
 # ── Include paths ─────────────────────────────────────────────────────
@@ -67,6 +88,7 @@ target_include_directories(arcanum-native PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/veracrypt/Crypto  # Aes.h, Sha2.h, config.h
     ${CMAKE_CURRENT_SOURCE_DIR}/veracrypt/Common  # Xts.h, Crypto.h, cpu.h, misc.h
     ${CMAKE_CURRENT_SOURCE_DIR}/fatfs          # ff.h, diskio.h, ffconf.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ext4           # ext4_io.h, ext4_device.h, ...
 )
 
 # ── Compiler flags ────────────────────────────────────────────────────
