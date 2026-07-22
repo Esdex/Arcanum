@@ -44,6 +44,7 @@ set(EXT4_SOURCES
     ext4/ext4_dir.c
     ext4/ext4_dirwrite.c
     ext4/ext4_create.c
+    ext4/ext4_mkfs.c
     ext4/ext4_device.cpp
 )
 
