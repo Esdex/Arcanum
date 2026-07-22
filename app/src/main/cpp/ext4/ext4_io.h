@@ -25,10 +25,15 @@
 extern "C" {
 #endif
 
-/* Read/write one filesystem block of `io->block_size` bytes. Return 0 on success,
- * non-zero on failure. The device implements these two and nothing else. */
-typedef int (*ext4_block_read_fn)(void *user, uint64_t block, void *buf);
-typedef int (*ext4_block_write_fn)(void *user, uint64_t block, const void *buf);
+/* Read/write one filesystem block of `block_size` bytes. Return 0 on success,
+ * non-zero on failure. The device implements these two and nothing else.
+ *
+ * block_size is passed in rather than left for the callback to find, because the
+ * callback is handed only `user` - which on the device is the container, not
+ * anything that knows the filesystem's block size. It is the size of `buf` and
+ * `block` is numbered in units of it. */
+typedef int (*ext4_block_read_fn)(void *user, uint64_t block, uint32_t block_size, void *buf);
+typedef int (*ext4_block_write_fn)(void *user, uint64_t block, uint32_t block_size, const void *buf);
 typedef int (*ext4_flush_fn)(void *user);
 
 typedef struct {

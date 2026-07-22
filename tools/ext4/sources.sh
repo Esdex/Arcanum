@@ -10,17 +10,25 @@
 #
 # So the lists live here once. Adding a module means adding it here, and every
 # suite picks it up.
+#
+# The library sources moved into the app's cpp tree so the code that ships is the
+# code that is tested - one copy, no drift. The host drivers (bench.c, alloc.c,
+# dirwrite.c, extwrite.c, fsmeta.c) and every harness stay here. EXT4_DIR points
+# at the moved sources; the drivers still live beside this file.
+EXT4_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../app/src/main/cpp/ext4" && pwd)"
 
 EXT4_HEADERS="ext4_csum.h ext4_io.h ext4_extents.h ext4_alloc.h ext4_extwrite.h ext4_dir.h ext4_dirwrite.h ext4_create.h"
 EXT4_SOURCES="ext4_csum.c ext4_io.c ext4_extents.c ext4_alloc.c ext4_ialloc.c ext4_extwrite.c ext4_dir.c ext4_dirwrite.c ext4_create.c"
 
 # mutant_stage <here> <work> <driver.c>
-#   Puts everything needed to build <driver.c> into <work>.
+#   Puts everything needed to build <driver.c> into <work>: the moved library
+#   sources from EXT4_DIR, and the driver from the harness dir `here`.
 mutant_stage() {
     local here="$1" work="$2" driver="$3" f
-    for f in $EXT4_HEADERS $EXT4_SOURCES "$driver"; do
-        cp "$here/$f" "$work/" || return 1
+    for f in $EXT4_HEADERS $EXT4_SOURCES; do
+        cp "$EXT4_DIR/$f" "$work/" || return 1
     done
+    cp "$here/$driver" "$work/" || return 1
 }
 
 # mutant_reset <here> <work>
@@ -29,7 +37,7 @@ mutant_stage() {
 mutant_reset() {
     local here="$1" work="$2" f
     for f in $EXT4_SOURCES; do
-        cp "$here/$f" "$work/" || return 1
+        cp "$EXT4_DIR/$f" "$work/" || return 1
     done
 }
 
@@ -39,7 +47,7 @@ mutant_reset() {
 mutant_changed() {
     local here="$1" work="$2" f
     for f in $EXT4_SOURCES; do
-        cmp -s "$here/$f" "$work/$f" || return 0
+        cmp -s "$EXT4_DIR/$f" "$work/$f" || return 0
     done
     return 1
 }

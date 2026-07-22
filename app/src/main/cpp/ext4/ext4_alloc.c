@@ -128,17 +128,17 @@ static void store_desc_csum(const ext4_wfs *fs, uint32_t g, uint8_t *d) {
 
 /* Host block callbacks, backing ext4_fs_open with a plain file. The device
  * supplies its own; these are why the tools need no container to run. */
-static int host_read_block(void *user, uint64_t block, void *buf) {
+static int host_read_block(void *user, uint64_t block, uint32_t block_size, void *buf) {
     ext4_wfs *fs = (ext4_wfs *)user;
-    off_t at = (off_t)block * fs->io.block_size;
+    off_t at = (off_t)block * block_size;
     if (fseeko(fs->host_fp, at, SEEK_SET)) return -1;
-    return fread(buf, 1, fs->io.block_size, fs->host_fp) == fs->io.block_size ? 0 : -1;
+    return fread(buf, 1, block_size, fs->host_fp) == block_size ? 0 : -1;
 }
-static int host_write_block(void *user, uint64_t block, const void *buf) {
+static int host_write_block(void *user, uint64_t block, uint32_t block_size, const void *buf) {
     ext4_wfs *fs = (ext4_wfs *)user;
-    off_t at = (off_t)block * fs->io.block_size;
+    off_t at = (off_t)block * block_size;
     if (fseeko(fs->host_fp, at, SEEK_SET)) return -1;
-    return fwrite(buf, 1, fs->io.block_size, fs->host_fp) == fs->io.block_size ? 0 : -1;
+    return fwrite(buf, 1, block_size, fs->host_fp) == block_size ? 0 : -1;
 }
 static int host_flush(void *user) {
     return fflush(((ext4_wfs *)user)->host_fp);
