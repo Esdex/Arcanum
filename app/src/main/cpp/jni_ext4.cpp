@@ -36,6 +36,7 @@ extern "C" {
 #include "ext4/ext4_alloc.h"
 #include "ext4/ext4_create.h"
 #include "ext4/ext4_path.h"
+#include "ext4/ext4_mkfs.h"
 }
 #include "ext4/ext4_device.h"
 
@@ -167,6 +168,45 @@ bool ext4jni_probe(int pdrv) {
 /* ─── ext4jni_get_filesystem ─────────────────────────────────────────── */
 
 jint ext4jni_get_filesystem() { return EXT4_FS_TYPE_ID; }
+
+/* ─── ext4jni_format (container creation) ────────────────────────────── */
+/*
+ * Lays down a fresh ext4 filesystem over the whole data area, the counterpart of
+ * f_mkfs on the FatFs path. Called from do_create_container after the drive is up,
+ * so every block goes through the cipher - the container's medium is the random
+ * data the create path already filled, which is exactly the "format over random
+ * bytes" case the formatter's harness covers.
+ *
+ * The geometry follows ext4_mkfs_default_params for the size, and the UUID and
+ * directory-hash seed come from /dev/urandom. They are not keys - the whole
+ * filesystem, superblock included, is encrypted on disk - but they must be random
+ * so two containers do not share a checksum seed (which is derived from the UUID).
+ *
+ * Caller holds g_fatfs_mutex.
+ */
+bool ext4jni_format(int pdrv, uint64_t dataSize) {
+    ext4_mkfs_params p;
+    memset(&p, 0, sizeof(p));
+    ext4_mkfs_default_params(&p, dataSize);
+    p.when = now_seconds();
+    if (!read_urandom(p.uuid, sizeof(p.uuid)) ||
+        !read_urandom(p.hash_seed, sizeof(p.hash_seed))) {
+        LOGE("ext4 format: /dev/urandom failed");
+        return false;
+    }
+
+    ext4_io io = ext4_device_io(&g_drives[pdrv]);
+    ext4_mkfs_result r;
+    int rc = ext4_mkfs(&io, &p, &r);
+    if (rc != EXT4_MKFS_OK) {
+        LOGE("ext4 format: mkfs failed (%d) for %llu bytes", rc,
+             (unsigned long long)dataSize);
+        return false;
+    }
+    LOGI("ext4 format: %llu blocks of %u, %u groups, %u inodes",
+         (unsigned long long)r.blocks_count, r.block_size, r.groups, r.inodes_count);
+    return true;
+}
 
 /* ─── path helpers ───────────────────────────────────────────────────── */
 
