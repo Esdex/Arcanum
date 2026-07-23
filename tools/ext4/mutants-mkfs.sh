@@ -103,7 +103,7 @@ try "free inode count does not subtract the reserved inodes" \
     's@    uint32_t free_inodes = m->inodes_per_group - used_inodes;@    uint32_t free_inodes = m->inodes_per_group;@'
 
 try "the two directories not counted in bg_used_dirs_count" \
-    's@GD_USED_DIRS_HI_OFF, (g == 0) ? 2 : 0@GD_USED_DIRS_HI_OFF, 0@'
+    's@EXT4_GD_USED_DIRS_HI_OFF, (g == 0) ? 2 : 0@EXT4_GD_USED_DIRS_HI_OFF, 0@'
 
 try "bg_itable_unused counts the reserved inodes as never used" \
     's@    uint32_t never_used  = m->inodes_per_group - used_inodes;@    uint32_t never_used  = m->inodes_per_group;@'

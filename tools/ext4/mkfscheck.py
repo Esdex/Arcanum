@@ -421,7 +421,18 @@ def check_geometry(tools, size_bytes, block_size, verbose):
         else:
             problems.append("fuse2fs would not mount a filesystem we formatted")
 
-        # Rung four: our own code, inside our own filesystem.
+        # Rung four: our own code, inside our own filesystem. A directory as well
+        # as a file - the root this formatter built is the first thing mkdir ever
+        # attaches to, and the link count it has to raise is one this wrote.
+        r = sh(dirwrite, ours, "2", "mkdir", "made-here", str(WHEN))
+        if r.returncode != 0:
+            problems.append(f"we could not make a directory in it: {r.stderr.strip()}")
+        else:
+            sub = r.stdout.strip()
+            if sh(dirwrite, ours, sub, "create", "nested.txt", str(WHEN)).returncode:
+                problems.append("we could not create a file inside that directory")
+            fsck_clean(ours, problems, "after making a directory in it")
+
         r = sh(dirwrite, ours, "2", "create", "from-arcanum.txt", str(WHEN))
         if r.returncode != 0:
             problems.append(f"we could not create a file in it: {r.stderr.strip()}")

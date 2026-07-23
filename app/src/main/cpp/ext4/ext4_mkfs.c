@@ -68,9 +68,6 @@
 #define SB_FLAGS_OFF            0x160
 #define SB_CSUM_TYPE_OFF        0x175
 
-#define GD_USED_DIRS_LO_OFF     0x10
-#define GD_USED_DIRS_HI_OFF     0x30
-
 #define INODE_MODE_OFF        0x00
 #define INODE_SIZE_LO_OFF     0x04
 #define INODE_ATIME_OFF       0x08
@@ -367,7 +364,7 @@ static int write_group(mkfs *m, uint32_t g) {
     put64(d, EXT4_GD_INODE_TABLE_LO_OFF,  EXT4_GD_INODE_TABLE_HI_OFF,  group_itable(m, g));
     put32(d, EXT4_GD_FREE_BLOCKS_LO_OFF,  EXT4_GD_FREE_BLOCKS_HI_OFF,  gb - used);
     put32(d, EXT4_GD_FREE_INODES_LO_OFF,  EXT4_GD_FREE_INODES_HI_OFF,  free_inodes);
-    put32(d, GD_USED_DIRS_LO_OFF, GD_USED_DIRS_HI_OFF, (g == 0) ? 2 : 0);
+    put32(d, EXT4_GD_USED_DIRS_LO_OFF, EXT4_GD_USED_DIRS_HI_OFF, (g == 0) ? 2 : 0);
     put32(d, EXT4_GD_ITABLE_UNUSED_LO_OFF, EXT4_GD_ITABLE_UNUSED_HI_OFF, never_used);
 
     /* bg_flags stays zero: INODE_ZEROED would claim the inode table had been

@@ -194,6 +194,15 @@ typedef struct {
  * on whatever bytes are there. Without the tail, the block has no checksum and
  * e2fsck says so the moment the directory is next read.
  */
+void ext4_dir_stamp_tail(uint8_t *block, uint32_t block_size, uint32_t seed) {
+    uint8_t *tail = block + block_size - DIR_TAIL_SIZE;
+    wr32(tail, 0);
+    wr16(tail + 4, DIR_TAIL_SIZE);
+    tail[6] = 0;
+    tail[7] = EXT4_FT_DIR_CSUM;
+    wr32(tail + 8, ext4_crc32c(seed, block, block_size - DIR_TAIL_SIZE));
+}
+
 static int fill_empty_dir_block(void *user, uint32_t logical, uint8_t *buf) {
     const empty_block_ctx *c = (const empty_block_ctx *)user;
     (void)logical;
@@ -202,12 +211,7 @@ static int fill_empty_dir_block(void *user, uint32_t logical, uint8_t *buf) {
     wr32(buf, 0);                                             /* dead */
     wr16(buf + 4, (uint16_t)(c->block_size - DIR_TAIL_SIZE));
 
-    uint8_t *tail = buf + c->block_size - DIR_TAIL_SIZE;
-    wr32(tail, 0);
-    wr16(tail + 4, DIR_TAIL_SIZE);
-    tail[6] = 0;
-    tail[7] = EXT4_FT_DIR_CSUM;
-    wr32(tail + 8, ext4_crc32c(c->seed, buf, c->block_size - DIR_TAIL_SIZE));
+    ext4_dir_stamp_tail(buf, c->block_size, c->seed);
     return 0;
 }
 
