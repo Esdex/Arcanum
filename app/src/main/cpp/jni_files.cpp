@@ -47,6 +47,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
         JNIEnv *env, jobject /*thiz*/,
         jlong handle, jstring jDirPath)
 {
+    if (ext4jni_is_container(handle)) return ext4jni_list_files(env, handle, jDirPath);
+
     jclass infoCls;
     jmethodID ctor;
     if (g_jniCache.fileInfoCls && g_jniCache.fileInfoCtor) {
@@ -246,6 +248,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
         JNIEnv *env, jobject /*thiz*/,
         jlong handle, jstring jFilePath, jlong offset, jint length)
 {
+    if (ext4jni_is_container(handle))
+        return ext4jni_read_file(env, handle, jFilePath, offset, length);
+
     // Reject non-positive or unreasonably large requests.
     // A negative length would wrap to ~4 GB when cast to UINT, causing a buffer overflow.
     if (length <= 0 || length > 16 * 1024 * 1024 || offset < 0)
@@ -348,6 +353,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteFile(
         jlong handle, jstring jFilePath,
         jbyteArray jData, jlong offset)
 {
+    if (ext4jni_is_container(handle))
+        return ext4jni_write_file(env, handle, jFilePath, jData, offset);
+
     std::string path = jstring_to_string(env, jFilePath);
 
     FIL fil;
@@ -396,6 +404,12 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteAt(
         jlong handle, jstring jFilePath,
         jbyteArray jData, jlong offset)
 {
+    /* ext4 has no non-truncating positional write; ext4jni_write_file handles the
+     * offset-0 whole-file case and refuses the rest, which is what the SAF path
+     * (Kotlin deletes before a "w" session) needs. */
+    if (ext4jni_is_container(handle))
+        return ext4jni_write_file(env, handle, jFilePath, jData, offset);
+
     std::string path = jstring_to_string(env, jFilePath);
 
     FIL fil;
@@ -461,6 +475,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeGetFilesystem(
     if (pdrv < 0) return -1;
     auto it  = g_ctxMap.find(pdrv);
     if (it == g_ctxMap.end()) return -1;
+    if (it->second->isExt4) return ext4jni_get_filesystem();
     return (jint)it->second->fatFs.fs_type;
 }
 
@@ -511,6 +526,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeDeleteFile(
         JNIEnv *env, jobject /*thiz*/,
         jlong handle, jstring jFilePath)
 {
+    if (ext4jni_is_container(handle)) return ext4jni_delete_file(env, handle, jFilePath);
+
     std::string path = jstring_to_string(env, jFilePath);
 
     std::lock_guard<std::mutex> lock(g_fatfs_mutex);
@@ -535,6 +552,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRenameFile(
         JNIEnv *env, jobject /*thiz*/,
         jlong handle, jstring jOldPath, jstring jNewPath)
 {
+    if (ext4jni_is_container(handle))
+        return ext4jni_rename(env, handle, jOldPath, jNewPath);
+
     std::string oldPath = jstring_to_string(env, jOldPath);
     std::string newPath = jstring_to_string(env, jNewPath);
 
@@ -563,6 +583,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateDirectory(
         JNIEnv *env, jobject /*thiz*/,
         jlong handle, jstring jDirPath)
 {
+    if (ext4jni_is_container(handle))
+        return ext4jni_create_directory(env, handle, jDirPath);
+
     std::string path = jstring_to_string(env, jDirPath);
 
     std::lock_guard<std::mutex> lock(g_fatfs_mutex);
@@ -608,6 +631,9 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeDeleteDirectory(
         JNIEnv *env, jobject /*thiz*/,
         jlong handle, jstring jDirPath)
 {
+    if (ext4jni_is_container(handle))
+        return ext4jni_delete_directory(env, handle, jDirPath);
+
     std::string path = jstring_to_string(env, jDirPath);
 
     std::lock_guard<std::mutex> lock(g_fatfs_mutex);
@@ -674,6 +700,8 @@ extern "C" JNIEXPORT jlongArray JNICALL
 Java_zip_arcanum_crypto_VeraCryptEngine_nativeGetFsUsage(
         JNIEnv *env, jobject /*thiz*/, jlong handle)
 {
+    if (ext4jni_is_container(handle)) return ext4jni_fs_usage(env, handle);
+
     std::lock_guard<std::mutex> lock(g_fatfs_mutex);
     int pdrv = decode_handle(handle);
     if (pdrv < 0) return nullptr;

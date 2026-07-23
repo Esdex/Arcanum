@@ -749,6 +749,7 @@ class VeraCryptEngine @Inject constructor() {
             2 -> "FAT16"
             3 -> "FAT32"
             4 -> "exFAT"
+            5 -> "ext4"
             else -> "—"
         }
 

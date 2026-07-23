@@ -468,11 +468,37 @@ extern JniCache g_jniCache;
  */
 struct ContainerCtx {
     int   pdrv;
-    FATFS fatFs;
+    FATFS fatFs;      /* zeroed and unused when isExt4 - ext4 keeps no mounted state */
     int   fd;
     bool  readOnly;
+    bool  isExt4 = false;  /* true when the volume is ext4, not FAT: the file ops in
+                              jni_files.cpp dispatch to jni_ext4.cpp, and this open
+                              skipped f_mount. */
 };
 extern std::unordered_map<int, ContainerCtx*> g_ctxMap;
+
+/* ─── ext4 file surface (jni_ext4.cpp) ───────────────────────────────── */
+/*
+ * The ext4 half of the file operations. jni_files.cpp's JNI entry points dispatch
+ * here when ext4jni_is_container(handle) is true, so the one nativeListFiles /
+ * nativeReadFile / ... serves both filesystems and Kotlin never learns which is
+ * underneath. Each of these takes g_fatfs_mutex itself, exactly like the FatFs
+ * ops, so the dispatch check must NOT hold it. jni_volume.cpp calls ext4jni_probe
+ * at mount time (under the lock) to set ContainerCtx.isExt4.
+ */
+bool         ext4jni_is_container(jlong handle);
+bool         ext4jni_probe(int pdrv);                    /* caller holds g_fatfs_mutex */
+jint         ext4jni_get_filesystem();
+jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath);
+jbyteArray   ext4jni_read_file(JNIEnv *env, jlong handle, jstring jFilePath,
+                               jlong offset, jint length);
+jint         ext4jni_write_file(JNIEnv *env, jlong handle, jstring jFilePath,
+                                jbyteArray jData, jlong offset);
+jint         ext4jni_create_directory(JNIEnv *env, jlong handle, jstring jDirPath);
+jint         ext4jni_delete_file(JNIEnv *env, jlong handle, jstring jFilePath);
+jint         ext4jni_delete_directory(JNIEnv *env, jlong handle, jstring jDirPath);
+jint         ext4jni_rename(JNIEnv *env, jlong handle, jstring jOld, jstring jNew);
+jlongArray   ext4jni_fs_usage(JNIEnv *env, jlong handle);
 
 /* Drops the streaming read cache (jni_files.cpp) if it holds an open handle on
  * this pdrv. Called from every drive mutation and from nativeCloseContainer so
