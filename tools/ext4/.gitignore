@@ -8,3 +8,4 @@ fsmeta
 mkfs
 
 __pycache__/
+pathresolve
