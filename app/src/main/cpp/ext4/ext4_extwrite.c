@@ -743,6 +743,75 @@ out:
     return rc;
 }
 
+/*
+ * The highest logical block the file reaches, from the last extent of the
+ * rightmost leaf - so one past the last block that holds anything. Zero for a file
+ * with no extents. This is the extent map's own end, deliberately not folding in
+ * i_size the way the append path does: append has to write past a trailing hole,
+ * this has to refuse to reach past the blocks that exist.
+ */
+static int file_logical_end(ext4_wfs *fs, uint8_t *root, uint8_t *storage,
+                            uint32_t *end_out) {
+    rightmost_path p;
+    int rc = find_rightmost_path(fs, root, storage, &p);
+    if (rc != EXTW_OK) return rc;
+
+    uint16_t ent = node_entries(p.buf[p.depth]);
+    if (ent == 0) { *end_out = 0; return EXTW_OK; }
+
+    const uint8_t *last = p.buf[p.depth] + 12 + (size_t)(ent - 1) * 12;
+    uint16_t raw = rd16(last + EE_LEN_OFF);
+    uint32_t len = raw > EXT4_MAX_INIT_LEN ? raw - EXT4_MAX_INIT_LEN : raw;
+    *end_out = rd32(last + EE_BLOCK_OFF) + len;
+    return EXTW_OK;
+}
+
+int ext4_set_size(ext4_wfs *fs, uint32_t ino, uint64_t size) {
+    uint8_t *inode   = malloc(fs->inode_size);
+    uint8_t *storage = malloc((size_t)(EXT4_MAX_DEPTH + 1) * fs->block_size);
+    if (!inode || !storage) { free(inode); free(storage); return EXTW_ERR_IO; }
+
+    int rc = read_inode(fs, ino, inode);
+    if (rc != EXTW_OK) goto out;
+
+    rc = EXTW_ERR_FORMAT;
+    if (!(rd32(inode + INODE_FLAGS_OFF) & EXT4_INODE_FLAG_EXTENTS)) goto out;
+    uint8_t *root = inode + INODE_IBLOCK_OFF;
+    if (rd16(root) != EXT4_EXTENT_MAGIC) goto out;
+
+    uint32_t end_logical = 0;
+    rc = file_logical_end(fs, root, storage, &end_logical);
+    if (rc != EXTW_OK) goto out;
+
+    /*
+     * The size has to land in the last mapped block. e2fsck accepts any size from
+     * the start of that block upward (a trailing hole is legal), but this refuses
+     * to reach past the block: setting a size the file has no blocks for is not a
+     * length change, it is making a hole, and that is not this function.
+     */
+    uint64_t lo = (end_logical == 0) ? 0
+                  : (uint64_t)(end_logical - 1) * fs->block_size;
+    uint64_t hi = (uint64_t)end_logical * fs->block_size;
+    if (size < lo || size > hi) {
+        EXT4_LOGE("set_size inode %u: %llu is outside the last block [%llu, %llu]",
+                  ino, (unsigned long long)size,
+                  (unsigned long long)lo, (unsigned long long)hi);
+        rc = EXTW_ERR_RANGE;
+        goto out;
+    }
+
+    inode_size_set(inode, size);
+    rc = write_inode(fs, ino, inode);
+    if (rc == EXTW_OK) rc = ext4_fs_flush(fs) ? EXTW_ERR_IO : EXTW_OK;
+    EXT4_LOGI("set_size inode %u: %llu bytes (%d)", ino,
+              (unsigned long long)size, rc);
+
+out:
+    free(inode);
+    free(storage);
+    return rc;
+}
+
 int ext4_inode_adjust_links(ext4_wfs *fs, uint32_t ino, int delta) {
     uint8_t *inode = malloc(fs->inode_size);
     if (!inode) return EXTW_ERR_IO;

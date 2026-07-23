@@ -3,6 +3,7 @@
  *
  *   extwrite <image> <inode> append <count>
  *   extwrite <image> <inode> truncate <blocks>
+ *   extwrite <image> <inode> setsize <bytes>
  *
  * Appended blocks are filled with a pattern that depends on the logical block
  * number, so reading the file back proves not just that the bytes arrived but
@@ -42,15 +43,18 @@ static const char *strerr(int rc) {
     case EXTW_ERR_NOSPACE: return "no free blocks left";
     case EXTW_ERR_DEPTH:   return "extent tree is deeper than the format allows";
     case EXTW_ERR_FULL:    return "the rightmost leaf is full and would have to be split";
+    case EXTW_ERR_RANGE:   return "that size does not fall in the file's last block";
     default:               return "unknown error";
     }
 }
 
 int main(int argc, char **argv) {
-    if (argc != 5 || (strcmp(argv[3], "append") && strcmp(argv[3], "truncate"))) {
+    if (argc != 5 || (strcmp(argv[3], "append") && strcmp(argv[3], "truncate") &&
+                      strcmp(argv[3], "setsize"))) {
         fprintf(stderr, "usage: %s <image> <inode> append <count>\n"
-                        "       %s <image> <inode> truncate <blocks>\n",
-                argv[0], argv[0]);
+                        "       %s <image> <inode> truncate <blocks>\n"
+                        "       %s <image> <inode> setsize <bytes>\n",
+                argv[0], argv[0], argv[0]);
         return 2;
     }
 
@@ -67,6 +71,9 @@ int main(int argc, char **argv) {
     int rc;
     if (!strcmp(argv[3], "truncate")) {
         rc = ext4_truncate_blocks(&fs, ino, count);
+        appended = count;
+    } else if (!strcmp(argv[3], "setsize")) {
+        rc = ext4_set_size(&fs, ino, strtoull(argv[4], NULL, 10));
         appended = count;
     } else {
         rc = ext4_append_blocks(&fs, ino, count, fill_pattern, &fs.block_size,

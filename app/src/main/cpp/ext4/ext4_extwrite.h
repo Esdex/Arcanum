@@ -23,6 +23,7 @@ extern "C" {
 #define EXTW_ERR_NOSPACE  -3   /* the filesystem has no free block left */
 #define EXTW_ERR_DEPTH    -4   /* the tree is deeper than this writer handles */
 #define EXTW_ERR_FULL     -5   /* the root is full and would have to be split */
+#define EXTW_ERR_RANGE    -6   /* a size that does not fall in the file's last block */
 
 /* Fills one block of data to append. Returns 0, or non-zero to abort. */
 typedef int (*ext4_fill_fn)(void *user, uint32_t logical, uint8_t *buf);
@@ -60,6 +61,26 @@ int ext4_append_blocks(ext4_wfs *fs, uint32_t ino, uint32_t count,
  * to depth 0 with no entries, which is what deleting a file's contents needs.
  */
 int ext4_truncate_blocks(ext4_wfs *fs, uint32_t ino, uint32_t keep_blocks);
+
+/*
+ * Sets a file's length to exactly `size` bytes.
+ *
+ * The append path grows a file by whole blocks and can only set i_size to a
+ * multiple of the block size, because that is all it knows - it maps blocks, not
+ * bytes. A real file almost never ends on a block boundary, so importing one is
+ * "append ceil(size / block_size) blocks, then trim the length to the byte". This
+ * is that trim, and nothing else does it.
+ *
+ * `size` must fall within the file's last mapped block: at or after that block's
+ * start, at or before its end. That is the exact-fit case and the whole point -
+ * a shorter size would leave allocated blocks past the end (which is truncation's
+ * job to release, not this), and a longer one would claim bytes past the blocks
+ * the file has (which is a trailing hole, a separate operation). Both are refused
+ * with EXTW_ERR_RANGE rather than silently done.
+ *
+ * A file with no blocks may only be set to size 0.
+ */
+int ext4_set_size(ext4_wfs *fs, uint32_t ino, uint64_t size);
 
 /*
  * Moves an inode's link count by `delta` and restamps its checksum.
