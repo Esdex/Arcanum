@@ -57,6 +57,7 @@ set(ARCANUM_SOURCES
     vc_header.cpp
     jni_volume.cpp
     jni_files.cpp
+    jni_ext4.cpp
     crash_handler.cpp
 )
 

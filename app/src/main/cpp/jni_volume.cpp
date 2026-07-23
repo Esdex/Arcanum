@@ -982,13 +982,24 @@ static jlong do_open_container(
          * lets it go out of scope instead of a manual delete; release() only
          * on the success path, where ownership transfers to g_ctxMap. */
         std::unique_ptr<ContainerCtx> ctx(new ContainerCtx{ pdrv, {}, fd.get(), (bool)readOnly });
-        snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
-        fr = f_mount(&ctx->fatFs, drvPath, 1);
-        if (fr != FR_OK) {
-            LOGE("[%s] f_mount failed: %d", logTag, (int)fr);
-            free_drive(pdrv);
-            return (jlong)ERR_FS;
-            /* ctx deleted by unique_ptr, fd closed by UniqueFd, both here. */
+
+        /* Which filesystem this is, decided by the volume's own bytes now that the
+         * drive decrypts. ext4 keeps no mounted state - its ops open the reader and
+         * writer fresh each time - so there is no f_mount for it; the FatFs path is
+         * unchanged. */
+        if (ext4jni_probe(pdrv)) {
+            ctx->isExt4 = true;
+            LOGI("[%s] mounted as ext4", logTag);
+            fr = FR_OK;
+        } else {
+            snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
+            fr = f_mount(&ctx->fatFs, drvPath, 1);
+            if (fr != FR_OK) {
+                LOGE("[%s] f_mount failed: %d", logTag, (int)fr);
+                free_drive(pdrv);
+                return (jlong)ERR_FS;
+                /* ctx deleted by unique_ptr, fd closed by UniqueFd, both here. */
+            }
         }
         g_ctxMap[pdrv] = ctx.release();  /* registry now owns ctx */
         fd.release();                   /* registry (via ctx->fd) now owns the fd */
@@ -1076,9 +1087,13 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCloseContainer(
         // f_close must run while the filesystem is still valid.
         invalidate_read_cache_for_pdrv(pdrv);
 
-        char drvPath[8];
-        snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
-        f_unmount(drvPath);
+        /* ext4 was never f_mounted (it keeps no FatFs state), so there is nothing to
+         * f_unmount; freeing the drive and dropping the ctx is the whole teardown. */
+        if (!ctx->isExt4) {
+            char drvPath[8];
+            snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
+            f_unmount(drvPath);
+        }
         free_drive(pdrv);
         g_ctxMap.erase(it);
     }

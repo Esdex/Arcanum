@@ -127,3 +127,16 @@ ext4_io ext4_device_io(DriveContext *drive) {
     io.block_size  = 0;         /* set from the superblock during open */
     return io;
 }
+
+void ext4_device_reader_init(ext4_device_reader *rd, DriveContext *drive) {
+    rd->drive      = drive;
+    rd->block_size = 1024;      /* the provisional view the superblock is read at */
+}
+
+int ext4_device_read_block(void *ctx, uint64_t block, void *buf) {
+    ext4_device_reader *rd = static_cast<ext4_device_reader *>(ctx);
+    /* Same decrypt-a-run-of-sectors path as the writable side's read half, sized
+     * by the reader's own block_size rather than a parameter. */
+    return dev_rw(rd->drive, block, rd->block_size, buf, /*writing=*/false) == 0
+               ? EXT4_OK : EXT4_ERR_IO;
+}
