@@ -380,23 +380,36 @@ jbyteArray ext4jni_read_file(JNIEnv *env, jlong handle, jstring jFilePath,
 
 /* ─── ext4jni_write_file ─────────────────────────────────────────────── */
 /*
- * Writes a whole file from byte 0. The extent writer only appends, so an
- * in-place write at a non-zero offset is not something this can do yet - it is
- * refused as ERR_UNSUPPORTED rather than silently mis-handled. Replacing a file
- * is unlink-then-create: the tested primitives, in the order that leaves the
- * filesystem consistent at every step.
+ * The extent writer only appends, so this supports the two writes a large file
+ * is actually streamed in with, and refuses the rest:
+ *
+ *   offset 0            replace the file - unlink any existing one, create it
+ *                       fresh, write this chunk as its whole contents.
+ *   offset == its size  append at the end. A big file arrives as 1 MiB chunks
+ *                       written back to back (FileManagerViewModel and the media
+ *                       import), so every chunk but the first lands here, exactly
+ *                       at the current end of a block-aligned file.
+ *   anything else       a mid-file overwrite or a gap past the end - a positional
+ *                       write the append-only writer cannot do. ERR_UNSUPPORTED.
+ *
+ * The old version accepted only offset 0 and rejected every later chunk, which
+ * made importing any file over 1 MiB fail after the first chunk and get rolled
+ * back - the file was written whole and then deleted.
  */
 namespace {
 
 struct WriteSrc {
     const uint8_t *data;
-    uint64_t       len;
+    uint64_t       len;           /* bytes in this chunk */
     uint32_t       bs;
+    uint32_t       base_logical;  /* file-logical block of the first byte here */
 };
 
 int fill_from_src(void *user, uint32_t logical, uint8_t *buf) {
     const WriteSrc *s = static_cast<const WriteSrc *>(user);
-    uint64_t off = (uint64_t)logical * s->bs;
+    /* logical is the file-absolute block; the chunk starts at base_logical, so the
+     * data offset is measured from there rather than from the start of the file. */
+    uint64_t off = (uint64_t)(logical - s->base_logical) * s->bs;
     uint32_t n = 0;
     if (off < s->len) {
         uint64_t rem = s->len - off;
@@ -407,12 +420,89 @@ int fill_from_src(void *user, uint32_t logical, uint8_t *buf) {
     return 0;
 }
 
+/*
+ * Appends this chunk to `ino`, whose data currently ends at byte `start` (a whole
+ * number of blocks), and trims the length to `final_size`. Caller holds the lock
+ * and owns `w`.
+ */
+jint write_chunk(JNIEnv *env, int pdrv, ext4_wfs *w, uint32_t ino,
+                 jbyteArray jData, jsize len, uint64_t start, uint64_t final_size) {
+    if (len <= 0) return ERR_OK;   /* an empty chunk leaves the file as it is */
+
+    jbyte *data = env->GetByteArrayElements(jData, nullptr);
+    if (!data) return ERR_FS;
+
+    uint32_t bs      = w->block_size;
+    uint32_t nblocks = (uint32_t)(((uint64_t)len + bs - 1) / bs);
+    WriteSrc src{ (const uint8_t *)data, (uint64_t)len, bs, (uint32_t)(start / bs) };
+    uint32_t appended = 0;
+    int arc = ext4_append_blocks(w, ino, nblocks, fill_from_src, &src, &appended);
+    env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
+
+    if (arc != EXTW_OK || appended != nblocks)
+        return write_error(pdrv, arc == EXTW_ERR_NOSPACE ? ERR_NO_SPACE : ERR_FS);
+    if (ext4_set_size(w, ino, final_size) != EXTW_OK)
+        return write_error(pdrv, ERR_FS);
+    return ERR_OK;
+}
+
+/* offset 0: the chunk is the file's whole new contents. */
+jint write_from_zero(JNIEnv *env, int pdrv, ext4_wfs *w, const ext4_fs *r,
+                     uint32_t dir_ino, const char *name, jbyteArray jData, jsize len) {
+    uint32_t existing = 0;
+    int lrc = ext4_dir_lookup(r, dir_ino, name, &existing);
+    if (lrc == EXT4_DIRW_OK) {
+        uint8_t inode[256];
+        memset(inode, 0, sizeof(inode));
+        if (ext4_read_inode_raw(r, existing, inode, sizeof(inode)) == EXT4_OK &&
+            (rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR)
+            return ERR_FS;   /* a directory is not a file to overwrite */
+        if (ext4_unlink_file(w, r, dir_ino, name, now_seconds()) != EXT4_DIRW_OK)
+            return write_error(pdrv, ERR_FS);
+    }
+
+    uint32_t ino = 0;
+    int crc = ext4_create_file(w, r, dir_ino, name, 0644, now_seconds(), &ino);
+    if (crc != EXT4_DIRW_OK)
+        return crc == EXT4_CREATE_ERR_NOINODE ? ERR_NO_SPACE : write_error(pdrv, ERR_FS);
+
+    return write_chunk(env, pdrv, w, ino, jData, len, /*start=*/0, /*final=*/(uint64_t)len);
+}
+
+/* offset > 0: append this chunk at the end of the existing file. */
+jint append_at_eof(JNIEnv *env, int pdrv, ext4_wfs *w, const ext4_fs *r,
+                   uint32_t dir_ino, const char *name, jbyteArray jData, jsize len,
+                   uint64_t offset) {
+    uint32_t ino = 0;
+    int lrc = ext4_dir_lookup(r, dir_ino, name, &ino);
+    if (lrc == EXT4_DIRW_ERR_ABSENT) return ERR_FILE;   /* nothing to append to */
+    if (lrc != EXT4_DIRW_OK) return ERR_FS;
+
+    uint8_t inode[256];
+    memset(inode, 0, sizeof(inode));
+    if (ext4_read_inode_raw(r, ino, inode, sizeof(inode)) != EXT4_OK) return ERR_FS;
+    if ((rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR) return ERR_FS;
+
+    uint64_t size = ext4_inode_size(inode);
+    uint32_t bs   = w->block_size;
+    /* Only a sequential append onto a block-aligned end can be done by appending.
+     * Chunked import always writes here exactly, chunk after chunk; anything else
+     * is a positional write. */
+    if (offset != size || (size % bs) != 0) {
+        LOGE("ext4: write at offset %llu but file is %llu bytes (block %u) - only a "
+             "sequential block-aligned append is supported",
+             (unsigned long long)offset, (unsigned long long)size, bs);
+        return ERR_UNSUPPORTED;
+    }
+
+    return write_chunk(env, pdrv, w, ino, jData, len, /*start=*/offset,
+                       /*final=*/offset + (uint64_t)len);
+}
+
 } // namespace
 
 jint ext4jni_write_file(JNIEnv *env, jlong handle, jstring jFilePath,
                         jbyteArray jData, jlong offset) {
-    if (offset != 0) return ERR_UNSUPPORTED;   /* append-only writer, no in-place */
-
     std::string path = jstring_to_string(env, jFilePath);
     jsize len = env->GetArrayLength(jData);
 
@@ -431,58 +521,11 @@ jint ext4jni_write_file(JNIEnv *env, jlong handle, jstring jFilePath,
 
     ext4_wfs w;
     if (!open_writer(pdrv, &w)) return ERR_FS;
-    jint result = ERR_OK;
 
-    /* Replace: an existing file of the same name goes first. A directory of that
-     * name is not a file to overwrite. */
-    uint32_t existing = 0;
-    int lrc = ext4_dir_lookup(&r.fs, dir_ino, name, &existing);
-    if (lrc == EXT4_DIRW_OK) {
-        uint8_t inode[256];
-        memset(inode, 0, sizeof(inode));
-        if (ext4_read_inode_raw(&r.fs, existing, inode, sizeof(inode)) == EXT4_OK &&
-            (rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR) {
-            result = ERR_FS;
-            goto done;
-        }
-        if (ext4_unlink_file(&w, &r.fs, dir_ino, name, now_seconds()) != EXT4_DIRW_OK) {
-            result = write_error(pdrv, ERR_FS);
-            goto done;
-        }
-    }
+    jint result = (offset == 0)
+        ? write_from_zero(env, pdrv, &w, &r.fs, dir_ino, name, jData, len)
+        : append_at_eof(env, pdrv, &w, &r.fs, dir_ino, name, jData, len, (uint64_t)offset);
 
-    {
-        uint32_t ino = 0;
-        int crc = ext4_create_file(&w, &r.fs, dir_ino, name, 0644, now_seconds(), &ino);
-        if (crc != EXT4_DIRW_OK) {
-            result = crc == EXT4_CREATE_ERR_NOINODE ? ERR_NO_SPACE
-                                                    : write_error(pdrv, ERR_FS);
-            goto done;
-        }
-
-        if (len > 0) {
-            jbyte *data = env->GetByteArrayElements(jData, nullptr);
-            if (!data) { result = ERR_FS; goto done; }
-
-            uint32_t bs      = w.block_size;
-            uint32_t nblocks = (uint32_t)(((uint64_t)len + bs - 1) / bs);
-            WriteSrc src{ (const uint8_t *)data, (uint64_t)len, bs };
-            uint32_t appended = 0;
-            int arc = ext4_append_blocks(&w, ino, nblocks, fill_from_src, &src, &appended);
-            env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
-
-            if (arc != EXTW_OK || appended != nblocks) {
-                result = write_error(pdrv, arc == EXTW_ERR_NOSPACE ? ERR_NO_SPACE : ERR_FS);
-                goto done;
-            }
-            if (ext4_set_size(&w, ino, (uint64_t)len) != EXTW_OK) {
-                result = write_error(pdrv, ERR_FS);
-                goto done;
-            }
-        }
-    }
-
-done:
     ext4_fs_close(&w);
     return result;
 }
