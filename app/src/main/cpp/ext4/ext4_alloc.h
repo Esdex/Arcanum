@@ -37,6 +37,8 @@ extern "C" {
 #define EXT4_GD_BLOCK_BITMAP_LO_OFF 0x00
 #define EXT4_GD_INODE_BITMAP_LO_OFF 0x04
 #define EXT4_GD_FREE_INODES_LO_OFF  0x0E
+#define EXT4_GD_USED_DIRS_LO_OFF    0x10
+#define EXT4_GD_USED_DIRS_HI_OFF    0x30
 #define EXT4_GD_ITABLE_UNUSED_LO_OFF 0x1C
 #define EXT4_GD_INODE_BITMAP_HI_OFF 0x24
 #define EXT4_GD_FREE_INODES_HI_OFF  0x2E
@@ -130,6 +132,18 @@ int64_t ext4_alloc_inode(ext4_wfs *fs);
 /* Gives one back. Returns 0, or -1 if it is out of range, reserved, in a group
  * whose bitmap was never written, or was not allocated in the first place. */
 int ext4_free_inode(ext4_wfs *fs, uint32_t ino);
+
+/*
+ * Moves bg_used_dirs_count for the group `ino` belongs to, by +1 or -1.
+ *
+ * Kept apart from allocating the inode because only some inodes are directories,
+ * and the descriptor cannot tell: to it an inode is an inode. Nothing else in the
+ * write path touches this counter, which is exactly why it is easy to forget -
+ * e2fsck counts directories for itself and compares, so a mkdir that does not
+ * move it leaves every structure well-formed and the filesystem disagreeing with
+ * itself about how many directories it holds.
+ */
+int ext4_adjust_used_dirs(ext4_wfs *fs, uint32_t ino, int delta);
 
 #ifdef __cplusplus
 }

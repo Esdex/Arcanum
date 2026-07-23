@@ -73,6 +73,16 @@ static void group_set_free_inodes(const ext4_wfs *fs, uint8_t *d, uint32_t v) {
     if (is_64bit(fs)) wr16(d + EXT4_GD_FREE_INODES_HI_OFF, (uint16_t)(v >> 16));
 }
 
+static uint32_t group_used_dirs(const ext4_wfs *fs, const uint8_t *d) {
+    uint32_t v = rd16(d + EXT4_GD_USED_DIRS_LO_OFF);
+    if (is_64bit(fs)) v |= (uint32_t)rd16(d + EXT4_GD_USED_DIRS_HI_OFF) << 16;
+    return v;
+}
+static void group_set_used_dirs(const ext4_wfs *fs, uint8_t *d, uint32_t v) {
+    wr16(d + EXT4_GD_USED_DIRS_LO_OFF, (uint16_t)v);
+    if (is_64bit(fs)) wr16(d + EXT4_GD_USED_DIRS_HI_OFF, (uint16_t)(v >> 16));
+}
+
 static uint32_t group_itable_unused(const ext4_wfs *fs, const uint8_t *d) {
     uint32_t v = rd16(d + EXT4_GD_ITABLE_UNUSED_LO_OFF);
     if (is_64bit(fs)) v |= (uint32_t)rd16(d + EXT4_GD_ITABLE_UNUSED_HI_OFF) << 16;
@@ -175,6 +185,30 @@ int64_t ext4_alloc_inode(ext4_wfs *fs) {
 done:
     free(bitmap);
     return result;
+}
+
+/*
+ * The counter no other operation moves. See the header for why it is separate;
+ * what matters here is that it is the descriptor's own field, so the checksum has
+ * to be restamped after it - the same dependency every other update in this
+ * directory has.
+ */
+int ext4_adjust_used_dirs(ext4_wfs *fs, uint32_t ino, int delta) {
+    uint32_t ipg = fs->inodes_per_group;
+    if (ipg == 0 || ino == 0) return -1;
+
+    uint32_t g = (ino - 1) / ipg;
+    if (g >= fs->groups) return -1;
+
+    uint8_t *d = group_desc(fs, g);
+    uint32_t v = group_used_dirs(fs, d);
+    /* Going below zero would wrap into a count of 65535 directories, which reads
+     * as corruption rather than as the mistake it is. */
+    if (delta < 0 && v == 0) return -1;
+
+    group_set_used_dirs(fs, d, (uint32_t)((int64_t)v + delta));
+    store_desc_csum(fs, g, d);
+    return 0;
 }
 
 int ext4_free_inode(ext4_wfs *fs, uint32_t ino) {

@@ -137,13 +137,13 @@ try "new block given no checksum tail" \
     's@    tail\[7\] = EXT4_FT_DIR_CSUM;@@'
 
 try "new block's checksum covers the tail as well" \
-    's@    wr32(tail + 8, ext4_crc32c(c->seed, buf, c->block_size - DIR_TAIL_SIZE));@    wr32(tail + 8, ext4_crc32c(c->seed, buf, c->block_size));@' \
-    "Masked by what happens next: growth is always followed immediately by placing the
-              entry that needed it, and that write restamps the block correctly. The value
-              of getting it right here is not steady state, it is the moment in between -
-              a block that reached disk formatted but not yet used has to already verify,
-              or a crash there leaves a directory e2fsck has to repair. Not reachable
-              without interrupting the pair."
+    's@    wr32(tail + 8, ext4_crc32c(seed, block, block_size - DIR_TAIL_SIZE));@    wr32(tail + 8, ext4_crc32c(seed, block, block_size));@' \
+    "Masked in *this* path by what happens next: a grown block is always followed
+              immediately by placing the entry that needed it, and that write restamps the
+              block correctly, so dirwcheck never sees the wrong value. The same helper is
+              exercised without that mask by mkdir, which stamps a fresh block nothing
+              rewrites - mutants-mkdir catches this exact break there. Kept here to record
+              that the growth path cannot reach it, not that nothing can."
 
 try "growth adds nothing and reports success" \
     's@    int rc = ext4_append_blocks(w, dir_ino, 1, fill_empty_dir_block, \&ctx, \&added);@    int rc = ext4_append_blocks(w, dir_ino, 0, fill_empty_dir_block, \&ctx, \&added); added = 1;@'

@@ -55,10 +55,10 @@ echo "create and delete mutation tests (each should read caught, or untestable w
 # The fields that make a zeroed inode into a file.
 
 try "new inode left without a link count" \
-    's@    wr16(inode + INODE_LINKS_COUNT_OFF, 1);@@'
+    's@    wr16(inode + INODE_LINKS_COUNT_OFF, links);@@'
 
 try "new inode left without its mode" \
-    's@    wr16(inode + INODE_MODE_OFF, (uint16_t)(EXT4_S_IFREG | (mode \& 0x0FFF)));@@'
+    's@    wr16(inode + INODE_MODE_OFF, mode);@@'
 
 try "new inode not marked as using extents" \
     's@    wr32(inode + INODE_FLAGS_OFF, EXT4_INODE_FLAG_EXTENTS);@@'

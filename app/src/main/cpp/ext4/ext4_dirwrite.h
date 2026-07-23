@@ -33,11 +33,12 @@ extern "C" {
 /*
  * Puts `name` in `dir_ino`, pointing at `ino`.
  *
- * Only reuses room already inside the directory's blocks - either a dead entry or
- * the padding a live one is holding beyond the length of its own name. Growing
- * the directory by a block is refused with EXT4_DIRW_ERR_NOROOM rather than done
- * half way; that needs the extent writer and a newly formatted block, and is its
- * own piece of work.
+ * Takes room already inside the directory's blocks first - either a dead entry or
+ * the padding a live one holds beyond the length of its own name. When no block
+ * has a gap that fits, the directory grows by one, formatted and ready, and the
+ * search runs once more. A second failure is not a full directory but a block
+ * that came back unusable, and is returned as EXT4_DIRW_ERR_NOROOM rather than
+ * retried.
  */
 int ext4_dir_add(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
                  uint32_t ino, uint8_t file_type, const char *name);
@@ -62,6 +63,17 @@ int ext4_dir_remove(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
  */
 int ext4_dir_lookup(const ext4_fs *r, uint32_t dir_ino, const char *name,
                     uint32_t *ino_out);
+
+/*
+ * Writes the 12-byte tail at the end of a freshly built directory block: a dead
+ * entry carrying the block's checksum, seeded per the owning inode.
+ *
+ * Exported because two layers build a directory block from nothing - this one
+ * when a directory grows, and ext4_create.c for the first block of a new
+ * directory - and the block and its checksum must never be assembled apart. The
+ * caller fills the entries first; this closes the block.
+ */
+void ext4_dir_stamp_tail(uint8_t *block, uint32_t block_size, uint32_t seed);
 
 #ifdef __cplusplus
 }
