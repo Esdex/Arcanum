@@ -16,4 +16,6 @@ $CC $FLAGS -o "$HERE/extwrite" "$HERE/extwrite.c" $(L ext4_extwrite.c ext4_alloc
 $CC $FLAGS -o "$HERE/dirwrite" "$HERE/dirwrite.c" \
     $(L ext4_create.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
 $CC $FLAGS -o "$HERE/mkfs"     "$HERE/mkfs.c"     $(L ext4_mkfs.c ext4_io.c ext4_csum.c)
-echo "built: bench fsmeta alloc extwrite dirwrite mkfs"
+$CC $FLAGS -o "$HERE/pathresolve" "$HERE/pathresolve.c" \
+    $(L ext4_path.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
+echo "built: bench fsmeta alloc extwrite dirwrite mkfs pathresolve"

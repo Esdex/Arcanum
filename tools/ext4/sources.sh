@@ -17,8 +17,8 @@
 # at the moved sources; the drivers still live beside this file.
 EXT4_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../app/src/main/cpp/ext4" && pwd)"
 
-EXT4_HEADERS="ext4_csum.h ext4_log.h ext4_io.h ext4_extents.h ext4_alloc.h ext4_extwrite.h ext4_dir.h ext4_dirwrite.h ext4_create.h ext4_mkfs.h"
-EXT4_SOURCES="ext4_csum.c ext4_io.c ext4_extents.c ext4_alloc.c ext4_ialloc.c ext4_extwrite.c ext4_dir.c ext4_dirwrite.c ext4_create.c ext4_mkfs.c"
+EXT4_HEADERS="ext4_csum.h ext4_log.h ext4_io.h ext4_extents.h ext4_alloc.h ext4_extwrite.h ext4_dir.h ext4_dirwrite.h ext4_create.h ext4_mkfs.h ext4_path.h"
+EXT4_SOURCES="ext4_csum.c ext4_io.c ext4_extents.c ext4_alloc.c ext4_ialloc.c ext4_extwrite.c ext4_dir.c ext4_dirwrite.c ext4_create.c ext4_mkfs.c ext4_path.c"
 
 # mutant_stage <here> <work> <driver.c>
 #   Puts everything needed to build <driver.c> into <work>: the moved library
