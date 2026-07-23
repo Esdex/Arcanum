@@ -677,6 +677,11 @@ static jint do_create_container(
      * sequence runs under one g_fatfs_mutex critical section (diskio.cpp's
      * callbacks run synchronously inside f_mkfs on this same thread and must
      * NOT re-lock — see the comment on g_fatfs_mutex). */
+    /* filesystem: 0 = FAT (FAT32), 1 = exFAT, 2 = ext4. FAT and exFAT go through
+     * FatFs's f_mkfs; ext4 is formatted by the clean-room formatter over the same
+     * decrypting device, so its metadata is written encrypted just like the FAT
+     * BPB is. The MKFS_PARM setup below is only read on the FatFs path. */
+    const bool wantExt4 = (filesystem == 2);
     char drvPath[8];
     BYTE  work[4096];
     BYTE  fmtFlag = (filesystem == 1) ? (FM_EXFAT|FM_SFD) : ((FM_FAT|FM_FAT32)|FM_SFD);
@@ -700,8 +705,12 @@ static jint do_create_container(
             LOGE("[%s] No drive slot", logTag);
             fail_cleanup(); return ERR_NO_SLOT;
         }
-        snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
-        fr = f_mkfs(drvPath, &opts, work, sizeof(work));
+        if (wantExt4) {
+            fr = ext4jni_format(pdrv, dataSize) ? FR_OK : FR_DISK_ERR;
+        } else {
+            snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
+            fr = f_mkfs(drvPath, &opts, work, sizeof(work));
+        }
         free_drive(pdrv);
     }
 

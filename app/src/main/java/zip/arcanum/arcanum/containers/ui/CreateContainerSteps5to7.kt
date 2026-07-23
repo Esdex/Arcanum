@@ -488,6 +488,11 @@ private fun FilesystemCard(
                             OsChip("macOS", true)
                             OsChip("Linux", true)
                         }
+                        FilesystemType.EXT4 -> {
+                            OsChip("Windows", false)
+                            OsChip("macOS", false)
+                            OsChip("Linux", true)
+                        }
                     }
                 }
             }

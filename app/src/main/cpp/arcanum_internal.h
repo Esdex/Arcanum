@@ -488,6 +488,7 @@ extern std::unordered_map<int, ContainerCtx*> g_ctxMap;
  */
 bool         ext4jni_is_container(jlong handle);
 bool         ext4jni_probe(int pdrv);                    /* caller holds g_fatfs_mutex */
+bool         ext4jni_format(int pdrv, uint64_t dataSize); /* caller holds g_fatfs_mutex */
 jint         ext4jni_get_filesystem();
 jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath);
 jbyteArray   ext4jni_read_file(JNIEnv *env, jlong handle, jstring jFilePath,

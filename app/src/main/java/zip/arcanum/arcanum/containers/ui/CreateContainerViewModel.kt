@@ -74,6 +74,12 @@ enum class FilesystemType(
         description = "Best for files larger than 4 GB (videos, disk images)",
         info        = "exFAT is a modern filesystem designed for flash storage. It supports files larger than 4 GB and works on all major operating systems."
     ),
+    EXT4(
+        displayName = "ext4",
+        maxFileSize = "16 TB",
+        description = "Linux-native, for large vaults",
+        info        = "ext4 is the standard Linux filesystem. It supports very large files and directories.\n\nCompatibility: reads and writes on Linux and Android. On Windows and macOS it needs third-party software."
+    ),
 }
 
 data class CreateContainerState(
