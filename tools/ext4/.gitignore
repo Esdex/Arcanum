@@ -9,3 +9,4 @@ mkfs
 
 __pycache__/
 pathresolve
+chunkwrite
