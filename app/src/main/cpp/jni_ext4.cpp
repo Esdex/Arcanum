@@ -439,8 +439,14 @@ jint write_chunk(JNIEnv *env, int pdrv, ext4_wfs *w, uint32_t ino,
     int arc = ext4_append_blocks(w, ino, nblocks, fill_from_src, &src, &appended);
     env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
 
+    /* EXTW_ERR_FULL is reported as "no space" too: it means the file is too
+     * fragmented for its extent tree to grow further, which the user can only act
+     * on the same way as a full container - "it will not fit" is the honest surface
+     * for both. It is very hard to reach (a near-checkerboard container); the real
+     * fix is to split the full node (see the backlog issue), not to change this. */
     if (arc != EXTW_OK || appended != nblocks)
-        return write_error(pdrv, arc == EXTW_ERR_NOSPACE ? ERR_NO_SPACE : ERR_FS);
+        return write_error(pdrv, (arc == EXTW_ERR_NOSPACE || arc == EXTW_ERR_FULL)
+                                     ? ERR_NO_SPACE : ERR_FS);
     if (ext4_set_size(w, ino, final_size) != EXTW_OK)
         return write_error(pdrv, ERR_FS);
     return ERR_OK;
@@ -594,8 +600,10 @@ jint ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
         int wrc = ext4_write_at(&w, &r.fs, ino, (uint64_t)offset,
                                 (const uint8_t *)data, (uint32_t)len);
         env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
+        /* EXTW_ERR_FULL joins NOSPACE: a file too fragmented for its extent tree to
+         * grow is a "will not fit" as far as the caller can do anything about it. */
         if (wrc != EXTW_OK)
-            result = wrc == EXTW_ERR_NOSPACE ? ERR_NO_SPACE
+            result = (wrc == EXTW_ERR_NOSPACE || wrc == EXTW_ERR_FULL) ? ERR_NO_SPACE
                    : wrc == EXTW_ERR_RANGE   ? ERR_UNSUPPORTED  /* a sparse/hole write */
                                              : write_error(pdrv, ERR_FS);
     }
