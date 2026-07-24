@@ -10,6 +10,7 @@
 #define ARCANUM_EXT4_EXTWRITE_H
 
 #include "ext4_alloc.h"
+#include "ext4_extents.h"
 
 #include <stdint.h>
 
@@ -81,6 +82,29 @@ int ext4_truncate_blocks(ext4_wfs *fs, uint32_t ino, uint32_t keep_blocks);
  * A file with no blocks may only be set to size 0.
  */
 int ext4_set_size(ext4_wfs *fs, uint32_t ino, uint64_t size);
+
+/*
+ * Writes `len` bytes at `offset` into the file at `ino`, without truncating it -
+ * a positional write, the thing the append-only path could not do.
+ *
+ * It is composed, not new machinery. Bytes that land in blocks the file already
+ * has are spliced into them in place (ext4_io_pwrite reads each block first, so
+ * the untouched bytes survive) - no block moves and the extent tree is not
+ * touched. Bytes past the current end become new blocks by the ordinary append
+ * path, and the length is trimmed to the exact byte afterward. The only writer
+ * this adds over what append/set_size already do is the arithmetic that decides
+ * which bytes go where, which is what a per-byte read-back check exercises.
+ *
+ * Needs the reader as well as the writer: the reader maps each existing logical
+ * block to its physical one, the writer puts the bytes back.
+ *
+ * `offset` may be no further than the file's current end. Starting past it would
+ * leave a sparse hole, which the append-only writer cannot create, and a hole
+ * already inside the file (a foreign sparse file) cannot be written into either;
+ * both are EXTW_ERR_RANGE. A zero-length write does nothing.
+ */
+int ext4_write_at(ext4_wfs *w, const ext4_fs *r, uint32_t ino,
+                  uint64_t offset, const uint8_t *data, uint32_t len);
 
 /*
  * Moves an inode's link count by `delta` and restamps its checksum.

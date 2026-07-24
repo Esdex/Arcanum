@@ -11,3 +11,4 @@ __pycache__/
 pathresolve
 chunkwrite
 rename
+writeat

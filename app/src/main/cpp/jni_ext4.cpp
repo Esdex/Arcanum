@@ -530,6 +530,82 @@ jint ext4jni_write_file(JNIEnv *env, jlong handle, jstring jFilePath,
     return result;
 }
 
+/* ─── ext4jni_write_at ───────────────────────────────────────────────── */
+/*
+ * The non-truncating positional write behind nativeWriteAt (the SAF
+ * DocumentsProvider). Unlike ext4jni_write_file - which recreates the file at
+ * offset 0, the right thing for a chunked import - this opens the file and writes
+ * where asked without discarding the rest, so an app seeking backward to patch a
+ * header does not lose everything after it. The file is created if absent; an
+ * empty array just touches it into being. All the real work is ext4_write_at.
+ */
+jint ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
+                      jbyteArray jData, jlong offset) {
+    std::string path = jstring_to_string(env, jFilePath);
+    jsize len = env->GetArrayLength(jData);
+    if (offset < 0) return ERR_FS;
+
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    int pdrv = ext4_pdrv(handle);
+    if (pdrv < 0) return ERR_NO_SLOT;
+    if (is_read_only(pdrv)) return ERR_READ_ONLY;
+
+    Reader r;
+    if (!open_reader(pdrv, &r)) return ERR_FS;
+
+    uint32_t dir_ino = 0;
+    char name[256];
+    int prc = ext4_resolve_parent(&r.fs, path.c_str(), &dir_ino, name, sizeof(name));
+    if (prc != EXT4_PATH_OK) return path_error(prc);
+
+    ext4_wfs w;
+    if (!open_writer(pdrv, &w)) return ERR_FS;
+
+    /* Opened, not recreated: create only when the name is not there, and never
+     * write over a directory of that name. */
+    uint32_t ino = 0;
+    int lrc = ext4_dir_lookup(&r.fs, dir_ino, name, &ino);
+    if (lrc == EXT4_DIRW_ERR_ABSENT) {
+        int crc = ext4_create_file(&w, &r.fs, dir_ino, name, 0644, now_seconds(), &ino);
+        if (crc != EXT4_DIRW_OK) {
+            ext4_fs_close(&w);
+            return crc == EXT4_CREATE_ERR_NOINODE ? ERR_NO_SPACE : write_error(pdrv, ERR_FS);
+        }
+    } else if (lrc != EXT4_DIRW_OK) {
+        ext4_fs_close(&w);
+        return ERR_FS;
+    } else {
+        uint8_t inode[256];
+        memset(inode, 0, sizeof(inode));
+        if (ext4_read_inode_raw(&r.fs, ino, inode, sizeof(inode)) != EXT4_OK) {
+            ext4_fs_close(&w);
+            return ERR_FS;
+        }
+        if ((rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR) {
+            ext4_fs_close(&w);
+            return ERR_FS;   /* a directory is not a file to write into */
+        }
+    }
+
+    jint result = ERR_OK;
+    if (len > 0) {
+        jbyte *data = env->GetByteArrayElements(jData, nullptr);
+        if (!data) { ext4_fs_close(&w); return ERR_FS; }
+        int wrc = ext4_write_at(&w, &r.fs, ino, (uint64_t)offset,
+                                (const uint8_t *)data, (uint32_t)len);
+        env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
+        if (wrc != EXTW_OK)
+            result = wrc == EXTW_ERR_NOSPACE ? ERR_NO_SPACE
+                   : wrc == EXTW_ERR_RANGE   ? ERR_UNSUPPORTED  /* a sparse/hole write */
+                                             : write_error(pdrv, ERR_FS);
+    }
+    /* len == 0 has already touched the file into existence, which is what the SAF
+     * path asks of an empty write. */
+
+    ext4_fs_close(&w);
+    return result;
+}
+
 /* ─── ext4jni_create_directory ───────────────────────────────────────── */
 
 jint ext4jni_create_directory(JNIEnv *env, jlong handle, jstring jDirPath) {
