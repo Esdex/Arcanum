@@ -75,6 +75,23 @@ int ext4_dir_lookup(const ext4_fs *r, uint32_t dir_ino, const char *name,
  */
 void ext4_dir_stamp_tail(uint8_t *block, uint32_t block_size, uint32_t seed);
 
+/*
+ * Repoints the ".." entry of `dir_ino` at `new_parent`.
+ *
+ * A directory's ".." is an ordinary entry in its first block naming its parent, so
+ * moving the directory to a new parent is not done until this rewrites it - and
+ * with it the parent's link count, which the mover handles. Reads the first block,
+ * finds "..", rewrites only its inode field and restamps the block's checksum;
+ * everything else in the block is left exactly as it was. Refuses a directory whose
+ * first block holds no ".." (a corrupt one) rather than inventing it.
+ *
+ * Not for general entry editing - it is the one field rename has to touch that
+ * ext4_dir_add and ext4_dir_remove do not, and keeping it here keeps the block's
+ * checksum from being assembled anywhere the writer does not already own.
+ */
+int ext4_dir_set_dotdot(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
+                        uint32_t new_parent);
+
 #ifdef __cplusplus
 }
 #endif
