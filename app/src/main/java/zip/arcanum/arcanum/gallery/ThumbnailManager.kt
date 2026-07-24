@@ -321,6 +321,22 @@ class ThumbnailManager @Inject constructor(
         _invalidatedIds.tryEmit(fileId)
     }
 
+    // Moves a file's disk-cached thumbnail to follow a rename. The cache file is keyed
+    // by the file's path, so without this the renamed file has no thumbnail and the old
+    // one is orphaned. Moving keeps the thumbnail the gallery already has rather than
+    // regenerating it; if the move cannot be done the stale entry is dropped so it is
+    // regenerated on next request. The emit re-reads the in-memory copy under the new path.
+    fun renameFileCache(containerId: String, oldPath: String, newPath: String, fileId: String) {
+        val old = cacheFile(containerId, oldPath)
+        val new = cacheFile(containerId, newPath)
+        if (old.exists()) {
+            new.parentFile?.mkdirs()
+            new.delete()
+            if (!old.renameTo(new)) old.delete()
+        }
+        _invalidatedIds.tryEmit(fileId)
+    }
+
     fun deleteFileCacheEntry(containerId: String, filePath: String) {
         cacheFile(containerId, filePath).delete()
     }

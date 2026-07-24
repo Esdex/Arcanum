@@ -746,6 +746,33 @@ class FileManagerViewModel @Inject constructor(
         mediaFileDao.deleteByPathPrefix(containerId, prefix)
     }
 
+    // Follows a file rename into the Gallery: the same row keeps its stable id (so the
+    // in-memory bitmap survives) but takes the new path and name, and its thumbnail cache
+    // is moved to match. The @Update re-emits Room's Flow, so the gallery updates live.
+    // A no-op when the renamed file is not indexed media (getByPath returns null).
+    private suspend fun renameFileMedia(containerId: String, oldPath: String, newPath: String, newName: String) {
+        val entity = mediaFileDao.getByPath(containerId, oldPath) ?: return
+        mediaFileDao.updateMediaFile(entity.copy(relativePath = newPath, fileName = newName))
+        thumbnailManager.renameFileCache(containerId, oldPath, newPath, entity.id)
+    }
+
+    // A renamed directory moves every media file beneath it. Only the path prefix changes;
+    // each file keeps its own name. Mirrors cleanupDirectoryMedia, rewriting instead of deleting.
+    private suspend fun renameDirectoryMedia(containerId: String, oldDir: String, newDir: String) {
+        // Normalise trailing slashes so the prefix swap is exact whichever form the path
+        // arrives in: "/a/b.jpg".substring("/a".length) is "/b.jpg", giving newDir + "/b.jpg".
+        val cleanOld = oldDir.trimEnd('/')
+        val cleanNew = newDir.trimEnd('/')
+        val prefix = "$cleanOld/"
+        mediaFileDao.getAllForContainerOnce(containerId)
+            .filter { it.relativePath.startsWith(prefix) }
+            .forEach { entity ->
+                val newPath = cleanNew + entity.relativePath.substring(cleanOld.length)
+                mediaFileDao.updateMediaFile(entity.copy(relativePath = newPath))
+                thumbnailManager.renameFileCache(containerId, entity.relativePath, newPath, entity.id)
+            }
+    }
+
     fun createFolder(name: String) {
         val s = _state.value
         if (s.isReadOnly) {
@@ -784,6 +811,15 @@ class FileManagerViewModel @Inject constructor(
             val result = runCatching { engine.renameFile(handle, file.path, newPath) }.getOrDefault(VeraCryptEngine.ERR_FS)
             val success = result == VeraCryptEngine.ERR_OK
             if (success) {
+                // The Gallery's Room row and the thumbnail cache are keyed by the file's
+                // path, so a rename has to move them too - otherwise the media viewer shows
+                // the old name and a placeholder until the container is remounted. The disk
+                // rename already succeeded, so a hiccup syncing the index must not crash or
+                // block the result - at worst it falls back to the old remount behaviour.
+                runCatching {
+                    if (file.isDirectory) renameDirectoryMedia(s.containerId, file.path, newPath)
+                    else                  renameFileMedia(s.containerId, file.path, newPath, finalName)
+                }
                 refreshNow()
                 _state.update { it.copy(pendingNotification = InAppNotification.FileRenamed(finalName)) }
             }
