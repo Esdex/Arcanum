@@ -666,12 +666,36 @@ jint ext4jni_delete_directory(JNIEnv *env, jlong handle, jstring jDirPath) {
 
 /* ─── ext4jni_rename ─────────────────────────────────────────────────── */
 
-jint ext4jni_rename(JNIEnv *env, jlong handle, jstring /*jOld*/, jstring /*jNew*/) {
-    (void)env; (void)handle;
-    /* Rename needs a primitive the ext4 library does not have yet: moving an entry
-     * between directories, and for a directory re-parenting its "..". Refused
-     * rather than approximated, since a half-done move corrupts. */
-    return ERR_UNSUPPORTED;
+jint ext4jni_rename(JNIEnv *env, jlong handle, jstring jOld, jstring jNew) {
+    std::string oldp = jstring_to_string(env, jOld);
+    std::string newp = jstring_to_string(env, jNew);
+
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    int pdrv = ext4_pdrv(handle);
+    if (pdrv < 0) return ERR_NO_SLOT;
+    if (is_read_only(pdrv)) return ERR_READ_ONLY;
+
+    Reader r;
+    if (!open_reader(pdrv, &r)) return ERR_FS;
+
+    /* Both ends are resolved to a parent inode and a final name, the shape
+     * ext4_rename works in. The root has no parent, so renaming it is EINVAL from
+     * resolve_parent, which path_error maps like any other bad path. The final
+     * names may not exist yet - the destination must not, the source must. */
+    uint32_t src_parent = 0, dst_parent = 0;
+    char src_name[256], dst_name[256];
+    int prc = ext4_resolve_parent(&r.fs, oldp.c_str(), &src_parent, src_name, sizeof(src_name));
+    if (prc != EXT4_PATH_OK) return path_error(prc);
+    prc = ext4_resolve_parent(&r.fs, newp.c_str(), &dst_parent, dst_name, sizeof(dst_name));
+    if (prc != EXT4_PATH_OK) return path_error(prc);
+
+    ext4_wfs w;
+    if (!open_writer(pdrv, &w)) return ERR_FS;
+
+    int rc = ext4_rename(&w, &r.fs, src_parent, src_name, dst_parent, dst_name);
+    ext4_fs_close(&w);
+
+    return rc == EXT4_DIRW_OK ? ERR_OK : write_error(pdrv, ERR_FS);
 }
 
 /* ─── ext4jni_fs_usage ───────────────────────────────────────────────── */

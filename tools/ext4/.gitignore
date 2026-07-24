@@ -10,3 +10,4 @@ mkfs
 __pycache__/
 pathresolve
 chunkwrite
+rename

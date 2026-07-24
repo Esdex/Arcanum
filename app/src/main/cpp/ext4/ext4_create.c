@@ -414,3 +414,123 @@ int ext4_rmdir(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
               rc == EXT4_DIRW_OK ? "ok" : "flush failed");
     return rc;
 }
+
+/* ── moving an entry ──────────────────────────────────────────────────────── */
+
+/*
+ * True if moving `moving_dir` so that it lives under `dst_parent` would put it
+ * inside its own subtree. Walks up from the destination by ".."; if the directory
+ * being moved is on that path to the root, the move would cut a cycle off from the
+ * tree - every inode in the moved subtree unreachable, its blocks still in use.
+ *
+ * Read-only, and bounded: a ".." that points at itself is the root and ends the
+ * walk, and a depth cap ends it on a tree too deep or too damaged to prove safe,
+ * which is refused rather than trusted.
+ */
+static int would_loop(const ext4_fs *r, uint32_t moving_dir, uint32_t dst_parent) {
+    uint32_t cur = dst_parent;
+    for (int depth = 0; depth < 128; depth++) {
+        if (cur == moving_dir) return 1;
+        uint32_t up = 0;
+        if (ext4_dir_lookup(r, cur, "..", &up) != EXT4_DIRW_OK) return 0;
+        if (up == cur) return 0;            /* the root: ".." names itself */
+        cur = up;
+    }
+    return 1;
+}
+
+int ext4_rename(ext4_wfs *w, const ext4_fs *r,
+                uint32_t src_parent, const char *src_name,
+                uint32_t dst_parent, const char *dst_name) {
+    EXT4_LOGI("rename '%s' (dir %u) -> '%s' (dir %u)",
+              src_name, src_parent, dst_name, dst_parent);
+
+    /* Renaming a thing to the name it already has, in the directory it is already
+     * in, is success with nothing done. Checked before the destination's existence
+     * so this is not mistaken for a clash with itself. */
+    if (src_parent == dst_parent && strcmp(src_name, dst_name) == 0) {
+        EXT4_LOGI("rename: source and destination are the same, nothing to do");
+        return EXT4_DIRW_OK;
+    }
+
+    uint32_t src_ino = 0;
+    int rc = ext4_dir_lookup(r, src_parent, src_name, &src_ino);
+    if (rc != EXT4_DIRW_OK) {
+        EXT4_LOGE("rename: source '%s' not found (%d)", src_name, rc);
+        return rc;
+    }
+
+    /* The destination must be free. Replacing what is there is a different
+     * operation - it has to refuse a file over a directory and a directory over a
+     * non-empty one, and without a journal its unlink-then-link loses the replaced
+     * inode on a crash. Refused here rather than half-done. */
+    uint32_t clash = 0;
+    rc = ext4_dir_lookup(r, dst_parent, dst_name, &clash);
+    if (rc == EXT4_DIRW_OK) {
+        EXT4_LOGE("rename: destination '%s' already exists (inode %u)", dst_name, clash);
+        return EXT4_DIRW_ERR_EXISTS;
+    }
+    if (rc != EXT4_DIRW_ERR_ABSENT) return rc;
+
+    uint8_t inode[256];
+    memset(inode, 0, sizeof(inode));
+    if (ext4_read_inode_raw(r, src_ino, inode, sizeof(inode)) != EXT4_OK)
+        return EXT4_DIRW_ERR_IO;
+    int     is_dir = (rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR;
+    uint8_t ftype  = is_dir ? EXT4_FT_DIR : EXT4_FT_REG_FILE;
+    int     across = (src_parent != dst_parent);
+
+    /* A directory cannot descend into itself. Only possible when it changes parent,
+     * and it must be caught before anything is written - the check walks the tree
+     * the move is about to alter. */
+    if (is_dir && across && would_loop(r, src_ino, dst_parent)) {
+        EXT4_LOGE("rename: directory '%s' (inode %u) would be moved inside itself",
+                  src_name, src_ino);
+        return EXT4_CREATE_ERR_LOOP;
+    }
+
+    /*
+     * The new name first, the old name last. Between them the inode carries two
+     * names - reachable by both, which e2fsck reconciles - rather than the window
+     * where it is reachable by neither. The inode's own link count is untouched:
+     * one name became one name.
+     */
+    rc = ext4_dir_add(w, r, dst_parent, src_ino, ftype, dst_name);
+    if (rc != EXT4_DIRW_OK) {
+        EXT4_LOGE("rename: adding '%s' in dir %u failed (%d)", dst_name, dst_parent, rc);
+        return rc;
+    }
+
+    /*
+     * A directory that changed parent has a ".." that now lies, and two parent link
+     * counts that are now wrong. All three move together, and before the old name
+     * is removed: the new parent already names the directory, so its count and the
+     * directory's own ".." should already agree with that.
+     */
+    if (is_dir && across) {
+        rc = ext4_dir_set_dotdot(w, r, src_ino, dst_parent);
+        if (rc != EXT4_DIRW_OK) {
+            EXT4_LOGE("rename: repointing '..' of inode %u failed (%d)", src_ino, rc);
+            return rc;
+        }
+        if (ext4_inode_adjust_links(w, dst_parent, 1) != EXTW_OK) return EXT4_DIRW_ERR_IO;
+    }
+
+    rc = ext4_dir_remove(w, r, src_parent, src_name);
+    if (rc != EXT4_DIRW_OK) {
+        EXT4_LOGE("rename: removing old name '%s' from dir %u failed (%d)",
+                  src_name, src_parent, rc);
+        return rc;
+    }
+
+    /* The old parent loses the link its ".." used to be. Done after the name is
+     * gone, so at no point does the count claim a ".." that is still there. */
+    if (is_dir && across) {
+        if (ext4_inode_adjust_links(w, src_parent, -1) != EXTW_OK) return EXT4_DIRW_ERR_IO;
+    }
+
+    rc = ext4_fs_flush(w) ? EXT4_DIRW_ERR_IO : EXT4_DIRW_OK;
+    EXT4_LOGI("rename '%s' -> '%s': %s", src_name, dst_name,
+              rc == EXT4_DIRW_OK ? "ok" : "flush failed");
+    return rc;
+}

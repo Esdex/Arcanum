@@ -409,3 +409,51 @@ done:
     free(buf);
     return rc;
 }
+
+int ext4_dir_set_dotdot(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
+                        uint32_t new_parent) {
+    if (new_parent == 0) return EXT4_DIRW_ERR_FORMAT;
+
+    uint8_t dir[256];
+    memset(dir, 0, sizeof(dir));
+    if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
+        return EXT4_DIRW_ERR_IO;
+
+    if (is_htree(dir)) {
+        EXT4_LOGE("dir inode %u is hash-indexed (htree); refusing to rewrite its "
+                  "'..' rather than corrupting it", dir_ino);
+        return EXT4_DIRW_ERR_HTREE;
+    }
+
+    uint32_t seed = inode_seed_of(w, r, dir_ino);
+    uint8_t *buf  = malloc(w->block_size);
+    if (!buf) return EXT4_DIRW_ERR_IO;
+
+    /* ".." is always in the directory's first block - it is written there when the
+     * directory is created and nothing moves it. */
+    uint64_t phys = 0;
+    int rc = read_dir_block(w, r, dir, 0, buf, &phys);
+    if (rc != EXT4_DIRW_OK) { free(buf); return rc; }
+
+    uint32_t limit = chain_limit(w, buf);
+    rc = EXT4_DIRW_ERR_ABSENT;
+    for (uint32_t off = 0; off + DIRENT_HEADER <= limit; ) {
+        uint32_t cur_ino = rd32(buf + off);
+        uint16_t rec     = rd16(buf + off + 4);
+        uint8_t  nlen    = buf[off + 6];
+        if (rec < DIRENT_HEADER || (rec & 3) || off + rec > limit) {
+            rc = EXT4_DIRW_ERR_FORMAT;
+            break;
+        }
+        if (cur_ino != 0 && nlen == 2 &&
+            buf[off + DIRENT_HEADER] == '.' && buf[off + DIRENT_HEADER + 1] == '.') {
+            wr32(buf + off, new_parent);                 /* only the inode field */
+            rc = write_dir_block(w, phys, buf, seed);    /* restamps the checksum */
+            break;
+        }
+        off += rec;
+    }
+
+    free(buf);
+    return rc;
+}

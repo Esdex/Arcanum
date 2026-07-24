@@ -22,6 +22,7 @@ extern "C" {
 #define EXT4_CREATE_ERR_NOINODE  -7
 #define EXT4_CREATE_ERR_NOTDIR   -9   /* the name is there but is not a directory */
 #define EXT4_CREATE_ERR_NOTEMPTY -10  /* it still holds something other than . and .. */
+#define EXT4_CREATE_ERR_LOOP     -11  /* a directory would be moved inside itself */
 
 /*
  * Makes an empty regular file called `name` in `dir_ino` and reports its inode.
@@ -71,6 +72,37 @@ int ext4_mkdir(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
  */
 int ext4_rmdir(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
                const char *name, uint32_t when);
+
+/*
+ * Moves `src_name` in `src_parent` to `dst_name` in `dst_parent` - a rename in one
+ * directory, a move between two, or both at once. Works for a file or a directory.
+ *
+ * Like create and unlink, the order is the substance: the new name is added before
+ * the old one is removed, so the thing being moved is reachable by at least one
+ * name at every moment a crash could stop it - never by neither. What survives a
+ * crash between the two is an extra name, which e2fsck reconciles, not a lost inode.
+ *
+ * The source inode's own link count never changes - it has exactly one name before
+ * and after. What does move, and only when a directory crosses to a new parent, is
+ * three things nothing about the entry implies: its ".." is repointed at the new
+ * parent, the new parent gains the link that ".." is, and the old parent loses it.
+ *
+ * Refused rather than approximated:
+ *   dst exists      replacing a destination is a separate operation with its own
+ *                   rules and its own crash window that loses the replaced thing;
+ *                   EXT4_DIRW_ERR_EXISTS
+ *   into itself     a directory moved inside its own subtree becomes a cycle cut
+ *                   off from the root; EXT4_CREATE_ERR_LOOP
+ * A source and destination that name the same thing is success with nothing done.
+ *
+ * No timestamp is taken: a rename moves references, it does not birth or kill an
+ * inode, so unlike create/unlink/mkdir/rmdir there is no dtime to set. The moved
+ * inode and the two directories keep the times they had - a deliberate minimum,
+ * since no check here verifies a timestamp and unverified writes are not added.
+ */
+int ext4_rename(ext4_wfs *w, const ext4_fs *r,
+                uint32_t src_parent, const char *src_name,
+                uint32_t dst_parent, const char *dst_name);
 
 #ifdef __cplusplus
 }
