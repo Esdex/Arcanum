@@ -119,7 +119,7 @@ try "descriptor checksummed over the classic 32 bytes instead of all 64" \
 # lost+found. That third one is the easy one to lose.
 
 try "root directory given two links instead of three" \
-    's@init_dir_inode(m, inode, 0755, 3, m->root_block, 1);@init_dir_inode(m, inode, 0755, 2, m->root_block, 1);@'
+    's@init_dir_inode(m, inode, 0777, 3, m->root_block, 1);@init_dir_inode(m, inode, 0777, 2, m->root_block, 1);@'
 
 try "lost+found given one link instead of two" \
     's@init_dir_inode(m, inode, 0700, 2, m->lpf_block, m->lpf_blocks);@init_dir_inode(m, inode, 0700, 1, m->lpf_block, m->lpf_blocks);@'

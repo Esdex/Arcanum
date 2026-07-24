@@ -519,8 +519,11 @@ static int write_directories(mkfs *m) {
     uint8_t *inode = malloc(m->inode_size);
     if (!inode) return EXT4_MKFS_ERR_NOMEM;
 
-    /* Three links to root: its own name, its own "..", and lost+found's "..". */
-    init_dir_inode(m, inode, 0755, 3, m->root_block, 1);
+    /* Three links to root: its own name, its own "..", and lost+found's "..".
+     * 0777, not mke2fs's 0755: the inode owner is root and a desktop mounts the
+     * decrypted container as an ordinary user, who would otherwise be unable to
+     * create anything at the top level. See init_inode in ext4_create.c. */
+    init_dir_inode(m, inode, 0777, 3, m->root_block, 1);
     int rc = write_inode(m, ROOT_INO, inode);
     if (rc == EXT4_MKFS_OK) {
         init_dir_inode(m, inode, 0700, 2, m->lpf_block, m->lpf_blocks);

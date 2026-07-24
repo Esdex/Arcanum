@@ -289,6 +289,19 @@ def allowed_ranges(ref, sb, uninit, shortened):
         if flags & BG_INODE_UNINIT:
             blk = desc_field(ref_d, sb, g, "inode_bitmap")
             ok.append((blk * bs, (blk + 1) * bs))
+
+    # The root directory inode is the one inode this formatter writes with a mode
+    # mke2fs would not: 0777 rather than 0755. The inode owner is root, and a
+    # desktop mounts the decrypted container as an ordinary user who could
+    # otherwise not create anything at the top level - the same reason created
+    # files and directories are widened to world access (see ext4_mkfs.c and
+    # init_inode in ext4_create.c). Only i_mode and the inode checksum that covers
+    # it differ; every other byte of inode 2 stays under comparison.
+    itable = desc_field(ref_d, sb, 0, "inode_table")
+    rino = itable * bs + (2 - 1) * sb.inode_size
+    ok.append((rino + 0x00, rino + 0x02))   # i_mode
+    ok.append((rino + 0x7C, rino + 0x7E))   # i_checksum_lo
+    ok.append((rino + 0x82, rino + 0x84))   # i_checksum_hi
     return ok
 
 

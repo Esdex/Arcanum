@@ -78,7 +78,14 @@ static void wr32(uint8_t *p, uint32_t v) {
  *
  *   i_dtime      zero means "not deleted"; a nonzero one on a linked inode is
  *                the contradiction e2fsck reports first
- *   i_uid/i_gid  zero, which is what the container is mounted as
+ *   i_uid/i_gid  zero (root). The app reads and writes raw ext4 and ignores
+ *                ownership, but a desktop mounts the decrypted container as an
+ *                ordinary user, to whom a root-owned inode is only as accessible
+ *                as its "other" bits allow - which is why the callers widen the
+ *                mode to world rw (files) / rwx (dirs) rather than leaving the
+ *                classic 0644/0755. The owner cannot be set to the desktop user
+ *                because that uid is unknown when the file is written, and this
+ *                mirrors FAT/exFAT, which store no ownership at all.
  *   i_blocks     zero, no blocks yet
  *   i_generation zero, matching what mke2fs writes for its own files
  */
@@ -138,7 +145,10 @@ int ext4_create_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
 
     uint8_t *inode = malloc(w->inode_size);
     if (!inode) { ext4_free_inode(w, (uint32_t)ino); return EXT4_DIRW_ERR_IO; }
-    init_inode(inode, w->inode_size, (uint16_t)(EXT4_S_IFREG | (mode & 0x0FFF)),
+    /* Widened to world rw: the inode owner is root and a desktop mounts the
+     * decrypted container as an ordinary user, who would see a root-owned 0644
+     * file as read-only (the lock in a file manager). See init_inode. */
+    init_inode(inode, w->inode_size, (uint16_t)(EXT4_S_IFREG | (mode & 0x0FFF) | 0666),
                1, when);
 
     rc = ext4_write_inode_raw(w, (uint32_t)ino, inode);
@@ -302,7 +312,10 @@ int ext4_mkdir(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
      */
     uint8_t *inode = malloc(w->inode_size);
     if (!inode) { ext4_free_inode(w, (uint32_t)ino); return EXT4_DIRW_ERR_IO; }
-    init_inode(inode, w->inode_size, (uint16_t)(EXT4_S_IFDIR | (mode & 0x0FFF)),
+    /* Widened to world rwx for the same reason a created file is world rw: a
+     * root-owned 0755 directory is read-only to a desktop user, who then cannot
+     * add or remove anything inside it. See init_inode. */
+    init_inode(inode, w->inode_size, (uint16_t)(EXT4_S_IFDIR | (mode & 0x0FFF) | 0777),
                2, when);
     rc = ext4_write_inode_raw(w, (uint32_t)ino, inode);
     free(inode);
