@@ -404,11 +404,12 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteAt(
         jlong handle, jstring jFilePath,
         jbyteArray jData, jlong offset)
 {
-    /* ext4 has no non-truncating positional write; ext4jni_write_file handles the
-     * offset-0 whole-file case and refuses the rest, which is what the SAF path
-     * (Kotlin deletes before a "w" session) needs. */
+    /* ext4's non-truncating positional write. Unlike ext4jni_write_file (which
+     * recreates the file at offset 0, for chunked import), this opens the file and
+     * writes in place at any offset without discarding the rest - the OPEN_ALWAYS
+     * semantics this SAF entry point promises. */
     if (ext4jni_is_container(handle))
-        return ext4jni_write_file(env, handle, jFilePath, jData, offset);
+        return ext4jni_write_at(env, handle, jFilePath, jData, offset);
 
     std::string path = jstring_to_string(env, jFilePath);
 

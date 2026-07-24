@@ -34,6 +34,7 @@
 #define _FILE_OFFSET_BITS 64
 
 #include "ext4_extwrite.h"
+#include "ext4_extents.h"
 #include "ext4_csum.h"
 #include "ext4_log.h"
 
@@ -810,6 +811,119 @@ out:
     free(inode);
     free(storage);
     return rc;
+}
+
+/* ── positional write ─────────────────────────────────────────────────────── */
+
+/*
+ * Fills one appended block with the part of a positional write that falls in it,
+ * zeroing the rest. `logical` is the file-absolute block; the write covers the
+ * byte range [offset, end), so this block's share is that range clipped to
+ * [logical*bs, logical*bs + bs).
+ */
+typedef struct {
+    const uint8_t *data;
+    uint64_t       offset;
+    uint64_t       end;
+    uint32_t       bs;
+} writeat_src;
+
+static int fill_writeat(void *user, uint32_t logical, uint8_t *buf) {
+    const writeat_src *s = (const writeat_src *)user;
+    uint64_t blk0    = (uint64_t)logical * s->bs;
+    uint64_t blk_end = blk0 + s->bs;
+    memset(buf, 0, s->bs);
+    uint64_t from = s->offset > blk0 ? s->offset : blk0;
+    uint64_t to   = s->end < blk_end ? s->end : blk_end;
+    if (from < to)
+        memcpy(buf + (from - blk0), s->data + (from - s->offset), (size_t)(to - from));
+    return 0;
+}
+
+int ext4_write_at(ext4_wfs *w, const ext4_fs *r, uint32_t ino,
+                  uint64_t offset, const uint8_t *data, uint32_t len) {
+    if (len == 0) return EXTW_OK;
+
+    uint8_t inode[256];
+    memset(inode, 0, sizeof(inode));
+    if (ext4_read_inode_raw(r, ino, inode, sizeof(inode)) != EXT4_OK)
+        return EXTW_ERR_IO;
+
+    uint32_t bs     = w->block_size;
+    uint64_t i_size = ext4_inode_size(inode);
+    uint64_t end    = offset + (uint64_t)len;
+
+    /*
+     * A write may start no further than the current end of the file. Starting past
+     * it would leave the bytes in between undefined - a sparse hole - which the
+     * append-only writer cannot create, since it only ever maps blocks contiguously
+     * from the end. Refused rather than approximated.
+     */
+    if (offset > i_size) {
+        EXT4_LOGE("write_at inode %u: offset %llu past end %llu would make a hole",
+                  ino, (unsigned long long)offset, (unsigned long long)i_size);
+        return EXTW_ERR_RANGE;
+    }
+
+    uint32_t first  = (uint32_t)(offset / bs);
+    uint32_t last   = (uint32_t)((end - 1) / bs);
+    uint32_t mapped = (uint32_t)((i_size + bs - 1) / bs);
+
+    /*
+     * Phase A - overwrite the blocks the file already has. Each touched logical
+     * block is mapped to its physical one and the overlapping byte slice written
+     * in place. ext4_io_pwrite reads the block first, so the bytes outside the
+     * slice survive; no block moves and the extent tree is untouched.
+     */
+    if (mapped > 0 && first <= mapped - 1) {
+        uint32_t hi = last < mapped - 1 ? last : mapped - 1;
+        for (uint32_t L = first; L <= hi; L++) {
+            uint64_t phys = 0;
+            int uninit = 0;
+            if (ext4_map_block(r, inode, L, &phys, &uninit) != EXT4_OK)
+                return EXTW_ERR_IO;
+            /* A hole inside the file - only a foreign sparse file has one - cannot
+             * be written to without allocating into the middle of the tree, which
+             * this does not do. phys 0 is also the front of the device, never a
+             * data block, so writing there would corrupt the superblock. */
+            if (phys == 0 || uninit) {
+                EXT4_LOGE("write_at inode %u: logical block %u is a hole", ino, L);
+                return EXTW_ERR_RANGE;
+            }
+            uint64_t blk0 = (uint64_t)L * bs;
+            uint64_t from = offset > blk0 ? offset : blk0;
+            uint64_t to   = end < blk0 + bs ? end : blk0 + bs;
+            if (ext4_io_pwrite(&w->io, phys * (uint64_t)bs + (from - blk0),
+                               data + (from - offset), (size_t)(to - from)))
+                return EXTW_ERR_IO;
+        }
+    }
+
+    /*
+     * Phase B - the part of the write past the current end becomes new blocks,
+     * appended by the same path any growing file uses and filled with the write's
+     * own bytes.
+     */
+    if (last >= mapped) {
+        uint32_t count = last - mapped + 1;
+        writeat_src src = { data, offset, end, bs };
+        uint32_t appended = 0;
+        int arc = ext4_append_blocks(w, ino, count, fill_writeat, &src, &appended);
+        if (arc != EXTW_OK) return arc;
+        if (appended != count) return EXTW_ERR_NOSPACE;
+    }
+
+    /*
+     * Phase C - the exact length. Append sets i_size to a whole number of blocks; a
+     * write ending mid-block, or one that only overwrote and grew inside the last
+     * block, needs it trimmed to the byte. Only grows the file, never shrinks it.
+     */
+    if (end > i_size) {
+        int ssc = ext4_set_size(w, ino, end);
+        if (ssc != EXTW_OK) return ssc;
+    }
+
+    return ext4_fs_flush(w) ? EXTW_ERR_IO : EXTW_OK;
 }
 
 int ext4_inode_adjust_links(ext4_wfs *fs, uint32_t ino, int delta) {

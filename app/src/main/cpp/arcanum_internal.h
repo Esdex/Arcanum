@@ -495,6 +495,8 @@ jbyteArray   ext4jni_read_file(JNIEnv *env, jlong handle, jstring jFilePath,
                                jlong offset, jint length);
 jint         ext4jni_write_file(JNIEnv *env, jlong handle, jstring jFilePath,
                                 jbyteArray jData, jlong offset);
+jint         ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
+                              jbyteArray jData, jlong offset);
 jint         ext4jni_create_directory(JNIEnv *env, jlong handle, jstring jDirPath);
 jint         ext4jni_delete_file(JNIEnv *env, jlong handle, jstring jFilePath);
 jint         ext4jni_delete_directory(JNIEnv *env, jlong handle, jstring jDirPath);

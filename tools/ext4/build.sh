@@ -12,7 +12,7 @@ L() { for f in "$@"; do echo "$EXT4_DIR/$f"; done; }
 $CC $FLAGS -o "$HERE/bench"    "$HERE/bench.c"    $(L ext4_extents.c ext4_dir.c ext4_csum.c)
 $CC $FLAGS -o "$HERE/fsmeta"   "$HERE/fsmeta.c"   $(L ext4_csum.c)
 $CC $FLAGS -o "$HERE/alloc"    "$HERE/alloc.c"    $(L ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
-$CC $FLAGS -o "$HERE/extwrite" "$HERE/extwrite.c" $(L ext4_extwrite.c ext4_alloc.c ext4_io.c ext4_csum.c)
+$CC $FLAGS -o "$HERE/extwrite" "$HERE/extwrite.c" $(L ext4_extwrite.c ext4_extents.c ext4_alloc.c ext4_io.c ext4_csum.c)
 $CC $FLAGS -o "$HERE/dirwrite" "$HERE/dirwrite.c" \
     $(L ext4_create.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
 $CC $FLAGS -o "$HERE/mkfs"     "$HERE/mkfs.c"     $(L ext4_mkfs.c ext4_io.c ext4_csum.c)
@@ -22,4 +22,6 @@ $CC $FLAGS -o "$HERE/chunkwrite" "$HERE/chunkwrite.c" \
     $(L ext4_path.c ext4_create.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
 $CC $FLAGS -o "$HERE/rename"   "$HERE/rename.c" \
     $(L ext4_path.c ext4_create.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
-echo "built: bench fsmeta alloc extwrite dirwrite mkfs pathresolve chunkwrite rename"
+$CC $FLAGS -o "$HERE/writeat"  "$HERE/writeat.c" \
+    $(L ext4_path.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
+echo "built: bench fsmeta alloc extwrite dirwrite mkfs pathresolve chunkwrite rename writeat"
