@@ -103,7 +103,7 @@ try "a new directory given one link instead of two" \
     's@               2, when);@               1, when);@'
 
 try "the new inode not marked as a directory" \
-    's@(uint16_t)(EXT4_S_IFDIR | (mode \& 0x0FFF)),@(uint16_t)(EXT4_S_IFREG | (mode \& 0x0FFF)),@'
+    's@(uint16_t)(EXT4_S_IFDIR | (mode \& 0x0FFF) | 0777),@(uint16_t)(EXT4_S_IFREG | (mode \& 0x0FFF) | 0777),@'
 
 try "the entry in the parent typed as a regular file" \
     's@EXT4_FT_DIR, name);@EXT4_FT_REG_FILE, name);@'
