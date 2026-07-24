@@ -12,3 +12,4 @@ pathresolve
 chunkwrite
 rename
 writeat
+fullwrite
