@@ -1,4 +1,16 @@
 /*
+ * Arcanum - VeraCrypt-compatible encrypted vault manager for Android
+ *
+ * Copyright (C) 2026 Esdex
+ * Licensed under Apache License 2.0
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Host test harness for the clean-room ext4 library - PC-only, not shipped in the
+ * app. e2fsprogs (e2fsck/debugfs/mke2fs) and fuse2fs are used as external oracles,
+ * run as separate processes, never linked or copied. See issue #7.
+ */
+
+/*
  * Driver for the rename/move primitive (ext4_rename): the same composition the JNI
  * bridge drives on the device (jni_ext4.cpp's ext4jni_rename) - resolve both ends
  * to a parent inode and a final name, then ext4_rename in its crash-safe order.

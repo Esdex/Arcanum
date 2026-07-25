@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# Arcanum - VeraCrypt-compatible encrypted vault manager for Android
+#
+# Copyright (C) 2026 Esdex
+# Licensed under Apache License 2.0
+# SPDX-License-Identifier: Apache-2.0
+#
+# Host test harness for the clean-room ext4 library - PC-only, not shipped in the
+# app. e2fsprogs and fuse2fs are used as external oracles (separate processes),
+# never linked or copied. See issue #7.
+
 r"""
 The harness for rename/move (ext4_rename): renaming an entry in place, moving one
 to another directory, and moving a directory - which also has to repoint its ".."
