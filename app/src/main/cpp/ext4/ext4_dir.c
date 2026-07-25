@@ -81,6 +81,19 @@ int ext4_dir_iterate(const ext4_fs *fs, const uint8_t *inode,
     uint64_t size = ext4_inode_size(inode);
     uint8_t  blk[EXT4_MAX_BLOCK_SIZE];
 
+    /*
+     * One ext4_read_file per block re-walks the extent tree each time, which a code
+     * review flagged as O(blocks x walk). It is left as is on purpose: the walk
+     * only touches the disk once the tree has an index block, i.e. past ~340 blocks
+     * at 4 KiB - a single directory of ~20000 entries, which this never builds (it
+     * grows a directory one block at a time, staying depth 0, and refuses htree).
+     * Below that the extent root is in the inode's 60 bytes, so the re-walk is a few
+     * bytes of parsing with no I/O, and reading the whole directory into one buffer
+     * to avoid it would add a malloc and a larger read to every small-directory
+     * lookup - the common case - to speed up one that does not occur. So the honest
+     * trade is to leave the reader, which every read and every path lookup goes
+     * through, exactly as verified.
+     */
     for (uint64_t off = 0; off < size; off += fs->block_size) {
         /* Read through the file layer rather than the block layer, so a directory
          * with a hole in it reads as zeroes - which parse as one dead entry

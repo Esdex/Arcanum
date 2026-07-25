@@ -75,7 +75,8 @@ typedef struct {
     FILE    *host_fp;
     uint8_t  sb[1024];
     uint8_t *desc;             /* the whole descriptor table, held in memory */
-    uint8_t *bitmap;           /* scratch for one group's block bitmap */
+    uint8_t *bitmap;           /* the block bitmap of group `bitmap_group` */
+    int64_t  bitmap_group;     /* which group `bitmap` holds, or -1 for none */
     uint32_t block_size;
     uint32_t blocks_per_group;
     uint32_t first_data_block;
