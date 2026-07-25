@@ -1,4 +1,16 @@
 /*
+ * Arcanum - VeraCrypt-compatible encrypted vault manager for Android
+ *
+ * Copyright (C) 2026 Esdex
+ * Licensed under Apache License 2.0
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Host test harness for the clean-room ext4 library - PC-only, not shipped in the
+ * app. e2fsprogs (e2fsck/debugfs/mke2fs) and fuse2fs are used as external oracles,
+ * run as separate processes, never linked or copied. See issue #7.
+ */
+
+/*
  * Host harness: walks one inode's extent tree in an image file and prints the
  * result, so check.py can diff it against what debugfs reported.
  *

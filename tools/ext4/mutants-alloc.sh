@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# Arcanum - VeraCrypt-compatible encrypted vault manager for Android
+#
+# Copyright (C) 2026 Esdex
+# Licensed under Apache License 2.0
+# SPDX-License-Identifier: Apache-2.0
+#
+# Host test harness for the clean-room ext4 library - PC-only, not shipped in the
+# app. e2fsprogs and fuse2fs are used as external oracles (separate processes),
+# never linked or copied. See issue #7.
+
 # Measures fsckcheck.py, not the allocator. 40/40 green means nothing until a
 # deliberately broken allocator is shown to fail, and the write path is where that
 # matters most: a wrong reader returns a wrong number, but a wrong writer can

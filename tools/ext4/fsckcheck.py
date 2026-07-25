@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# Arcanum - VeraCrypt-compatible encrypted vault manager for Android
+#
+# Copyright (C) 2026 Esdex
+# Licensed under Apache License 2.0
+# SPDX-License-Identifier: Apache-2.0
+#
+# Host test harness for the clean-room ext4 library - PC-only, not shipped in the
+# app. e2fsprogs and fuse2fs are used as external oracles (separate processes),
+# never linked or copied. See issue #7.
+
 r"""
 The harness for the write path. Everything up to now compared our answer against
 debugfs and a wrong answer showed up as a wrong number. That does not carry over:

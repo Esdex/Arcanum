@@ -1,4 +1,16 @@
 /*
+ * Arcanum - VeraCrypt-compatible encrypted vault manager for Android
+ *
+ * Copyright (C) 2026 Esdex
+ * Licensed under Apache License 2.0
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Host test harness for the clean-room ext4 library - PC-only, not shipped in the
+ * app. e2fsprogs (e2fsck/debugfs/mke2fs) and fuse2fs are used as external oracles,
+ * run as separate processes, never linked or copied. See issue #7.
+ */
+
+/*
  * Driver that reproduces the JNI write path (jni_ext4.cpp's ext4jni_write_file):
  * a file streamed in as a run of chunks, chunk 0 creating the file and every
  * later chunk appending at the current end. This is the exact composition the

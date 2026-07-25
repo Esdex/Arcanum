@@ -1,3 +1,13 @@
+# Arcanum - VeraCrypt-compatible encrypted vault manager for Android
+#
+# Copyright (C) 2026 Esdex
+# Licensed under Apache License 2.0
+# SPDX-License-Identifier: Apache-2.0
+#
+# Host test harness for the clean-room ext4 library - PC-only, not shipped in the
+# app. e2fsprogs and fuse2fs are used as external oracles (separate processes),
+# never linked or copied. See issue #7.
+
 # The one place that knows what this directory is made of.
 #
 # Sourced by every mutants-*.sh. Each of those used to carry its own list of
