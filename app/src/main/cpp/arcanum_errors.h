@@ -33,3 +33,4 @@
 #define ERR_HIDDEN_BOUNDARY  -9  /* write blocked by hidden-volume protection */
 #define ERR_READ_ONLY       -10  /* write blocked: container mounted read-only */
 #define ERR_DIR_FULL        -11  /* directory cannot hold another entry (FAT root limit) */
+#define ERR_EXISTS          -12  /* target name already exists (rename/move) */

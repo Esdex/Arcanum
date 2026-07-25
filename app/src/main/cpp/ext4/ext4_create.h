@@ -23,6 +23,7 @@ extern "C" {
 #define EXT4_CREATE_ERR_NOTDIR   -9   /* the name is there but is not a directory */
 #define EXT4_CREATE_ERR_NOTEMPTY -10  /* it still holds something other than . and .. */
 #define EXT4_CREATE_ERR_LOOP     -11  /* a directory would be moved inside itself */
+#define EXT4_CREATE_ERR_ISDIR    -12  /* unlink was handed a directory - that is rmdir's */
 
 /*
  * Makes an empty regular file called `name` in `dir_ino` and reports its inode.

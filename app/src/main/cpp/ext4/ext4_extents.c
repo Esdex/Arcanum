@@ -27,7 +27,7 @@
 /* Depth is bounded on disk; refusing to go deeper stops a corrupt or hostile
  * image from walking us into unbounded recursion. */
 #define EXT4_MAX_DEPTH        5
-#define EXT4_MAX_BLOCK_SIZE   65536
+/* EXT4_MAX_BLOCK_SIZE now lives in ext4_extents.h, shared with the writer. */
 
 #define INODE_FLAGS_OFF       0x20
 #define INODE_IBLOCK_OFF      0x28
@@ -319,8 +319,10 @@ int ext4_open(ext4_fs *fs, ext4_read_block_fn read_block, void *ctx) {
     if (rd16(buf + SB_MAGIC) != 0xEF53) return EXT4_ERR_FORMAT;
 
     uint32_t log_bs = rd32(buf + SB_LOG_BLOCK_SIZE);
-    if (log_bs > 6) return EXT4_ERR_FORMAT;           /* 1 KiB .. 64 KiB */
+    if (log_bs > 6) return EXT4_ERR_FORMAT;           /* keep the shift well-defined */
     fs->block_size       = 1024u << log_bs;
+    /* Refuse a block larger than the buffers can hold - see EXT4_MAX_BLOCK_SIZE. */
+    if (fs->block_size > EXT4_MAX_BLOCK_SIZE) return EXT4_ERR_FORMAT;
     fs->inodes_per_group = rd32(buf + SB_INODES_PER_GROUP);
     fs->first_data_block = rd32(buf + SB_FIRST_DATA_BLOCK);
     fs->inode_size       = rd16(buf + SB_INODE_SIZE);
@@ -328,6 +330,11 @@ int ext4_open(ext4_fs *fs, ext4_read_block_fn read_block, void *ctx) {
     if (fs->inodes_per_group == 0) return EXT4_ERR_FORMAT;
 
     uint32_t incompat = rd32(buf + SB_FEATURE_INCOMPAT);
+    /* An INCOMPAT bit outside what this understands changes the on-disk layout in
+     * a way that would be misread; refuse rather than guess. RO_COMPAT bits are
+     * safe to read, so they are only gated on the writable open. This also refuses
+     * a journal that needs replay (RECOVER), which is not in the supported set. */
+    if (incompat & ~EXT4_SUPPORTED_INCOMPAT) return EXT4_ERR_FORMAT;
     uint16_t desc     = rd16(buf + SB_DESC_SIZE);
     /* Group descriptors are 32 bytes unless the 64BIT feature widens them, and
      * mke2fs turns 64BIT on by default at these sizes. */

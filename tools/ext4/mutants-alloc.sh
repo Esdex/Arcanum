@@ -135,8 +135,12 @@ try "bit search not clamped to the group's real block count" \
               whose padding was never written - one we format ourselves, later. Held up by
               review alone."
 
+# The RECOVER refusal is now backed by two checks: its own, and the feature
+# allowlist (RECOVER is outside EXT4_SUPPORTED_INCOMPAT). Both have to be defeated
+# for a journal-recovery image to open - the allowlist alone still refuses it - so
+# the mutant disables the dedicated check and the allowlist's incompat half.
 try "a filesystem needing journal recovery opened anyway" \
-    's@if (incompat & EXT4_FEATURE_INCOMPAT_RECOVER) {@if (0) {@'
+    's@if (incompat & EXT4_FEATURE_INCOMPAT_RECOVER) {@if (0) {@; s@if ((incompat & ~EXT4_SUPPORTED_INCOMPAT) ||@if (0 \&\& (incompat \& ~EXT4_SUPPORTED_INCOMPAT) ||@'
 
 try "high half of the 64-bit group free count dropped" \
     's@if (is_64bit(fs)) wr16(d + EXT4_GD_FREE_BLOCKS_HI_OFF, (uint16_t)(v >> 16));@@' \

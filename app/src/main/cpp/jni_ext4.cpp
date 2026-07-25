@@ -449,6 +449,9 @@ jint write_chunk(JNIEnv *env, int pdrv, ext4_wfs *w, uint32_t ino,
                                      ? ERR_NO_SPACE : ERR_FS);
     if (ext4_set_size(w, ino, final_size) != EXTW_OK)
         return write_error(pdrv, ERR_FS);
+    /* The content changed, so move the modification time. Best-effort: the data is
+     * already committed, and a stale timestamp is not worth failing an import. */
+    ext4_set_mtime(w, ino, now_seconds());
     return ERR_OK;
 }
 
@@ -460,8 +463,13 @@ jint write_from_zero(JNIEnv *env, int pdrv, ext4_wfs *w, const ext4_fs *r,
     if (lrc == EXT4_DIRW_OK) {
         uint8_t inode[256];
         memset(inode, 0, sizeof(inode));
-        if (ext4_read_inode_raw(r, existing, inode, sizeof(inode)) == EXT4_OK &&
-            (rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR)
+        /* A failed read must refuse, not fall through. Without the mode there is no
+         * way to tell a file from a directory, and unlinking a directory as if it
+         * were a file frees it wrongly. The old `read == OK && IFDIR` let a read
+         * error skip the guard and reach the unlink. */
+        if (ext4_read_inode_raw(r, existing, inode, sizeof(inode)) != EXT4_OK)
+            return ERR_FS;
+        if ((rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR)
             return ERR_FS;   /* a directory is not a file to overwrite */
         if (ext4_unlink_file(w, r, dir_ino, name, now_seconds()) != EXT4_DIRW_OK)
             return write_error(pdrv, ERR_FS);
@@ -606,6 +614,8 @@ jint ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
             result = (wrc == EXTW_ERR_NOSPACE || wrc == EXTW_ERR_FULL) ? ERR_NO_SPACE
                    : wrc == EXTW_ERR_RANGE   ? ERR_UNSUPPORTED  /* a sparse/hole write */
                                              : write_error(pdrv, ERR_FS);
+        else
+            ext4_set_mtime(&w, ino, now_seconds());   /* content changed */
     }
     /* len == 0 has already touched the file into existence, which is what the SAF
      * path asks of an empty write. */
@@ -779,7 +789,13 @@ jint ext4jni_rename(JNIEnv *env, jlong handle, jstring jOld, jstring jNew) {
     int rc = ext4_rename(&w, &r.fs, src_parent, src_name, dst_parent, dst_name);
     ext4_fs_close(&w);
 
-    return rc == EXT4_DIRW_OK ? ERR_OK : write_error(pdrv, ERR_FS);
+    /* A destination that already exists is the one outcome worth telling apart, so
+     * the UI can say "name already exists" rather than a generic failure; the FatFs
+     * path reports FR_EXIST as ERR_EXISTS too. Everything else - a loop, a bad
+     * name, an I/O error - stays a generic filesystem error. */
+    if (rc == EXT4_DIRW_OK) return ERR_OK;
+    if (rc == EXT4_DIRW_ERR_EXISTS) return ERR_EXISTS;
+    return write_error(pdrv, ERR_FS);
 }
 
 /* ─── ext4jni_fs_usage ───────────────────────────────────────────────── */

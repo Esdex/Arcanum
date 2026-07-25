@@ -574,7 +574,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRenameFile(
         n2 < 0 || n2 >= (int)sizeof(fullNewPath)) return ERR_FILE;
 
     FRESULT fr = f_rename(fullOldPath, fullNewPath);
-    return (fr == FR_OK) ? ERR_OK : ERR_FS;
+    /* Kept in step with the ext4 path: a name clash is ERR_EXISTS, the rest ERR_FS. */
+    return (fr == FR_OK) ? ERR_OK : (fr == FR_EXIST) ? ERR_EXISTS : ERR_FS;
 }
 
 /* ─── JNI: nativeCreateDirectory ────────────────────────────────────── */

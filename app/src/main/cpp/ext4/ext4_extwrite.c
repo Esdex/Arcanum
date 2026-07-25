@@ -55,6 +55,8 @@
 #define INODE_SIZE_HI_OFF   0x6C
 #define INODE_BLOCKS_HI_OFF 0x74   /* osd2.linux2.l_i_blocks_hi */
 #define INODE_LINKS_COUNT_OFF 0x1A
+#define INODE_CTIME_OFF     0x0C
+#define INODE_MTIME_OFF     0x10
 
 #define EH_ENTRIES_OFF 0x02
 #define EH_MAX_OFF     0x04
@@ -949,4 +951,25 @@ out:
 
 int ext4_write_inode_raw(ext4_wfs *fs, uint32_t ino, uint8_t *inode) {
     return write_inode(fs, ino, inode);
+}
+
+int ext4_set_mtime(ext4_wfs *fs, uint32_t ino, uint32_t when) {
+    uint8_t *inode = malloc(fs->inode_size);
+    if (!inode) return EXTW_ERR_IO;
+
+    int rc = read_inode(fs, ino, inode);
+    if (rc != EXTW_OK) goto out;
+
+    /* Content changed, so both the modification time and the inode-change time
+     * move. Only the 32-bit seconds fields are written, the same ones create sets
+     * and all this needs until 2038; the nanosecond/high-bit extras stay zero. */
+    wr32(inode + INODE_MTIME_OFF, when);
+    wr32(inode + INODE_CTIME_OFF, when);
+
+    rc = write_inode(fs, ino, inode);
+    if (rc == EXTW_OK) rc = ext4_fs_flush(fs) ? EXTW_ERR_IO : EXTW_OK;
+
+out:
+    free(inode);
+    return rc;
 }

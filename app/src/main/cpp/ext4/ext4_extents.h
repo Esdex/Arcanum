@@ -27,6 +27,39 @@ extern "C" {
 #define EXT4_ERR_RANGE      -3   /* asked for something outside the filesystem */
 #define EXT4_ERR_NOT_EXTENT -4   /* inode uses the old block map, not extents */
 
+/*
+ * The feature bits this driver understands. A volume that carries any bit outside
+ * these is refused at open rather than read or written blind - see the checks in
+ * ext4_open (reader) and fs_finish_open (writer). Getting this wrong in the
+ * permissive direction is the way a foreign container gets silently corrupted:
+ * bigalloc counts in clusters, meta_bg lays the group descriptors out elsewhere,
+ * inline_data keeps file data in the inode - each of which this would misread or
+ * misallocate.
+ *
+ * INCOMPAT  = FILETYPE 0x2 | EXTENTS 0x40 | 64BIT 0x80 | FLEX_BG 0x200 | CSUM_SEED 0x2000
+ * RO_COMPAT = SPARSE_SUPER 0x1 | LARGE_FILE 0x2 | HUGE_FILE 0x8 | DIR_NLINK 0x20
+ *             | EXTRA_ISIZE 0x40 | METADATA_CSUM 0x400
+ *
+ * Verified: our own mkfs and a stock `mke2fs -t ext4` image both fall inside these
+ * masks and round-trip (read, written, e2fsck-clean, fuse2fs). RECOVER (a journal
+ * needing replay) is handled on its own, with its own message. RO_COMPAT bits are
+ * "safe to read" by definition, so the reader gate looks only at INCOMPAT; the
+ * writer refuses unknown bits in either field.
+ */
+#define EXT4_SUPPORTED_INCOMPAT  0x000022C2u
+#define EXT4_SUPPORTED_RO_COMPAT 0x0000046Bu
+
+/*
+ * The largest block this driver handles, and the size of the single-block buffers
+ * it reads into. It is deliberately 4 KiB, not the 64 KiB the format allows: this
+ * app only ever makes 1/2/4 KiB filesystems, Linux itself cannot mount a block
+ * larger than its page size, and the read path holds several of these buffers on
+ * the stack at once down a recursive extent walk - at 64 KiB that is hundreds of
+ * KiB and can overflow a worker thread's stack. Both opens refuse a larger block
+ * rather than read it into a buffer too small for it.
+ */
+#define EXT4_MAX_BLOCK_SIZE 4096u
+
 /* Reads one filesystem block into buf. Returns EXT4_OK or EXT4_ERR_IO. */
 typedef int (*ext4_read_block_fn)(void *ctx, uint64_t block, void *buf);
 

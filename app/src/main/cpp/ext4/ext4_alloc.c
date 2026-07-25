@@ -40,6 +40,7 @@
 
 #include "ext4_alloc.h"
 #include "ext4_csum.h"
+#include "ext4_extents.h"   /* EXT4_SUPPORTED_INCOMPAT / EXT4_SUPPORTED_RO_COMPAT */
 #include "ext4_log.h"
 
 #include <stdlib.h>
@@ -158,7 +159,11 @@ static int fs_finish_open(ext4_wfs *fs) {
     fs->io.block_size = 1024;
     if (ext4_io_pread(&fs->io, EXT4_SB_OFFSET, fs->sb, sizeof(fs->sb))) goto fail;
 
-    fs->block_size       = 1024u << rd32(fs->sb + EXT4_SB_LOG_BLOCK_SIZE_OFF);
+    uint32_t log_bs = rd32(fs->sb + EXT4_SB_LOG_BLOCK_SIZE_OFF);
+    if (log_bs > 6) goto fail;                      /* keep the shift well-defined */
+    fs->block_size       = 1024u << log_bs;
+    /* Match the reader: refuse a block larger than the buffers hold. */
+    if (fs->block_size > EXT4_MAX_BLOCK_SIZE) goto fail;
     fs->io.block_size    = fs->block_size;
     fs->blocks_per_group = rd32(fs->sb + EXT4_SB_BLOCKS_PER_GRP_OFF);
     fs->first_data_block = rd32(fs->sb + EXT4_SB_FIRST_DATA_BLK_OFF);
@@ -191,6 +196,21 @@ static int fs_finish_open(ext4_wfs *fs) {
     if (incompat & EXT4_FEATURE_INCOMPAT_RECOVER) {
         EXT4_LOGE("refusing to open: journal needs recovery (INCOMPAT_RECOVER); "
                   "writing around an unreplayed journal would lose the writes");
+        goto fail;
+    }
+
+    /*
+     * A writable open must understand every feature that governs layout or
+     * allocation, in both fields: INCOMPAT to read it at all, RO_COMPAT because
+     * this is about to write. A bit outside the supported masks (bigalloc,
+     * meta_bg, inline_data, ...) would mean allocating or freeing the wrong
+     * blocks - silent corruption of a foreign container - so refuse instead.
+     */
+    uint32_t ro_compat = rd32(fs->sb + EXT4_SB_FEATURE_RO_COMPAT_OFF);
+    if ((incompat & ~EXT4_SUPPORTED_INCOMPAT) ||
+        (ro_compat & ~EXT4_SUPPORTED_RO_COMPAT)) {
+        EXT4_LOGE("refusing to open for writing: unsupported ext4 features "
+                  "(incompat=0x%x ro_compat=0x%x)", incompat, ro_compat);
         goto fail;
     }
 
