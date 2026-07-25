@@ -1,4 +1,17 @@
 /*
+ * Arcanum - VeraCrypt-compatible encrypted vault manager for Android
+ *
+ * Copyright (C) 2026 Esdex
+ * Licensed under Apache License 2.0
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Clean-room ext4: no GPL ext4 source (lwext4's src/ext4_extent.c or
+ * src/ext4_xattr.c) was opened or consulted. The on-disk format is implemented
+ * from its published description - a data structure, not anyone's expression of
+ * it - which is what keeps this code free of lwext4's copyleft. See issue #7.
+ */
+
+/*
  * Creating and deleting a file: joining the inode allocator, the extent writer
  * and the directory writer, in the one order that survives being interrupted.
  * See the .c - the order is the substance of this layer, not an implementation
