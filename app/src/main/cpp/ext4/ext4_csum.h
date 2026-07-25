@@ -1,3 +1,16 @@
+/*
+ * Arcanum - VeraCrypt-compatible encrypted vault manager for Android
+ *
+ * Copyright (C) 2026 Esdex
+ * Licensed under Apache License 2.0
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Clean-room ext4: no GPL ext4 source (lwext4's src/ext4_extent.c or
+ * src/ext4_xattr.c) was opened or consulted. The on-disk format is implemented
+ * from its published description - a data structure, not anyone's expression of
+ * it - which is what keeps this code free of lwext4's copyleft. See issue #7.
+ */
+
 /* crc32c and the ext4 checksum seeds built on it. See the .c for provenance. */
 #ifndef ARCANUM_EXT4_CSUM_H
 #define ARCANUM_EXT4_CSUM_H
