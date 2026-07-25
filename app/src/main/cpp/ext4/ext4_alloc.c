@@ -107,6 +107,22 @@ static int read_bitmap(ext4_wfs *fs, const uint8_t *d) {
     return ext4_io_pread(&fs->io, at, fs->bitmap, fs->bitmap_bytes);
 }
 
+/*
+ * Loads group `g`'s block bitmap into fs->bitmap, but only when it is not the one
+ * already there. Every change to the bitmap goes through fs->bitmap and is written
+ * back in the same call (write_bitmap), so the in-memory copy is authoritative for
+ * the group it holds - re-reading it would fetch what we just wrote. A file being
+ * streamed in allocates block after block in one group, so this turns N reads of
+ * the bitmap into one. The write per allocation stays: it is what keeps the on-disk
+ * bitmap consistent after every block, the "a short append is committed" property.
+ */
+static int load_bitmap(ext4_wfs *fs, uint32_t g, const uint8_t *d) {
+    if (fs->bitmap_group == (int64_t)g) return 0;
+    if (read_bitmap(fs, d)) return -1;
+    fs->bitmap_group = (int64_t)g;
+    return 0;
+}
+
 static int write_bitmap(ext4_wfs *fs, const uint8_t *d) {
     uint64_t at = group_bitmap_block(fs, d) * (uint64_t)fs->block_size;
     return ext4_io_pwrite(&fs->io, at, fs->bitmap, fs->bitmap_bytes);
@@ -221,6 +237,7 @@ static int fs_finish_open(ext4_wfs *fs) {
     fs->desc   = malloc((size_t)fs->groups * fs->desc_size);
     fs->bitmap = malloc(fs->bitmap_bytes);
     if (!fs->desc || !fs->bitmap) goto fail;
+    fs->bitmap_group = -1;   /* nothing loaded yet; group 0 is a valid value */
 
     uint64_t desc_at = (fs->first_data_block + 1) * (uint64_t)fs->block_size;
     size_t desc_len = (size_t)fs->groups * fs->desc_size;
@@ -289,7 +306,7 @@ static int64_t alloc_in_group(ext4_wfs *fs, uint32_t g, uint32_t start_bit) {
     uint8_t *d = group_desc(fs, g);
     if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_BLOCK_UNINIT) return ALLOC_NONE;
     if (group_free_blocks(fs, d) == 0) return ALLOC_NONE;
-    if (read_bitmap(fs, d)) return ALLOC_CORRUPT;
+    if (load_bitmap(fs, g, d)) return ALLOC_CORRUPT;
 
     uint32_t limit = group_block_count(fs, g);
     for (uint32_t bit = start_bit; bit < limit; bit++) {
@@ -340,7 +357,7 @@ int ext4_free_block(ext4_wfs *fs, uint64_t block) {
 
     uint8_t *d = group_desc(fs, g);
     if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_BLOCK_UNINIT) return -1;
-    if (read_bitmap(fs, d)) return -1;
+    if (load_bitmap(fs, g, d)) return -1;
     if (!(fs->bitmap[bit >> 3] & (1u << (bit & 7)))) return -1;   /* already free */
 
     fs->bitmap[bit >> 3] &= (uint8_t)~(1u << (bit & 7));
