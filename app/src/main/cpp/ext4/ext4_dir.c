@@ -33,7 +33,7 @@
 #include <string.h>
 
 #define DIRENT_HEADER 8          /* inode, rec_len, name_len, file_type */
-#define EXT4_MAX_BLOCK_SIZE 65536
+/* EXT4_MAX_BLOCK_SIZE comes from ext4_extents.h (via ext4_dir.h). */
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
 static uint32_t rd32(const uint8_t *p) {

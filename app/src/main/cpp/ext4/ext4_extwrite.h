@@ -123,6 +123,13 @@ int ext4_inode_adjust_links(ext4_wfs *fs, uint32_t ino, int delta);
  */
 int ext4_write_inode_raw(ext4_wfs *fs, uint32_t ino, uint8_t *inode);
 
+/*
+ * Stamps `when` into i_mtime and i_ctime - the modification and inode-change
+ * times a content write should move. Kept out of the append/write paths so their
+ * host tests stay clock-free and reproducible; the caller decides when "now" is.
+ */
+int ext4_set_mtime(ext4_wfs *fs, uint32_t ino, uint32_t when);
+
 #ifdef __cplusplus
 }
 #endif

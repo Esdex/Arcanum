@@ -188,6 +188,21 @@ int ext4_unlink_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
         return rc;
     }
 
+    /* A directory is rmdir's business, not this. Freeing one here would release its
+     * blocks and inode without repairing the parent's link count or bg_used_dirs,
+     * and strand every entry it holds. Refused before the name is touched, so the
+     * image is left exactly as it was. */
+    {
+        uint8_t probe[256];
+        memset(probe, 0, sizeof(probe));
+        if (ext4_read_inode_raw(r, ino, probe, sizeof(probe)) != EXT4_OK)
+            return EXT4_DIRW_ERR_IO;
+        if ((rd16(probe + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR) {
+            EXT4_LOGE("unlink '%s': it is a directory - refusing (use rmdir)", name);
+            return EXT4_CREATE_ERR_ISDIR;
+        }
+    }
+
     /* Name first. A crash after this leaves an inode nothing refers to, which
      * e2fsck can tidy; the other order leaves a name pointing at blocks that
      * have already been handed to somebody else. */
@@ -346,7 +361,16 @@ int ext4_mkdir(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     }
 
     /* The new ".." is a second name for the parent, and the group has one more
-     * directory in it than it did. Neither follows from anything above. */
+     * directory in it than it did. Neither follows from anything above.
+     *
+     * These two - and the same counters in ext4_rename - are not rolled back if
+     * they fail: ext4_inode_adjust_links is a write followed by a flush, so a
+     * failure cannot be told apart from a success whose flush was cut off, and a
+     * rollback that guessed wrong would corrupt the count rather than repair it.
+     * A failure here therefore leaves the parent's link count off by one, which
+     * e2fsck reconciles - the same fsck-repairable residual a crash at this point
+     * has, and the honest limit until this can journal its writes (issue #7).
+     * faultcheck.py proves the residual never worsens into corruption. */
     if (ext4_inode_adjust_links(w, dir_ino, 1) != EXTW_OK) return EXT4_DIRW_ERR_IO;
     if (ext4_adjust_used_dirs(w, (uint32_t)ino, 1)) return EXT4_DIRW_ERR_IO;
 
@@ -537,7 +561,15 @@ int ext4_rename(ext4_wfs *w, const ext4_fs *r,
     }
 
     /* The old parent loses the link its ".." used to be. Done after the name is
-     * gone, so at no point does the count claim a ".." that is still there. */
+     * gone, so at no point does the count claim a ".." that is still there.
+     *
+     * As in ext4_mkdir, a failed counter update here is left rather than rolled
+     * back: the writes are not atomic, so a rollback that could not tell a failed
+     * write from a cut-off flush would corrupt the count instead of repairing it.
+     * What is left - a parent link off by one, or on the crash-safe add-before-
+     * remove path an inode reachable by both its names - is what e2fsck reconciles.
+     * The honest no-journal residual (issue #7); faultcheck.py holds it to being
+     * repairable, never corruption. */
     if (is_dir && across) {
         if (ext4_inode_adjust_links(w, src_parent, -1) != EXTW_OK) return EXT4_DIRW_ERR_IO;
     }

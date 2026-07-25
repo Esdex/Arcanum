@@ -13,3 +13,4 @@ chunkwrite
 rename
 writeat
 fullwrite
+faultop

@@ -50,11 +50,12 @@ static const char *strerr(int rc) {
 
 int main(int argc, char **argv) {
     if (argc != 5 || (strcmp(argv[3], "append") && strcmp(argv[3], "truncate") &&
-                      strcmp(argv[3], "setsize"))) {
+                      strcmp(argv[3], "setsize") && strcmp(argv[3], "mtime"))) {
         fprintf(stderr, "usage: %s <image> <inode> append <count>\n"
                         "       %s <image> <inode> truncate <blocks>\n"
-                        "       %s <image> <inode> setsize <bytes>\n",
-                argv[0], argv[0], argv[0]);
+                        "       %s <image> <inode> setsize <bytes>\n"
+                        "       %s <image> <inode> mtime <epoch>\n",
+                argv[0], argv[0], argv[0], argv[0]);
         return 2;
     }
 
@@ -74,6 +75,9 @@ int main(int argc, char **argv) {
         appended = count;
     } else if (!strcmp(argv[3], "setsize")) {
         rc = ext4_set_size(&fs, ino, strtoull(argv[4], NULL, 10));
+        appended = count;
+    } else if (!strcmp(argv[3], "mtime")) {
+        rc = ext4_set_mtime(&fs, ino, (uint32_t)strtoul(argv[4], NULL, 10));
         appended = count;
     } else {
         rc = ext4_append_blocks(&fs, ino, count, fill_pattern, &fs.block_size,
