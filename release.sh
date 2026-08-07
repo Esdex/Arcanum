@@ -161,6 +161,75 @@ APK_PATH=$(find app/build/outputs/apk/fdroid/release -name "*.apk" | head -1)
 [[ -z "$APK_PATH" ]] && { git checkout main; die "APK not found after build."; }
 log "APK: $APK_PATH"
 
+# ── 5b. Archive the unstripped native libraries ──────────────────────────────
+#
+# The APK ships STRIPPED .so, so a native crash report from a user is nothing
+# but module offsets - unreadable without the unstripped libraries from THIS
+# exact build (offsets do not carry across builds). The only copies live under
+# app/build, which the next `clean` or release destroys, so they are archived
+# here, outside the build tree, one directory per version.
+#
+# This is not fatal: the release is already tagged and built by now, and losing
+# symbols must not fail it. A missing archive is a warning, loudly.
+
+SYMBOL_DIR="${HOME}/Arcanum-symbols/${TAG}"
+
+# `|| true` on every find here is load-bearing, not defensive noise: under
+# `set -o pipefail` a find over a missing directory fails the whole pipeline,
+# and a failing command substitution in an assignment kills the script under
+# `set -e`. Without it, a missing build tree does not warn - it silently ends
+# the release right here, after the tag has already been pushed.
+MERGED_LIBS=$(find app/build/intermediates/merged_native_libs -type d -path "*fdroidRelease*/out/lib" 2>/dev/null | head -1 || true)
+
+if [[ -n "$MERGED_LIBS" ]]; then
+    log "Archiving native symbols to $SYMBOL_DIR..."
+    mkdir -p "$SYMBOL_DIR"
+    for abi_dir in "$MERGED_LIBS"/*/; do
+        abi=$(basename "$abi_dir")
+        if [[ -f "${abi_dir}libarcanum-native.so" ]]; then
+            mkdir -p "$SYMBOL_DIR/$abi"
+            cp "${abi_dir}libarcanum-native.so" "$SYMBOL_DIR/$abi/"
+        fi
+    done
+
+    # AGP's own bundle: our library plus libc++_shared, both ABIs.
+    SYM_ZIP=$(find app/build/outputs/native-debug-symbols -name "native-debug-symbols.zip" 2>/dev/null | head -1 || true)
+    if [[ -n "$SYM_ZIP" ]]; then
+        cp "$SYM_ZIP" "$SYMBOL_DIR/"
+    fi
+
+    NDK_STACK=$(find "${ANDROID_HOME:-$HOME/Android/Sdk}/ndk" -maxdepth 2 -name ndk-stack 2>/dev/null | sort -V | tail -1 || true)
+    cat > "$SYMBOL_DIR/README.txt" <<EOF
+Arcanum ${VERSION} - unstripped native libraries (fdroid release build)
+
+versionCode ${VERSION_CODE}, versionName ${VERSION}
+tag ${TAG} = ${COMMIT}
+archived $(date -u '+%Y-%m-%d %H:%M UTC') by release.sh
+
+The shipped APK carries STRIPPED versions of these libraries, so a native crash
+report collected from a user (the in-app Crash log card, native_crash.txt) is
+unsymbolicated. These are the unstripped originals from the build that produced
+that APK.
+
+To symbolicate, pick the directory matching the "abi" line in the report:
+
+  ${NDK_STACK:-<ndk>/ndk-stack} -sym ${SYMBOL_DIR}/armeabi-v7a -dump native_crash.txt
+
+Or resolve a single frame offset directly:
+
+  llvm-addr2line -f -C -e ${SYMBOL_DIR}/armeabi-v7a/libarcanum-native.so 0x43362
+
+Do not mix versions: offsets only resolve against the build the crash came from.
+EOF
+
+    SYM_COUNT=$(find "$SYMBOL_DIR" -name '*.so' 2>/dev/null | wc -l || true)
+    log "Symbols archived: $SYM_COUNT unstripped .so + README."
+else
+    warn "Merged native libs not found - symbols were NOT archived."
+    warn "A native crash report from $VERSION will not be symbolizable. Archive"
+    warn "app/build/intermediates/merged_native_libs/**/out/lib by hand before cleaning."
+fi
+
 log "Returning to main..."
 git checkout main
 
