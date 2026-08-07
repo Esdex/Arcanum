@@ -1,0 +1,11 @@
+- New: Create vaults as ext4
+- New: Generate keyfiles in the app
+- New: Donations
+- New: Fullscreen video
+- Security: Hardened biometric app unlock
+- Security: Keyfiles never touch storage any more
+- Fix: Open FAT32 vaults created by other apps
+- Fix: No crash playing media on 32-bit devices
+- Fix: Moving a file or folder to where it already is no longer deletes it
+- Fix: New vaults hold far more files at the top level
+- Fix: Runs on devices with 16 KB memory pages

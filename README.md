@@ -111,7 +111,7 @@ The `fdroid` flavor builds with all features unlocked and no billing dependency.
 | UI | Kotlin + Jetpack Compose (Material 3) |
 | Navigation | Navigation Compose, single-Activity |
 | Crypto core | C++/NDK — VeraCrypt's cipher sources via JNI bridge |
-| File system | FatFs (FAT32/exFAT inside containers) |
+| File system | FatFs (FAT32/exFAT) + a clean-room ext4 driver, inside containers |
 | Local storage | Room (container metadata), EncryptedSharedPreferences (PIN hashes) |
 | DI | Hilt |
 | Media | ExoPlayer / Media3 |
