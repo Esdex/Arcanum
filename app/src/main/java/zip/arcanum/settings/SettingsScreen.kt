@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -1937,6 +1938,7 @@ private fun DebugSubScreen(
     val disguiseApplied by viewModel.disguiseApplied.collectAsState()
     val activity       = LocalContext.current as FragmentActivity
     var showWarningDialog by remember { mutableStateOf(false) }
+    var showUsbWriteConfirm by remember { mutableStateOf(false) }
     val isAmoled       = LocalAmoledMode.current
     val debugHazeState = remember { HazeState() }
 
@@ -2366,6 +2368,104 @@ private fun DebugSubScreen(
                             }
                         }
                     }
+                }
+
+                // ── USB probe (issue #95 spike) ───────────────────────────────
+                PanicSectionLabel("USB probe")
+                SettingsGroup {
+                    Text(
+                        text     = "Read-only feasibility check for encrypted USB drives. " +
+                                   "Plug a drive in over OTG and run it. Issues no write command, " +
+                                   "so the drive cannot be altered.",
+                        style    = MaterialTheme.typography.bodySmall,
+                        color    = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                    state.usbProbeReport?.let { report ->
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        Text(
+                            text     = report.trim(),
+                            style    = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color    = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    Row(
+                        modifier              = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick  = { debugViewModel.runUsbProbe() },
+                            enabled  = !state.usbProbeRunning,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                if (state.usbProbeRunning) "Probing..." else "Run probe",
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                        if (state.usbProbeReport != null) {
+                            OutlinedButton(
+                                onClick  = {
+                                    debugViewModel.copyUsbProbeToClipboard()
+                                    Toast.makeText(context, "USB probe copied", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Copy", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    TextButton(
+                        onClick  = { showUsbWriteConfirm = true },
+                        enabled  = !state.usbProbeRunning,
+                        colors   = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        Text("Run write test (modifies the drive)", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+
+                if (showUsbWriteConfirm) {
+                    AppDialog(
+                        onDismissRequest = { showUsbWriteConfirm = false },
+                        title            = { Text("Write to the connected drive?") },
+                        text             = {
+                            Text(
+                                "This writes a test pattern to one sector in the unused gap between " +
+                                "the partition table and the first partition, reads it back, and then " +
+                                "restores the original bytes.\n\n" +
+                                "It does not touch the partition table or any filesystem. Even so, it " +
+                                "is a real write to a real drive - use a drive whose contents you do " +
+                                "not need."
+                            )
+                        },
+                        confirmButton    = {
+                            TextButton(
+                                onClick = {
+                                    showUsbWriteConfirm = false
+                                    debugViewModel.runUsbWriteTest()
+                                },
+                                colors  = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            ) { Text("Write") }
+                        },
+                        dismissButton    = {
+                            TextButton(onClick = { showUsbWriteConfirm = false }) { Text("Cancel") }
+                        }
+                    )
                 }
 
                 // ── Crash log ─────────────────────────────────────────────────
