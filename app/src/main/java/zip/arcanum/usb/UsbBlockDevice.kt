@@ -379,6 +379,31 @@ class UsbBlockDevice private constructor(
     private fun lastFailureWasUnsupported(): Boolean =
         lastError?.contains("asc=0x20") == true
 
+    /**
+     * Debug-only bridge to the native BlockBackend built on this device (issue #95).
+     * Reads [length] bytes at [offset] the way a mounted volume would - through JNI,
+     * the scratch array and the chunking loop - so the result can be compared against
+     * [read] on the same span. Present only in debug builds; returns null in release,
+     * where the native symbol does not exist.
+     */
+    fun readThroughNativeBackend(offset: Long, length: Int): ByteArray? = synchronized(lock) {
+        if (closed) return null
+        // The lock is reentrant, and it has to be: the native side calls straight back
+        // into read() on this same thread.
+        return try {
+            runCatching { System.loadLibrary("arcanum-native") }
+            nativeReadThroughBackend(this, offset, length)
+        } catch (e: UnsatisfiedLinkError) {
+            null // release build: the symbol is gated out with the KAT hooks
+        }
+    }
+
+    private external fun nativeReadThroughBackend(
+        transport: UsbBlockDevice,
+        offset: Long,
+        length: Int
+    ): ByteArray?
+
     private fun scsiIn(cdb: ByteArray, dest: ByteArray, destOffset: Int, length: Int): Boolean {
         val myTag = tag++
         val cbw = buildCbw(cdb, length, deviceToHost = true, myTag = myTag)
