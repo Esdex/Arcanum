@@ -48,6 +48,7 @@ class DebugViewModel @Inject constructor(
     private val dao: ContainerDao,
     private val panicManager: PanicManager,
     private val thumbnailManager: ThumbnailManager,
+    private val veraCryptEngine: zip.arcanum.crypto.VeraCryptEngine,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -196,7 +197,7 @@ class DebugViewModel @Inject constructor(
         if (state.value.usbProbeRunning) return
         viewModelScope.launch {
             _state.update { it.copy(usbProbeRunning = true, usbProbeReport = null) }
-            val report = runCatching { UsbMassStorageProbe(context).run() }
+            val report = runCatching { UsbMassStorageProbe(context, veraCryptEngine).run() }
                 .getOrElse { "probe threw ${it.javaClass.simpleName}: ${it.message}" }
             _state.update { it.copy(usbProbeRunning = false, usbProbeReport = report) }
         }
@@ -211,8 +212,19 @@ class DebugViewModel @Inject constructor(
         if (state.value.usbProbeRunning) return
         viewModelScope.launch {
             _state.update { it.copy(usbProbeRunning = true, usbProbeReport = null) }
-            val report = runCatching { UsbMassStorageProbe(context).runWriteTest() }
+            val report = runCatching { UsbMassStorageProbe(context, veraCryptEngine).runWriteTest() }
                 .getOrElse { "write test threw ${it.javaClass.simpleName}: ${it.message}" }
+            _state.update { it.copy(usbProbeRunning = false, usbProbeReport = report) }
+        }
+    }
+
+    /** Mounts the connected USB device as a whole-device VeraCrypt volume, read-only. */
+    fun runUsbMountTest(password: String) {
+        if (state.value.usbProbeRunning) return
+        viewModelScope.launch {
+            _state.update { it.copy(usbProbeRunning = true, usbProbeReport = null) }
+            val report = runCatching { UsbMassStorageProbe(context, veraCryptEngine).runMountTest(password) }
+                .getOrElse { "mount test threw ${it.javaClass.simpleName}: ${it.message}" }
             _state.update { it.copy(usbProbeRunning = false, usbProbeReport = report) }
         }
     }

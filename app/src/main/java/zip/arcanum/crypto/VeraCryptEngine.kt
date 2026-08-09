@@ -146,6 +146,49 @@ class VeraCryptEngine @Inject constructor() {
         rc.toResult()
     }
 
+    /**
+     * Mounts a VeraCrypt volume occupying a whole USB device (issue #95).
+     *
+     * [transport] must be an open `zip.arcanum.usb.UsbBlockDevice`, and [deviceSize] its
+     * capacity - there is no file to measure, so the size comes from READ CAPACITY on the
+     * Kotlin side. Typed as `Any` to keep the crypto layer free of a dependency on the
+     * USB package; the native side only ever calls read/write/sync on it.
+     *
+     * The caller keeps ownership of [transport] and must close it after unmounting: the
+     * native backend borrows it, exactly as the file path borrows its descriptor.
+     */
+    suspend fun mountContainerUsb(
+        transport: Any,
+        deviceSize: Long,
+        password: String,
+        keyfileData: List<ByteArray> = emptyList(),
+        pim: Int = 0,
+        algorithm: Int = ALGO_AUTO,
+        hashAlgorithm: Int = HASH_AUTO,
+        protectHiddenPassword: String? = null,
+        protectHiddenKeyfileData: List<ByteArray> = emptyList(),
+        protectHiddenPim: Int = 0,
+        mountProgressListener: MountProgressListener? = null,
+        readOnly: Boolean = false
+    ): CryptoResult<Long> = withContext(Dispatchers.IO) {
+        val handle = usePasswordBytes(password) { passwordBytes ->
+            usePasswordBytesOrNull(protectHiddenPassword) { hiddenBytes ->
+                nativeOpenContainerUsb(
+                    transport, deviceSize, passwordBytes,
+                    keyfileData.toTypedArray().ifEmpty { null },
+                    pim, algorithm, hashAlgorithm,
+                    hiddenBytes,
+                    protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
+                    protectHiddenPim,
+                    mountProgressListener,
+                    readOnly
+                )
+            }
+        }
+        if (handle >= 0) CryptoResult.Success(handle)
+        else CryptoResult.Failure(handle.toInt().toError())
+    }
+
     suspend fun mountContainerFd(
         fd: Int,
         password: String,
@@ -510,6 +553,21 @@ class VeraCryptEngine @Inject constructor() {
 
     private external fun nativeOpenContainer(
         path: String,
+        password: ByteArray,
+        keyfileData: Array<ByteArray>?,
+        pim: Int,
+        algorithm: Int,
+        hashAlgorithm: Int,
+        protectHiddenPassword: ByteArray?,
+        protectHiddenKeyfileData: Array<ByteArray>?,
+        protectHiddenPim: Int,
+        mountProgressListener: MountProgressListener?,
+        readOnly: Boolean
+    ): Long
+
+    private external fun nativeOpenContainerUsb(
+        transport: Any,
+        deviceSize: Long,
         password: ByteArray,
         keyfileData: Array<ByteArray>?,
         pim: Int,

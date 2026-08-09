@@ -293,7 +293,7 @@ extern std::mutex g_fatfs_mutex;
  * lock internally: several call sites need alloc_drive/free_drive to run in
  * the same critical section as an adjacent f_mkfs/f_mount/f_unmount or
  * g_ctxMap operation. */
-int  alloc_drive(int fd, uint64_t dataOff, uint64_t sectors,
+int  alloc_drive(const BlockBackend &be, uint64_t dataOff, uint64_t sectors,
                  const uint8_t *masterKey, int algId, int hashId = 0,
                  bool isHidden = false, uint64_t hiddenBoundary = 0,
                  uint32_t iterCount = 0, bool readOnly = false);
