@@ -319,7 +319,7 @@ int alloc_drive(int fd, uint64_t dataOff, uint64_t sectors,
     if (algId < 0 || algId >= NUM_ALGORITHMS) return -1;
     for (int i = 0; i < MAX_DRIVES; i++) {
         if (!g_drives[i].active) {
-            g_drives[i].fd               = fd;
+            fd_backend_init(&g_drives[i].backend, fd);
             g_drives[i].dataOffset       = dataOff;
             /* When protect-hidden is active, cap visible sectors to the usable
              * outer area so FatFs never allocates clusters past hiddenBoundary.
@@ -366,6 +366,13 @@ void free_drive(int pdrv) {
         munlock(g_drives[pdrv].cipherCtx, sizeof(GenCipherCtx));
         free(g_drives[pdrv].cipherCtx);
     }
+    /* Hand the backing store back before the memset erases the way to reach it. The
+     * file backend has nothing to release; a backend holding a claimed USB interface
+     * does, and this is its only chance. Guarded because g_drives[] is zero-filled,
+     * so a slot that never held a volume has no function pointer here. */
+    if (g_drives[pdrv].backend.close)
+        g_drives[pdrv].backend.close(g_drives[pdrv].backend.self);
+
     uint32_t gen = g_drives[pdrv].generation; /* preserved across the memset below */
     memset(&g_drives[pdrv], 0, sizeof(DriveContext));
     g_drives[pdrv].active     = false;
@@ -507,6 +514,39 @@ bool write_all_at(int fd, const void *buf, size_t len, long long off) {
         return false;
     }
     return true;
+}
+
+/* ─── File-backed BlockBackend ───────────────────────────────────────── */
+/*
+ * The backing store every volume used before there was a choice of one. `self` is the
+ * borrowed descriptor smuggled through the void* rather than a heap allocation: there
+ * is nothing to own, and nothing to leak if a mount fails halfway.
+ */
+static bool fd_be_read(void *self, void *buf, size_t len, uint64_t off) {
+    return pread_all((int)(intptr_t)self, buf, len, (long long)off);
+}
+
+static bool fd_be_write(void *self, const void *buf, size_t len, uint64_t off) {
+    return write_all_at((int)(intptr_t)self, buf, len, (long long)off);
+}
+
+static void fd_be_sync(void *self) {
+    fsync((int)(intptr_t)self);
+}
+
+/* No-op on purpose: ContainerCtx owns this descriptor and closes it at unmount.
+ * Closing here too would be a double close onto a number the process may have
+ * already handed to something else. */
+static void fd_be_close(void *self) {
+    (void)self;
+}
+
+void fd_backend_init(BlockBackend *out, int fd) {
+    out->read  = fd_be_read;
+    out->write = fd_be_write;
+    out->sync  = fd_be_sync;
+    out->close = fd_be_close;
+    out->self  = (void *)(intptr_t)fd;
 }
 
 /* ─── Progress throttling (monotonic clock) ─────────────────────────── */

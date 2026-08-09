@@ -28,12 +28,13 @@ DRESULT disk_read(BYTE pdrv, BYTE *buf, LBA_t sector, UINT count) {
     DriveContext *ctx = &g_drives[pdrv];
     uint64_t baseSector = ctx->dataOffset / VC_SECTOR_SIZE;
 
-    /* Batched I/O (stage 4): one pread_all() for the whole span instead of a
-     * pread() per sector, then decrypt each 512-byte sector in place. Cuts
-     * syscall count by up to 256x on FatFs's larger multi-sector reads. */
-    off_t  off   = (off_t)(ctx->dataOffset + (uint64_t)sector * VC_SECTOR_SIZE);
-    size_t total = (size_t)count * (size_t)VC_SECTOR_SIZE;
-    if (!pread_all(ctx->fd, buf, total, (long long)off))
+    /* Batched I/O (stage 4): one backend read for the whole span instead of one
+     * per sector, then decrypt each 512-byte sector in place. Cuts the call count
+     * by up to 256x on FatFs's larger multi-sector reads — which matters far more
+     * on a backend where each call is a SCSI command over USB than on a file. */
+    uint64_t off   = ctx->dataOffset + (uint64_t)sector * VC_SECTOR_SIZE;
+    size_t   total = (size_t)count * (size_t)VC_SECTOR_SIZE;
+    if (!ctx->backend.read(ctx->backend.self, buf, total, off))
         return RES_ERROR;
 
     for (UINT i = 0; i < count; i++) {
@@ -49,9 +50,11 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buf, LBA_t sector, UINT count) {
     if (pdrv >= MAX_DRIVES || !g_drives[pdrv].active) return RES_NOTRDY;
     DriveContext *ctx = &g_drives[pdrv];
 
-    /* Read-only mount: refuse every write at the block layer. The underlying fd
-     * is already O_RDONLY (so pwrite would fail EBADF anyway), but returning
-     * RES_WRPRT here is the clean, explicit refusal and never touches the fd.
+    /* Read-only mount: refuse every write at the block layer. On a file-backed volume
+     * the descriptor is already O_RDONLY, so the write would fail EBADF anyway - but
+     * that third guard is the operating system's, and a backend without one (a USB
+     * drive, which nothing at the OS level protects) has to refuse inside itself.
+     * Returning RES_WRPRT here is the clean, explicit refusal that holds either way.
      * FatFs does not issue writes during read-only use, so this normally never
      * fires — it's a backstop, not a hot path. */
     if (ctx->readOnly) return RES_WRPRT;
@@ -67,10 +70,10 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buf, LBA_t sector, UINT count) {
     }
 
     uint64_t baseSector = ctx->dataOffset / VC_SECTOR_SIZE;
-    off_t    off        = (off_t)(ctx->dataOffset + (uint64_t)sector * VC_SECTOR_SIZE);
-    size_t   total       = (size_t)count * (size_t)VC_SECTOR_SIZE;
+    uint64_t off        = ctx->dataOffset + (uint64_t)sector * VC_SECTOR_SIZE;
+    size_t   total      = (size_t)count * (size_t)VC_SECTOR_SIZE;
 
-    /* Batched path: encrypt the whole span into one heap buffer, one write_all_at().
+    /* Batched path: encrypt the whole span into one heap buffer, one backend write.
      * Falls back to the original per-sector path on malloc failure so a large
      * multi-sector write never fails purely from transient memory pressure. */
     auto *big = static_cast<uint8_t*>(malloc(total));
@@ -80,7 +83,7 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buf, LBA_t sector, UINT count) {
             vc_crypt_sector(ctx->cipherCtx, big + (size_t)i * VC_SECTOR_SIZE,
                             baseSector + (uint64_t)(sector + i), true);
         }
-        bool ok = write_all_at(ctx->fd, big, total, (long long)off);
+        bool ok = ctx->backend.write(ctx->backend.self, big, total, off);
         free(big);
         return ok ? RES_OK : RES_ERROR;
     }
@@ -92,8 +95,8 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buf, LBA_t sector, UINT count) {
                         tmp,
                         baseSector + (uint64_t)(sector + i),
                         true);
-        off_t soff = (off_t)(ctx->dataOffset + (uint64_t)(sector + i) * VC_SECTOR_SIZE);
-        if (pwrite(ctx->fd, tmp, VC_SECTOR_SIZE, soff) != VC_SECTOR_SIZE)
+        uint64_t soff = ctx->dataOffset + (uint64_t)(sector + i) * VC_SECTOR_SIZE;
+        if (!ctx->backend.write(ctx->backend.self, tmp, VC_SECTOR_SIZE, soff))
             return RES_ERROR;
     }
     return RES_OK;
@@ -104,7 +107,7 @@ DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void *buff) {
     DriveContext *ctx = &g_drives[pdrv];
     switch (cmd) {
         case CTRL_SYNC:
-            fsync(ctx->fd);
+            ctx->backend.sync(ctx->backend.self);
             return RES_OK;
         case GET_SECTOR_COUNT:
             *(LBA_t *)buff = (LBA_t)ctx->sectorCount;

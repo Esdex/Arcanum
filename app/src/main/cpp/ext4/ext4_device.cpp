@@ -17,9 +17,9 @@
  *
  * A filesystem block is 1-4 KiB; the container works in 512-byte sectors, each
  * XTS-crypted with its own absolute sector number. So one block callback is a run
- * of block_size / 512 sectors: read the ciphertext in one pread, decrypt each
- * sector in place; or encrypt each sector into a scratch buffer and write it in
- * one pwrite. The read-modify-write that keeps sub-block updates from wiping their
+ * of block_size / 512 sectors: read the ciphertext in one backend read, decrypt each
+ * sector in place; or encrypt each sector into a scratch buffer and hand it to one
+ * backend write. The read-modify-write that keeps sub-block updates from wiping their
  * neighbours is one layer up, in ext4_io.c, on host-tested code; this layer only
  * ever moves whole blocks.
  *
@@ -64,7 +64,7 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
     uint64_t byteOff    = ctx->dataOffset + firstSector * (uint64_t)VC_SECTOR_SIZE;
 
     if (!writing) {
-        if (!pread_all(ctx->fd, buf, block_size, (long long)byteOff)) {
+        if (!ctx->backend.read(ctx->backend.self, buf, block_size, byteOff)) {
             EXT4_LOGE("read block %llu (%u sectors at offset %llu) failed",
                       (unsigned long long)block, nsec, (unsigned long long)byteOff);
             return -1;
@@ -110,7 +110,7 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
     for (uint32_t i = 0; i < nsec; i++)
         vc_crypt_sector(ctx->cipherCtx, enc + (size_t)i * VC_SECTOR_SIZE,
                         baseSector + firstSector + i, /*encrypt=*/true);
-    bool ok = write_all_at(ctx->fd, enc, block_size, (long long)byteOff);
+    bool ok = ctx->backend.write(ctx->backend.self, enc, block_size, byteOff);
     free(enc);
     if (!ok) {
         EXT4_LOGE("write block %llu (%u sectors at offset %llu) failed",
