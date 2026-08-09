@@ -32,6 +32,7 @@ import zip.arcanum.core.database.AppDatabase
 import zip.arcanum.core.database.dao.ContainerDao
 import zip.arcanum.core.security.PanicManager
 import zip.arcanum.core.security.VaultPanicAction
+import zip.arcanum.usb.UsbMassStorageProbe
 import java.security.KeyStore
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -95,7 +96,9 @@ class DebugViewModel @Inject constructor(
         val mounted: List<MountedContainer> = emptyList(),
         val crashLogs: List<CrashLog> = emptyList(),
         val lastMountLog: String? = null,
-        val dryRunActions: List<String>? = null
+        val dryRunActions: List<String>? = null,
+        val usbProbeRunning: Boolean = false,
+        val usbProbeReport: String? = null
     )
 
     private val _state = MutableStateFlow(DebugState())
@@ -184,6 +187,43 @@ class DebugViewModel @Inject constructor(
             _state.update { it.copy(lastMountLog = null) }
         }
     }
+
+    /**
+     * Feasibility spike for issue #95 (whole-device VeraCrypt volumes on USB).
+     * Read-only: the probe issues INQUIRY, READ CAPACITY and READ only, never a write.
+     */
+    fun runUsbProbe() {
+        if (state.value.usbProbeRunning) return
+        viewModelScope.launch {
+            _state.update { it.copy(usbProbeRunning = true, usbProbeReport = null) }
+            val report = runCatching { UsbMassStorageProbe(context).run() }
+                .getOrElse { "probe threw ${it.javaClass.simpleName}: ${it.message}" }
+            _state.update { it.copy(usbProbeRunning = false, usbProbeReport = report) }
+        }
+    }
+
+    /**
+     * DESTRUCTIVE variant of [runUsbProbe]: writes one sector and restores it. Kept as its
+     * own function, behind its own confirmation in the UI, so a mis-tap on the read-only
+     * button can never reach a write command.
+     */
+    fun runUsbWriteTest() {
+        if (state.value.usbProbeRunning) return
+        viewModelScope.launch {
+            _state.update { it.copy(usbProbeRunning = true, usbProbeReport = null) }
+            val report = runCatching { UsbMassStorageProbe(context).runWriteTest() }
+                .getOrElse { "write test threw ${it.javaClass.simpleName}: ${it.message}" }
+            _state.update { it.copy(usbProbeRunning = false, usbProbeReport = report) }
+        }
+    }
+
+    fun copyUsbProbeToClipboard() {
+        val text = state.value.usbProbeReport ?: return
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("Arcanum USB Probe", text))
+    }
+
+    fun clearUsbProbe() = _state.update { it.copy(usbProbeReport = null) }
 
     fun dryRunPanic() {
         viewModelScope.launch {
