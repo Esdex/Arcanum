@@ -32,7 +32,10 @@ import kotlin.system.measureTimeMillis
  * [run] is read-only. [runWriteTest] modifies one sector and restores it, and lives
  * behind its own confirmation in the debug screen.
  */
-class UsbMassStorageProbe(private val context: Context) {
+class UsbMassStorageProbe(
+    private val context: Context,
+    private val engine: zip.arcanum.crypto.VeraCryptEngine? = null
+) {
 
     companion object {
         private const val ACTION_USB_PERMISSION = "zip.arcanum.USB_PERMISSION"
@@ -62,10 +65,78 @@ class UsbMassStorageProbe(private val context: Context) {
         writeTest(dev)
     }
 
+    /**
+     * Mounts the connected device as a whole-device VeraCrypt volume and lists its root.
+     *
+     * Read-only on both halves - the transport is opened read-only and the mount is
+     * requested read-only - so a wrong guess about the layout cannot write anything. This
+     * is the first end-to-end use of the USB backend: header read, key derivation,
+     * alloc_drive, filesystem probe and a directory listing all run over SCSI.
+     */
+    suspend fun runMountTest(password: String): String =
+        withTarget("MOUNT TEST - read-only", readOnly = true) { dev ->
+            mountTest(dev, password)
+        }
+
+    private suspend fun mountTest(dev: UsbBlockDevice, password: String) {
+        val eng = engine
+        if (eng == null) {
+            line("STOP: no VeraCryptEngine was supplied to the probe.")
+            return
+        }
+        if (password.isEmpty()) {
+            line("STOP: no password given.")
+            return
+        }
+
+        val sector0 = ByteArray(dev.blockSize)
+        if (dev.read(0, dev.blockSize, sector0)) {
+            // ~7.64 is the ceiling here, not 8.00: with 512 samples over 256 symbols the
+            // counts cannot spread evenly, so even a perfect random source measures about
+            // log2(256) - 255/(2*512*ln2). Expecting 8.00 would make correct data look
+            // suspicious. Below ~7 means this is not ciphertext.
+            line("[sector 0] entropy ${"%.2f".format(shannonBits(sector0))} bits/byte " +
+                "(a VeraCrypt volume opens with its salt; ~7.6 is what random data scores " +
+                "over 512 bytes, well under 7 means it is not encrypted)")
+        }
+
+        line("[mount] trying ${dev.sizeBytes / (1024 * 1024)} MB as a whole-device volume...")
+        val res = eng.mountContainerUsb(
+            transport = dev,
+            deviceSize = dev.sizeBytes,
+            password = password,
+            readOnly = true
+        )
+        val handle = when (res) {
+            is zip.arcanum.crypto.CryptoResult.Success -> res.value
+            is zip.arcanum.crypto.CryptoResult.Failure -> {
+                line("[mount] FAILED: ${res.error}")
+                line("A wrong password and a volume that is not VeraCrypt look the same here:")
+                line("both mean no header decrypted. Check the entropy line above.")
+                return
+            }
+        }
+        line("[mount] OK, handle=$handle")
+
+        try {
+            val entries = eng.listFiles(handle, "/")
+            line("[listing] ${entries.size} entries at the root")
+            entries.take(20).forEach {
+                line("  %-40s %s".format(it.name, if (it.isDirectory) "<dir>" else "${it.size} bytes"))
+            }
+            if (entries.size > 20) line("  ... and ${entries.size - 20} more")
+            line()
+            line("VERDICT: a whole-device VeraCrypt volume on USB mounts and reads.")
+        } finally {
+            val rc = eng.closeContainer(handle)
+            line("[unmount] closeContainer returned $rc")
+        }
+    }
+
     private suspend fun withTarget(
         what: String,
         readOnly: Boolean,
-        body: (UsbBlockDevice) -> Unit
+        body: suspend (UsbBlockDevice) -> Unit
     ): String = withContext(Dispatchers.IO) {
         out.clear()
         line("=== Arcanum USB mass-storage probe ($what) ===")

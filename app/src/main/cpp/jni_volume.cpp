@@ -698,7 +698,7 @@ static jint do_create_container(
     int pdrv;
     {
         std::lock_guard<std::mutex> lock(g_fatfs_mutex);
-        pdrv = alloc_drive(fd.get(), VC_DATA_OFFSET, dataSize / VC_SECTOR_SIZE, masterKey.data(), algId);
+        pdrv = alloc_drive(fd_be(fd.get()), VC_DATA_OFFSET, dataSize / VC_SECTOR_SIZE, masterKey.data(), algId);
         /* Deliberate early wipe: alloc_drive already copied whatever it
          * needed into the per-drive key schedule (on success) or nothing at
          * all (on failure) — masterKey's plaintext is never read again. */
@@ -819,8 +819,27 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
  * keyfile data stays as JNI arrays since apply_keyfile_buffers() reads them
  * without mutation.
  */
+/*
+ * Releases a backend the mount owns but has not yet handed to a drive. Only armed for
+ * a backend passed in from outside (a USB device): the drive takes ownership the moment
+ * alloc_drive returns, and from then on free_drive is what releases it - so this is
+ * disarmed there, or it would release a second time.
+ */
+struct OwnedBackendGuard {
+    BlockBackend be{};
+    bool armed = false;
+    ~OwnedBackendGuard() { if (armed && be.close) be.close(be.self); }
+    void disarm() { armed = false; }
+};
+
+/*
+ * `beIn` null means file-backed: the descriptor is owned here, the size comes from
+ * fstat, and the backend is a wrapper around the fd. Non-null means the volume lives on
+ * something that is not a file (a USB device, issue #95) - `fdIn` is then -1, `sizeIn`
+ * is the device's size, and the backend is owned by this call until a drive takes it.
+ */
 static jlong do_open_container(
-        JNIEnv *env, int fdIn, const char *logTag,
+        JNIEnv *env, int fdIn, const BlockBackend *beIn, uint64_t sizeIn, const char *logTag,
         const uint8_t *pwd, int pwdLen, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
         const uint8_t *hiddenPwd, int hiddenPwdLen, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
@@ -830,6 +849,10 @@ static jlong do_open_container(
      * the fd is handed to the registry via ContainerCtx — release() right
      * before that handoff, at the single spot marked below. */
     UniqueFd fd(fdIn);
+
+    OwnedBackendGuard guard;
+    if (beIn) { guard.be = *beIn; guard.armed = true; }
+    const BlockBackend be = beIn ? *beIn : fd_be(fd.get());
 
     SecureBuffer<VC_MAX_PWD_LEN> effPwd;
     int effPwdLen = pwdLen;
@@ -844,12 +867,19 @@ static jlong do_open_container(
         if (!apply_keyfile_buffers(env, jProtectHiddenKeyfileData, hidEffPwd.data(), &hidEffPwdLen)) return (jlong)ERR_RAND;
     }
 
-    struct stat st{};
-    if (fstat(fd.get(), &st) != 0) {
-        LOGE("[%s] fstat failed: errno=%d", logTag, errno);
-        return (jlong)ERR_FILE;
+    uint64_t fileSize;
+    if (beIn) {
+        /* Not a file: the size was measured by whoever opened the device (READ CAPACITY
+         * for USB) and handed in, because there is nothing here to fstat. */
+        fileSize = sizeIn;
+    } else {
+        struct stat st{};
+        if (fstat(fd.get(), &st) != 0) {
+            LOGE("[%s] fstat failed: errno=%d", logTag, errno);
+            return (jlong)ERR_FILE;
+        }
+        fileSize = (uint64_t)st.st_size;
     }
-    uint64_t fileSize = (uint64_t)st.st_size;
 
     /* Too-small / misaligned is an I/O-shaped problem, not evidence about the
      * password — ERR_READ (Kotlin maps it to IO_ERROR) is the honest category. */
@@ -894,7 +924,7 @@ static jlong do_open_container(
         for (int ti = 0; ti < 2 && rc != ERR_OK; ti++) {
             if (tryOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
             uint64_t hvSz = 0;
-            rc = read_vc_header(fd_be(fd.get()), tryOffsets[ti], (const char*)effPwd.data(), effPwdLen,
+            rc = read_vc_header(be, tryOffsets[ti], (const char*)effPwd.data(), effPwdLen,
                                 masterKey.data(), &mkLen, &dataSz, &dataOff, &algId, &hashId,
                                 (int)pim, &hvSz, (int)algorithm, (int)hashAlgorithm, pMountCb);
             if (rc == ERR_OK) { authIsHidden = tryIsHidden[ti]; hiddenVolSize = hvSz; }
@@ -952,7 +982,7 @@ static jlong do_open_container(
                 }
                 for (int ti = 0; ti < 2; ti++) {
                     if (hidOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
-                    int hrc = read_vc_header(fd_be(fd.get()), hidOffsets[ti], (const char*)hidEffPwd.data(), hidEffPwdLen,
+                    int hrc = read_vc_header(be, hidOffsets[ti], (const char*)hidEffPwd.data(), hidEffPwdLen,
                                              hidMasterKey.data(), &hidMkLen, &hidDataSz, &hidDataOff,
                                              &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
                     if (hrc == ERR_OK && hidDataSz > 0) {
@@ -981,12 +1011,15 @@ static jlong do_open_container(
     uint32_t gen;
     {
         std::lock_guard<std::mutex> lock(g_fatfs_mutex);
-        pdrv = alloc_drive(fd.get(), dataOff, dataSz / VC_SECTOR_SIZE, masterKey.data(), algId, hashId,
+        pdrv = alloc_drive(be, dataOff, dataSz / VC_SECTOR_SIZE, masterKey.data(), algId, hashId,
                            authIsHidden, hiddenBoundary, iterCount, (bool)readOnly);
         /* Deliberate early wipe: alloc_drive already consumed masterKey
          * (on success) or nothing at all (on failure). */
         masterKey.wipe();
         if (pdrv < 0) return (jlong)ERR_NO_SLOT;
+        /* The drive holds the backend now; free_drive releases it on every path from
+         * here, including the f_mount failure below. */
+        guard.disarm();
         gen = g_drives[pdrv].generation;
 
         /* ContainerCtx via unique_ptr so the f_mount-failure path below just
@@ -1039,7 +1072,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     int fd = dup((int)safFd);
     if (fd < 0) { LOGE("[fd/open] dup failed: errno=%d", errno); return (jlong)ERR_FILE; }
 
-    return do_open_container(env, fd, "fd/open",
+    return do_open_container(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, "fd/open",
                              pwdBuf.data(), pwdLen, jKeyfileData, pim, algorithm, hashAlgorithm,
                              hidPwdBuf.data(), hidPwdLen, jProtectHiddenKeyfileData, protectHiddenPim,
                              mountProgressListener, readOnly);
@@ -1067,7 +1100,49 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     int fd = open(path.c_str(), readOnly ? O_RDONLY : O_RDWR);
     if (fd < 0) { LOGE("[open] Cannot open: %s (errno=%d: %s)", path.c_str(), errno, strerror(errno)); return (jlong)ERR_FILE; }
 
-    return do_open_container(env, fd, "open",
+    return do_open_container(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, "open",
+                             pwdBuf.data(), pwdLen, jKeyfileData, pim, algorithm, hashAlgorithm,
+                             hidPwdBuf.data(), hidPwdLen, jProtectHiddenKeyfileData, protectHiddenPim,
+                             mountProgressListener, readOnly);
+}
+
+/* ─── JNI: nativeOpenContainerUsb ───────────────────────────────────── */
+/*
+ * Mounts a VeraCrypt volume that occupies a whole USB device (issue #95).
+ *
+ * `transport` is an open Kotlin UsbBlockDevice; `deviceSize` is its capacity, measured
+ * there by READ CAPACITY, because there is no fstat to ask. Everything after the backing
+ * store is identical to a file-hosted volume: the same header layout, the same key
+ * derivation, the same filesystem probe.
+ *
+ * Ownership: this call builds the backend and hands it to do_open_container, which
+ * releases it on any failure and gives it to the drive on success. The transport itself
+ * is NOT closed here on failure - Kotlin opened it and Kotlin closes it, the same rule
+ * the file path follows with its descriptor.
+ */
+extern "C" JNIEXPORT jlong JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerUsb(
+        JNIEnv *env, jobject /*thiz*/,
+        jobject transport, jlong deviceSize,
+        jbyteArray jPassword, jobjectArray jKeyfileData,
+        jint pim, jint algorithm, jint hashAlgorithm,
+        jbyteArray jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
+        jobject mountProgressListener, jboolean readOnly)
+{
+    if (!transport || deviceSize <= 0) return (jlong)ERR_FILE;
+
+    SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
+    int pwdLen = get_password_bytes(env, jPassword, pwdBuf);
+    SecureBuffer<VC_MAX_PWD_LEN> hidPwdBuf;
+    int hidPwdLen = get_password_bytes(env, jProtectHiddenPassword, hidPwdBuf);
+
+    BlockBackend be{};
+    if (!usb_backend_init(&be, env, transport, (bool)readOnly)) {
+        LOGE("[usb/open] backend init failed");
+        return (jlong)ERR_FILE;
+    }
+
+    return do_open_container(env, /*fdIn=*/-1, &be, (uint64_t)deviceSize, "usb/open",
                              pwdBuf.data(), pwdLen, jKeyfileData, pim, algorithm, hashAlgorithm,
                              hidPwdBuf.data(), hidPwdLen, jProtectHiddenKeyfileData, protectHiddenPim,
                              mountProgressListener, readOnly);
@@ -1105,11 +1180,21 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCloseContainer(
             snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
             f_unmount(drvPath);
         }
+        /* Flush through the backend, after f_unmount has written whatever it had and
+         * before free_drive tears the backend down.
+         *
+         * This used to be an fsync on ctx->fd after the lock. That covered a file, but
+         * not the two cases that matter now: ext4 is never f_mounted, so nothing else
+         * issues CTRL_SYNC for it, and a backend that is not a file has no descriptor
+         * for an fsync to reach. Asking the backend covers all three - fsync for a
+         * file, SYNCHRONIZE CACHE for a USB device. */
+        if (g_drives[pdrv].backend.sync)
+            g_drives[pdrv].backend.sync(g_drives[pdrv].backend.self);
+
         free_drive(pdrv);
         g_ctxMap.erase(it);
     }
-    UniqueFd fd(ctx->fd);
-    fsync(fd.get());
+    UniqueFd fd(ctx->fd);   /* -1 when the volume was not file-backed: nothing to close */
     return ERR_OK;
     /* fd closed and ctx deleted by their destructors, here. */
 }
@@ -1264,7 +1349,7 @@ static jint do_create_hidden_volume(
     FRESULT fr = FR_DISK_ERR;
     {
         std::lock_guard<std::mutex> lock(g_fatfs_mutex);
-        int pdrv = alloc_drive(fd.get(), hiddenDataOff, hidSz / VC_SECTOR_SIZE,
+        int pdrv = alloc_drive(fd_be(fd.get()), hiddenDataOff, hidSz / VC_SECTOR_SIZE,
                                hiddenMasterKey.data(), hiddenAlgId, (int)hiddenHashAlg,
                                true, 0);
         /* Deliberate early wipe: alloc_drive already consumed hiddenMasterKey

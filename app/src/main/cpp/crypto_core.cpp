@@ -312,14 +312,14 @@ void vc_crypt_sector(GenCipherCtx *ctx, uint8_t *buf, uint64_t sn, bool enc) {
 
 /* CALLER MUST HOLD g_fatfs_mutex — see the comment on g_fatfs_mutex in
  * arcanum_internal.h. */
-int alloc_drive(int fd, uint64_t dataOff, uint64_t sectors,
+int alloc_drive(const BlockBackend &be, uint64_t dataOff, uint64_t sectors,
                 const uint8_t *masterKey, int algId, int hashId,
                 bool isHidden, uint64_t hiddenBoundary,
                 uint32_t iterCount, bool readOnly) {
     if (algId < 0 || algId >= NUM_ALGORITHMS) return -1;
     for (int i = 0; i < MAX_DRIVES; i++) {
         if (!g_drives[i].active) {
-            fd_backend_init(&g_drives[i].backend, fd);
+            g_drives[i].backend          = be;
             g_drives[i].dataOffset       = dataOff;
             /* When protect-hidden is active, cap visible sectors to the usable
              * outer area so FatFs never allocates clusters past hiddenBoundary.

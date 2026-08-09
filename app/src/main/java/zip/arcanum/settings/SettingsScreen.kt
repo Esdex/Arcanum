@@ -1939,6 +1939,7 @@ private fun DebugSubScreen(
     val activity       = LocalContext.current as FragmentActivity
     var showWarningDialog by remember { mutableStateOf(false) }
     var showUsbWriteConfirm by remember { mutableStateOf(false) }
+    var usbMountPassword by remember { mutableStateOf("") }
     val isAmoled       = LocalAmoledMode.current
     val debugHazeState = remember { HazeState() }
 
@@ -2425,6 +2426,25 @@ private fun DebugSubScreen(
                                 Text("Copy", style = MaterialTheme.typography.labelMedium)
                             }
                         }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    OutlinedTextField(
+                        value         = usbMountPassword,
+                        onValueChange = { usbMountPassword = it },
+                        label         = { Text("Volume password") },
+                        singleLine    = true,
+                        modifier      = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    OutlinedButton(
+                        onClick  = { debugViewModel.runUsbMountTest(usbMountPassword) },
+                        enabled  = !state.usbProbeRunning && usbMountPassword.isNotEmpty(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        Text("Mount USB volume (read-only)", style = MaterialTheme.typography.labelMedium)
                     }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     TextButton(
