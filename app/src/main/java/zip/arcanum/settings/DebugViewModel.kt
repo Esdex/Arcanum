@@ -229,6 +229,17 @@ class DebugViewModel @Inject constructor(
         }
     }
 
+    /** Mounts the connected USB volume read-write and writes a verification file. */
+    fun runUsbMountWriteTest(password: String) {
+        if (state.value.usbProbeRunning) return
+        viewModelScope.launch {
+            _state.update { it.copy(usbProbeRunning = true, usbProbeReport = null) }
+            val report = runCatching { UsbMassStorageProbe(context, veraCryptEngine).runMountWriteTest(password) }
+                .getOrElse { "mount+write test threw ${it.javaClass.simpleName}: ${it.message}" }
+            _state.update { it.copy(usbProbeRunning = false, usbProbeReport = report) }
+        }
+    }
+
     fun copyUsbProbeToClipboard() {
         val text = state.value.usbProbeReport ?: return
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
