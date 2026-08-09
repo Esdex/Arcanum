@@ -16,6 +16,7 @@ import android.os.storage.StorageManager
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.ByteBuffer
@@ -445,28 +446,49 @@ class UsbMassStorageProbe(
         }
     }
 
+    /**
+     * Asks for USB permission and waits for the user to answer.
+     *
+     * Two things here are deliberate, both learned by getting them wrong:
+     *
+     * The receiver is registered EXPORTED. The permission result is broadcast by the
+     * system server on behalf of our PendingIntent, so it arrives from outside this
+     * process; registered NOT_EXPORTED it never lands, and the wait fails even though the
+     * user tapped Allow. That failure hides itself - the next attempt sees permission
+     * already granted and returns early, so the broken path is only ever taken once.
+     *
+     * The broadcast is only a wake-up. [UsbManager.hasPermission] is the authority, and
+     * it is also what is polled, so a result that never arrives still resolves. That also
+     * makes the exported receiver harmless: another app forging this broadcast changes
+     * nothing, because the answer comes from the platform rather than the intent extra.
+     */
     private suspend fun requestPermission(manager: UsbManager, device: UsbDevice): Boolean {
         if (manager.hasPermission(device)) return true
 
-        val granted = CompletableDeferred<Boolean>()
+        val answered = CompletableDeferred<Unit>()
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context?, intent: Intent?) {
-                if (intent?.action != ACTION_USB_PERMISSION) return
-                granted.complete(intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false))
+                if (intent?.action == ACTION_USB_PERMISSION) answered.complete(Unit)
             }
         }
         ContextCompat.registerReceiver(
             context, receiver, IntentFilter(ACTION_USB_PERMISSION),
-            ContextCompat.RECEIVER_NOT_EXPORTED
+            ContextCompat.RECEIVER_EXPORTED
         )
         try {
             val pi = PendingIntent.getBroadcast(
                 context, 0,
                 Intent(ACTION_USB_PERMISSION).setPackage(context.packageName),
-                PendingIntent.FLAG_IMMUTABLE
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
             manager.requestPermission(device, pi)
-            return withTimeoutOrNull(60_000) { granted.await() } ?: false
+
+            withTimeoutOrNull(60_000) {
+                while (!manager.hasPermission(device) && !answered.isCompleted) {
+                    delay(200)
+                }
+            }
+            return manager.hasPermission(device)
         } finally {
             runCatching { context.unregisterReceiver(receiver) }
         }
