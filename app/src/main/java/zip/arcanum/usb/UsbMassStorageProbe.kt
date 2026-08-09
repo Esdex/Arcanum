@@ -134,6 +134,89 @@ class UsbMassStorageProbe(
         }
     }
 
+    /**
+     * Mounts read-write, writes a file, reads it back and leaves it in place.
+     *
+     * The file is deliberately left behind: the real check is opening the same volume in
+     * desktop VeraCrypt afterwards and finding a file it agrees with. Our own read-back
+     * only proves we are self-consistent, which a wholly wrong sector mapping would also
+     * satisfy - it would encrypt and decrypt the same wrong places.
+     */
+    suspend fun runMountWriteTest(password: String): String =
+        withTarget("MOUNT + WRITE TEST - modifies the volume", readOnly = false) { dev ->
+            mountWriteTest(dev, password)
+        }
+
+    private suspend fun mountWriteTest(dev: UsbBlockDevice, password: String) {
+        val eng = engine
+        if (eng == null || password.isEmpty()) {
+            line("STOP: ${if (eng == null) "no VeraCryptEngine" else "no password"} given.")
+            return
+        }
+
+        line("[mount] read-write, ${dev.sizeBytes / (1024 * 1024)} MB...")
+        val res = eng.mountContainerUsb(
+            transport = dev, deviceSize = dev.sizeBytes,
+            password = password, readOnly = false
+        )
+        val handle = when (res) {
+            is zip.arcanum.crypto.CryptoResult.Success -> res.value
+            is zip.arcanum.crypto.CryptoResult.Failure -> {
+                line("[mount] FAILED: ${res.error}")
+                return
+            }
+        }
+        line("[mount] OK, handle=$handle")
+
+        try {
+            val name = "/arcanum-usb-test.bin"
+            val size = 2 * 1024 * 1024
+
+            // Position-dependent contents: a chunk written to the wrong offset fails the
+            // comparison even though the length is right. A constant fill would not.
+            val data = ByteArray(size) { i -> (i xor (i shr 8) xor (i shr 16)).toByte() }
+
+            val writeMs = measureTimeMillis {
+                val rc = eng.writeFile(handle, name, data, 0)
+                if (rc != 0) {
+                    line("[write] FAILED rc=$rc")
+                    return
+                }
+            }
+            line("[write] ${size / 1024} KB in $writeMs ms = " +
+                "${"%.1f".format((size / 1024.0 / 1024.0) / (writeMs / 1000.0))} MB/s (through FAT and XTS)")
+
+            val readBack = eng.readFile(handle, name, 0, size)
+            when {
+                readBack == null -> line("[verify] FAILED: could not read the file back")
+                readBack.size != size -> line("[verify] MISMATCH: got ${readBack.size} bytes, wrote $size")
+                !readBack.contentEquals(data) -> {
+                    val at = readBack.indices.first { readBack[it] != data[it] }
+                    line("[verify] MISMATCH at byte $at")
+                }
+                else -> line("[verify] read-back identical ($size bytes)")
+            }
+
+            val mkdir = eng.createDirectory(handle, "/arcanum-usb-dir")
+            line("[mkdir] /arcanum-usb-dir rc=$mkdir")
+
+            val entries = eng.listFiles(handle, "/")
+            line("[listing] ${entries.size} entries at the root")
+            entries.take(20).forEach {
+                line("  %-40s %s".format(it.name, if (it.isDirectory) "<dir>" else "${it.size} bytes"))
+            }
+
+            line()
+            line("VERDICT: writes reach a USB-hosted volume and read back correctly.")
+            line("Now open this drive in desktop VeraCrypt: $name must be there, 2 MB,")
+            line("and its bytes must satisfy b[i] = i xor (i>>8) xor (i>>16). That is the")
+            line("check this test cannot do for itself.")
+        } finally {
+            val rc = eng.closeContainer(handle)
+            line("[unmount] closeContainer returned $rc")
+        }
+    }
+
     private suspend fun withTarget(
         what: String,
         readOnly: Boolean,

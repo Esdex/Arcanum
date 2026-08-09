@@ -2446,6 +2446,16 @@ private fun DebugSubScreen(
                     ) {
                         Text("Mount USB volume (read-only)", style = MaterialTheme.typography.labelMedium)
                     }
+                    TextButton(
+                        onClick  = { debugViewModel.runUsbMountWriteTest(usbMountPassword) },
+                        enabled  = !state.usbProbeRunning && usbMountPassword.isNotEmpty(),
+                        colors   = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        Text("Mount read-write + write a test file", style = MaterialTheme.typography.labelMedium)
+                    }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     TextButton(
                         onClick  = { showUsbWriteConfirm = true },
