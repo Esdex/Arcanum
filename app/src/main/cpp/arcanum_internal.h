@@ -352,7 +352,7 @@ jmethodID resolve_mount_mid(JNIEnv *env, jobject listener);
  * masterKey : n*64 bytes (one 64-byte slot per cipher in the cascade)
  * algId     : algorithm index into ALGORITHMS[]
  * hashAlg   : 0=SHA-512, 1=SHA-256, 2=Whirlpool, 3=Streebog, 4=BLAKE2s-256 */
-int write_vc_header(int fd, uint64_t fileOff,
+int write_vc_header(const BlockBackend &be, uint64_t fileOff,
                      uint64_t dataSz, uint64_t dataOff,
                      const uint8_t *masterKey,
                      int algId, int hashAlg,
@@ -367,7 +367,7 @@ int write_vc_header(int fd, uint64_t fileOff,
  * combination is tried first so re-mounting a known container is fast.
  * On success fills masterKey (n*64 bytes), outMkLen, outAlgId, dataSz, dataOff.
  */
-int read_vc_header(int fd, uint64_t fileOff,
+int read_vc_header(const BlockBackend &be, uint64_t fileOff,
                     const char *password, int pwd_len,
                     uint8_t *masterKey, int *outMkLen,
                     uint64_t *dataSz, uint64_t *dataOff,
@@ -381,7 +381,7 @@ int read_vc_header(int fd, uint64_t fileOff,
  * passes, then writes the new header encrypted with the new credentials.
  * extraEntropy/extraEntropyLen: optional user-collected bytes XOR'd into the
  * new salt before writing (Random Pool Enrichment). Pass nullptr/0 to skip. */
-int wipe_and_rewrite_header(int fd, uint64_t fileOff,
+int wipe_and_rewrite_header(const BlockBackend &be, uint64_t fileOff,
                              uint64_t dataSz, uint64_t dataOff,
                              const uint8_t *masterKey, int algId, int newHashAlg,
                              const char *newPwd, int newPwdLen, int newPim,
@@ -464,6 +464,20 @@ struct JniCache {
     jstring   utf8Name     = nullptr;   /* "UTF-8", interned as a GlobalRef */
 };
 extern JniCache g_jniCache;
+
+/* Wraps a descriptor as a BlockBackend for the duration of one call. The header
+ * functions take a const reference, so a temporary from this lives to the end of the
+ * full expression - which is all they need, since they keep nothing.
+ *
+ * Exists so a file-backed call site stays a one-liner rather than declaring a local
+ * per descriptor: two of these functions juggle two different fds at once (the volume
+ * and the backup file), and a named local per fd is an invitation to pass the wrong
+ * one to the wrong call. */
+inline BlockBackend fd_be(int fd) {
+    BlockBackend b;
+    fd_backend_init(&b, fd);
+    return b;
+}
 
 /* ─── usb_backend.cpp ────────────────────────────────────────────────── */
 /*

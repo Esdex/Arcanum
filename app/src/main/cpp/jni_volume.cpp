@@ -598,7 +598,7 @@ static jint do_create_container(
         backupSaltPtr  = backupSalt.data();
     }
 
-    if (write_vc_header(fd.get(), 0, dataSize, VC_DATA_OFFSET,
+    if (write_vc_header(fd_be(fd.get()), 0, dataSize, VC_DATA_OFFSET,
                         masterKey.data(), algId, (int)hashAlg,
                         (const char*)effPwd.data(), pbkdf2PwdLen, (int)pim,
                         /*hiddenVolSize=*/0, primarySaltPtr) != 0) {
@@ -608,7 +608,7 @@ static jint do_create_container(
 
     /* Write backup header at end of file */
     uint64_t backupOff = fileSize - VC_BACKUP_AREA_SIZE;
-    if (write_vc_header(fd.get(), backupOff, dataSize, VC_DATA_OFFSET,
+    if (write_vc_header(fd_be(fd.get()), backupOff, dataSize, VC_DATA_OFFSET,
                         masterKey.data(), algId, (int)hashAlg,
                         (const char*)effPwd.data(), pbkdf2PwdLen, (int)pim,
                         /*hiddenVolSize=*/0, backupSaltPtr) != 0) {
@@ -894,7 +894,7 @@ static jlong do_open_container(
         for (int ti = 0; ti < 2 && rc != ERR_OK; ti++) {
             if (tryOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
             uint64_t hvSz = 0;
-            rc = read_vc_header(fd.get(), tryOffsets[ti], (const char*)effPwd.data(), effPwdLen,
+            rc = read_vc_header(fd_be(fd.get()), tryOffsets[ti], (const char*)effPwd.data(), effPwdLen,
                                 masterKey.data(), &mkLen, &dataSz, &dataOff, &algId, &hashId,
                                 (int)pim, &hvSz, (int)algorithm, (int)hashAlgorithm, pMountCb);
             if (rc == ERR_OK) { authIsHidden = tryIsHidden[ti]; hiddenVolSize = hvSz; }
@@ -952,7 +952,7 @@ static jlong do_open_container(
                 }
                 for (int ti = 0; ti < 2; ti++) {
                     if (hidOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
-                    int hrc = read_vc_header(fd.get(), hidOffsets[ti], (const char*)hidEffPwd.data(), hidEffPwdLen,
+                    int hrc = read_vc_header(fd_be(fd.get()), hidOffsets[ti], (const char*)hidEffPwd.data(), hidEffPwdLen,
                                              hidMasterKey.data(), &hidMkLen, &hidDataSz, &hidDataOff,
                                              &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
                     if (hrc == ERR_OK && hidDataSz > 0) {
@@ -1178,7 +1178,7 @@ static jint do_create_hidden_volume(
     SecureBuffer<192> outerMasterKey;
     int outerMkLen = 0, outerAlgId = 0, outerHashId = 0;
     uint64_t outerDataSz = 0, outerDataOff = 0;
-    int rc = read_vc_header(fd.get(), 0,
+    int rc = read_vc_header(fd_be(fd.get()), 0,
                             (const char*)outerEffPwd.data(), outerEffPwdLen,
                             outerMasterKey.data(), &outerMkLen,
                             &outerDataSz, &outerDataOff,
@@ -1231,7 +1231,7 @@ static jint do_create_hidden_volume(
     }
 
     /* Primary hidden header at VC_HIDDEN_HEADER_OFFSET; field28 = 0 in hidden headers */
-    if (write_vc_header(fd.get(), VC_HIDDEN_HEADER_OFFSET,
+    if (write_vc_header(fd_be(fd.get()), VC_HIDDEN_HEADER_OFFSET,
                         hidSz, hiddenDataOff,
                         hiddenMasterKey.data(), hiddenAlgId, (int)hiddenHashAlg,
                         (const char*)hiddenEffPwd.data(), hiddenEffPwdLen,
@@ -1239,7 +1239,7 @@ static jint do_create_hidden_volume(
         return ERR_FILE;
     }
     /* Backup hidden header at fileSize - VC_HIDDEN_HEADER_OFFSET */
-    if (write_vc_header(fd.get(), fileSize - VC_HIDDEN_HEADER_OFFSET,
+    if (write_vc_header(fd_be(fd.get()), fileSize - VC_HIDDEN_HEADER_OFFSET,
                         hidSz, hiddenDataOff,
                         hiddenMasterKey.data(), hiddenAlgId, (int)hiddenHashAlg,
                         (const char*)hiddenEffPwd.data(), hiddenEffPwdLen,
@@ -1409,7 +1409,7 @@ static jint do_change_password(
         env, jOldKeyfileData, oldPwd, oldPwdLen, oldEffPwd.data(), &oldEffPwdLen, "chpwd",
         /*usedLegacyPool=*/nullptr,   /* writes use newEffPwd, always standard */
         [&](const uint8_t *eff, int effLen) {
-            return read_vc_header(fd.get(), 0, (const char*)eff, effLen,
+            return read_vc_header(fd_be(fd.get()), 0, (const char*)eff, effLen,
                                   masterKey.data(), &mkLen, &dataSz, &dataOff,
                                   &algId, &hashId, (int)oldPim, &hiddenVolSize);
         });
@@ -1440,7 +1440,7 @@ static jint do_change_password(
     /* Wipe + rewrite primary header.
      * If this fails the backup header is still intact with old credentials — container
      * is recoverable. Bail immediately so we never touch the backup. */
-    int r1 = wipe_and_rewrite_header(fd.get(), 0,
+    int r1 = wipe_and_rewrite_header(fd_be(fd.get()), 0,
                                       dataSz, dataOff, masterKey.data(), algId, newHash,
                                       (const char*)newEffPwd.data(), newEffPwdLen,
                                       (int)newPim, hiddenVolSize, passes,
@@ -1449,7 +1449,7 @@ static jint do_change_password(
         return ERR_FILE;
     }
 
-    int r2 = wipe_and_rewrite_header(fd.get(), backupAreaOff,
+    int r2 = wipe_and_rewrite_header(fd_be(fd.get()), backupAreaOff,
                                       dataSz, dataOff, masterKey.data(), algId, newHash,
                                       (const char*)newEffPwd.data(), newEffPwdLen,
                                       (int)newPim, hiddenVolSize, passes,
@@ -1554,7 +1554,7 @@ static jint do_change_keyfile(
         env, jOldKeyfileData, pwd, pwdLen, oldEffPwd.data(), &oldEffPwdLen, "chkeyfile",
         /*usedLegacyPool=*/nullptr,   /* writes use newEffPwd, always standard */
         [&](const uint8_t *eff, int effLen) {
-            return read_vc_header(fd.get(), 0, (const char*)eff, effLen,
+            return read_vc_header(fd_be(fd.get()), 0, (const char*)eff, effLen,
                                   masterKey.data(), &mkLen, &dataSz, &dataOff,
                                   &algId, &hashId, (int)pim, &hiddenVolSize);
         });
@@ -1569,7 +1569,7 @@ static jint do_change_keyfile(
     int newHash = (int)newHashAlg; if (newHash < 0 || newHash > 4) newHash = hashId;
     uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
 
-    int r1 = wipe_and_rewrite_header(fd.get(), 0,
+    int r1 = wipe_and_rewrite_header(fd_be(fd.get()), 0,
                                       dataSz, dataOff, masterKey.data(), algId, newHash,
                                       (const char*)newEffPwd.data(), newEffPwdLen,
                                       (int)pim, hiddenVolSize, /*wipePassCount=*/3,
@@ -1578,7 +1578,7 @@ static jint do_change_keyfile(
         return ERR_FILE;
     }
 
-    int r2 = wipe_and_rewrite_header(fd.get(), backupAreaOff,
+    int r2 = wipe_and_rewrite_header(fd_be(fd.get()), backupAreaOff,
                                       dataSz, dataOff, masterKey.data(), algId, newHash,
                                       (const char*)newEffPwd.data(), newEffPwdLen,
                                       (int)pim, hiddenVolSize, /*wipePassCount=*/3,
@@ -1658,7 +1658,7 @@ static jint do_backup_volume_header(
     int rc = auth_with_legacy_pool_retry(
         env, jKeyfileData, pwd, pwdLen, effPwd.data(), &effPwdLen, "backup", &usedLegacyPool,
         [&](const uint8_t *eff, int effLen) {
-            return read_vc_header(volFd.get(), 0, (const char*)eff, effLen,
+            return read_vc_header(fd_be(volFd.get()), 0, (const char*)eff, effLen,
                                   masterKey.data(), &mkLen, &dataSz, &dataOff,
                                   &algId, &hashId, (int)pim, &hiddenVolSize);
         });
@@ -1704,7 +1704,7 @@ static jint do_backup_volume_header(
     }
 
     // Write re-encrypted header at offset 0 with a fresh random salt
-    int r = wipe_and_rewrite_header(outFd.get(), 0,
+    int r = wipe_and_rewrite_header(fd_be(outFd.get()), 0,
                                     dataSz, dataOff, masterKey.data(), algId, hashId,
                                     (const char*)effPwd.data(), effPwdLen,
                                     (int)pim, hiddenVolSize, /*wipePassCount=*/1,
@@ -1802,7 +1802,7 @@ static jint do_restore_volume_header(
     int rc = auth_with_legacy_pool_retry(
         env, jKeyfileData, pwd, pwdLen, effPwd.data(), &effPwdLen, "restore", &usedLegacyPool,
         [&](const uint8_t *eff, int effLen) {
-            return read_vc_header(srcFd, srcOffset, (const char*)eff, effLen,
+            return read_vc_header(fd_be(srcFd), srcOffset, (const char*)eff, effLen,
                                   masterKey.data(), &mkLen, &dataSz, &dataOff,
                                   &algId, &hashId, (int)pim, &hiddenVolSize);
         });
@@ -1822,7 +1822,7 @@ static jint do_restore_volume_header(
         return ERR_RAND;
 
     // Restore primary header at offset 0
-    int r1 = wipe_and_rewrite_header(volFd.get(), 0,
+    int r1 = wipe_and_rewrite_header(fd_be(volFd.get()), 0,
                                      dataSz, dataOff, masterKey.data(), algId, hashId,
                                      (const char*)effPwd.data(), effPwdLen,
                                      (int)pim, hiddenVolSize, /*wipePassCount=*/3,
@@ -1835,7 +1835,7 @@ static jint do_restore_volume_header(
     int r2 = 0;
     if ((bool)fromExternal) {
         uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
-        r2 = wipe_and_rewrite_header(volFd.get(), backupAreaOff,
+        r2 = wipe_and_rewrite_header(fd_be(volFd.get()), backupAreaOff,
                                      dataSz, dataOff, masterKey.data(), algId, hashId,
                                      (const char*)effPwd.data(), effPwdLen,
                                      (int)pim, hiddenVolSize, /*wipePassCount=*/3,
