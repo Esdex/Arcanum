@@ -452,6 +452,11 @@ bool is_valid_utf8(const char *s);
  * life of the process; call sites elsewhere (jni_files.cpp's nativeListFiles)
  * fall back to a per-call lookup if the cache failed to populate. */
 struct JniCache {
+    /* The only way back into Java from code that JNI did not hand an env to. The
+     * block backends run underneath FatFs, which has no idea it is being driven
+     * across a language boundary and passes no JNIEnv down, so usb_backend.cpp
+     * reaches Java through this. Set in JNI_OnLoad, valid for the process. */
+    JavaVM   *vm           = nullptr;
     jclass    fileInfoCls  = nullptr;
     jmethodID fileInfoCtor = nullptr;   /* NativeFileInfo(String,String,J,Z,J) */
     jclass    stringCls    = nullptr;
@@ -459,6 +464,17 @@ struct JniCache {
     jstring   utf8Name     = nullptr;   /* "UTF-8", interned as a GlobalRef */
 };
 extern JniCache g_jniCache;
+
+/* ─── usb_backend.cpp ────────────────────────────────────────────────── */
+/*
+ * Fills `out` with a BlockBackend driving a Kotlin UsbBlockDevice (issue #95). Takes a
+ * global reference to `transport` and owns it until BlockBackend::close, which
+ * free_drive calls. `readOnly` is enforced inside the backend as well as inside the
+ * transport, standing in for the O_RDONLY a file-backed volume gets from the OS.
+ *
+ * False on failure, having allocated and retained nothing.
+ */
+bool usb_backend_init(BlockBackend *out, JNIEnv *env, jobject transport, bool readOnly);
 
 /* ─── ContainerCtx / g_ctxMap ────────────────────────────────────────── */
 /*

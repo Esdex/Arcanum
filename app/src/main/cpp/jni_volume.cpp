@@ -44,6 +44,8 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void * /*reserved*/) {
     if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK)
         return JNI_ERR;
 
+    g_jniCache.vm = vm;
+
     jclass localFileInfo = env->FindClass("zip/arcanum/crypto/NativeFileInfo");
     if (localFileInfo) {
         g_jniCache.fileInfoCls = (jclass)env->NewGlobalRef(localFileInfo);

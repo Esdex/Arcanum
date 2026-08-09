@@ -24,6 +24,11 @@
 # CreationProgressListener is called back from C++ via JNI — onProgress(float,float,long)
 # must not be renamed.
 -keep interface zip.arcanum.crypto.VeraCryptEngine$CreationProgressListener { *; }
+# UsbBlockDevice is driven from C++ (usb_backend.cpp) through GetMethodID by name:
+# read(JI[BI)Z, write(JI[BI)Z, sync()Z, close()V. R8 cannot see those call sites, and
+# a renamed method here fails only at runtime, on a mounted USB volume — the worst
+# possible place to discover it.
+-keep class zip.arcanum.usb.UsbBlockDevice { *; }
 -keep class zip.arcanum.crypto.VeraCryptEngine$CreationProgressListener { *; }
 
 # MountProgressListener is called back from C++ via JNI — onTrying(String,String,int,int)

@@ -58,6 +58,7 @@ set(ARCANUM_SOURCES
     jni_volume.cpp
     jni_files.cpp
     jni_ext4.cpp
+    usb_backend.cpp
     crash_handler.cpp
 )
 

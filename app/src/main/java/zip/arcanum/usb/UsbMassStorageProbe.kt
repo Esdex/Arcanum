@@ -156,6 +156,7 @@ class UsbMassStorageProbe(private val context: Context) {
             if (lastOk) " (entropy ${"%.2f".format(shannonBits(lastSector))} bits/byte)" else "")
 
         throughputSweep(dev)
+        nativeBackendCheck(dev)
 
         line()
         line("VERDICT: raw block access over BOT/SCSI works through UsbBlockDevice.")
@@ -197,6 +198,53 @@ class UsbMassStorageProbe(private val context: Context) {
                 else -> line("  %4d KB: %5.1f MB/s (%d KB in %d ms)".format(
                     kb, (read / 1024.0 / 1024.0) / (ms / 1000.0), read / 1024, ms
                 ))
+            }
+        }
+    }
+
+    /**
+     * Reads spans through the native BlockBackend and compares them byte for byte with
+     * the same spans read directly through the transport.
+     *
+     * This is the only check that the JNI path carries data faithfully. "The native read
+     * returned successfully" proves nothing on its own: a wrong offset, a mis-sized
+     * scratch array or a chunking loop that drops a piece all return perfectly valid
+     * bytes, just not the requested ones. Only the comparison catches that.
+     *
+     * The spans are chosen to exercise the parts that differ: one sector (single chunk),
+     * one span larger than the 512 KB scratch array (forces the loop to go round more
+     * than once), and one at a high offset (full-width LBA).
+     */
+    private fun nativeBackendCheck(dev: UsbBlockDevice) {
+        line("[native backend] reading through the JNI BlockBackend and comparing")
+        val cases = listOf(
+            "one sector" to (0L to dev.blockSize),
+            "64 KB" to (1024L * dev.blockSize to 64 * 1024),
+            "768 KB (crosses the 512 KB scratch)" to (2048L * dev.blockSize to 768 * 1024),
+            "high offset" to ((dev.blockCount - 64) * dev.blockSize to 32 * 1024)
+        )
+        for ((name, span) in cases) {
+            val (offset, length) = span
+            if (offset < 0 || offset + length > dev.sizeBytes) {
+                line("  %-38s skipped, past the end".format(name))
+                continue
+            }
+            val direct = ByteArray(length)
+            if (!dev.read(offset, length, direct)) {
+                line("  %-38s FAILED reading directly".format(name))
+                continue
+            }
+            val viaNative = dev.readThroughNativeBackend(offset, length)
+            when {
+                viaNative == null ->
+                    line("  %-38s native backend unavailable (release build?)".format(name))
+                viaNative.size != length ->
+                    line("  %-38s MISMATCH: got ${viaNative.size} bytes, wanted $length".format(name))
+                !viaNative.contentEquals(direct) -> {
+                    val at = viaNative.indices.first { viaNative[it] != direct[it] }
+                    line("  %-38s MISMATCH at byte $at".format(name))
+                }
+                else -> line("  %-38s identical ($length bytes)".format(name))
             }
         }
     }
