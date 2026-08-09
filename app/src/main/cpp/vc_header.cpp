@@ -237,7 +237,7 @@ static int build_vc_header(uint8_t outHeader[VC_HEADER_SIZE],
 }
 
 /* Thin wrapper: build the header in memory, then write it at fileOff. */
-int write_vc_header(int fd, uint64_t fileOff,
+int write_vc_header(const BlockBackend &be, uint64_t fileOff,
                      uint64_t dataSz, uint64_t dataOff,
                      const uint8_t *masterKey,
                      int algId, int hashAlg,
@@ -249,9 +249,9 @@ int write_vc_header(int fd, uint64_t fileOff,
     int r = build_vc_header(rawHeader, dataSz, dataOff, masterKey, algId, hashAlg,
                             password, pwd_len, pim, hiddenVolSize, existingSalt);
     if (r != 0) return r;
-    ssize_t w = pwrite(fd, rawHeader, VC_HEADER_SIZE, (off_t)fileOff);
+    bool w = be.write(be.self, rawHeader, VC_HEADER_SIZE, fileOff);
     secure_memset(rawHeader, 0, sizeof(rawHeader));   /* carries the encrypted master key */
-    return (w == VC_HEADER_SIZE) ? 0 : -1;
+    return w ? 0 : -1;
 }
 
 /* ─── VeraCrypt header authenticate ─────────────────────────────────── */
@@ -323,7 +323,7 @@ static void report_trying(MountCb *cb, int algId, int hashId) {
  * combination is tried first so re-mounting a known container is fast.
  * On success fills masterKey (n*64 bytes), outMkLen, outAlgId, dataSz, dataOff.
  */
-int read_vc_header(int fd, uint64_t fileOff,
+int read_vc_header(const BlockBackend &be, uint64_t fileOff,
                     const char *password, int pwd_len,
                     uint8_t *masterKey, int *outMkLen,
                     uint64_t *dataSz, uint64_t *dataOff,
@@ -333,7 +333,7 @@ int read_vc_header(int fd, uint64_t fileOff,
                     int hintAlgId, int hintHashId,
                     MountCb *mountCb) {
     uint8_t rawHeader[VC_HEADER_SIZE];
-    if (pread(fd, rawHeader, VC_HEADER_SIZE, (off_t)fileOff) != VC_HEADER_SIZE) return ERR_READ;
+    if (!be.read(be.self, rawHeader, VC_HEADER_SIZE, fileOff)) return ERR_READ;
 
     const uint8_t *salt = rawHeader;          /* first 64 bytes */
     const uint8_t *rawBody = rawHeader + VC_HEADER_BODY_OFFSET;
@@ -472,7 +472,7 @@ int read_vc_header(int fd, uint64_t fileOff,
    passes, then writes the new header encrypted with the new credentials.
    extraEntropy/extraEntropyLen: optional user-collected bytes XOR'd into the
    new salt before writing (Random Pool Enrichment). Pass nullptr/0 to skip. */
-int wipe_and_rewrite_header(int fd, uint64_t fileOff,
+int wipe_and_rewrite_header(const BlockBackend &be, uint64_t fileOff,
                              uint64_t dataSz, uint64_t dataOff,
                              const uint8_t *masterKey, int algId, int newHashAlg,
                              const char *newPwd, int newPwdLen, int newPim,
@@ -512,24 +512,24 @@ int wipe_and_rewrite_header(int fd, uint64_t fileOff,
             memset(wipeBuf, 0xAA, VC_HEADER_SIZE);
         }
         /* Check write/sync so a failing pass doesn't silently defeat wipe guarantee */
-        ssize_t written = pwrite(fd, wipeBuf, VC_HEADER_SIZE, (off_t)fileOff);
-        if (written != VC_HEADER_SIZE) {
+        bool written = be.write(be.self, wipeBuf, VC_HEADER_SIZE, fileOff);
+        if (!written) {
             memset(wipeBuf, 0, sizeof(wipeBuf));
             secure_memset(newHeader, 0, sizeof(newHeader));
             return ERR_FILE;   /* rfd closed by UniqueFd's destructor */
         }
-        fdatasync(fd);
+        be.sync(be.self);
     }
     memset(wipeBuf, 0, sizeof(wipeBuf));
     rfd.reset();   /* explicit: done with /dev/urandom before the header write below */
 
     /* Final write: the pre-validated replacement header. */
-    ssize_t w = pwrite(fd, newHeader, VC_HEADER_SIZE, (off_t)fileOff);
+    bool w = be.write(be.self, newHeader, VC_HEADER_SIZE, fileOff);
     secure_memset(newHeader, 0, sizeof(newHeader));   /* carries the encrypted master key */
-    if (w != VC_HEADER_SIZE) return ERR_FILE;
-    /* fdatasync the replacement too (the wipe passes above already do). Without it,
+    if (!w) return ERR_FILE;
+    /* Flush the replacement too (the wipe passes above already do). Without it,
      * a power cut between write() returning and the data reaching disk could leave
      * the header wiped with no durable replacement. */
-    fdatasync(fd);
+    be.sync(be.self);
     return 0;
 }
