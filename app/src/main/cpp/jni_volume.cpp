@@ -1472,7 +1472,7 @@ static jint do_change_password(
 {
     /* fd is always closed by this function on every path. */
     UniqueFd fd(fdIn);
-    const BlockBackend vol = beIn ? *beIn : vol;
+    const BlockBackend vol = beIn ? *beIn : fd_be(fd.get());
 
     /* Build old effective password (password + keyfile pool) */
     SecureBuffer<VC_MAX_PWD_LEN> oldEffPwd;
@@ -1490,7 +1490,7 @@ static jint do_change_password(
     if (beIn) {
         fileSize = sizeIn;   /* nothing to seek on: the volume is a device, not a file */
     } else {
-        off_t fileSzOff = beIn ? (off_t)sizeIn : lseek(fd.get(), 0, SEEK_END);
+        off_t fileSzOff = lseek(fd.get(), 0, SEEK_END);
         if (fileSzOff < 0) {
             return ERR_FILE;
         }
@@ -1743,7 +1743,7 @@ static jint do_backup_volume_header(
         const char *outputPath, int safOutputFd)
 {
     UniqueFd volFd(volFdIn);
-    const BlockBackend vol = beIn ? *beIn : vol;
+    const BlockBackend vol = beIn ? *beIn : fd_be(volFd.get());
 
     SecureBuffer<VC_MAX_PWD_LEN> effPwd;
     int effPwdLen = pwdLen;
