@@ -154,6 +154,7 @@ class UsbMassStorageProbe(
             return
         }
 
+        dev.resetIoStats()
         line("[mount] read-write, ${dev.sizeBytes / (1024 * 1024)} MB...")
         val res = eng.mountContainerUsb(
             transport = dev, deviceSize = dev.sizeBytes,
@@ -176,6 +177,12 @@ class UsbMassStorageProbe(
             // comparison even though the length is right. A constant fill would not.
             val data = ByteArray(size) { i -> (i xor (i shr 8) xor (i shr 16)).toByte() }
 
+            // Reset immediately before and read immediately after, so the census covers
+            // exactly the same window as the stopwatch. Measuring the whole session
+            // against one call's duration made the two incomparable - the backend
+            // appeared to spend longer writing than the write call itself lasted,
+            // because mkdir, the FAT updates and the unmount flush were in the total.
+            dev.resetIoStats()
             val writeMs = measureTimeMillis {
                 val rc = eng.writeFile(handle, name, data, 0)
                 if (rc != 0) {
@@ -183,8 +190,10 @@ class UsbMassStorageProbe(
                     return
                 }
             }
+            val writeCensus = dev.ioStats()
             line("[write] ${size / 1024} KB in $writeMs ms = " +
                 "${"%.1f".format((size / 1024.0 / 1024.0) / (writeMs / 1000.0))} MB/s (through FAT and XTS)")
+            writeCensus?.let { line("[write phase only]"); line(it) }
 
             val readBack = eng.readFile(handle, name, 0, size)
             when {
@@ -214,8 +223,29 @@ class UsbMassStorageProbe(
         } finally {
             val rc = eng.closeContainer(handle)
             line("[unmount] closeContainer returned $rc")
+            dev.ioStats()?.let { line(); line("[whole session, including mkdir and the unmount flush]"); line(it) }
         }
     }
+
+    /**
+     * DESTROYS the volume. Writes at the same transfer sizes the read sweep uses, so the
+     * two can be compared on the same drive in the same state.
+     *
+     * This exists to answer one question that arithmetic could not: a 16 KB write costs
+     * four times what a 16 KB read costs, which is equally consistent with per-command
+     * overhead and with the flash simply being slow to write. Only a raw write sweep
+     * separates them, and the answer decides whether a write-coalescing layer is worth
+     * building at all.
+     */
+    suspend fun runWriteSweep(): String =
+        withTarget("WRITE THROUGHPUT SWEEP - destroys the volume", readOnly = false) { dev ->
+            line("Read and write sweeps below run back to back on the same drive.")
+            line()
+            throughputSweep(dev, writing = false)
+            throughputSweep(dev, writing = true)
+            line()
+            line("The volume on this drive is gone. Recreate it with veracrypt --create.")
+        }
 
     private suspend fun withTarget(
         what: String,
@@ -323,8 +353,8 @@ class UsbMassStorageProbe(
      * drive's own ceiling. Each size reads a fresh region so the drive's read-ahead
      * cache cannot flatter a later run with data an earlier one already pulled.
      */
-    private fun throughputSweep(dev: UsbBlockDevice) {
-        line("[throughput sweep] sequential, no crypto, fresh region per size")
+    private fun throughputSweep(dev: UsbBlockDevice, writing: Boolean = false) {
+        line("[${if (writing) "WRITE" else "read"} throughput sweep] sequential, no crypto, fresh region per size")
         var region = 0L
         for (kb in listOf(8, 32, 128, 512)) {
             val chunk = kb * 1024
@@ -339,10 +369,9 @@ class UsbMassStorageProbe(
             var failed = false
             val ms = measureTimeMillis {
                 for (c in 0 until rounds) {
-                    if (!dev.read(region + c.toLong() * chunk, chunk, buf)) {
-                        failed = true
-                        break
-                    }
+                    val at = region + c.toLong() * chunk
+                    val ok = if (writing) dev.write(at, chunk, buf) else dev.read(at, chunk, buf)
+                    if (!ok) { failed = true; break }
                     read += chunk
                 }
             }

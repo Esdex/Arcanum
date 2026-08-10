@@ -240,6 +240,17 @@ class DebugViewModel @Inject constructor(
         }
     }
 
+    /** DESTROYS the volume: raw write throughput at several transfer sizes. */
+    fun runUsbWriteSweep() {
+        if (state.value.usbProbeRunning) return
+        viewModelScope.launch {
+            _state.update { it.copy(usbProbeRunning = true, usbProbeReport = null) }
+            val report = runCatching { UsbMassStorageProbe(context, veraCryptEngine).runWriteSweep() }
+                .getOrElse { "write sweep threw ${it.javaClass.simpleName}: ${it.message}" }
+            _state.update { it.copy(usbProbeRunning = false, usbProbeReport = report) }
+        }
+    }
+
     fun copyUsbProbeToClipboard() {
         val text = state.value.usbProbeReport ?: return
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

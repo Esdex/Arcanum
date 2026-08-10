@@ -398,6 +398,22 @@ class UsbBlockDevice private constructor(
         }
     }
 
+    /** Debug-only I/O census over the native backend, for sizing a cache. */
+    fun ioStats(): String? = try {
+        runCatching { System.loadLibrary("arcanum-native") }
+        nativeIoStats()
+    } catch (e: UnsatisfiedLinkError) { null }
+
+    fun resetIoStats() {
+        try {
+            runCatching { System.loadLibrary("arcanum-native") }
+            nativeResetIoStats()
+        } catch (e: UnsatisfiedLinkError) { /* release build */ }
+    }
+
+    private external fun nativeIoStats(): String?
+    private external fun nativeResetIoStats()
+
     private external fun nativeReadThroughBackend(
         transport: UsbBlockDevice,
         offset: Long,
