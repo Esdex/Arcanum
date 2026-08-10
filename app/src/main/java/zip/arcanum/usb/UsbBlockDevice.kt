@@ -45,6 +45,8 @@ import java.nio.ByteOrder
  * that lock ordering cannot deadlock.
  */
 class UsbBlockDevice private constructor(
+    /** The device this was opened on, so a detach broadcast can be matched against it. */
+    val device: UsbDevice,
     private val connection: UsbDeviceConnection,
     private val iface: UsbInterface,
     private val epIn: UsbEndpoint,
@@ -132,7 +134,7 @@ class UsbBlockDevice private constructor(
                     throw IOException("no bulk endpoint pair on interface ${iface.id}")
                 }
 
-                val dev = UsbBlockDevice(connection, iface, epIn, epOut, readOnly)
+                val dev = UsbBlockDevice(device, connection, iface, epIn, epOut, readOnly)
                 dev.readCapacity()
                 ok = true
                 return dev
@@ -149,6 +151,29 @@ class UsbBlockDevice private constructor(
     private var tag = 1
     private var closed = false
     private var inRequestSense = false
+
+    /**
+     * Set when the device stops answering at all, as opposed to a command failing.
+     *
+     * This exists to stop a hang, not to tidy state. Every transfer waits up to
+     * [TIMEOUT_MS], and a filesystem asked to continue on a drive that has been pulled
+     * will issue dozens of them - minutes of the app appearing frozen. Once one command
+     * cannot even be sent, the rest fail immediately.
+     */
+    @Volatile
+    private var dead = false
+
+    /** True once the device stopped answering, or the transport was closed. */
+    val isUsable: Boolean get() = !dead && !closed
+
+    /**
+     * Marks the device gone without touching it - for a detach broadcast, where the
+     * hardware has already left and any further transfer would only wait out its timeout.
+     */
+    fun markDetached() {
+        dead = true
+        lastError = "the device was detached"
+    }
 
     /**
      * Why the last operation failed, as the drive itself explained it, or null if the
@@ -185,10 +210,15 @@ class UsbBlockDevice private constructor(
     fun inquiry(): String? = synchronized(lock) {
         val buf = ByteArray(36)
         if (!scsiIn(ByteArray(6).also { it[0] = 0x12; it[4] = 36 }, buf, 0, buf.size)) return null
-        val vendor = String(buf, 8, 8).trim()
-        val product = String(buf, 16, 16).trim()
-        val rev = String(buf, 32, 4).trim()
-        "$vendor $product $rev".trim()
+        // SCSI pads these fixed-width fields with whatever the vendor felt like - spaces
+        // by the spec, NULs in practice. Keeping only printable characters is what makes
+        // this fit to show as a device name rather than something with \0 in the middle.
+        fun field(off: Int, len: Int) =
+            String(buf, off, len, Charsets.US_ASCII).filter { it in ' '..'~' }.trim()
+        listOf(field(8, 8), field(16, 16), field(32, 4))
+            .filter { it.isNotEmpty() }
+            .joinToString(" ")
+            .ifEmpty { null }
     }
 
     /**
@@ -295,6 +325,17 @@ class UsbBlockDevice private constructor(
             put(cdb.size.toByte())
             put(cdb)
         }.array()
+
+    /**
+     * A command block that cannot even be handed to the endpoint means the device is no
+     * longer there - a live drive rejecting a command answers with a CSW instead. So this
+     * is the one failure treated as fatal to the whole transport rather than to one call.
+     */
+    private fun failDead(): Boolean {
+        dead = true
+        lastError = "the device stopped responding - was it unplugged?"
+        return false
+    }
 
     private fun readCsw(myTag: Int): Boolean {
         val csw = ByteArray(CSW_LENGTH)
@@ -421,9 +462,10 @@ class UsbBlockDevice private constructor(
     ): ByteArray?
 
     private fun scsiIn(cdb: ByteArray, dest: ByteArray, destOffset: Int, length: Int): Boolean {
+        if (dead) return false
         val myTag = tag++
         val cbw = buildCbw(cdb, length, deviceToHost = true, myTag = myTag)
-        if (connection.bulkTransfer(epOut, cbw, cbw.size, TIMEOUT_MS) != CBW_LENGTH) return false
+        if (connection.bulkTransfer(epOut, cbw, cbw.size, TIMEOUT_MS) != CBW_LENGTH) return failDead()
 
         var got = 0
         while (got < length) {
@@ -436,9 +478,10 @@ class UsbBlockDevice private constructor(
     }
 
     private fun scsiOut(cdb: ByteArray, src: ByteArray, srcOffset: Int, length: Int): Boolean {
+        if (dead) return false
         val myTag = tag++
         val cbw = buildCbw(cdb, length, deviceToHost = false, myTag = myTag)
-        if (connection.bulkTransfer(epOut, cbw, cbw.size, TIMEOUT_MS) != CBW_LENGTH) return false
+        if (connection.bulkTransfer(epOut, cbw, cbw.size, TIMEOUT_MS) != CBW_LENGTH) return failDead()
 
         var sent = 0
         while (sent < length) {
@@ -452,10 +495,10 @@ class UsbBlockDevice private constructor(
 
     /** A command with no data phase: CBW then CSW. */
     private fun scsiNoData(cdb: ByteArray): Boolean {
-        if (closed) return false
+        if (closed || dead) return false
         val myTag = tag++
         val cbw = buildCbw(cdb, 0, deviceToHost = false, myTag = myTag)
-        if (connection.bulkTransfer(epOut, cbw, cbw.size, TIMEOUT_MS) != CBW_LENGTH) return false
+        if (connection.bulkTransfer(epOut, cbw, cbw.size, TIMEOUT_MS) != CBW_LENGTH) return failDead()
         return readCsw(myTag)
     }
 }

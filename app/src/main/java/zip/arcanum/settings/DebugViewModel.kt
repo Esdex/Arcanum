@@ -49,6 +49,7 @@ class DebugViewModel @Inject constructor(
     private val panicManager: PanicManager,
     private val thumbnailManager: ThumbnailManager,
     private val veraCryptEngine: zip.arcanum.crypto.VeraCryptEngine,
+    private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -99,7 +100,8 @@ class DebugViewModel @Inject constructor(
         val lastMountLog: String? = null,
         val dryRunActions: List<String>? = null,
         val usbProbeRunning: Boolean = false,
-        val usbProbeReport: String? = null
+        val usbProbeReport: String? = null,
+        val usbHeld: String? = null
     )
 
     private val _state = MutableStateFlow(DebugState())
@@ -110,6 +112,27 @@ class DebugViewModel @Inject constructor(
 
     sealed interface DebugEvent {
         object CacheCleared : DebugEvent
+    }
+
+    init {
+        viewModelScope.launch {
+            usbVolumes.mounted.collect { v ->
+                _state.update { it.copy(usbHeld = v?.let { m ->
+                    "${m.label} - ${m.sizeBytes / (1024 * 1024)} MB${if (m.readOnly) ", read-only" else ""}"
+                }) }
+            }
+        }
+        viewModelScope.launch {
+            usbVolumes.events.collect { e ->
+                val text = when (e) {
+                    is zip.arcanum.usb.UsbVolumeManager.Event.Detached ->
+                        "[detached] \"${e.label}\" was unplugged while mounted.\n" +
+                        "The volume was torn down. Anything not yet written is lost."
+                    zip.arcanum.usb.UsbVolumeManager.Event.Unmounted -> "[unmounted] clean"
+                }
+                _state.update { it.copy(usbProbeReport = text) }
+            }
+        }
     }
 
     fun refresh() {
@@ -248,6 +271,38 @@ class DebugViewModel @Inject constructor(
             val report = runCatching { UsbMassStorageProbe(context, veraCryptEngine).runWriteSweep() }
                 .getOrElse { "write sweep threw ${it.javaClass.simpleName}: ${it.message}" }
             _state.update { it.copy(usbProbeRunning = false, usbProbeReport = report) }
+        }
+    }
+
+    /**
+     * Mounts a USB volume and LEAVES it mounted, so the drive can be physically pulled
+     * to test the detach path. Everything else here tears down before returning.
+     */
+    fun mountAndHoldUsb(password: String) {
+        if (state.value.usbProbeRunning) return
+        viewModelScope.launch {
+            _state.update { it.copy(usbProbeRunning = true, usbProbeReport = null) }
+            val report = StringBuilder()
+            val (dev, log) = zip.arcanum.usb.UsbMassStorageProbe(context, veraCryptEngine)
+                .openTransport(readOnly = false)
+            report.append(log)
+            if (dev != null) {
+                when (val r = usbVolumes.mount(dev, password, readOnly = false)) {
+                    is zip.arcanum.crypto.CryptoResult.Success ->
+                        report.append("[mount] held, handle=${r.value}\n")
+                            .append("Pull the drive now. The app should report it and clean up.\n")
+                    is zip.arcanum.crypto.CryptoResult.Failure ->
+                        report.append("[mount] FAILED: ${r.error}\n")
+                }
+            }
+            _state.update { it.copy(usbProbeRunning = false, usbProbeReport = report.toString()) }
+        }
+    }
+
+    fun unmountHeldUsb() {
+        viewModelScope.launch {
+            val rc = usbVolumes.unmount()
+            _state.update { it.copy(usbProbeReport = "[unmount] closeContainer returned $rc") }
         }
     }
 
