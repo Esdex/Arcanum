@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Timer
@@ -112,6 +113,8 @@ fun VaultConfigScreen(
     val hazeState = remember { HazeState() }
 
     var showMoreMenu         by remember { mutableStateOf(false) }
+    var showUsbMissing       by remember { mutableStateOf(false) }
+    val configScope          = rememberCoroutineScope()
     var showRenameDialog     by remember { mutableStateOf(false) }
     var showMoveSheet        by remember { mutableStateOf(false) }
     var showAutoUnmountSheet by remember { mutableStateOf(false) }
@@ -224,7 +227,25 @@ fun VaultConfigScreen(
                         title     = stringResource(if (isMounted) R.string.vault_config_op_open else R.string.vault_config_op_mount),
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_op_open_desc else R.string.vault_config_op_mount_desc),
                         isDynamic = isDynamic,
-                        onClick   = { if (isMounted) onOpenVault(containerId) else onMount(containerId) }
+                        onClick   = {
+                            when {
+                                isMounted -> onOpenVault(containerId)
+                                // A USB vault needs the drive before the password is worth
+                                // asking for. Presence is checked passively; permission is
+                                // requested here rather than mid-mount, so the system
+                                // prompt does not interrupt someone typing a password.
+                                container?.usbSaltHash?.isNotEmpty() == true -> {
+                                    configScope.launch {
+                                        if (viewModel.isUsbDriveAttached() && viewModel.ensureUsbPermission()) {
+                                            onMount(containerId)
+                                        } else {
+                                            showUsbMissing = true
+                                        }
+                                    }
+                                }
+                                else -> onMount(containerId)
+                            }
+                        }
                     )
                     if (isMounted) {
                         VaultOperationItem(
@@ -310,7 +331,32 @@ fun VaultConfigScreen(
         }
 
         // ── Rename dialog ─────────────────────────────────────────────────────────
-        if (showRenameDialog) {
+        if (showUsbMissing) {
+        AppDialog(
+            onDismissRequest = { showUsbMissing = false },
+            title            = { Text(stringResource(R.string.usb_not_connected_title)) },
+            text             = { Text(stringResource(R.string.usb_not_connected_body)) },
+            confirmButton    = {
+                TextButton(onClick = {
+                    showUsbMissing = false
+                    configScope.launch {
+                        if (viewModel.isUsbDriveAttached() && viewModel.ensureUsbPermission()) {
+                            onMount(containerId)
+                        } else {
+                            showUsbMissing = true
+                        }
+                    }
+                }) { Text(stringResource(R.string.usb_try_again)) }
+            },
+            dismissButton    = {
+                TextButton(onClick = { showUsbMissing = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
+    if (showRenameDialog) {
             AppDialog(
                 onDismissRequest = { showRenameDialog = false },
                 title            = { Text(stringResource(R.string.vault_rename_title)) },
@@ -506,7 +552,12 @@ private fun VaultConfigHero(
         (container.path.startsWith(context.filesDir.absolutePath) ||
          container.path.startsWith(context.noBackupFilesDir.absolutePath))
     }
-    val heroIcon = if (isInAppStorage) Icons.Outlined.PhoneAndroid else Icons.Outlined.Storage
+    val isUsbVault = container?.usbSaltHash?.isNotEmpty() == true
+    val heroIcon = when {
+        isUsbVault     -> Icons.Outlined.Usb
+        isInAppStorage -> Icons.Outlined.PhoneAndroid
+        else           -> Icons.Outlined.Storage
+    }
 
     val iconBg by animateColorAsState(
         targetValue   = if (isMounted) Color(0xFF16A34A) else MaterialTheme.colorScheme.primaryContainer,

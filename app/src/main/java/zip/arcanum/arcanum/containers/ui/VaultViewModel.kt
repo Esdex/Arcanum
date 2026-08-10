@@ -47,6 +47,8 @@ import zip.arcanum.core.security.BiometricCryptoManager
 import zip.arcanum.crypto.CryptoError
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
+import zip.arcanum.usb.UsbBlockDevice
+import zip.arcanum.usb.UsbVolumeManager
 import javax.crypto.Cipher
 import javax.inject.Inject
 
@@ -271,6 +273,45 @@ class VaultViewModel @Inject constructor(
             _mountState.value = MountState.Loading
             mountLogger.start()
             mountLogger.log("Container: ${container.name}")
+            val isUsb = container.usbSaltHash.isNotEmpty()
+
+            // The gate for a USB-hosted vault, in the two stages the user experiences as
+            // one action. Presence is passive and cheap; identity costs a claim, so it can
+            // only be checked once the drive is in hand. Keeping the two apart is what
+            // lets "no drive" and "the wrong drive" say different things - the second
+            // would otherwise leave someone retrying at a drive that will never match.
+            var usbDevice: UsbBlockDevice? = null
+            if (isUsb) {
+                mountLogger.log("Source: USB drive")
+                if (!usbVolumes.ensurePermission()) {
+                    mountLogger.log("Mount aborted: no drive attached, or USB permission refused")
+                    _mountState.value = MountState.Error(USB_NOT_CONNECTED)
+                    persistMountLog()
+                    return@launch
+                }
+                when (val opened = usbVolumes.openMatching(container.usbSaltHash, readOnly)) {
+                    is UsbVolumeManager.OpenResult.Ok -> usbDevice = opened.device
+                    UsbVolumeManager.OpenResult.NoDrive -> {
+                        mountLogger.log("Mount aborted: no USB drive attached")
+                        _mountState.value = MountState.Error(USB_NOT_CONNECTED)
+                        persistMountLog()
+                        return@launch
+                    }
+                    is UsbVolumeManager.OpenResult.WrongVolume -> {
+                        mountLogger.log("Mount aborted: attached drive holds a different volume (${opened.found.label})")
+                        _mountState.value = MountState.Error(USB_WRONG_DEVICE)
+                        persistMountLog()
+                        return@launch
+                    }
+                    is UsbVolumeManager.OpenResult.Failed -> {
+                        mountLogger.log("Mount aborted: ${opened.reason}")
+                        _mountState.value = MountState.Error(USB_NOT_CONNECTED)
+                        persistMountLog()
+                        return@launch
+                    }
+                }
+            }
+
             val isSaf = container.safUri.isNotEmpty()
             val pfd: ParcelFileDescriptor? = if (isSaf) {
                 mountLogger.log("Source: SAF URI (${container.safUri.takeLast(40)})")
@@ -324,7 +365,21 @@ class VaultViewModel @Inject constructor(
                             }
                         }
                     } else null
-                val result = if (pfd != null) {
+                val result = if (usbDevice != null) {
+                    // Goes through the manager rather than the engine directly: it takes
+                    // ownership of the transport, so the drive being pulled later has a
+                    // single owner to tear the volume down.
+                    usbVolumes.mount(
+                        device = usbDevice, password = password, readOnly = readOnly,
+                        keyfileData = keyfileData, pim = pim,
+                        algorithm = algorithm, hashAlgorithm = hashAlgorithm,
+                        protectHiddenPassword = protectHiddenPassword,
+                        protectHiddenKeyfileData = protectHiddenKeyfileData,
+                        protectHiddenPim = protectHiddenPim,
+                        mountProgressListener = progressListener,
+                        label = container.name
+                    )
+                } else if (pfd != null) {
                     cryptoEngine.mountContainerFd(
                         fd = pfd.fd, password = password,
                         keyfileData = keyfileData, pim = pim,
@@ -558,6 +613,9 @@ class VaultViewModel @Inject constructor(
         }
     }
 
+    /** Passive presence check: no claim, so the drive stays where Android put it. */
+    fun isUsbDriveAttached(): Boolean = usbVolumes.attachedDrive() != null
+
     /** Asks for USB permission for the attached drive, so [addUsbContainer] can claim it. */
     suspend fun ensureUsbPermission(): Boolean = usbVolumes.ensurePermission()
 
@@ -568,10 +626,24 @@ class VaultViewModel @Inject constructor(
     fun unmountContainer(id: String, onDone: () -> Unit) {
         viewModelScope.launch {
             val handle = repo.getContainerHandle(id)
-            if (handle != null) cryptoEngine.unmountContainer(handle)
+            if (handle != null) closeByHandle(handle)
             repo.unmountContainer(id)
             onDone()
         }
+    }
+
+    /**
+     * Closes a mounted volume by whichever route owns it.
+     *
+     * A USB volume must go through UsbVolumeManager rather than straight to the engine:
+     * the manager holds the transport, and closing the container behind its back would
+     * leave the USB interface claimed and the manager still believing a volume is
+     * mounted - so the drive would stay missing from Android and a later detach would
+     * fire against something already gone.
+     */
+    private suspend fun closeByHandle(handle: Long) {
+        if (usbVolumes.mounted.value?.handle == handle) usbVolumes.unmount()
+        else cryptoEngine.unmountContainer(handle)
     }
 
     /** Enriched domain container (mount-only fields resolved) for the details sheet. */
@@ -608,7 +680,7 @@ class VaultViewModel @Inject constructor(
             repo.getAllContainersRaw().first().filter { it.isMounted }.forEach { c ->
                 if (c.unmountOnBackground || (isLocked && c.unmountOnLock)) {
                     val handle = repo.getContainerHandle(c.id)
-                    if (handle != null) cryptoEngine.unmountContainer(handle)
+                    if (handle != null) closeByHandle(handle)
                     repo.unmountContainer(c.id)
                 }
             }
@@ -618,7 +690,7 @@ class VaultViewModel @Inject constructor(
     fun removeFromList(id: String) {
         viewModelScope.launch {
             val handle = repo.getContainerHandle(id)
-            if (handle != null) cryptoEngine.unmountContainer(handle)
+            if (handle != null) closeByHandle(handle)
             repo.deleteContainersById(setOf(id))
         }
     }
@@ -770,5 +842,11 @@ class VaultViewModel @Inject constructor(
     private companion object {
         const val FIRST_PROMPT_AFTER_MS = 24L * 60 * 60 * 1000          // one day
         const val PROMPT_INTERVAL_MS    = 30L * 24 * 60 * 60 * 1000     // then monthly
+
+        /** The two USB gate failures the user can act on, and they need different actions. */
+        const val USB_NOT_CONNECTED =
+            "Connect the USB drive holding this vault and try again."
+        const val USB_WRONG_DEVICE =
+            "Wrong USB device: the connected drive does not hold this vault."
     }
 }
