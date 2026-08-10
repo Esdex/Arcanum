@@ -117,6 +117,29 @@ fun VaultConfigScreen(
     var showUsbMissing       by remember { mutableStateOf(false) }
     var showSafeToRemove     by remember { mutableStateOf(false) }
     val configScope          = rememberCoroutineScope()
+    // What the user was trying to do when the drive turned out to be missing, so
+    // "Try again" resumes it instead of just closing. One holder rather than a flag
+    // per operation - every action that needs the volume goes through the same gate.
+    var pendingUsbAction     by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // Every operation that touches the volume passes through here: presence first,
+    // then permission, and only then the action. Asking at this point rather than at
+    // execution means the user learns the drive is missing before filling in a form,
+    // and the system prompt cannot land on a half-typed password.
+    val requireDrive: (() -> Unit) -> Unit = { action ->
+        if (container?.usbSaltHash?.isNotEmpty() == true) {
+            pendingUsbAction = action
+            configScope.launch {
+                if (viewModel.isUsbDriveAttached() && viewModel.ensureUsbPermission()) {
+                    pendingUsbAction = null
+                    action()
+                } else {
+                    showUsbMissing = true
+                }
+            }
+        } else action()
+    }
+
     var showRenameDialog     by remember { mutableStateOf(false) }
     var showMoveSheet        by remember { mutableStateOf(false) }
     var showAutoUnmountSheet by remember { mutableStateOf(false) }
@@ -236,16 +259,7 @@ fun VaultConfigScreen(
                                 // asking for. Presence is checked passively; permission is
                                 // requested here rather than mid-mount, so the system
                                 // prompt does not interrupt someone typing a password.
-                                container?.usbSaltHash?.isNotEmpty() == true -> {
-                                    configScope.launch {
-                                        if (viewModel.isUsbDriveAttached() && viewModel.ensureUsbPermission()) {
-                                            onMount(containerId)
-                                        } else {
-                                            showUsbMissing = true
-                                        }
-                                    }
-                                }
-                                else -> onMount(containerId)
+                                else -> requireDrive { onMount(containerId) }
                             }
                         }
                     )
@@ -293,7 +307,7 @@ fun VaultConfigScreen(
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.chpwd_config_desc),
                         isDynamic = isDynamic,
                         enabled   = !isMounted,
-                        onClick   = { onChangePassword(containerId) }
+                        onClick   = { requireDrive { onChangePassword(containerId) } }
                     )
                     VaultOperationItem(
                         icon      = ArcanumIcons.Keyfile,
@@ -302,7 +316,7 @@ fun VaultConfigScreen(
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.chkeyfile_config_desc),
                         isDynamic = isDynamic,
                         enabled   = !isMounted,
-                        onClick   = { onChangeKeyfile(containerId) }
+                        onClick   = { requireDrive { onChangeKeyfile(containerId) } }
                     )
 
                     VaultOperationItem(
@@ -312,7 +326,7 @@ fun VaultConfigScreen(
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.vault_card_backup_desc),
                         isDynamic = isDynamic,
                         enabled   = !isMounted,
-                        onClick   = { onBackupHeader(containerId) }
+                        onClick   = { requireDrive { onBackupHeader(containerId) } }
                     )
                     VaultOperationItem(
                         icon      = Icons.Outlined.Restore,
@@ -321,7 +335,7 @@ fun VaultConfigScreen(
                         subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.vault_card_restore_desc),
                         isDynamic = isDynamic,
                         enabled   = !isMounted,
-                        onClick   = { onRestoreHeader(containerId) }
+                        onClick   = { requireDrive { onRestoreHeader(containerId) } }
                     )
 
                     // General + Encryption details — only meaningful while mounted
@@ -367,9 +381,11 @@ fun VaultConfigScreen(
             confirmButton    = {
                 TextButton(onClick = {
                     showUsbMissing = false
+                    val retry = pendingUsbAction
                     configScope.launch {
                         if (viewModel.isUsbDriveAttached() && viewModel.ensureUsbPermission()) {
-                            onMount(containerId)
+                            pendingUsbAction = null
+                            retry?.invoke()
                         } else {
                             showUsbMissing = true
                         }

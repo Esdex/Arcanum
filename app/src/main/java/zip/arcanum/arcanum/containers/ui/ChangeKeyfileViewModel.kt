@@ -58,6 +58,7 @@ class ChangeKeyfileViewModel @Inject constructor(
     private var containerId: String = ""
     private var containerPath: String = ""
     private var safUri: String = ""
+    private var usbSaltHash: String = ""
     // PRF is always the existing volume's hash — user cannot change it (VeraCrypt: enablePkcs5Prf=false)
     private var containerHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA512
 
@@ -70,6 +71,7 @@ class ChangeKeyfileViewModel @Inject constructor(
             val c = repo.getContainerById(id) ?: return@launch
             containerPath          = c.path
             safUri                 = c.safUri
+            usbSaltHash            = c.usbSaltHash
             containerHashAlgorithm = HashAlgorithm.entries.firstOrNull { it.displayName == c.prf }
                 ?: HashAlgorithm.SHA512
         }
@@ -175,7 +177,7 @@ class ChangeKeyfileViewModel @Inject constructor(
         val s = _state.value
         _state.update { it.copy(isRunning = true, error = null, currentStep = 4) }
 
-        val pfd = if (safUri.isNotEmpty())
+        val pfd = if (safUri.isNotEmpty() && usbSaltHash.isEmpty())
             context.contentResolver.openFileDescriptor(Uri.parse(safUri), "rw")
         else null
 
@@ -192,7 +194,8 @@ class ChangeKeyfileViewModel @Inject constructor(
             pim              = s.pim,
             newKeyfileData  = effectiveNewKeyfiles.map { it.copyOf() },
             newHashAlgorithm = containerHashAlgorithm.ordinal,
-            extraEntropy     = collectedEntropy.copyOf(entropyIndex)
+            extraEntropy     = collectedEntropy.copyOf(entropyIndex),
+            usbSaltHash      = usbSaltHash
         ))
 
         _state.update { it.copy(

@@ -35,6 +35,7 @@ data class BackupHeaderState(
 class BackupHeaderViewModel @Inject constructor(
     private val repo: ContainerRepository,
     private val engine: VeraCryptEngine,
+    private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -44,6 +45,7 @@ class BackupHeaderViewModel @Inject constructor(
     private var containerId: String = ""
     private var containerPath: String = ""
     private var safUri: String = ""
+    private var usbSaltHash: String = ""
 
     fun init(id: String) {
         containerId = id
@@ -51,6 +53,7 @@ class BackupHeaderViewModel @Inject constructor(
             val c = repo.getContainerById(id) ?: return@launch
             containerPath = c.path
             safUri        = c.safUri
+            usbSaltHash   = c.usbSaltHash
         }
     }
 
@@ -86,6 +89,10 @@ class BackupHeaderViewModel @Inject constructor(
         _state.update { it.copy(isRunning = true, error = null) }
 
         viewModelScope.launch {
+            if (usbSaltHash.isNotEmpty()) {
+                backupFromUsb(s)
+                return@launch
+            }
             val volumePfd: ParcelFileDescriptor? = try {
                 if (safUri.isNotEmpty())
                     context.contentResolver.openFileDescriptor(Uri.parse(safUri), "r")
@@ -127,6 +134,56 @@ class BackupHeaderViewModel @Inject constructor(
                 is CryptoResult.Failure -> _state.update { it.copy(isRunning = false, error = result.error.name) }
             }
         }
+    }
+
+    /**
+     * Backup for a USB-hosted vault. The volume is the drive, so there is no descriptor
+     * to open - the operation runs against the transport, which is opened read-only
+     * (a backup only reads the volume) and closed for us afterwards.
+     */
+    private suspend fun backupFromUsb(s: BackupHeaderState) {
+        val outputPfd = try {
+            context.contentResolver.openFileDescriptor(Uri.parse(s.outputUri), "rw")
+        } catch (e: Exception) {
+            _state.update { it.copy(isRunning = false, error = "Failed to open output file: ${e.message}") }
+            return
+        }
+        if (outputPfd == null) {
+            _state.update { it.copy(isRunning = false, error = "Failed to open output file.") }
+            return
+        }
+
+        val op = usbVolumes.withMatchingVolume(usbSaltHash, readOnly = true) { dev ->
+            engine.backupVolumeHeaderUsb(
+                transport   = dev,
+                deviceSize  = dev.sizeBytes,
+                password    = s.password,
+                keyfileData = s.keyfileData,
+                pim         = s.pim,
+                outputFd    = outputPfd.fd
+            )
+        }
+        outputPfd.close()
+        s.keyfileData.forEach { it.fill(0) }
+        _state.update { it.copy(keyfileData = emptyList(), keyfileDisplayNames = emptyList()) }
+
+        when (op) {
+            is zip.arcanum.usb.UsbVolumeManager.VolumeOp.Done -> when (val r = op.value) {
+                is CryptoResult.Success -> _state.update { it.copy(isRunning = false, isSuccess = true) }
+                is CryptoResult.Failure -> _state.update { it.copy(isRunning = false, error = r.error.name) }
+            }
+            zip.arcanum.usb.UsbVolumeManager.VolumeOp.NoDrive ->
+                _state.update { it.copy(isRunning = false, error = USB_NOT_CONNECTED) }
+            is zip.arcanum.usb.UsbVolumeManager.VolumeOp.WrongVolume ->
+                _state.update { it.copy(isRunning = false, error = USB_WRONG_DEVICE) }
+            is zip.arcanum.usb.UsbVolumeManager.VolumeOp.Failed ->
+                _state.update { it.copy(isRunning = false, error = op.reason) }
+        }
+    }
+
+    private companion object {
+        const val USB_NOT_CONNECTED = "Connect the USB drive holding this vault and try again."
+        const val USB_WRONG_DEVICE  = "Wrong USB device: the connected drive does not hold this vault."
     }
 
     override fun onCleared() {

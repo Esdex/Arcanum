@@ -591,19 +591,26 @@ private fun ChKfStep4Error(error: String, onBack: () -> Unit) {
     val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.error))
     val progress    by animateLottieCompositionAsState(composition, iterations = 1)
 
+    // A failure that knows its own headline supplies it as the first line. Otherwise the
+    // generic title stands and the whole message is the explanation - which is right for
+    // a bare error code, and wrong for something like "Wrong USB device", where the
+    // specific reason is the thing worth reading first.
+    val headline = error.substringBefore('\n').takeIf { error.contains('\n') }
+    val detail   = if (headline != null) error.substringAfter('\n') else error
+
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
             LottieAnimation(composition, { progress }, modifier = Modifier.size(160.dp))
             Spacer(Modifier.height(16.dp))
             Text(
-                stringResource(R.string.chkeyfile_error_title),
+                headline ?: stringResource(R.string.chkeyfile_error_title),
                 style      = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color      = MaterialTheme.colorScheme.error
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                error,
+                detail,
                 style     = MaterialTheme.typography.bodySmall,
                 color     = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center

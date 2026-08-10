@@ -641,10 +641,16 @@ private fun ChPwdStep4Error(error: String, onBack: () -> Unit) {
     val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.error))
     val progress    by animateLottieCompositionAsState(composition = composition, iterations = 1)
 
-    val errorMsg = if (error == "WRONG_PASSWORD")
-        stringResource(R.string.chpwd_step4_error_wrong_password)
-    else
-        stringResource(R.string.chpwd_step4_error_generic, error)
+    // See the note in ChangeKeyfileScreen: a failure that knows its own headline puts it
+    // on the first line, and it should not be wrapped in the generic "operation failed"
+    // phrasing meant for bare error codes.
+    val headline = error.substringBefore('\n').takeIf { error.contains('\n') }
+    val detail   = if (headline != null) error.substringAfter('\n') else error
+    val errorMsg = when {
+        error == "WRONG_PASSWORD" -> stringResource(R.string.chpwd_step4_error_wrong_password)
+        headline != null          -> detail
+        else                      -> stringResource(R.string.chpwd_step4_error_generic, error)
+    }
 
     Column(
         modifier            = Modifier.fillMaxSize().padding(horizontal = 32.dp),
@@ -660,10 +666,20 @@ private fun ChPwdStep4Error(error: String, onBack: () -> Unit) {
                     progress    = { progress },
                     modifier    = Modifier.size(180.dp)
                 )
+                if (headline != null) {
+                    Text(
+                        headline,
+                        style      = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color      = MaterialTheme.colorScheme.error,
+                        textAlign  = TextAlign.Center
+                    )
+                }
                 Text(
                     errorMsg,
                     style     = MaterialTheme.typography.bodyMedium,
-                    color     = MaterialTheme.colorScheme.error,
+                    color     = if (headline != null) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center
                 )
             }

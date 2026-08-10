@@ -565,6 +565,116 @@ class VeraCryptEngine @Inject constructor() {
         readOnly: Boolean
     ): Long
 
+
+    // ── Whole-device USB variants (#95) ──────────────────────────────────
+    // Same four operations against a volume occupying a USB device. [transport] is an
+    // open zip.arcanum.usb.UsbBlockDevice, typed Any so this layer keeps no dependency
+    // on the USB package; [deviceSize] is its capacity, which for a device comes from
+    // READ CAPACITY because there is no file to measure. The caller keeps ownership of
+    // the transport and closes it afterwards.
+
+    suspend fun changePasswordUsb(
+        transport: Any,
+        deviceSize: Long,
+        oldPassword: String,
+        oldKeyfileData: List<ByteArray> = emptyList(),
+        oldPim: Int = 0,
+        newPassword: String,
+        newKeyfileData: List<ByteArray> = emptyList(),
+        newHashAlgorithm: Int = HASH_AUTO,
+        newPim: Int = 0,
+        wipePassCount: Int = 3,
+        extraEntropy: ByteArray = ByteArray(0)
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        usePasswordBytes(oldPassword, newPassword) { oldBytes, newBytes ->
+            nativeChangePasswordUsb(
+                transport, deviceSize, oldBytes,
+                oldKeyfileData.toTypedArray().ifEmpty { null }, oldPim,
+                newBytes, newKeyfileData.toTypedArray().ifEmpty { null },
+                newHashAlgorithm, newPim, wipePassCount, extraEntropy
+            )
+        }.toResult()
+    }
+
+    suspend fun changeKeyfileUsb(
+        transport: Any,
+        deviceSize: Long,
+        password: String,
+        oldKeyfileData: List<ByteArray> = emptyList(),
+        pim: Int = 0,
+        newKeyfileData: List<ByteArray> = emptyList(),
+        newHashAlgorithm: Int = HASH_AUTO,
+        extraEntropy: ByteArray = ByteArray(0)
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        usePasswordBytes(password) { passwordBytes ->
+            nativeChangeKeyfileUsb(
+                transport, deviceSize, passwordBytes,
+                oldKeyfileData.toTypedArray().ifEmpty { null }, pim,
+                newKeyfileData.toTypedArray().ifEmpty { null }, newHashAlgorithm,
+                extraEntropy
+            )
+        }.toResult()
+    }
+
+    suspend fun backupVolumeHeaderUsb(
+        transport: Any,
+        deviceSize: Long,
+        password: String,
+        keyfileData: List<ByteArray> = emptyList(),
+        pim: Int = 0,
+        outputFd: Int
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        usePasswordBytes(password) { passwordBytes ->
+            nativeBackupVolumeHeaderUsb(
+                transport, deviceSize, passwordBytes,
+                keyfileData.toTypedArray().ifEmpty { null }, pim,
+                outputFd
+            )
+        }.toResult()
+    }
+
+    suspend fun restoreVolumeHeaderUsb(
+        transport: Any,
+        deviceSize: Long,
+        password: String,
+        keyfileData: List<ByteArray> = emptyList(),
+        pim: Int = 0,
+        fromExternal: Boolean,
+        backupFd: Int = -1
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        usePasswordBytes(password) { passwordBytes ->
+            nativeRestoreVolumeHeaderUsb(
+                transport, deviceSize, passwordBytes,
+                keyfileData.toTypedArray().ifEmpty { null }, pim,
+                fromExternal, backupFd
+            )
+        }.toResult()
+    }
+
+    private external fun nativeChangePasswordUsb(
+        transport: Any, deviceSize: Long,
+        oldPassword: ByteArray, oldKeyfileData: Array<ByteArray>?, oldPim: Int,
+        newPassword: ByteArray, newKeyfileData: Array<ByteArray>?,
+        newHashAlgorithm: Int, newPim: Int, wipePassCount: Int, extraEntropy: ByteArray
+    ): Int
+
+    private external fun nativeChangeKeyfileUsb(
+        transport: Any, deviceSize: Long,
+        password: ByteArray, oldKeyfileData: Array<ByteArray>?, pim: Int,
+        newKeyfileData: Array<ByteArray>?, newHashAlgorithm: Int, extraEntropy: ByteArray
+    ): Int
+
+    private external fun nativeBackupVolumeHeaderUsb(
+        transport: Any, deviceSize: Long,
+        password: ByteArray, keyfileData: Array<ByteArray>?, pim: Int, outputFd: Int
+    ): Int
+
+    private external fun nativeRestoreVolumeHeaderUsb(
+        transport: Any, deviceSize: Long,
+        password: ByteArray, keyfileData: Array<ByteArray>?, pim: Int,
+        fromExternal: Boolean, backupFd: Int
+    ): Int
+
     private external fun nativeOpenContainerUsb(
         transport: Any,
         deviceSize: Long,
