@@ -37,6 +37,20 @@ sealed class InAppNotification {
         override val priority = 1
     }
 
+    /**
+     * A USB-hosted vault finished unmounting and the drive can be unplugged.
+     *
+     * Distinct from [VaultUnmounted] because the user has a physical action to take, and
+     * for this vault kind forgetting it risks data rather than tidiness: the drive's own
+     * write cache cannot be flushed on demand.
+     */
+    data class UsbSafeToRemove(
+        val vaultId: String,
+        val vaultName: String
+    ) : InAppNotification() {
+        override val priority = 1
+    }
+
     data class VaultError(
         val vaultId: String,
         val message: String

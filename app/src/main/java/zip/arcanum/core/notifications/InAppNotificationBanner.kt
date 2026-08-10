@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.NewReleases
+import androidx.compose.material.icons.outlined.Eject
 import androidx.compose.material.icons.outlined.NoEncryption
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Card
@@ -170,6 +171,12 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         backgroundColor = Color(0xFF2563EB),
         icon            = Icons.Outlined.NoEncryption,
         title           = ctx.getString(R.string.notif_vault_unmounted),
+        subtitle        = vaultName
+    )
+    is InAppNotification.UsbSafeToRemove -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFF16A34A),
+        icon            = Icons.Outlined.Eject,
+        title           = ctx.getString(R.string.notif_usb_safe_to_remove),
         subtitle        = vaultName
     )
     is InAppNotification.VaultError -> NotificationDisplayConfig(
