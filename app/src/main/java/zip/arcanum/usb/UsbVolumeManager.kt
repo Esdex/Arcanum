@@ -247,6 +247,14 @@ class UsbVolumeManager @Inject constructor(
         device: UsbBlockDevice,
         password: String,
         readOnly: Boolean,
+        keyfileData: List<ByteArray> = emptyList(),
+        pim: Int = 0,
+        algorithm: Int = VeraCryptEngine.ALGO_AUTO,
+        hashAlgorithm: Int = VeraCryptEngine.HASH_AUTO,
+        protectHiddenPassword: String? = null,
+        protectHiddenKeyfileData: List<ByteArray> = emptyList(),
+        protectHiddenPim: Int = 0,
+        mountProgressListener: VeraCryptEngine.MountProgressListener? = null,
         label: String = device.inquiry() ?: device.device.deviceName
     ): CryptoResult<Long> = lock.withLock {
         if (transport != null) {
@@ -260,6 +268,14 @@ class UsbVolumeManager @Inject constructor(
             transport = device,
             deviceSize = device.sizeBytes,
             password = password,
+            keyfileData = keyfileData,
+            pim = pim,
+            algorithm = algorithm,
+            hashAlgorithm = hashAlgorithm,
+            protectHiddenPassword = protectHiddenPassword,
+            protectHiddenKeyfileData = protectHiddenKeyfileData,
+            protectHiddenPim = protectHiddenPim,
+            mountProgressListener = mountProgressListener,
             readOnly = readOnly
         )
         when (result) {

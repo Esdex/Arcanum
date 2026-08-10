@@ -325,6 +325,7 @@ fun VaultScreen(
 
     val appStorageLabel   = stringResource(R.string.vault_storage_app)
     val localStorageLabel = stringResource(R.string.vault_storage_local)
+    val usbStorageLabel   = stringResource(R.string.vault_storage_usb)
     val navBarPadding     = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     CompositionLocalProvider(LocalHazeState provides hazeState) {
@@ -406,10 +407,13 @@ fun VaultScreen(
                         ) {
                             if (sortState.groupBy == VaultViewModel.GroupBy.LOCATION) {
                                 val grouped = containers.groupBy { c ->
-                                    if (c.safUri.isEmpty() &&
-                                        (c.path.startsWith(context.filesDir.absolutePath) ||
-                                         c.path.startsWith(context.noBackupFilesDir.absolutePath)))
-                                        appStorageLabel else localStorageLabel
+                                    when {
+                                        c.usbSaltHash.isNotEmpty() -> usbStorageLabel
+                                        c.safUri.isEmpty() &&
+                                            (c.path.startsWith(context.filesDir.absolutePath) ||
+                                             c.path.startsWith(context.noBackupFilesDir.absolutePath)) -> appStorageLabel
+                                        else -> localStorageLabel
+                                    }
                                 }.entries.sortedBy { it.key }
                                 grouped.forEach { (groupName, groupList) ->
                                     stickyHeader(key = "hdr_$groupName") {
@@ -434,7 +438,13 @@ fun VaultScreen(
                                             onContextMenuChange    = { open -> contextMenuContainerId = if (open) container.id else null },
                                             onSelect               = { selectedIds = if (container.id in selectedIds) selectedIds - container.id else selectedIds + container.id },
                                             onOpen                 = {
-                                                if (container.isMounted || isContainerAccessible(context, container)) {
+                                                // A USB vault always opens: the config screen
+                                                // works without the drive, and the presence
+                                                // check belongs on the actions that need it.
+                                                if (container.usbSaltHash.isNotEmpty() ||
+                                                    container.isMounted ||
+                                                    isContainerAccessible(context, container)
+                                                ) {
                                                     onVaultConfig(container.id)
                                                 } else {
                                                     containerNotFound = container
@@ -458,7 +468,10 @@ fun VaultScreen(
                                         onContextMenuChange    = { open -> contextMenuContainerId = if (open) container.id else null },
                                         onSelect               = { selectedIds = if (container.id in selectedIds) selectedIds - container.id else selectedIds + container.id },
                                         onOpen                 = {
-                                            if (container.isMounted || isContainerAccessible(context, container)) {
+                                            if (container.usbSaltHash.isNotEmpty() ||
+                                                container.isMounted ||
+                                                isContainerAccessible(context, container)
+                                            ) {
                                                 onVaultConfig(container.id)
                                             } else {
                                                 containerNotFound = container
@@ -1105,13 +1118,16 @@ private fun VaultCard(
     val context = LocalContext.current
     val appStr   = stringResource(R.string.vault_storage_app)
     val localStr = stringResource(R.string.vault_storage_local)
-    val storageLabel = remember(container.path, container.safUri, appStr, localStr) {
+    val usbStr   = stringResource(R.string.vault_storage_usb)
+    val storageLabel = remember(container.path, container.safUri, container.usbSaltHash, appStr, localStr, usbStr) {
         val p = container.path
         when {
+            // Checked first: a USB vault has neither a path nor a SAF URI, so every
+            // test below it would fall through to the local-storage default.
+            container.usbSaltHash.isNotEmpty()                  -> usbStr
             p.startsWith(context.filesDir.absolutePath)         -> appStr
             p.startsWith(context.noBackupFilesDir.absolutePath) -> appStr
-            container.safUri.isNotEmpty()                       -> localStr
-            else                                                 -> localStr
+            else                                                -> localStr
         }
     }
     val bgColor by animateColorAsState(
@@ -1331,12 +1347,25 @@ private fun Long.fmtDate(): String = when (this) {
 }
 
 private fun isContainerAccessible(context: android.content.Context, container: ContainerEntity): Boolean {
-    return if (container.safUri.isNotEmpty()) {
-        try {
-            context.contentResolver.openFileDescriptor(android.net.Uri.parse(container.safUri), "r")?.use { true } ?: false
-        } catch (_: Exception) { false }
-    } else {
-        java.io.File(container.path).exists()
+    return when {
+        // A USB-hosted vault has neither a path nor a SAF URI, so both checks below would
+        // report it missing. What "accessible" means here is only that a drive is present:
+        // whether it is the RIGHT drive costs a claim, and claiming merely to draw a list
+        // row would eject the drive from Android every time this screen is opened. The
+        // volume's identity is checked at mount time instead, which is the only moment it
+        // matters.
+        container.usbSaltHash.isNotEmpty() -> {
+            val manager = context.getSystemService(android.content.Context.USB_SERVICE) as? android.hardware.usb.UsbManager
+            manager?.deviceList?.values?.any {
+                zip.arcanum.usb.UsbBlockDevice.massStorageInterface(it) != null
+            } == true
+        }
+        container.safUri.isNotEmpty() -> {
+            try {
+                context.contentResolver.openFileDescriptor(android.net.Uri.parse(container.safUri), "r")?.use { true } ?: false
+            } catch (_: Exception) { false }
+        }
+        else -> java.io.File(container.path).exists()
     }
 }
 
