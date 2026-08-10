@@ -20,14 +20,14 @@ import zip.arcanum.core.database.entities.MountPointEntity
         CalculationEntity::class,
         MountPointEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     companion object {
-        const val VERSION = 11
+        const val VERSION = 12
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -94,6 +94,12 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DELETE FROM media_files WHERE rowid NOT IN (SELECT MIN(rowid) FROM media_files GROUP BY containerId, relativePath)")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_media_files_containerId_relativePath ON media_files (containerId, relativePath)")
+            }
+        }
+
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE containers ADD COLUMN usbSaltHash TEXT NOT NULL DEFAULT ''")
             }
         }
     }

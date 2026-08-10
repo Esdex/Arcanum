@@ -28,5 +28,18 @@ data class ContainerEntity(
     @ColumnInfo(defaultValue = "2") val formatVersion: Int = 2,
     @ColumnInfo(defaultValue = "1") val hasBackupHeader: Boolean = true,
     @ColumnInfo(defaultValue = "0") val pkcs5Iterations: Int = 0,
-    @ColumnInfo(defaultValue = "0") val headerModifiedAt: Long = 0L
+    @ColumnInfo(defaultValue = "0") val headerModifiedAt: Long = 0L,
+    /**
+     * SHA-256 of the volume header salt, for a vault that occupies a whole USB device
+     * (#95). Empty for every file-hosted vault, which is what distinguishes the two.
+     *
+     * The salt identifies the VOLUME, not the hardware: it is 64 bytes of plaintext at
+     * offset 0, unique per volume and readable without the password. Nothing about the
+     * device itself works for this - the device name is a bus address that changes on
+     * replug, VID/PID identify a model rather than a unit, and serial numbers are often
+     * absent. Recreating the volume on the same stick correctly reads as a different
+     * vault. Hashed rather than stored raw so the database holds no bytes that appear
+     * verbatim on the drive.
+     */
+    @ColumnInfo(defaultValue = "") val usbSaltHash: String = ""
 )

@@ -85,6 +85,9 @@ class UsbBlockDevice private constructor(
          */
         const val REQUIRED_BLOCK_SIZE = 512
 
+        /** VeraCrypt header salt: 64 plaintext bytes at offset 0, before the encrypted body. */
+        const val SALT_BYTES = 64
+
         /** True when this device exposes a mass-storage / SCSI / Bulk-Only interface. */
         fun massStorageInterface(device: UsbDevice): UsbInterface? {
             for (i in 0 until device.interfaceCount) {
@@ -219,6 +222,28 @@ class UsbBlockDevice private constructor(
             .filter { it.isNotEmpty() }
             .joinToString(" ")
             .ifEmpty { null }
+    }
+
+    /**
+     * SHA-256 of the volume header salt - the first 64 bytes of the device.
+     *
+     * This is how a USB-hosted vault is recognised again later. The salt is plaintext,
+     * unique per volume and readable without the password, so it identifies the volume
+     * rather than the hardware: the same stick reformatted is honestly a different vault,
+     * and the same volume in a different port is the same one. Nothing about the device
+     * serves this purpose - its name is a bus address that changes on replug, VID and PID
+     * describe a model rather than a unit, and serial numbers are frequently absent.
+     *
+     * Null when the sector cannot be read. Note that it is NOT evidence a VeraCrypt
+     * volume is present: ciphertext and random bytes are indistinguishable by design, so
+     * a blank drive yields a perfectly good hash of nothing in particular.
+     */
+    fun volumeFingerprint(): String? = synchronized(lock) {
+        val sector = ByteArray(blockSize.coerceAtLeast(SALT_BYTES))
+        if (!read(0, sector.size, sector)) return null
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(sector.copyOf(SALT_BYTES))
+        digest.joinToString("") { "%02x".format(it) }
     }
 
     /**

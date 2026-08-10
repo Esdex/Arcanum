@@ -62,6 +62,7 @@ class VaultViewModel @Inject constructor(
     private val billingManager: BillingManagerInterface,
     private val mountLogger: MountLogger,
     private val prefs: AppPreferences,
+    private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -434,6 +435,8 @@ class VaultViewModel @Inject constructor(
         data object InvalidFile                        : AddVaultResult
         data object LimitReached                       : AddVaultResult
         data class Error(val message: String)          : AddVaultResult
+        /** No USB drive is attached; the user is asked to plug one in and retry. */
+        data object NoUsbDrive                         : AddVaultResult
     }
 
     private val _addVaultResult = MutableStateFlow<AddVaultResult?>(null)
@@ -518,6 +521,45 @@ class VaultViewModel @Inject constructor(
             val size = cursor.getLong(1)
             name to size
         }
+
+    /**
+     * Adds the attached USB drive as a vault (#95).
+     *
+     * Unlike the file paths above there is nothing to browse: the drive either is here or
+     * is not. Claiming it to read the volume's salt is what makes this possible, and also
+     * what makes it non-passive - the drive leaves Android's file manager until replugged.
+     *
+     * Whether the drive actually holds a VeraCrypt volume cannot be determined here.
+     * Ciphertext is indistinguishable from random bytes, so a blank drive is added just as
+     * happily; the truth comes out at mount time, exactly as it does for a file.
+     */
+    fun addUsbContainer() {
+        viewModelScope.launch {
+            if (!billingManager.isPro.value && repo.getAllContainersRaw().first().size >= 2) {
+                _addVaultResult.value = AddVaultResult.LimitReached
+                return@launch
+            }
+            val identity = usbVolumes.identifyAttachedDrive().getOrElse { e ->
+                _addVaultResult.value =
+                    if (e is zip.arcanum.usb.UsbVolumeManager.NoDriveException) AddVaultResult.NoUsbDrive
+                    else AddVaultResult.Error(e.message ?: "Unknown error")
+                return@launch
+            }
+            if (repo.containsUsbSaltHash(identity.saltHash)) {
+                _addVaultResult.value = AddVaultResult.AlreadyExists(identity.label)
+                return@launch
+            }
+            try {
+                repo.addUsbContainer(identity.saltHash, identity.label, identity.sizeBytes)
+                _addVaultResult.value = AddVaultResult.Added(identity.label)
+            } catch (e: Exception) {
+                _addVaultResult.value = AddVaultResult.Error(e.message ?: "Unknown error")
+            }
+        }
+    }
+
+    /** Asks for USB permission for the attached drive, so [addUsbContainer] can claim it. */
+    suspend fun ensureUsbPermission(): Boolean = usbVolumes.ensurePermission()
 
     fun clearAddVaultResult() { _addVaultResult.value = null }
 
