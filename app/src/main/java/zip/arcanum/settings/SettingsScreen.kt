@@ -2447,6 +2447,33 @@ private fun DebugSubScreen(
                     ) {
                         Text("Mount USB volume (read-only)", style = MaterialTheme.typography.labelMedium)
                     }
+                    state.usbHeld?.let { held ->
+                        Text(
+                            text     = "Held mounted: $held",
+                            style    = MaterialTheme.typography.labelMedium,
+                            color    = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                        )
+                    }
+                    Row(
+                        modifier              = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick  = { debugViewModel.mountAndHoldUsb(usbMountPassword) },
+                            enabled  = !state.usbProbeRunning && usbMountPassword.isNotEmpty() && state.usbHeld == null,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Mount and hold", style = MaterialTheme.typography.labelMedium)
+                        }
+                        OutlinedButton(
+                            onClick  = { debugViewModel.unmountHeldUsb() },
+                            enabled  = state.usbHeld != null,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Unmount", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                     TextButton(
                         onClick  = { debugViewModel.runUsbMountWriteTest(usbMountPassword) },
                         enabled  = !state.usbProbeRunning && usbMountPassword.isNotEmpty(),

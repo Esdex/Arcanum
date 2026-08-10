@@ -247,6 +247,40 @@ class UsbMassStorageProbe(
             line("The volume on this drive is gone. Recreate it with veracrypt --create.")
         }
 
+    /**
+     * Finds the drive, gets permission and opens it, then hands the transport over still
+     * open - unlike every other entry point here, which closes it on the way out.
+     *
+     * For the detach test, which needs the volume to stay mounted while the drive is
+     * physically pulled. Returns the transport and a log of how it got there; the caller
+     * owns the transport from that point.
+     */
+    suspend fun openTransport(readOnly: Boolean): Pair<UsbBlockDevice?, String> =
+        withContext(Dispatchers.IO) {
+            out.clear()
+            val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+            val device = manager.deviceList.values.firstOrNull {
+                UsbBlockDevice.massStorageInterface(it) != null
+            }
+            if (device == null) {
+                line("STOP: no mass-storage device attached.")
+                return@withContext null to out.toString()
+            }
+            if (!requestPermission(manager, device)) {
+                line("STOP: permission for the device was not granted.")
+                return@withContext null to out.toString()
+            }
+            try {
+                val dev = UsbBlockDevice.open(manager, device, readOnly)
+                line("[open] ${device.deviceName}, ${dev.sizeBytes / (1024 * 1024)} MB" +
+                    if (readOnly) ", read-only" else "")
+                dev to out.toString()
+            } catch (e: Exception) {
+                line("STOP: ${e.message}")
+                null to out.toString()
+            }
+        }
+
     private suspend fun withTarget(
         what: String,
         readOnly: Boolean,
