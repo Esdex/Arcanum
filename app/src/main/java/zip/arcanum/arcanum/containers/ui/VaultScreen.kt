@@ -70,6 +70,7 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.FolderOff
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Settings
@@ -107,6 +108,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
@@ -152,6 +154,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Button
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
@@ -207,6 +210,8 @@ fun VaultScreen(
     var containerNotFound            by remember { mutableStateOf<ContainerEntity?>(null) }
     var showRemoveNotFoundConfirm    by remember { mutableStateOf(false) }
     var showOpenVaultSheet           by remember { mutableStateOf(false) }
+    var showUsbInsertPrompt          by remember { mutableStateOf(false) }
+    val usbScope                     = rememberCoroutineScope()
     var showAppStoragePicker         by remember { mutableStateOf(false) }
     val appStorageRoot               = remember(context) { context.filesDir.parentFile!! }
     var appStorageCurrentDir         by remember { mutableStateOf(appStorageRoot) }
@@ -257,6 +262,7 @@ fun VaultScreen(
             VaultViewModel.AddVaultResult.InvalidFile      -> notification = InAppNotification.VaultInvalidFile
             VaultViewModel.AddVaultResult.LimitReached     -> showUpgradeDialog = true
             is VaultViewModel.AddVaultResult.Error         -> notification = InAppNotification.VaultAddError(result.message)
+            VaultViewModel.AddVaultResult.NoUsbDrive       -> showUsbInsertPrompt = true
         }
         viewModel.clearAddVaultResult()
     }
@@ -694,6 +700,32 @@ fun VaultScreen(
                 )
             }
 
+            // ── "plug the drive in" prompt ────────────────────────────────────
+            // Shown whenever something needs the drive and it is not there. Retrying is
+            // the whole interaction, so the action button repeats the request rather than
+            // just dismissing.
+            if (showUsbInsertPrompt) {
+                AppDialog(
+                    onDismissRequest = { showUsbInsertPrompt = false },
+                    title            = { Text(stringResource(R.string.usb_not_connected_title)) },
+                    text             = { Text(stringResource(R.string.usb_not_connected_body)) },
+                    confirmButton    = {
+                        TextButton(onClick = {
+                            showUsbInsertPrompt = false
+                            usbScope.launch {
+                                if (viewModel.ensureUsbPermission()) viewModel.addUsbContainer()
+                                else showUsbInsertPrompt = true
+                            }
+                        }) { Text(stringResource(R.string.usb_try_again)) }
+                    },
+                    dismissButton    = {
+                        TextButton(onClick = { showUsbInsertPrompt = false }) {
+                            Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
+
             // ── Open vault source sheet ───────────────────────────────────────
             if (showOpenVaultSheet) {
                 AppSheet(
@@ -724,6 +756,21 @@ fun VaultScreen(
                         modifier        = Modifier.clickable {
                             showOpenVaultSheet = false
                             openDocumentLauncher.launch(arrayOf("*/*"))
+                        }
+                    )
+                    // Unlike the two above, this opens no picker: a drive is either
+                    // attached or it is not, and there is nothing on it to browse.
+                    ListItem(
+                        colors          = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        leadingContent  = { Icon(Icons.Outlined.Usb, contentDescription = null) },
+                        headlineContent = { Text(stringResource(R.string.vault_storage_usb)) },
+                        supportingContent = { Text(stringResource(R.string.vault_storage_usb_hint)) },
+                        modifier        = Modifier.clickable {
+                            showOpenVaultSheet = false
+                            usbScope.launch {
+                                if (viewModel.ensureUsbPermission()) viewModel.addUsbContainer()
+                                else showUsbInsertPrompt = true
+                            }
                         }
                     )
                     Spacer(Modifier.height(navBarPadding + 8.dp))

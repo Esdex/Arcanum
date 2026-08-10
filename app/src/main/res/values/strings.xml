@@ -1030,4 +1030,10 @@
     <string name="vault_config_external_access_switch_desc">Expose this vault in the system file picker while mounted</string>
     <string name="vault_config_title">Vault Config</string>
 
+    <string name="vault_storage_usb">USB drive</string>
+    <string name="vault_storage_usb_hint">A whole flash drive encrypted as one vault</string>
+    <string name="usb_not_connected_title">No USB drive connected</string>
+    <string name="usb_not_connected_body">Connect the drive holding this vault, then try again. The drive leaves Android\'s file manager while Arcanum is using it and comes back when you unplug it.</string>
+    <string name="usb_try_again">Try again</string>
+    <string name="usb_wrong_device">Wrong USB device: this drive does not hold that vault.</string>
 </resources>

@@ -66,6 +66,10 @@ class UsbVolumeManager @Inject constructor(
         object Unmounted : Event
     }
 
+    private companion object {
+        const val ACTION_USB_PERMISSION = "zip.arcanum.USB_PERMISSION"
+    }
+
     private val _mounted = MutableStateFlow<MountedVolume?>(null)
     val mounted = _mounted.asStateFlow()
 
@@ -102,6 +106,137 @@ class UsbVolumeManager @Inject constructor(
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
     }
+
+    /** What a drive says about itself once claimed, enough to remember it by. */
+    data class DriveIdentity(
+        val saltHash: String,
+        val label: String,
+        val sizeBytes: Long
+    )
+
+    /**
+     * The three states the UI has to tell apart when reaching for a remembered vault.
+     * Collapsing the last two would leave a user pressing "try again" at a drive that is
+     * plugged in and will never match.
+     */
+    sealed interface OpenResult {
+        data class Ok(val device: UsbBlockDevice) : OpenResult
+        /** Nothing is plugged in, or nothing that is a mass-storage device. */
+        object NoDrive : OpenResult
+        /** A drive is here, but it does not hold the volume this vault was saved from. */
+        data class WrongVolume(val found: DriveIdentity) : OpenResult
+        data class Failed(val reason: String) : OpenResult
+    }
+
+    /**
+     * Asks the system for permission to talk to the attached drive, if it is not already
+     * granted, and waits for the answer.
+     *
+     * The result arrives as a broadcast from the system server on behalf of our
+     * PendingIntent - from outside this process - so the receiver must be registered
+     * EXPORTED or it never lands. hasPermission is the authority and is polled as well,
+     * which also makes the exported receiver harmless: a forged broadcast proves nothing
+     * because the answer is taken from the platform.
+     */
+    suspend fun ensurePermission(): Boolean = withContext(Dispatchers.IO) {
+        val device = attachedDrive() ?: return@withContext false
+        val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+        if (manager.hasPermission(device)) return@withContext true
+
+        val answered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                if (intent?.action == ACTION_USB_PERMISSION) answered.complete(Unit)
+            }
+        }
+        ContextCompat.registerReceiver(
+            context, receiver, IntentFilter(ACTION_USB_PERMISSION),
+            ContextCompat.RECEIVER_EXPORTED
+        )
+        try {
+            val pi = android.app.PendingIntent.getBroadcast(
+                context, 0,
+                Intent(ACTION_USB_PERMISSION).setPackage(context.packageName),
+                android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            manager.requestPermission(device, pi)
+            kotlinx.coroutines.withTimeoutOrNull(60_000) {
+                while (!manager.hasPermission(device) && !answered.isCompleted) {
+                    kotlinx.coroutines.delay(200)
+                }
+            }
+            manager.hasPermission(device)
+        } finally {
+            runCatching { context.unregisterReceiver(receiver) }
+        }
+    }
+
+    /** Passive: no claim, no permission prompt, nothing disturbed. */
+    fun attachedDrive(): UsbDevice? {
+        val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+        return manager.deviceList.values.firstOrNull {
+            UsbBlockDevice.massStorageInterface(it) != null
+        }
+    }
+
+    /**
+     * Claims the attached drive long enough to learn what volume is on it, then lets it
+     * go. Used when adding a vault, where there is nothing yet to compare against.
+     *
+     * Not passive: claiming takes the drive away from Android's own mount, so it leaves
+     * the system file manager and only returns after a replug. That is unavoidable -
+     * reading offset 0 requires the interface - but it happens at a moment the user may
+     * not expect, so the UI should say so.
+     */
+    suspend fun identifyAttachedDrive(): Result<DriveIdentity> = withContext(Dispatchers.IO) {
+        val device = attachedDrive() ?: return@withContext Result.failure(NoDriveException())
+        val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+        if (!manager.hasPermission(device)) {
+            return@withContext Result.failure(IllegalStateException("no USB permission"))
+        }
+        runCatching {
+            UsbBlockDevice.open(manager, device, readOnly = true).use { dev ->
+                val hash = dev.volumeFingerprint()
+                    ?: throw java.io.IOException("could not read the volume header")
+                DriveIdentity(
+                    saltHash = hash,
+                    label = dev.inquiry() ?: device.deviceName,
+                    sizeBytes = dev.sizeBytes
+                )
+            }
+        }
+    }
+
+    /**
+     * Opens the attached drive only if it carries the volume identified by [saltHash].
+     * On any outcome but [OpenResult.Ok] nothing is left claimed.
+     */
+    suspend fun openMatching(saltHash: String, readOnly: Boolean): OpenResult =
+        withContext(Dispatchers.IO) {
+            val device = attachedDrive() ?: return@withContext OpenResult.NoDrive
+            val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+            if (!manager.hasPermission(device)) {
+                return@withContext OpenResult.Failed("no USB permission")
+            }
+            val dev = try {
+                UsbBlockDevice.open(manager, device, readOnly)
+            } catch (e: Exception) {
+                return@withContext OpenResult.Failed(e.message ?: e.javaClass.simpleName)
+            }
+            val hash = dev.volumeFingerprint()
+            if (hash == null) {
+                dev.close()
+                return@withContext OpenResult.Failed("could not read the volume header")
+            }
+            if (hash != saltHash) {
+                val found = DriveIdentity(hash, dev.inquiry() ?: device.deviceName, dev.sizeBytes)
+                dev.close()
+                return@withContext OpenResult.WrongVolume(found)
+            }
+            OpenResult.Ok(dev)
+        }
+
+    class NoDriveException : Exception("no USB mass-storage device attached")
 
     /**
      * Mounts [device] as a whole-device VeraCrypt volume. Takes ownership of the

@@ -254,6 +254,30 @@ class ContainerRepository @Inject constructor(
         return id
     }
 
+    /**
+     * Adds a vault that occupies a whole USB device (#95). Identified by the hash of its
+     * header salt rather than a path, since the drive has neither a path nor a stable
+     * device name. See ContainerEntity.usbSaltHash.
+     */
+    suspend fun addUsbContainer(saltHash: String, displayName: String, size: Long): String {
+        val id = UUID.randomUUID().toString()
+        dao.insertContainer(ContainerEntity(
+            id             = id,
+            name           = displayName,
+            path           = "",
+            size           = size,
+            algorithm      = "AES-256-XTS",
+            usbSaltHash    = saltHash,
+            createdAt      = System.currentTimeMillis(),
+            lastAccessedAt = 0L
+        ))
+        return id
+    }
+
+    /** True when a vault with this volume is already in the list. */
+    suspend fun containsUsbSaltHash(saltHash: String): Boolean =
+        dao.getAllContainersOnce().any { it.usbSaltHash == saltHash }
+
     suspend fun addContainerFromUri(safUri: String, displayName: String, size: Long): String {
         val id = UUID.randomUUID().toString()
         dao.insertContainer(ContainerEntity(
