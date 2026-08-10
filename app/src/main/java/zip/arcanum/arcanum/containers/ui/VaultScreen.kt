@@ -622,15 +622,30 @@ fun VaultScreen(
 
             // ── Unmount confirm dialog ────────────────────────────────────────
             containerToUnmount?.let { c ->
+                val isUsb = c.usbSaltHash.isNotEmpty()
                 AppDialog(
                     onDismissRequest = { containerToUnmount = null },
-                    title            = { Text(stringResource(R.string.vault_unmount_title, c.name)) },
-                    text             = { Text(stringResource(R.string.vault_unmount_body)) },
+                    title            = {
+                        Text(stringResource(
+                            if (isUsb) R.string.vault_eject_title else R.string.vault_unmount_title,
+                            c.name
+                        ))
+                    },
+                    text             = {
+                        Text(stringResource(if (isUsb) R.string.vault_eject_body else R.string.vault_unmount_body))
+                    },
                     confirmButton    = {
                         TextButton(onClick = {
                             containerToUnmount = null
-                            viewModel.unmountContainer(c.id) { onUnmountStart(c.id) }
-                        }) { Text(stringResource(R.string.vault_unmount_confirm)) }
+                            viewModel.unmountContainer(c.id) {
+                                onUnmountStart(c.id)
+                                // Tells the user the physical action is now safe. For a
+                                // file vault there is nothing to unplug and nothing to say.
+                                if (isUsb) notification = InAppNotification.UsbSafeToRemove(c.id, c.name)
+                            }
+                        }) {
+                            Text(stringResource(if (isUsb) R.string.vault_eject_confirm else R.string.vault_unmount_confirm))
+                        }
                     },
                     dismissButton    = {
                         TextButton(onClick = { containerToUnmount = null }) { Text(stringResource(R.string.common_cancel)) }

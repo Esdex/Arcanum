@@ -109,11 +109,13 @@ fun VaultConfigScreen(
     val renameResult by viewModel.renameResult.collectAsState()
     val container    = containers.firstOrNull { it.id == containerId }
     val isMounted    = container?.isMounted ?: false
+    val isUsbVaultHeader = container?.usbSaltHash?.isNotEmpty() == true
 
     val hazeState = remember { HazeState() }
 
     var showMoreMenu         by remember { mutableStateOf(false) }
     var showUsbMissing       by remember { mutableStateOf(false) }
+    var showSafeToRemove     by remember { mutableStateOf(false) }
     val configScope          = rememberCoroutineScope()
     var showRenameDialog     by remember { mutableStateOf(false) }
     var showMoveSheet        by remember { mutableStateOf(false) }
@@ -248,11 +250,21 @@ fun VaultConfigScreen(
                         }
                     )
                     if (isMounted) {
+                        // For a USB vault this IS the eject: closing the vault is what
+                        // flushes and releases the drive. Offering both would imply there
+                        // is a second step, and leaving it called "unmount" would hide the
+                        // physical action the user still has to take.
                         VaultOperationItem(
                             icon      = Icons.Outlined.Eject,
                             rawColor  = Color(0xFF546E7A),
-                            title     = stringResource(R.string.vault_unmount_confirm),
-                            subtitle  = stringResource(R.string.vault_card_unmount_desc),
+                            title     = stringResource(
+                                if (isUsbVaultHeader) R.string.vault_config_op_eject
+                                else R.string.vault_unmount_confirm
+                            ),
+                            subtitle  = stringResource(
+                                if (isUsbVaultHeader) R.string.vault_config_op_eject_desc
+                                else R.string.vault_card_unmount_desc
+                            ),
                             isDynamic = isDynamic,
                             onClick   = { showUnmountDialog = true }
                         )
@@ -331,7 +343,23 @@ fun VaultConfigScreen(
         }
 
         // ── Rename dialog ─────────────────────────────────────────────────────────
-        if (showUsbMissing) {
+        // Modal rather than a passing banner: the user has a physical action to take, and
+    // this vault kind is the one where missing it can cost data - the drive's own write
+    // cache cannot be flushed on demand.
+    if (showSafeToRemove) {
+        AppDialog(
+            onDismissRequest = { showSafeToRemove = false },
+            title            = { Text(stringResource(R.string.notif_usb_safe_to_remove)) },
+            text             = { Text(stringResource(R.string.usb_safe_to_remove_body)) },
+            confirmButton    = {
+                TextButton(onClick = { showSafeToRemove = false }) {
+                    Text(stringResource(R.string.common_ok))
+                }
+            }
+        )
+    }
+
+    if (showUsbMissing) {
         AppDialog(
             onDismissRequest = { showUsbMissing = false },
             title            = { Text(stringResource(R.string.usb_not_connected_title)) },
@@ -385,15 +413,28 @@ fun VaultConfigScreen(
 
         // ── Unmount confirm dialog ────────────────────────────────────────────────
         if (showUnmountDialog && container != null) {
+            val isUsb = container.usbSaltHash.isNotEmpty()
             AppDialog(
                 onDismissRequest = { showUnmountDialog = false },
-                title            = { Text(stringResource(R.string.vault_unmount_title, container.name)) },
-                text             = { Text(stringResource(R.string.vault_unmount_body)) },
+                title            = {
+                    Text(stringResource(
+                        if (isUsb) R.string.vault_eject_title else R.string.vault_unmount_title,
+                        container.name
+                    ))
+                },
+                text             = {
+                    Text(stringResource(if (isUsb) R.string.vault_eject_body else R.string.vault_unmount_body))
+                },
                 confirmButton    = {
                     TextButton(onClick = {
                         showUnmountDialog = false
-                        viewModel.unmountContainer(containerId) {}
-                    }) { Text(stringResource(R.string.vault_unmount_confirm)) }
+                        val name = container.name
+                        viewModel.unmountContainer(containerId) {
+                            if (isUsb) showSafeToRemove = true
+                        }
+                    }) {
+                        Text(stringResource(if (isUsb) R.string.vault_eject_confirm else R.string.vault_unmount_confirm))
+                    }
                 },
                 dismissButton    = {
                     TextButton(onClick = { showUnmountDialog = false }) {

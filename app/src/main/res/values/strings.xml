@@ -1036,4 +1036,11 @@
     <string name="usb_not_connected_body">Connect the drive holding this vault, then try again. The drive leaves Android\'s file manager while Arcanum is using it and comes back when you unplug it.</string>
     <string name="usb_try_again">Try again</string>
     <string name="usb_wrong_device">Wrong USB device: this drive does not hold that vault.</string>
+    <string name="notif_usb_safe_to_remove">Safe to remove</string>
+    <string name="vault_eject_title">Eject %1$s?</string>
+    <string name="vault_eject_body">The vault will be closed and everything written to it flushed to the drive. You can unplug the drive once this is done.</string>
+    <string name="vault_eject_confirm">Eject</string>
+    <string name="vault_config_op_eject">Eject</string>
+    <string name="vault_config_op_eject_desc">Close the vault and release the drive</string>
+    <string name="usb_safe_to_remove_body">The vault is closed and the drive released. You can unplug it now.</string>
 </resources>
