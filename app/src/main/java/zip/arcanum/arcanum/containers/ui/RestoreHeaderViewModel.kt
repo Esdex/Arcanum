@@ -36,6 +36,7 @@ data class RestoreHeaderState(
 class RestoreHeaderViewModel @Inject constructor(
     private val repo: ContainerRepository,
     private val engine: VeraCryptEngine,
+    private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -45,6 +46,7 @@ class RestoreHeaderViewModel @Inject constructor(
     private var containerId: String = ""
     private var containerPath: String = ""
     private var safUri: String = ""
+    private var usbSaltHash: String = ""
 
     fun init(id: String) {
         containerId = id
@@ -52,6 +54,7 @@ class RestoreHeaderViewModel @Inject constructor(
             val c = repo.getContainerById(id) ?: return@launch
             containerPath = c.path
             safUri        = c.safUri
+            usbSaltHash   = c.usbSaltHash
         }
     }
 
@@ -87,6 +90,10 @@ class RestoreHeaderViewModel @Inject constructor(
         _state.update { it.copy(isRunning = true, error = null) }
 
         viewModelScope.launch {
+            if (usbSaltHash.isNotEmpty()) {
+                restoreFromUsb(s)
+                return@launch
+            }
             val volumePfd: ParcelFileDescriptor? = try {
                 if (safUri.isNotEmpty())
                     context.contentResolver.openFileDescriptor(Uri.parse(safUri), "rw")
@@ -131,6 +138,63 @@ class RestoreHeaderViewModel @Inject constructor(
                 is CryptoResult.Failure -> _state.update { it.copy(isRunning = false, error = result.error.name) }
             }
         }
+    }
+
+    /**
+     * Restore for a USB-hosted vault. Opened read-write, because a restore rewrites the
+     * volume's headers. The backup itself may still come from an external file, which
+     * stays an ordinary descriptor - only the volume side changes.
+     */
+    private suspend fun restoreFromUsb(s: RestoreHeaderState) {
+        val backupPfd = if (s.fromExternal) {
+            try {
+                context.contentResolver.openFileDescriptor(Uri.parse(s.backupUri), "r")
+            } catch (e: Exception) {
+                _state.update { it.copy(isRunning = false, error = "Failed to open backup: ${e.message}") }
+                return
+            }
+        } else null
+
+        val op = usbVolumes.withMatchingVolume(usbSaltHash, readOnly = false, refingerprint = true) { dev ->
+            engine.restoreVolumeHeaderUsb(
+                transport    = dev,
+                deviceSize   = dev.sizeBytes,
+                password     = s.password,
+                keyfileData  = s.keyfileData,
+                pim          = s.pim,
+                fromExternal = s.fromExternal,
+                backupFd     = backupPfd?.fd ?: -1
+            )
+        }
+        backupPfd?.close()
+        s.keyfileData.forEach { it.fill(0) }
+        _state.update { it.copy(keyfileData = emptyList(), keyfileDisplayNames = emptyList()) }
+
+        when (op) {
+            is zip.arcanum.usb.UsbVolumeManager.VolumeOp.Done -> when (val r = op.value) {
+                is CryptoResult.Success -> {
+                    // The rewritten header carries a fresh salt, so the vault would stop
+                    // recognising its own drive unless the fingerprint is re-pointed.
+                    op.newSaltHash?.let { fresh ->
+                        repo.updateUsbSaltHash(usbSaltHash, fresh)
+                        usbSaltHash = fresh
+                    }
+                    _state.update { it.copy(isRunning = false, isSuccess = true) }
+                }
+                is CryptoResult.Failure -> _state.update { it.copy(isRunning = false, error = r.error.name) }
+            }
+            zip.arcanum.usb.UsbVolumeManager.VolumeOp.NoDrive ->
+                _state.update { it.copy(isRunning = false, error = USB_NOT_CONNECTED) }
+            is zip.arcanum.usb.UsbVolumeManager.VolumeOp.WrongVolume ->
+                _state.update { it.copy(isRunning = false, error = USB_WRONG_DEVICE) }
+            is zip.arcanum.usb.UsbVolumeManager.VolumeOp.Failed ->
+                _state.update { it.copy(isRunning = false, error = op.reason) }
+        }
+    }
+
+    private companion object {
+        const val USB_NOT_CONNECTED = "Connect the USB drive holding this vault and try again."
+        const val USB_WRONG_DEVICE  = "Wrong USB device: the connected drive does not hold this vault."
     }
 
     override fun onCleared() {

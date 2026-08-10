@@ -1148,6 +1148,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerUsb(
                              mountProgressListener, readOnly);
 }
 
+
 /* ─── JNI: nativeCloseContainer ─────────────────────────────────────── */
 
 extern "C" JNIEXPORT jint JNICALL
@@ -1458,14 +1459,20 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeFd(
 
 /* ─── Change-password core ──────────────────────────────────────────── */
 /* Shared by the path and SAF-fd JNI wrappers below. Takes ownership of fd. */
+/*
+ * `beIn` null means the volume is a file and `fdIn` owns it, as before. Non-null means
+ * the volume is not a file (a USB device, #95): `fdIn` is -1, `sizeIn` is its size, and
+ * the backend belongs to the caller - these functions borrow it and close nothing.
+ */
 static jint do_change_password(
-        JNIEnv *env, int fdIn,
+        JNIEnv *env, int fdIn, const BlockBackend *beIn, uint64_t sizeIn,
         const uint8_t *oldPwd, int oldPwdLen, jobjectArray jOldKeyfileData, jint oldPim,
         const uint8_t *newPwd, int newPwdLen, jobjectArray jNewKeyfileData,
         jint newHashAlg, jint newPim, jint wipePassCount, jbyteArray jExtraEntropy)
 {
     /* fd is always closed by this function on every path. */
     UniqueFd fd(fdIn);
+    const BlockBackend vol = beIn ? *beIn : vol;
 
     /* Build old effective password (password + keyfile pool) */
     SecureBuffer<VC_MAX_PWD_LEN> oldEffPwd;
@@ -1479,11 +1486,16 @@ static jint do_change_password(
     memcpy(newEffPwd.data(), newPwd, (size_t)newEffPwdLen);
     if (!apply_keyfile_buffers(env, jNewKeyfileData, newEffPwd.data(), &newEffPwdLen)) return ERR_RAND;
 
-    off_t fileSzOff = lseek(fd.get(), 0, SEEK_END);
-    if (fileSzOff < 0) {
-        return ERR_FILE;
+    uint64_t fileSize;
+    if (beIn) {
+        fileSize = sizeIn;   /* nothing to seek on: the volume is a device, not a file */
+    } else {
+        off_t fileSzOff = beIn ? (off_t)sizeIn : lseek(fd.get(), 0, SEEK_END);
+        if (fileSzOff < 0) {
+            return ERR_FILE;
+        }
+        fileSize = (uint64_t)fileSzOff;
     }
-    uint64_t fileSize = (uint64_t)fileSzOff;
 
     /* Authenticate primary header with old credentials */
     SecureBuffer<192> masterKey;
@@ -1494,7 +1506,7 @@ static jint do_change_password(
         env, jOldKeyfileData, oldPwd, oldPwdLen, oldEffPwd.data(), &oldEffPwdLen, "chpwd",
         /*usedLegacyPool=*/nullptr,   /* writes use newEffPwd, always standard */
         [&](const uint8_t *eff, int effLen) {
-            return read_vc_header(fd_be(fd.get()), 0, (const char*)eff, effLen,
+            return read_vc_header(vol, 0, (const char*)eff, effLen,
                                   masterKey.data(), &mkLen, &dataSz, &dataOff,
                                   &algId, &hashId, (int)oldPim, &hiddenVolSize);
         });
@@ -1525,7 +1537,7 @@ static jint do_change_password(
     /* Wipe + rewrite primary header.
      * If this fails the backup header is still intact with old credentials — container
      * is recoverable. Bail immediately so we never touch the backup. */
-    int r1 = wipe_and_rewrite_header(fd_be(fd.get()), 0,
+    int r1 = wipe_and_rewrite_header(vol, 0,
                                       dataSz, dataOff, masterKey.data(), algId, newHash,
                                       (const char*)newEffPwd.data(), newEffPwdLen,
                                       (int)newPim, hiddenVolSize, passes,
@@ -1534,7 +1546,7 @@ static jint do_change_password(
         return ERR_FILE;
     }
 
-    int r2 = wipe_and_rewrite_header(fd_be(fd.get()), backupAreaOff,
+    int r2 = wipe_and_rewrite_header(vol, backupAreaOff,
                                       dataSz, dataOff, masterKey.data(), algId, newHash,
                                       (const char*)newEffPwd.data(), newEffPwdLen,
                                       (int)newPim, hiddenVolSize, passes,
@@ -1566,7 +1578,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePassword(
     int fd = open(path.c_str(), O_RDWR);
     if (fd < 0) return ERR_FILE;
 
-    return do_change_password(env, fd,
+    return do_change_password(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0,
                               oldPwdBuf.data(), oldPwdLen, jOldKeyfileData, oldPim,
                               newPwdBuf.data(), newPwdLen, jNewKeyfileData,
                               newHashAlg, newPim, wipePassCount, jExtraEntropy);
@@ -1593,7 +1605,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePasswordFd(
     int fd = dup((int)safFd);
     if (fd < 0) return ERR_FILE;
 
-    return do_change_password(env, fd,
+    return do_change_password(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0,
                               oldPwdBuf.data(), oldPwdLen, jOldKeyfileData, oldPim,
                               newPwdBuf.data(), newPwdLen, jNewKeyfileData,
                               newHashAlg, newPim, wipePassCount, jExtraEntropy);
@@ -1605,13 +1617,14 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePasswordFd(
    extraEntropy: user-collected touch bytes XOR'd into the new salt.
    Shared by the path and SAF-fd JNI wrappers below. Takes ownership of fd. */
 static jint do_change_keyfile(
-        JNIEnv *env, int fdIn,
+        JNIEnv *env, int fdIn, const BlockBackend *beIn, uint64_t sizeIn,
         const uint8_t *pwd, int pwdLen, jobjectArray jOldKeyfileData, jint pim,
         jobjectArray jNewKeyfileData, jint newHashAlg,
         jbyteArray jExtraEntropy)
 {
     /* fd is always closed by this function on every path. */
     UniqueFd fd(fdIn);
+    const BlockBackend vol = beIn ? *beIn : fd_be(fd.get());
     /* Pinned after fd acquisition so every exit path below releases it
      * (ScopedArrayPin's destructor does this automatically now). */
     ScopedArrayPin entropyPin(env, jExtraEntropy);
@@ -1626,7 +1639,7 @@ static jint do_change_keyfile(
     memcpy(newEffPwd.data(), pwd, (size_t)newEffPwdLen);
     if (!apply_keyfile_buffers(env, jNewKeyfileData, newEffPwd.data(), &newEffPwdLen)) return ERR_RAND;
 
-    off_t fileSzOff = lseek(fd.get(), 0, SEEK_END);
+    off_t fileSzOff = beIn ? (off_t)sizeIn : lseek(fd.get(), 0, SEEK_END);
     if (fileSzOff < 0) {
         return ERR_FILE;
     }
@@ -1639,7 +1652,7 @@ static jint do_change_keyfile(
         env, jOldKeyfileData, pwd, pwdLen, oldEffPwd.data(), &oldEffPwdLen, "chkeyfile",
         /*usedLegacyPool=*/nullptr,   /* writes use newEffPwd, always standard */
         [&](const uint8_t *eff, int effLen) {
-            return read_vc_header(fd_be(fd.get()), 0, (const char*)eff, effLen,
+            return read_vc_header(vol, 0, (const char*)eff, effLen,
                                   masterKey.data(), &mkLen, &dataSz, &dataOff,
                                   &algId, &hashId, (int)pim, &hiddenVolSize);
         });
@@ -1654,7 +1667,7 @@ static jint do_change_keyfile(
     int newHash = (int)newHashAlg; if (newHash < 0 || newHash > 4) newHash = hashId;
     uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
 
-    int r1 = wipe_and_rewrite_header(fd_be(fd.get()), 0,
+    int r1 = wipe_and_rewrite_header(vol, 0,
                                       dataSz, dataOff, masterKey.data(), algId, newHash,
                                       (const char*)newEffPwd.data(), newEffPwdLen,
                                       (int)pim, hiddenVolSize, /*wipePassCount=*/3,
@@ -1663,7 +1676,7 @@ static jint do_change_keyfile(
         return ERR_FILE;
     }
 
-    int r2 = wipe_and_rewrite_header(fd_be(fd.get()), backupAreaOff,
+    int r2 = wipe_and_rewrite_header(vol, backupAreaOff,
                                       dataSz, dataOff, masterKey.data(), algId, newHash,
                                       (const char*)newEffPwd.data(), newEffPwdLen,
                                       (int)pim, hiddenVolSize, /*wipePassCount=*/3,
@@ -1693,7 +1706,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfile(
     int fd = open(path.c_str(), O_RDWR);
     if (fd < 0) return ERR_FILE;
 
-    return do_change_keyfile(env, fd, pwdBuf.data(), pwdLen, jOldKeyfileData, pim,
+    return do_change_keyfile(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, pwdBuf.data(), pwdLen, jOldKeyfileData, pim,
                              jNewKeyfileData, newHashAlg, jExtraEntropy);
 }
 
@@ -1713,7 +1726,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfileFd(
     int fd = dup((int)safFd);
     if (fd < 0) return ERR_FILE;
 
-    return do_change_keyfile(env, fd, pwdBuf.data(), pwdLen, jOldKeyfileData, pim,
+    return do_change_keyfile(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, pwdBuf.data(), pwdLen, jOldKeyfileData, pim,
                              jNewKeyfileData, newHashAlg, jExtraEntropy);
 }
 
@@ -1725,11 +1738,12 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfileFd(
    truncates the destination — outputPath is non-null for the path wrapper,
    otherwise safOutputFd is dup()ed. */
 static jint do_backup_volume_header(
-        JNIEnv *env, int volFdIn,
+        JNIEnv *env, int volFdIn, const BlockBackend *beIn,
         const uint8_t *pwd, int pwdLen, jobjectArray jKeyfileData, jint pim,
         const char *outputPath, int safOutputFd)
 {
     UniqueFd volFd(volFdIn);
+    const BlockBackend vol = beIn ? *beIn : vol;
 
     SecureBuffer<VC_MAX_PWD_LEN> effPwd;
     int effPwdLen = pwdLen;
@@ -1743,7 +1757,7 @@ static jint do_backup_volume_header(
     int rc = auth_with_legacy_pool_retry(
         env, jKeyfileData, pwd, pwdLen, effPwd.data(), &effPwdLen, "backup", &usedLegacyPool,
         [&](const uint8_t *eff, int effLen) {
-            return read_vc_header(fd_be(volFd.get()), 0, (const char*)eff, effLen,
+            return read_vc_header(vol, 0, (const char*)eff, effLen,
                                   masterKey.data(), &mkLen, &dataSz, &dataOff,
                                   &algId, &hashId, (int)pim, &hiddenVolSize);
         });
@@ -1814,7 +1828,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeBackupVolumeHeader(
     int fd = open(volumePath.c_str(), O_RDONLY);
     if (fd < 0) return ERR_FILE;
 
-    return do_backup_volume_header(env, fd, pwdBuf.data(), pwdLen, jKeyfileData, pim,
+    return do_backup_volume_header(env, fd, /*beIn=*/nullptr, pwdBuf.data(), pwdLen, jKeyfileData, pim,
                                    outputPath.c_str(), -1);
 }
 
@@ -1832,7 +1846,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeBackupVolumeHeaderFd(
     int fd = dup((int)safVolumeFd);
     if (fd < 0) return ERR_FILE;
 
-    return do_backup_volume_header(env, fd, pwdBuf.data(), pwdLen, jKeyfileData, pim,
+    return do_backup_volume_header(env, fd, /*beIn=*/nullptr, pwdBuf.data(), pwdLen, jKeyfileData, pim,
                                    nullptr, (int)safOutputFd);
 }
 
@@ -1843,20 +1857,21 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeBackupVolumeHeaderFd(
    volFd. backupPath is non-null for the path wrapper; the fd wrapper passes
    safBackupFd instead. Both are ignored when fromExternal is false. */
 static jint do_restore_volume_header(
-        JNIEnv *env, int volFdIn,
+        JNIEnv *env, int volFdIn, const BlockBackend *beIn, uint64_t sizeIn,
         const uint8_t *pwd, int pwdLen, jobjectArray jKeyfileData, jint pim,
         jboolean fromExternal, const char *backupPath, int safBackupFd)
 {
     /* Unlike do_backup_volume_header, volFd is needed for the whole function
      * (the restore writes back into it), so it's owned for the whole scope. */
     UniqueFd volFd(volFdIn);
+    const BlockBackend vol = beIn ? *beIn : fd_be(volFd.get());
 
     SecureBuffer<VC_MAX_PWD_LEN> effPwd;
     int effPwdLen = pwdLen;
     memcpy(effPwd.data(), pwd, (size_t)effPwdLen);
     if (!apply_keyfile_buffers(env, jKeyfileData, effPwd.data(), &effPwdLen)) return ERR_RAND;
 
-    off_t fileSzOff = lseek(volFd.get(), 0, SEEK_END);
+    off_t fileSzOff = beIn ? (off_t)sizeIn : lseek(volFd.get(), 0, SEEK_END);
     if (fileSzOff < 0) {
         return ERR_FILE;
     }
@@ -1880,6 +1895,11 @@ static jint do_restore_volume_header(
         srcOffset = fileSize - VC_BACKUP_AREA_SIZE;
     }
 
+    /* The header comes either from a real backup file or from the volume's own backup
+     * area. Only the first is a descriptor - for a volume that is not a file there is
+     * nothing to wrap, so the second has to go through the volume's backend. */
+    const BlockBackend srcBe = (bool)fromExternal ? fd_be(srcFd) : vol;
+
     SecureBuffer<192> masterKey;
     int mkLen = 0, algId = 0, hashId = 0;
     uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
@@ -1887,7 +1907,7 @@ static jint do_restore_volume_header(
     int rc = auth_with_legacy_pool_retry(
         env, jKeyfileData, pwd, pwdLen, effPwd.data(), &effPwdLen, "restore", &usedLegacyPool,
         [&](const uint8_t *eff, int effLen) {
-            return read_vc_header(fd_be(srcFd), srcOffset, (const char*)eff, effLen,
+            return read_vc_header(srcBe, srcOffset, (const char*)eff, effLen,
                                   masterKey.data(), &mkLen, &dataSz, &dataOff,
                                   &algId, &hashId, (int)pim, &hiddenVolSize);
         });
@@ -1907,7 +1927,7 @@ static jint do_restore_volume_header(
         return ERR_RAND;
 
     // Restore primary header at offset 0
-    int r1 = wipe_and_rewrite_header(fd_be(volFd.get()), 0,
+    int r1 = wipe_and_rewrite_header(vol, 0,
                                      dataSz, dataOff, masterKey.data(), algId, hashId,
                                      (const char*)effPwd.data(), effPwdLen,
                                      (int)pim, hiddenVolSize, /*wipePassCount=*/3,
@@ -1920,7 +1940,7 @@ static jint do_restore_volume_header(
     int r2 = 0;
     if ((bool)fromExternal) {
         uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
-        r2 = wipe_and_rewrite_header(fd_be(volFd.get()), backupAreaOff,
+        r2 = wipe_and_rewrite_header(vol, backupAreaOff,
                                      dataSz, dataOff, masterKey.data(), algId, hashId,
                                      (const char*)effPwd.data(), effPwdLen,
                                      (int)pim, hiddenVolSize, /*wipePassCount=*/3,
@@ -1948,7 +1968,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRestoreVolumeHeader(
     int volFd = open(volumePath.c_str(), O_RDWR);
     if (volFd < 0) return ERR_FILE;
 
-    return do_restore_volume_header(env, volFd, pwdBuf.data(), pwdLen, jKeyfileData, pim,
+    return do_restore_volume_header(env, volFd, /*beIn=*/nullptr, /*sizeIn=*/0, pwdBuf.data(), pwdLen, jKeyfileData, pim,
                                     fromExternal, backupPath.c_str(), -1);
 }
 
@@ -1967,7 +1987,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRestoreVolumeHeaderFd(
     int volFd = dup((int)safVolumeFd);
     if (volFd < 0) return ERR_FILE;
 
-    return do_restore_volume_header(env, volFd, pwdBuf.data(), pwdLen, jKeyfileData, pim,
+    return do_restore_volume_header(env, volFd, /*beIn=*/nullptr, /*sizeIn=*/0, pwdBuf.data(), pwdLen, jKeyfileData, pim,
                                     fromExternal, nullptr, (int)safBackupFd);
 }
 
@@ -2069,4 +2089,108 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeGenerateKeyfileFd(
 
     return ERR_OK;
     /* chunk wiped, fd closed, entropy wiped — all by their destructors. */
+}
+
+/* ─── JNI: whole-device USB variants (#95) ──────────────────────────── */
+/*
+ * The same four operations against a volume that occupies a USB device.
+ *
+ * Ownership differs from nativeOpenContainerUsb in the one way that matters: a mount
+ * hands its backend to the drive and free_drive releases it later, whereas these
+ * operations finish and leave nothing behind - so the backend is built here, used, and
+ * released here on every path. The transport itself is not closed: Kotlin opened it and
+ * Kotlin closes it, the same rule the rest of this file follows for descriptors.
+ */
+
+struct ScopedUsbBackend {
+    BlockBackend be{};
+    bool ok = false;
+    ScopedUsbBackend(JNIEnv *env, jobject transport, bool readOnly) {
+        ok = usb_backend_init(&be, env, transport, readOnly);
+    }
+    ~ScopedUsbBackend() { if (ok && be.close) be.close(be.self); }
+    ScopedUsbBackend(const ScopedUsbBackend&) = delete;
+    ScopedUsbBackend& operator=(const ScopedUsbBackend&) = delete;
+};
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePasswordUsb(
+        JNIEnv *env, jobject /*thiz*/,
+        jobject transport, jlong deviceSize,
+        jbyteArray jOldPassword, jobjectArray jOldKeyfileData, jint oldPim,
+        jbyteArray jNewPassword, jobjectArray jNewKeyfileData, jint newHashAlg, jint newPim,
+        jint wipePassCount, jbyteArray jExtraEntropy)
+{
+    if (!transport || deviceSize <= 0) return ERR_FILE;
+    SecureBuffer<VC_MAX_PWD_LEN> oldPwdBuf;
+    int oldPwdLen = get_password_bytes(env, jOldPassword, oldPwdBuf);
+    SecureBuffer<VC_MAX_PWD_LEN> newPwdBuf;
+    int newPwdLen = get_password_bytes(env, jNewPassword, newPwdBuf);
+    if (newPwdLen == 0) return ERR_FILE;
+
+    ScopedUsbBackend be(env, transport, /*readOnly=*/false);
+    if (!be.ok) return ERR_FILE;
+
+    return do_change_password(env, /*fdIn=*/-1, &be.be, (uint64_t)deviceSize,
+                              oldPwdBuf.data(), oldPwdLen, jOldKeyfileData, oldPim,
+                              newPwdBuf.data(), newPwdLen, jNewKeyfileData,
+                              newHashAlg, newPim, wipePassCount, jExtraEntropy);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfileUsb(
+        JNIEnv *env, jobject /*thiz*/,
+        jobject transport, jlong deviceSize,
+        jbyteArray jPassword, jobjectArray jOldKeyfileData, jint pim,
+        jobjectArray jNewKeyfileData, jint newHashAlg, jbyteArray jExtraEntropy)
+{
+    if (!transport || deviceSize <= 0) return ERR_FILE;
+    SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
+    int pwdLen = get_password_bytes(env, jPassword, pwdBuf);
+
+    ScopedUsbBackend be(env, transport, /*readOnly=*/false);
+    if (!be.ok) return ERR_FILE;
+
+    return do_change_keyfile(env, /*fdIn=*/-1, &be.be, (uint64_t)deviceSize,
+                             pwdBuf.data(), pwdLen, jOldKeyfileData, pim,
+                             jNewKeyfileData, newHashAlg, jExtraEntropy);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeBackupVolumeHeaderUsb(
+        JNIEnv *env, jobject /*thiz*/,
+        jobject transport, jlong deviceSize,
+        jbyteArray jPassword, jobjectArray jKeyfileData, jint pim,
+        jint safOutputFd)
+{
+    if (!transport || deviceSize <= 0) return ERR_FILE;
+    SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
+    int pwdLen = get_password_bytes(env, jPassword, pwdBuf);
+
+    /* Read-only: a backup reads the volume and writes only to the output file. */
+    ScopedUsbBackend be(env, transport, /*readOnly=*/true);
+    if (!be.ok) return ERR_FILE;
+
+    return do_backup_volume_header(env, /*volFdIn=*/-1, &be.be,
+                                   pwdBuf.data(), pwdLen, jKeyfileData, pim,
+                                   /*outputPath=*/nullptr, (int)safOutputFd);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeRestoreVolumeHeaderUsb(
+        JNIEnv *env, jobject /*thiz*/,
+        jobject transport, jlong deviceSize,
+        jbyteArray jPassword, jobjectArray jKeyfileData, jint pim,
+        jboolean fromExternal, jint safBackupFd)
+{
+    if (!transport || deviceSize <= 0) return ERR_FILE;
+    SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
+    int pwdLen = get_password_bytes(env, jPassword, pwdBuf);
+
+    ScopedUsbBackend be(env, transport, /*readOnly=*/false);
+    if (!be.ok) return ERR_FILE;
+
+    return do_restore_volume_header(env, /*volFdIn=*/-1, &be.be, (uint64_t)deviceSize,
+                                    pwdBuf.data(), pwdLen, jKeyfileData, pim,
+                                    fromExternal, /*backupPath=*/nullptr, (int)safBackupFd);
 }

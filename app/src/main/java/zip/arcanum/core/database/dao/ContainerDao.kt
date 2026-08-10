@@ -68,6 +68,17 @@ interface ContainerDao {
     @Query("SELECT * FROM containers")
     suspend fun getAllContainersOnce(): List<ContainerEntity>
 
+    /**
+     * Re-points a USB vault at its new header salt (#95).
+     *
+     * Every operation that rewrites a header gives the volume a fresh salt - VeraCrypt
+     * does this deliberately, so a changed header cannot be linked to its previous state.
+     * That means no plaintext identifier survives such an operation, and the stored
+     * fingerprint has to be updated or the vault stops recognising its own drive.
+     */
+    @Query("UPDATE containers SET usbSaltHash = :newHash WHERE usbSaltHash = :oldHash AND usbSaltHash != ''")
+    suspend fun updateUsbSaltHash(oldHash: String, newHash: String)
+
     @Query("UPDATE containers SET hasBiometric = 0")
     suspend fun clearAllBiometric()
 

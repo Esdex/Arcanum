@@ -238,6 +238,60 @@ class UsbVolumeManager @Inject constructor(
 
     class NoDriveException : Exception("no USB mass-storage device attached")
 
+    /** The outcome of an operation run against a remembered volume. */
+    sealed interface VolumeOp<out T> {
+        /**
+         * [newSaltHash] is the volume's fingerprint re-read after the operation, present
+         * only when it was requested. Any operation that rewrites a header changes the
+         * salt, so the caller must store this or the vault will no longer recognise its
+         * own drive.
+         */
+        data class Done<T>(val value: T, val newSaltHash: String? = null) : VolumeOp<T>
+        object NoDrive : VolumeOp<Nothing>
+        data class WrongVolume(val found: DriveIdentity) : VolumeOp<Nothing>
+        data class Failed(val reason: String) : VolumeOp<Nothing>
+    }
+
+    /**
+     * Runs [block] against the drive holding [saltHash], and closes the transport
+     * afterwards whatever happens.
+     *
+     * For the operations that work on an UNMOUNTED volume - changing a password or
+     * keyfile, backing up or restoring a header. Mounting deliberately does not use this:
+     * it needs the transport to outlive the call, so it hands ownership to this class
+     * instead.
+     *
+     * Refuses while a volume is mounted. Claiming the same interface twice would have two
+     * owners issuing commands to one device, and rewriting the header of a volume that is
+     * currently mounted is not something to allow by accident.
+     */
+    suspend fun <T> withMatchingVolume(
+        saltHash: String,
+        readOnly: Boolean,
+        refingerprint: Boolean = false,
+        block: suspend (UsbBlockDevice) -> T
+    ): VolumeOp<T> {
+        if (_mounted.value != null) {
+            return VolumeOp.Failed("unmount the vault before changing it")
+        }
+        return when (val opened = openMatching(saltHash, readOnly)) {
+            is OpenResult.Ok -> {
+                try {
+                    val value = block(opened.device)
+                    // Read while the drive is still open - afterwards there is nothing
+                    // left to ask, and the old fingerprint no longer matches anything.
+                    val fresh = if (refingerprint) opened.device.volumeFingerprint() else null
+                    VolumeOp.Done(value, fresh)
+                } finally {
+                    opened.device.close()
+                }
+            }
+            OpenResult.NoDrive -> VolumeOp.NoDrive
+            is OpenResult.WrongVolume -> VolumeOp.WrongVolume(opened.found)
+            is OpenResult.Failed -> VolumeOp.Failed(opened.reason)
+        }
+    }
+
     /**
      * Mounts [device] as a whole-device VeraCrypt volume. Takes ownership of the
      * transport: on success it is held until unmount or detach, and on failure it is

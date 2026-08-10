@@ -28,6 +28,8 @@ class ChangeKeyfileService : Service() {
 
     @Inject lateinit var cryptoEngine: VeraCryptEngine
     @Inject lateinit var changeKeyfileParams: ChangeKeyfileParams
+    @Inject lateinit var usbVolumes: zip.arcanum.usb.UsbVolumeManager
+    @Inject lateinit var containerRepo: zip.arcanum.arcanum.containers.data.ContainerRepository
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -61,8 +63,48 @@ class ChangeKeyfileService : Service() {
 
         serviceScope.launch {
             try {
+                // CryptoError has no value meaning "wrong drive" or "no drive", and
+                // reporting those as IO_ERROR tells the user nothing they can act on -
+                // the exact complaint behind #114. The reason is carried alongside.
+                var usbError: String? = null
                 val result = try {
-                    if (p.safFd >= 0) {
+                    if (p.usbSaltHash.isNotEmpty()) {
+                        when (val op = usbVolumes.withMatchingVolume(p.usbSaltHash, readOnly = false, refingerprint = true) { dev ->
+                            cryptoEngine.changeKeyfileUsb(
+                                transport        = dev,
+                                deviceSize       = dev.sizeBytes,
+                                password         = p.password,
+                                oldKeyfileData  = p.oldKeyfileData,
+                                pim              = p.pim,
+                                newKeyfileData  = p.newKeyfileData,
+                                newHashAlgorithm = p.newHashAlgorithm,
+                                extraEntropy     = p.extraEntropy
+                            )
+                        }) {
+                            is zip.arcanum.usb.UsbVolumeManager.VolumeOp.Done -> {
+                                // A rewritten header has a fresh salt: without this the
+                                // vault stops recognising the very drive it just changed.
+                                if (op.value is zip.arcanum.crypto.CryptoResult.Success) {
+                                    op.newSaltHash?.let { fresh ->
+                                        containerRepo.updateUsbSaltHash(p.usbSaltHash, fresh)
+                                    }
+                                }
+                                op.value
+                            }
+                            zip.arcanum.usb.UsbVolumeManager.VolumeOp.NoDrive -> {
+                                usbError = "USB drive not connected\nConnect the drive holding this vault and try again."
+                                zip.arcanum.crypto.CryptoResult.Failure(zip.arcanum.crypto.CryptoError.IO_ERROR)
+                            }
+                            is zip.arcanum.usb.UsbVolumeManager.VolumeOp.WrongVolume -> {
+                                usbError = "Wrong USB device\nThe connected drive does not hold this vault."
+                                zip.arcanum.crypto.CryptoResult.Failure(zip.arcanum.crypto.CryptoError.IO_ERROR)
+                            }
+                            is zip.arcanum.usb.UsbVolumeManager.VolumeOp.Failed -> {
+                                usbError = op.reason
+                                zip.arcanum.crypto.CryptoResult.Failure(zip.arcanum.crypto.CryptoError.IO_ERROR)
+                            }
+                        }
+                    } else if (p.safFd >= 0) {
                         cryptoEngine.changeKeyfileFd(
                             fd               = p.safFd,
                             password         = p.password,
@@ -92,7 +134,7 @@ class ChangeKeyfileService : Service() {
 
                 _state.value = when (result) {
                     is CryptoResult.Success -> State.Success
-                    is CryptoResult.Failure -> State.Failure(result.error.name)
+                    is CryptoResult.Failure -> State.Failure(usbError ?: result.error.name)
                 }
                 stopSelf()
             } catch (e: CancellationException) {

@@ -274,6 +274,10 @@ class ContainerRepository @Inject constructor(
         return id
     }
 
+    /** See ContainerDao.updateUsbSaltHash: a header rewrite changes the volume's salt. */
+    suspend fun updateUsbSaltHash(oldHash: String, newHash: String) =
+        dao.updateUsbSaltHash(oldHash, newHash)
+
     /** True when a vault with this volume is already in the list. */
     suspend fun containsUsbSaltHash(saltHash: String): Boolean =
         dao.getAllContainersOnce().any { it.usbSaltHash == saltHash }
@@ -299,6 +303,7 @@ class ContainerRepository @Inject constructor(
             id              = id,
             name            = name,
             path            = path,
+            usbSaltHash     = usbSaltHash,
             size            = ms?.dataSize ?: size,
             algorithm       = algorithm,
             prf             = prf,

@@ -23,5 +23,7 @@ data class Container(
     val hasBackupHeader: Boolean = true,
     val pkcs5Iterations: Int = 0,
     val headerModifiedAt: Long = 0L,
-    val isReadOnly: Boolean = false
+    val isReadOnly: Boolean = false,
+    /** Non-empty when this vault occupies a whole USB device (#95). See ContainerEntity. */
+    val usbSaltHash: String = ""
 )

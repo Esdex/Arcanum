@@ -65,6 +65,7 @@ class ChangePasswordViewModel @Inject constructor(
     private var containerId: String = ""
     private var containerPath: String = ""
     private var safUri: String = ""
+    private var usbSaltHash: String = ""
 
     private val collectedEntropy: ByteArray = ByteArray(ENTROPY_REQUIRED * 2)
     private var entropyIndex: Int = 0
@@ -83,6 +84,7 @@ class ChangePasswordViewModel @Inject constructor(
             val c = repo.getContainerById(id) ?: return@launch
             containerPath = c.path
             safUri        = c.safUri
+            usbSaltHash   = c.usbSaltHash
         }
     }
 
@@ -138,7 +140,9 @@ class ChangePasswordViewModel @Inject constructor(
         _state.update { it.copy(isRunning = true, error = null, currentStep = 5) }
 
         // Build SAF fd if needed
-        val pfd = if (safUri.isNotEmpty())
+        // A USB volume has no descriptor to hand over; the service opens the drive by
+        // salt hash instead.
+        val pfd = if (safUri.isNotEmpty() && usbSaltHash.isEmpty())
             context.contentResolver.openFileDescriptor(Uri.parse(safUri), "rw")
         else null
 
@@ -156,7 +160,8 @@ class ChangePasswordViewModel @Inject constructor(
             newHashAlgorithm = s.newHashAlgorithm.ordinal,
             newPim           = s.newPim,
             wipePassCount    = s.wipeMode.passCount,
-            extraEntropy     = collectedEntropy.copyOf(entropyIndex)
+            extraEntropy     = collectedEntropy.copyOf(entropyIndex),
+            usbSaltHash      = usbSaltHash
         ))
 
         // Clear keyfile paths from state — service owns them now

@@ -20,7 +20,14 @@ class ChangePasswordParams @Inject constructor() {
         val newHashAlgorithm: Int,
         val newPim: Int,
         val wipePassCount: Int,
-        val extraEntropy: ByteArray
+        val extraEntropy: ByteArray,
+        /**
+         * Non-empty when the volume is a whole USB device (#95). Deliberately the salt
+         * hash rather than an open transport: the service opens the drive itself, so
+         * opening, using and closing it all happen in one place, and nothing has to
+         * survive being handed across the service boundary.
+         */
+        val usbSaltHash: String = ""
     )
 
     private val pending = AtomicReference<Params?>()
