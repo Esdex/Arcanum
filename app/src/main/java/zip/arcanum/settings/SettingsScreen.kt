@@ -1940,6 +1940,7 @@ private fun DebugSubScreen(
     var showWarningDialog by remember { mutableStateOf(false) }
     var showUsbWriteConfirm by remember { mutableStateOf(false) }
     var usbMountPassword by remember { mutableStateOf("") }
+    var showUsbSweepConfirm by remember { mutableStateOf(false) }
     val isAmoled       = LocalAmoledMode.current
     val debugHazeState = remember { HazeState() }
 
@@ -2456,6 +2457,16 @@ private fun DebugSubScreen(
                     ) {
                         Text("Mount read-write + write a test file", style = MaterialTheme.typography.labelMedium)
                     }
+                    TextButton(
+                        onClick  = { showUsbSweepConfirm = true },
+                        enabled  = !state.usbProbeRunning,
+                        colors   = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        Text("Write throughput sweep (destroys the volume)", style = MaterialTheme.typography.labelMedium)
+                    }
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     TextButton(
                         onClick  = { showUsbWriteConfirm = true },
@@ -2467,6 +2478,34 @@ private fun DebugSubScreen(
                     ) {
                         Text("Run write test (modifies the drive)", style = MaterialTheme.typography.labelMedium)
                     }
+                }
+
+                if (showUsbSweepConfirm) {
+                    AppDialog(
+                        onDismissRequest = { showUsbSweepConfirm = false },
+                        title            = { Text("Destroy the volume on this drive?") },
+                        text             = {
+                            Text(
+                                "This writes 16 MB of test data straight onto the device to " +
+                                "measure raw write speed. It overwrites the VeraCrypt header " +
+                                "and whatever is stored in the volume.\n\n" +
+                                "Everything on the drive will be unrecoverable. Only run this " +
+                                "on a drive you are about to reformat anyway."
+                            )
+                        },
+                        confirmButton    = {
+                            TextButton(
+                                onClick = {
+                                    showUsbSweepConfirm = false
+                                    debugViewModel.runUsbWriteSweep()
+                                },
+                                colors  = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            ) { Text("Destroy and measure") }
+                        },
+                        dismissButton    = {
+                            TextButton(onClick = { showUsbSweepConfirm = false }) { Text("Cancel") }
+                        }
+                    )
                 }
 
                 if (showUsbWriteConfirm) {

@@ -42,12 +42,99 @@
 #include <cstdlib>
 #include <cstring>
 
+#ifdef ARCANUM_KAT_HOOKS
+#include <cstdio>
+#include <ctime>
+#include <unordered_map>
+#endif
+
 /* Mirrors UsbBlockDevice.MAX_TRANSFER_BYTES. The transport splits requests at that size
  * anyway; this is the scratch array a request is copied through, so the two matching
  * keeps one JNI round trip per SCSI command rather than several. */
 #define USB_SCRATCH_BYTES (512 * 1024)
 
 namespace {
+
+#ifdef ARCANUM_KAT_HOOKS
+/*
+ * Debug-only I/O census, to size a cache against what FatFs actually does rather than a
+ * guess. A whole-device write measured 5.1 MB/s where the raw transport does 33, so
+ * something is issuing far more commands than the data needs - this says what.
+ *
+ * `repeatReads` is the number that matters: a read of an offset already read is exactly
+ * what a cache would have served, so it is the upper bound on what caching can win.
+ * Safe without locking - every call arrives serialised behind g_fatfs_mutex.
+ */
+struct IoStats {
+    uint64_t reads = 0, readBytes = 0, repeatReads = 0, repeatBytes = 0;
+    uint64_t writes = 0, writeBytes = 0, rewrites = 0;
+    /* Wall time spent inside the backend - the transport, the JNI hop and the array
+     * copy. Subtracting it from the caller's own measurement leaves everything above:
+     * XTS and FatFs. That split is the whole point of this counter. */
+    uint64_t readNanos = 0, writeNanos = 0;
+    /* How many writes began exactly where the previous one ended. This is the entire
+     * case for coalescing: only a contiguous run can be merged into one command, and a
+     * metadata update landing between two data chunks breaks the run. */
+    uint64_t contigWrites = 0, longestRunBytes = 0, deviceWrites = 0;
+    uint64_t runBytes = 0, nextOff = UINT64_MAX;
+    uint64_t readBuckets[5] = {};    /* <=512, <=4K, <=32K, <=128K, bigger */
+    uint64_t writeBuckets[5] = {};
+    std::unordered_map<uint64_t, uint32_t> readSeen;
+    std::unordered_map<uint64_t, uint32_t> writeSeen;
+};
+IoStats g_stats;
+
+uint64_t now_nanos() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+}
+
+int size_bucket(size_t len) {
+    if (len <= 512)          return 0;
+    if (len <= 4 * 1024)     return 1;
+    if (len <= 32 * 1024)    return 2;
+    if (len <= 128 * 1024)   return 3;
+    return 4;
+}
+
+void stat_read(uint64_t off, size_t len) {
+    g_stats.reads++;
+    g_stats.readBytes += len;
+    g_stats.readBuckets[size_bucket(len)]++;
+    if (++g_stats.readSeen[off] > 1) { g_stats.repeatReads++; g_stats.repeatBytes += len; }
+}
+
+void stat_write(uint64_t off, size_t len) {
+    if (off == g_stats.nextOff) {
+        g_stats.contigWrites++;
+        g_stats.runBytes += len;
+    } else {
+        if (g_stats.runBytes > g_stats.longestRunBytes) g_stats.longestRunBytes = g_stats.runBytes;
+        g_stats.runBytes = len;
+    }
+    g_stats.nextOff = off + len;
+    if (g_stats.runBytes > g_stats.longestRunBytes) g_stats.longestRunBytes = g_stats.runBytes;
+
+    g_stats.writes++;
+    g_stats.writeBytes += len;
+    g_stats.writeBuckets[size_bucket(len)]++;
+    if (++g_stats.writeSeen[off] > 1) g_stats.rewrites++;
+}
+#define STAT_READ(off, len)  stat_read((off), (len))
+#define STAT_WRITE(off, len) stat_write((off), (len))
+#define STAT_CLOCK_START()   uint64_t _t0 = now_nanos()
+#define STAT_READ_DONE()     g_stats.readNanos  += now_nanos() - _t0
+#define STAT_WRITE_DONE()    g_stats.writeNanos += now_nanos() - _t0
+#define STAT_DEVICE_WRITE()  g_stats.deviceWrites++
+#else
+#define STAT_READ(off, len)  ((void)0)
+#define STAT_WRITE(off, len) ((void)0)
+#define STAT_CLOCK_START()   ((void)0)
+#define STAT_READ_DONE()     ((void)0)
+#define STAT_WRITE_DONE()    ((void)0)
+#define STAT_DEVICE_WRITE()  ((void)0)
+#endif
 
 struct UsbBackend {
     jobject    transport;   /* global ref to a Kotlin UsbBlockDevice */
@@ -56,6 +143,15 @@ struct UsbBackend {
     jmethodID  writeMid;
     jmethodID  syncMid;
     bool       readOnly;
+
+    /* Write combining. Measured on a 2 MB file: FatFs issues 128 writes of one cluster
+     * (16 KB) each, 87% of them starting exactly where the previous ended, in runs up to
+     * 1520 KB. Each is its own SCSI command costing about a millisecond before a byte
+     * moves, so merging a run into one command removes most of the write cost. */
+    uint8_t   *wbuf;        /* USB_SCRATCH_BYTES, or null if allocation failed */
+    size_t     wlen;        /* bytes currently held */
+    uint64_t   woff;        /* device offset wbuf[0] belongs at */
+    bool       failed;      /* a deferred write failed; see the note in flush_writes */
 };
 
 /* Returns an env for this thread, setting *attached when it had to attach one. */
@@ -87,12 +183,67 @@ bool check_exception(JNIEnv *env, const char *what) {
     return true;
 }
 
+/*
+ * Sends whatever is buffered as a single command.
+ *
+ * On failure the backend is poisoned rather than just returning false. A combined write
+ * is reported complete to the filesystem before it reaches the device, so the error
+ * surfaces on some later call - and a filesystem that saw one write fail and the next
+ * succeed would carry on with a hole in what it believes it wrote. Refusing everything
+ * afterwards turns that into a mount that fails loudly instead.
+ */
+bool flush_writes(UsbBackend *be, JNIEnv *env) {
+    if (be->wlen == 0) return !be->failed;
+    if (be->failed) return false;
+
+    size_t len = be->wlen;
+    uint64_t off = be->woff;
+    be->wlen = 0;   /* cleared first: a failed flush must not be retried with stale state */
+
+    env->SetByteArrayRegion(be->scratch, 0, (jsize)len,
+                            reinterpret_cast<const jbyte *>(be->wbuf));
+    if (check_exception(env, "SetByteArrayRegion")) { be->failed = true; return false; }
+
+    jboolean r = env->CallBooleanMethod(be->transport, be->writeMid,
+                                        (jlong)off, (jint)len, be->scratch, (jint)0);
+    if (check_exception(env, "write") || r == JNI_FALSE) {
+        LOGE("[usb] combined write of %zu bytes at %llu failed", len, (unsigned long long)off);
+        be->failed = true;
+        return false;
+    }
+    STAT_DEVICE_WRITE();
+    return true;
+}
+
+/* Flushes with an env of its own. For the paths that have no env in hand. */
+bool flush_writes_owned_env(UsbBackend *be) {
+    if (be->wlen == 0) return !be->failed;
+    bool attached = false;
+    JNIEnv *env = acquire_env(&attached);
+    if (!env) { be->failed = true; return false; }
+    bool ok = flush_writes(be, env);
+    release_env(attached);
+    return ok;
+}
+
 bool usb_read(void *self, void *buf, size_t len, uint64_t off) {
     auto *be = static_cast<UsbBackend *>(self);
+    STAT_READ(off, len);
+    STAT_CLOCK_START();
     bool attached = false;
     JNIEnv *env = acquire_env(&attached);
     if (!env) {
         LOGE("[usb] read: no JNIEnv");
+        return false;
+    }
+
+    /* Anything still buffered has not reached the device, so a read that overlaps it
+     * would come back stale. Flushing first is the simple correct answer, and costs
+     * nothing in practice: a write run is almost never interrupted by a read (measured
+     * 9 reads against 143 writes while writing a 2 MB file). */
+    if (!flush_writes(be, env)) {
+        release_env(attached);
+        STAT_READ_DONE();
         return false;
     }
 
@@ -115,11 +266,14 @@ bool usb_read(void *self, void *buf, size_t len, uint64_t off) {
     }
 
     release_env(attached);
+    STAT_READ_DONE();
     return ok;
 }
 
 bool usb_write(void *self, const void *buf, size_t len, uint64_t off) {
     auto *be = static_cast<UsbBackend *>(self);
+    STAT_WRITE(off, len);
+    STAT_CLOCK_START();
     /* The guard that stands in for O_RDONLY, which this backend has no equivalent of.
      * The transport refuses too; both are kept, because losing one silently is how a
      * read-only mount quietly stops being read-only. */
@@ -127,6 +281,7 @@ bool usb_write(void *self, const void *buf, size_t len, uint64_t off) {
         LOGE("[usb] write refused: backend is read-only");
         return false;
     }
+    if (be->failed) return false;
 
     bool attached = false;
     JNIEnv *env = acquire_env(&attached);
@@ -136,31 +291,58 @@ bool usb_write(void *self, const void *buf, size_t len, uint64_t off) {
     }
 
     bool ok = true;
-    size_t done = 0;
-    while (done < len) {
-        jint chunk = (jint)((len - done > USB_SCRATCH_BYTES) ? USB_SCRATCH_BYTES : (len - done));
-        env->SetByteArrayRegion(be->scratch, 0, chunk,
-                                reinterpret_cast<const jbyte *>(
-                                    static_cast<const uint8_t *>(buf) + done));
-        if (check_exception(env, "SetByteArrayRegion")) { ok = false; break; }
-        jboolean r = env->CallBooleanMethod(be->transport, be->writeMid,
-                                            (jlong)(off + done), chunk, be->scratch, (jint)0);
-        if (check_exception(env, "write") || r == JNI_FALSE) {
-            LOGE("[usb] write failed at offset %llu (%d bytes)",
-                 (unsigned long long)(off + done), (int)chunk);
-            ok = false;
-            break;
+    const uint8_t *src = static_cast<const uint8_t *>(buf);
+
+    if (!be->wbuf || len >= USB_SCRATCH_BYTES) {
+        /* Nothing to gain from buffering a request already at or above the command size,
+         * and nothing to buffer into if the allocation failed at open. Order still has to
+         * hold, so anything pending goes first. */
+        ok = flush_writes(be, env);
+        size_t done = 0;
+        while (ok && done < len) {
+            jint chunk = (jint)((len - done > USB_SCRATCH_BYTES) ? USB_SCRATCH_BYTES : (len - done));
+            env->SetByteArrayRegion(be->scratch, 0, chunk,
+                                    reinterpret_cast<const jbyte *>(src + done));
+            if (check_exception(env, "SetByteArrayRegion")) { ok = false; break; }
+            jboolean r = env->CallBooleanMethod(be->transport, be->writeMid,
+                                                (jlong)(off + done), chunk, be->scratch, (jint)0);
+            if (check_exception(env, "write") || r == JNI_FALSE) {
+                LOGE("[usb] write failed at offset %llu (%d bytes)",
+                     (unsigned long long)(off + done), (int)chunk);
+                ok = false;
+                break;
+            }
+            STAT_DEVICE_WRITE();
+            done += (size_t)chunk;
         }
-        done += (size_t)chunk;
+        if (!ok) be->failed = true;
+    } else {
+        /* A write that does not continue the buffered run cannot be merged with it, and
+         * must not overtake it either - so the run goes out first and this one starts a
+         * new one. That is also what keeps filesystem ordering intact: a FAT or directory
+         * update lands at a different offset, breaks the run, and is therefore written
+         * after every data byte the filesystem wrote before it. */
+        if (be->wlen > 0 && (off != be->woff + be->wlen || be->wlen + len > USB_SCRATCH_BYTES)) {
+            ok = flush_writes(be, env);
+        }
+        if (ok) {
+            if (be->wlen == 0) be->woff = off;
+            memcpy(be->wbuf + be->wlen, src, len);
+            be->wlen += len;
+            if (be->wlen >= USB_SCRATCH_BYTES) ok = flush_writes(be, env);
+        }
     }
 
     release_env(attached);
+    STAT_WRITE_DONE();
     return ok;
 }
 
 void usb_sync(void *self) {
     auto *be = static_cast<UsbBackend *>(self);
     if (be->readOnly) return;
+    /* A sync that left bytes sitting in our own buffer would be a lie twice over. */
+    flush_writes_owned_env(be);
     bool attached = false;
     JNIEnv *env = acquire_env(&attached);
     if (!env) return;
@@ -185,6 +367,9 @@ void usb_sync(void *self) {
 void usb_close(void *self) {
     auto *be = static_cast<UsbBackend *>(self);
     if (!be) return;
+    /* Last chance for anything still held. free_drive calls this on unmount, so a
+     * buffered tail that never got a sync still reaches the device here. */
+    if (!be->readOnly) flush_writes_owned_env(be);
     bool attached = false;
     JNIEnv *env = acquire_env(&attached);
     if (env) {
@@ -194,6 +379,7 @@ void usb_close(void *self) {
     } else {
         LOGE("[usb] close: no JNIEnv, two global refs leak for the life of the process");
     }
+    free(be->wbuf);
     free(be);
 }
 
@@ -234,6 +420,11 @@ bool usb_backend_init(BlockBackend *out, JNIEnv *env, jobject transport, bool re
         return false;
     }
 
+    /* Optional: without it every write goes straight through, which is correct, only
+     * slower. Not a reason to fail a mount. */
+    be->wbuf = static_cast<uint8_t *>(malloc(USB_SCRATCH_BYTES));
+    if (!be->wbuf) LOGE("[usb] no write-combining buffer, writes will go one per command");
+
     out->read  = usb_read;
     out->write = usb_write;
     out->sync  = usb_sync;
@@ -243,6 +434,48 @@ bool usb_backend_init(BlockBackend *out, JNIEnv *env, jobject transport, bool re
 }
 
 #ifdef ARCANUM_KAT_HOOKS
+/* Clears the census so one mount can be measured on its own. */
+extern "C" JNIEXPORT void JNICALL
+Java_zip_arcanum_usb_UsbBlockDevice_nativeResetIoStats(JNIEnv * /*env*/, jobject /*thiz*/) {
+    g_stats = IoStats();
+}
+
+/* Returns the census as text. Read after unmounting, so it covers the whole session. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_zip_arcanum_usb_UsbBlockDevice_nativeIoStats(JNIEnv *env, jobject /*thiz*/) {
+    char buf[1024];
+    const IoStats &s = g_stats;
+    auto pct = [](uint64_t part, uint64_t whole) {
+        return whole ? (double)part * 100.0 / (double)whole : 0.0;
+    };
+    snprintf(buf, sizeof(buf),
+        "reads  %llu calls, %llu KB, sizes <=512B:%llu <=4K:%llu <=32K:%llu <=128K:%llu >128K:%llu\n"
+        "  of those %llu (%.1f%%) were offsets already read - %llu KB a cache would have served\n"
+        "writes %llu calls, %llu KB, sizes <=512B:%llu <=4K:%llu <=32K:%llu <=128K:%llu >128K:%llu\n"
+        "  of those %llu (%.1f%%) rewrote an offset already written\n"
+        "  %llu of them (%.1f%%) began exactly where the previous write ended;\n"
+        "  longest contiguous run %llu KB; %llu commands actually reached the device\n"
+        "time inside the backend (transport + JNI): reads %llu ms, writes %llu ms\n"
+        "  anything the caller measured beyond that was spent above it, in XTS and FatFs",
+        (unsigned long long)s.reads, (unsigned long long)(s.readBytes / 1024),
+        (unsigned long long)s.readBuckets[0], (unsigned long long)s.readBuckets[1],
+        (unsigned long long)s.readBuckets[2], (unsigned long long)s.readBuckets[3],
+        (unsigned long long)s.readBuckets[4],
+        (unsigned long long)s.repeatReads, pct(s.repeatReads, s.reads),
+        (unsigned long long)(s.repeatBytes / 1024),
+        (unsigned long long)s.writes, (unsigned long long)(s.writeBytes / 1024),
+        (unsigned long long)s.writeBuckets[0], (unsigned long long)s.writeBuckets[1],
+        (unsigned long long)s.writeBuckets[2], (unsigned long long)s.writeBuckets[3],
+        (unsigned long long)s.writeBuckets[4],
+        (unsigned long long)s.rewrites, pct(s.rewrites, s.writes),
+        (unsigned long long)s.contigWrites, pct(s.contigWrites, s.writes),
+        (unsigned long long)(s.longestRunBytes / 1024),
+        (unsigned long long)s.deviceWrites,
+        (unsigned long long)(s.readNanos / 1000000ull),
+        (unsigned long long)(s.writeNanos / 1000000ull));
+    return env->NewStringUTF(buf);
+}
+
 /*
  * Debug-only: read a span through a real BlockBackend built on `transport`, and hand the
  * bytes back to Kotlin.
