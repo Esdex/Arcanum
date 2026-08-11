@@ -514,8 +514,14 @@ static DWORD vc_fat_cluster_size(uint64_t volumeSize) {
     return clusterSize;
 }
 
+/*
+ * `beIn` null means the volume is a file, as before. Non-null means it occupies a whole
+ * device (#95): `fdIn` is -1, `deviceSizeIn` is the drive's capacity, and there is no
+ * file to size - the space already exists, so the allocation phase is skipped entirely.
+ */
 static jint do_create_container(
-        JNIEnv *env, int fdIn, const char *unlinkPathOnFail, const char *logTag,
+        JNIEnv *env, int fdIn, const BlockBackend *beIn, uint64_t deviceSizeIn,
+        const char *unlinkPathOnFail, const char *logTag,
         jlong sizeBytes, const uint8_t *pwd, int pwdLen,
         jobjectArray jKeyfileData,
         jint algorithm, jint hashAlg, jint filesystem,
@@ -527,13 +533,25 @@ static jint do_create_container(
      * whole function; no release() site is needed here (contrast
      * do_open_container, where a successful mount keeps the fd alive). */
     UniqueFd fd(fdIn);
+    const BlockBackend vol = beIn ? *beIn : fd_be(fd.get());
 
     /* fail_cleanup() only performs the semantic action (unlink the freshly
      * created file / truncate the SAF file back to 0) — it does NOT close
-     * fd anymore, since UniqueFd is the single owner of that close(). */
+     * fd anymore, since UniqueFd is the single owner of that close().
+     *
+     * A device can be neither unlinked nor truncated, so the best available action is
+     * to zero the header. A half-written volume would otherwise be indistinguishable
+     * from a good one until someone failed to mount it. */
     auto fail_cleanup = [&]() {
-        if (unlinkPathOnFail) unlink(unlinkPathOnFail);
-        else                  ftruncate(fd.get(), 0);
+        if (beIn) {
+            uint8_t zero[VC_HEADER_SIZE] = {};
+            vol.write(vol.self, zero, sizeof(zero), 0);
+            vol.sync(vol.self);
+        } else if (unlinkPathOnFail) {
+            unlink(unlinkPathOnFail);
+        } else {
+            ftruncate(fd.get(), 0);
+        }
     };
 
     SecureBuffer<VC_MAX_PWD_LEN> effPwd;
@@ -553,7 +571,15 @@ static jint do_create_container(
 
     /* Allocation phase — see the mode note above. */
     float allocWeight = 0.f, fillEnd = 1.f;
-    if (unlinkPathOnFail) {
+    if (beIn) {
+        /* Nothing to allocate: the device's space exists already. Only the arithmetic
+         * has to hold - the volume plus its two header areas must fit on the drive. */
+        if (fileSize > deviceSizeIn) {
+            LOGE("[%s] volume of %llu bytes does not fit on a %llu byte device",
+                 logTag, (unsigned long long)fileSize, (unsigned long long)deviceSizeIn);
+            return ERR_NO_SPACE;
+        }
+    } else if (unlinkPathOnFail) {
         if (ftruncate(fd.get(), (off_t)fileSize) != 0) {
             LOGE("[%s] ftruncate failed - disk full?", logTag);
             fail_cleanup(); return ERR_NO_SPACE;
@@ -598,7 +624,7 @@ static jint do_create_container(
         backupSaltPtr  = backupSalt.data();
     }
 
-    if (write_vc_header(fd_be(fd.get()), 0, dataSize, VC_DATA_OFFSET,
+    if (write_vc_header(vol, 0, dataSize, VC_DATA_OFFSET,
                         masterKey.data(), algId, (int)hashAlg,
                         (const char*)effPwd.data(), pbkdf2PwdLen, (int)pim,
                         /*hiddenVolSize=*/0, primarySaltPtr) != 0) {
@@ -608,7 +634,7 @@ static jint do_create_container(
 
     /* Write backup header at end of file */
     uint64_t backupOff = fileSize - VC_BACKUP_AREA_SIZE;
-    if (write_vc_header(fd_be(fd.get()), backupOff, dataSize, VC_DATA_OFFSET,
+    if (write_vc_header(vol, backupOff, dataSize, VC_DATA_OFFSET,
                         masterKey.data(), algId, (int)hashAlg,
                         (const char*)effPwd.data(), pbkdf2PwdLen, (int)pim,
                         /*hiddenVolSize=*/0, backupSaltPtr) != 0) {
@@ -645,7 +671,7 @@ static jint do_create_container(
                     }
                 }
                 if (!rng_ok) break;
-                if (!write_all_at(fd.get(), rnd, sz, (long long)offset)) { write_ok = false; break; }
+                if (!vol.write(vol.self, rnd, sz, offset)) { write_ok = false; break; }
                 remaining -= sz; offset += sz;
                 uint64_t written = dataSize - remaining;
                 float fillFrac = (float)written / (float)dataSize;
@@ -698,7 +724,15 @@ static jint do_create_container(
     int pdrv;
     {
         std::lock_guard<std::mutex> lock(g_fatfs_mutex);
-        pdrv = alloc_drive(fd_be(fd.get()), VC_DATA_OFFSET, dataSize / VC_SECTOR_SIZE, masterKey.data(), algId);
+        /* The drive BORROWS the backend here, unlike a mount where it takes ownership.
+         * This function allocates and frees the drive itself, and the caller owns the
+         * backend for the whole call - so free_drive below must not release it. Handing
+         * over a copy with no close is what keeps the two from both freeing it; without
+         * this the caller's release hits an already-deleted global reference and JNI
+         * aborts the process. (No effect on the file path: fd_be's close is a no-op.) */
+        BlockBackend forDrive = vol;
+        if (beIn) forDrive.close = nullptr;
+        pdrv = alloc_drive(forDrive, VC_DATA_OFFSET, dataSize / VC_SECTOR_SIZE, masterKey.data(), algId);
         /* Deliberate early wipe: alloc_drive already copied whatever it
          * needed into the per-drive key schedule (on success) or nothing at
          * all (on failure) — masterKey's plaintext is never read again. */
@@ -721,7 +755,7 @@ static jint do_create_container(
         fail_cleanup(); return ERR_FS;
     }
 
-    fsync(fd.get());
+    vol.sync(vol.self);
     report_progress(env, progressListener, progressMid, 1.0f, 0.f, (jlong)dataSize);
     return ERR_OK;
     /* fd closed by UniqueFd's destructor here, on this and every path above. */
@@ -763,7 +797,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainer(
         }
     }
 
-    return do_create_container(env, fd, path.c_str(), "create",
+    return do_create_container(env, fd, /*beIn=*/nullptr, /*deviceSizeIn=*/0, path.c_str(), "create",
                                sizeBytes, pwdBuf.data(), pwdLen, jKeyfileData,
                                algorithm, hashAlg, filesystem, quickFormat,
                                progressListener, pim,
@@ -803,7 +837,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerFd(
         }
     }
 
-    return do_create_container(env, fd, nullptr, "fd/create",
+    return do_create_container(env, fd, /*beIn=*/nullptr, /*deviceSizeIn=*/0, nullptr, "fd/create",
                                sizeBytes, pwdBuf.data(), pwdLen, jKeyfileData,
                                algorithm, hashAlg, filesystem, quickFormat,
                                progressListener, pim,
@@ -2193,4 +2227,49 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRestoreVolumeHeaderUsb(
     return do_restore_volume_header(env, /*volFdIn=*/-1, &be.be, (uint64_t)deviceSize,
                                     pwdBuf.data(), pwdLen, jKeyfileData, pim,
                                     fromExternal, /*backupPath=*/nullptr, (int)safBackupFd);
+}
+
+/*
+ * Creates a VeraCrypt volume occupying a whole USB device (#95).
+ *
+ * `sizeBytes` is the DATA size, as for every other create entry point; the caller derives
+ * it from the device capacity minus the two header areas. `deviceSize` is passed as well
+ * so the native side can refuse a volume that does not fit rather than writing past the
+ * end of the drive.
+ *
+ * Everything on the device is destroyed - there is no partition table left, and Android
+ * will offer to format the drive on every later connection. That warning belongs in the
+ * UI; by the time this is called the decision has been made.
+ */
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateContainerUsb(
+        JNIEnv *env, jobject /*thiz*/,
+        jobject transport, jlong deviceSize, jlong sizeBytes,
+        jbyteArray jPassword, jobjectArray jKeyfileData,
+        jint algorithm, jint hashAlg, jint filesystem,
+        jboolean quickFormat, jbyteArray jEntropy,
+        jobject progressListener, jint pim)
+{
+    if (!transport || deviceSize <= 0 || sizeBytes <= 0) return ERR_FILE;
+
+    SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
+    int pwdLen = get_password_bytes(env, jPassword, pwdBuf);
+    if (pwdLen == 0) return ERR_FILE;
+
+    std::vector<uint8_t> entropy;
+    if (jEntropy) {
+        jsize n = env->GetArrayLength(jEntropy);
+        entropy.resize((size_t)n);
+        if (n > 0) env->GetByteArrayRegion(jEntropy, 0, n, reinterpret_cast<jbyte*>(entropy.data()));
+    }
+
+    ScopedUsbBackend be(env, transport, /*readOnly=*/false);
+    if (!be.ok) return ERR_FILE;
+
+    return do_create_container(env, /*fdIn=*/-1, &be.be, (uint64_t)deviceSize,
+                               /*unlinkPathOnFail=*/nullptr, "usb/create",
+                               sizeBytes, pwdBuf.data(), pwdLen, jKeyfileData,
+                               algorithm, hashAlg, filesystem, quickFormat,
+                               progressListener, pim,
+                               entropy.empty() ? nullptr : entropy.data(), entropy.size());
 }

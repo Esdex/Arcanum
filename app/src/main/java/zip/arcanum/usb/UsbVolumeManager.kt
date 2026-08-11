@@ -236,6 +236,22 @@ class UsbVolumeManager @Inject constructor(
             OpenResult.Ok(dev)
         }
 
+    /**
+     * Opens whatever mass-storage drive is attached, without matching it against a
+     * remembered volume - for CREATING one, where everything on the drive is about to be
+     * destroyed and there is therefore nothing to recognise.
+     *
+     * The caller owns and must close the result. Null when no drive is attached, no
+     * permission has been granted, or the claim failed.
+     */
+    suspend fun openAnyDrive(readOnly: Boolean): UsbBlockDevice? = withContext(Dispatchers.IO) {
+        if (_mounted.value != null) return@withContext null
+        val device = attachedDrive() ?: return@withContext null
+        val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+        if (!manager.hasPermission(device)) return@withContext null
+        runCatching { UsbBlockDevice.open(manager, device, readOnly) }.getOrNull()
+    }
+
     class NoDriveException : Exception("no USB mass-storage device attached")
 
     /** The outcome of an operation run against a remembered volume. */

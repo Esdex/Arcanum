@@ -24,12 +24,14 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -84,7 +86,8 @@ fun StepVolumeLocation(
     appStoragePathWithBackup: String,
     onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit,
     onBrowse: () -> Unit,
-    onClearSaf: () -> Unit = {}
+    onClearSaf: () -> Unit = {},
+    onDetectUsb: () -> Unit = {}
 ) {
     StepContent(title = stringResource(R.string.create_step2_title)) {
 
@@ -126,6 +129,43 @@ fun StepVolumeLocation(
                             else stringResource(R.string.create_location_change)
                         )
                     }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ── Option 3: USB drive ────────────────────────────────────────
+        // Unlike the two file locations, this consumes the WHOLE drive: there is no
+        // file to name and no size to choose, and everything already on it is lost.
+        SelectionCard(
+            selected    = state.location == StorageLocation.USB_DRIVE,
+            icon        = Icons.Outlined.Usb,
+            title       = stringResource(R.string.create_location_usb),
+            description = stringResource(R.string.create_location_usb_desc),
+            onClick     = {
+                onClearSaf()
+                onUpdate { copy(location = StorageLocation.USB_DRIVE, filePath = "", fileName = "") }
+                onDetectUsb()
+            }
+        )
+        AnimatedVisibility(visible = state.location == StorageLocation.USB_DRIVE) {
+            Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                if (state.usbDataSizeBytes > 0L) {
+                    Text(
+                        text  = state.usbDeviceLabel,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text  = stringResource(
+                            R.string.create_location_usb_found,
+                            state.usbDataSizeBytes / (1024L * 1024L * 1024L)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
@@ -308,6 +348,31 @@ fun StepVolumeSize(
     val secureSecs = (state.sizeMb / 80.0).toLong().coerceAtLeast(1)
 
     StepContent(title = stringResource(R.string.create_step4_title)) {
+        // A whole-device volume has no size to choose - the drive decides it. The step is
+        // kept rather than skipped so the number is seen before anything is destroyed,
+        // and so the step numbering does not depend on the location picked earlier.
+        if (state.location == StorageLocation.USB_DRIVE) {
+            Text(
+                text  = state.usbDeviceLabel,
+                style = MaterialTheme.typography.titleMedium
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text  = if (state.usbDataSizeBytes >= 1024L * 1024L * 1024L)
+                            "${state.usbDataSizeBytes / (1024L * 1024L * 1024L)} GB"
+                        else "${state.usbDataSizeBytes / (1024L * 1024L)} MB",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text  = stringResource(R.string.create_size_usb_fixed),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            return@StepContent
+        }
+
         Row(
             modifier              = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)

@@ -76,13 +76,23 @@ fun CreateContainerScreen(
     var prevStep           by remember { mutableIntStateOf(1) }
     var showCancelDialog   by remember { mutableStateOf(false) }
 
-    val availableSpaceMb = remember(state.filePath, state.location) {
+    // usbDataSizeBytes is a key, not just an input: the drive is measured
+    // asynchronously after the location is chosen, and without it this stays at the
+    // zero it was computed with and Next never enables.
+    val availableSpaceMb = remember(state.filePath, state.location, state.usbDataSizeBytes) {
         try {
-            val path = when (state.location) {
-                StorageLocation.APP_STORAGE      -> state.filePath
-                StorageLocation.INTERNAL_STORAGE -> Environment.getExternalStorageDirectory().absolutePath
+            if (state.location == StorageLocation.USB_DRIVE) {
+                // Not a filesystem to stat: the whole drive is the volume, and its
+                // usable size was measured when the drive was detected.
+                state.usbDataSizeBytes / (1024L * 1024L)
+            } else {
+                val path = when (state.location) {
+                    StorageLocation.APP_STORAGE      -> state.filePath
+                    StorageLocation.INTERNAL_STORAGE -> Environment.getExternalStorageDirectory().absolutePath
+                    StorageLocation.USB_DRIVE        -> ""   // handled above
+                }
+                StatFs(path).availableBytes / (1024L * 1024L)
             }
-            StatFs(path).availableBytes / (1024L * 1024L)
         } catch (_: Exception) {
             Long.MAX_VALUE
         }
@@ -252,7 +262,8 @@ fun CreateContainerScreen(
                                     appStoragePathWithBackup = viewModel.appStoragePathWithBackup,
                                     onUpdate                 = viewModel::update,
                                     onBrowse                 = { viewModel.deletePendingSafFile(); fileCreatorLauncher.launch(state.fileName) },
-                                    onClearSaf               = viewModel::clearSafUri
+                                    onClearSaf               = viewModel::clearSafUri,
+                                    onDetectUsb              = viewModel::detectUsbDrive
                                 )
                         3    -> StepEncryptionAlgorithm(state, viewModel::update)
                         4    -> StepVolumeSize(state, viewModel::update, availableSpaceMb)
@@ -341,6 +352,29 @@ fun CreateContainerScreen(
                 }
             }
 
+            // ── USB drive missing ─────────────────────────────────────────────
+            // The same gate the rest of the app uses. Raised the moment "USB drive" is
+            // chosen, rather than letting the user walk further into the wizard and find
+            // out at the end that there was nothing to write to.
+            if (state.usbDetectFailed) {
+                AppDialog(
+                    onDismissRequest = { viewModel.clearUsbDetectFailed() },
+                    title            = { Text(stringResource(R.string.usb_not_connected_title)) },
+                    text             = { Text(stringResource(R.string.usb_not_connected_body)) },
+                    confirmButton    = {
+                        TextButton(onClick = {
+                            viewModel.clearUsbDetectFailed()
+                            viewModel.detectUsbDrive()
+                        }) { Text(stringResource(R.string.usb_try_again)) }
+                    },
+                    dismissButton    = {
+                        TextButton(onClick = { viewModel.clearUsbDetectFailed() }) {
+                            Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
+
             // ── Cancel dialog ─────────────────────────────────────────────────
             if (showCancelDialog) {
                 AppDialog(
@@ -368,9 +402,11 @@ fun CreateContainerScreen(
 
 private fun isStepValid(state: CreateContainerState, availableSpaceMb: Long = Long.MAX_VALUE): Boolean = when (state.currentStep) {
     1    -> true
-    2    -> state.fileName.isNotBlank() && when (state.location) {
-                StorageLocation.APP_STORAGE      -> true
-                StorageLocation.INTERNAL_STORAGE -> state.safUri.isNotBlank()
+    2    -> when (state.location) {
+                StorageLocation.APP_STORAGE      -> state.fileName.isNotBlank()
+                StorageLocation.INTERNAL_STORAGE -> state.fileName.isNotBlank() && state.safUri.isNotBlank()
+                // No file to name; what has to be true is that a drive was found.
+                StorageLocation.USB_DRIVE        -> state.usbDataSizeBytes > 0L
             }
     3    -> true
     4    -> state.sizeMb > 0L && state.sizeMb <= availableSpaceMb
