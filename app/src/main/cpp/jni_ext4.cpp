@@ -82,10 +82,16 @@ struct Reader {
 };
 
 /* Caller holds g_fatfs_mutex. Opens the read-only view over g_drives[pdrv]. */
-bool open_reader(int pdrv, Reader *out) {
+/*
+ * `quiet` is for the mount-time probe, which asks every volume whether it is ext4 and
+ * is SUPPOSED to be told no on a FAT one. Logging that at error level put a red line
+ * in the log on every single mount, and it cost real time during the #95 hunt - it
+ * reads like a fault when it is the expected answer. Real operations keep the message.
+ */
+bool open_reader(int pdrv, Reader *out, bool quiet = false) {
     ext4_device_reader_init(&out->rd, &g_drives[pdrv]);
     if (ext4_open(&out->fs, ext4_device_read_block, &out->rd) != EXT4_OK) {
-        LOGE("ext4: could not read the superblock on drive %d", pdrv);
+        if (!quiet) LOGE("ext4: could not read the superblock on drive %d", pdrv);
         return false;
     }
     /* Reads after the superblock use the real block size; the bootstrap 1 KiB is
@@ -157,7 +163,7 @@ bool ext4jni_is_container(jlong handle) {
  */
 bool ext4jni_probe(int pdrv) {
     Reader r;
-    if (!open_reader(pdrv, &r)) return false;
+    if (!open_reader(pdrv, &r, /*quiet=*/true)) return false;
     /* ext4_open already verified the 0xEF53 magic and parsed the geometry; its
      * success is the probe. */
     LOGI("ext4: drive %d is ext4 (block size %u, %llu blocks)", pdrv,
