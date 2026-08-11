@@ -47,6 +47,7 @@ class RestoreHeaderViewModel @Inject constructor(
     private var containerPath: String = ""
     private var safUri: String = ""
     private var usbSaltHash: String = ""
+    private var usbStartByte: Long = 0L
 
     fun init(id: String) {
         containerId = id
@@ -55,6 +56,7 @@ class RestoreHeaderViewModel @Inject constructor(
             containerPath = c.path
             safUri        = c.safUri
             usbSaltHash   = c.usbSaltHash
+            usbStartByte  = c.usbStartByte
         }
     }
 
@@ -155,10 +157,10 @@ class RestoreHeaderViewModel @Inject constructor(
             }
         } else null
 
-        val op = usbVolumes.withMatchingVolume(usbSaltHash, readOnly = false, refingerprint = true) { dev ->
+        val op = usbVolumes.withMatchingVolume(usbSaltHash, readOnly = false, startHint = usbStartByte, refingerprint = true) { dev, span ->
             engine.restoreVolumeHeaderUsb(
-                transport    = dev,
-                deviceSize   = dev.sizeBytes,
+                transport    = zip.arcanum.usb.UsbPartitionView(dev, span.startByte, span.sizeBytes),
+                deviceSize   = span.sizeBytes,
                 password     = s.password,
                 keyfileData  = s.keyfileData,
                 pim          = s.pim,

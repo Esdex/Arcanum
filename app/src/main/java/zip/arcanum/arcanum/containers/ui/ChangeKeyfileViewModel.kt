@@ -59,6 +59,7 @@ class ChangeKeyfileViewModel @Inject constructor(
     private var containerPath: String = ""
     private var safUri: String = ""
     private var usbSaltHash: String = ""
+    private var usbStartByte: Long = 0L
     // PRF is always the existing volume's hash — user cannot change it (VeraCrypt: enablePkcs5Prf=false)
     private var containerHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA512
 
@@ -72,6 +73,7 @@ class ChangeKeyfileViewModel @Inject constructor(
             containerPath          = c.path
             safUri                 = c.safUri
             usbSaltHash            = c.usbSaltHash
+            usbStartByte           = c.usbStartByte
             containerHashAlgorithm = HashAlgorithm.entries.firstOrNull { it.displayName == c.prf }
                 ?: HashAlgorithm.SHA512
         }
@@ -195,7 +197,8 @@ class ChangeKeyfileViewModel @Inject constructor(
             newKeyfileData  = effectiveNewKeyfiles.map { it.copyOf() },
             newHashAlgorithm = containerHashAlgorithm.ordinal,
             extraEntropy     = collectedEntropy.copyOf(entropyIndex),
-            usbSaltHash      = usbSaltHash
+            usbSaltHash      = usbSaltHash,
+            usbStartByte     = usbStartByte
         ))
 
         _state.update { it.copy(

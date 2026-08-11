@@ -69,10 +69,10 @@ class ChangePasswordService : Service() {
                 var usbError: String? = null
                 val result = try {
                     if (p.usbSaltHash.isNotEmpty()) {
-                        when (val op = usbVolumes.withMatchingVolume(p.usbSaltHash, readOnly = false, refingerprint = true) { dev ->
+                        when (val op = usbVolumes.withMatchingVolume(p.usbSaltHash, readOnly = false, startHint = p.usbStartByte, refingerprint = true) { dev, span ->
                             cryptoEngine.changePasswordUsb(
-                                transport        = dev,
-                                deviceSize       = dev.sizeBytes,
+                                transport        = zip.arcanum.usb.UsbPartitionView(dev, span.startByte, span.sizeBytes),
+                                deviceSize       = span.sizeBytes,
                                 oldPassword      = p.oldPassword,
                                 oldKeyfileData  = p.oldKeyfileData,
                                 oldPim           = p.oldPim,

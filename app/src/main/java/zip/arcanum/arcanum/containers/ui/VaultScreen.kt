@@ -70,6 +70,8 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.FolderOff
 import androidx.compose.material.icons.outlined.FolderOpen
+import zip.arcanum.usb.isExtendedContainer
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
@@ -187,6 +189,7 @@ fun VaultScreen(
     val containers           by viewModel.containers.collectAsState()
     val canAddMoreContainers by viewModel.canAddMoreContainers.collectAsState()
     val addVaultResult       by viewModel.addVaultResult.collectAsState()
+    val usbLayout            by viewModel.usbLayout.collectAsState()
     val sortState            by viewModel.sortState.collectAsState()
     val showUpdateBanner     by viewModel.showUpdateBanner.collectAsState()
     val supportPrompt        by viewModel.supportPrompt.collectAsState()
@@ -741,7 +744,7 @@ fun VaultScreen(
                         TextButton(onClick = {
                             showUsbInsertPrompt = false
                             usbScope.launch {
-                                if (viewModel.ensureUsbPermission()) viewModel.addUsbContainer()
+                                if (viewModel.ensureUsbPermission()) viewModel.loadUsbLayout()
                                 else showUsbInsertPrompt = true
                             }
                         }) { Text(stringResource(R.string.usb_try_again)) }
@@ -786,19 +789,71 @@ fun VaultScreen(
                             openDocumentLauncher.launch(arrayOf("*/*"))
                         }
                     )
-                    // Unlike the two above, this opens no picker: a drive is either
-                    // attached or it is not, and there is nothing on it to browse.
+                    // There is nothing to browse here, but there is something to choose:
+                    // the drive may be partitioned, and the vault is in one of them (#131).
                     ListItem(
                         colors          = ListItemDefaults.colors(containerColor = Color.Transparent),
                         leadingContent  = { Icon(Icons.Outlined.Usb, contentDescription = null) },
                         headlineContent = { Text(stringResource(R.string.vault_storage_usb)) },
                         supportingContent = { Text(stringResource(R.string.vault_storage_usb_hint)) },
+                        trailingContent = { Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                         modifier        = Modifier.clickable {
                             showOpenVaultSheet = false
                             usbScope.launch {
-                                if (viewModel.ensureUsbPermission()) viewModel.addUsbContainer()
+                                if (viewModel.ensureUsbPermission()) viewModel.loadUsbLayout()
                                 else showUsbInsertPrompt = true
                             }
+                        }
+                    )
+                    Spacer(Modifier.height(navBarPadding + 8.dp))
+                }
+            }
+
+            // ── USB partition picker ──────────────────────────────────────────
+            // Only reached when the drive carries a partition table. A bare drive skips
+            // this, since "whole drive" would be the only thing to choose (#131).
+            usbLayout?.let { layout ->
+                val gpt = zip.arcanum.usb.isGptProtective(layout.partitions)
+                AppSheet(
+                    onDismissRequest = { viewModel.dismissUsbLayout() },
+                    sheetState       = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                ) {
+                    Text(
+                        text       = stringResource(R.string.usb_pick_title),
+                        style      = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier   = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                    Text(
+                        text     = stringResource(if (gpt) R.string.usb_gpt_note else R.string.usb_pick_hint),
+                        style    = MaterialTheme.typography.bodySmall,
+                        color    = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)
+                    )
+                    if (!gpt) {
+                        // An extended entry is a container for logical partitions, not a
+                        // place data lives, so offering it would only mislead.
+                        layout.partitions.filterNot { it.isExtendedContainer() }.forEach { part ->
+                            ListItem(
+                                colors            = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                leadingContent    = { Icon(Icons.Outlined.Storage, contentDescription = null) },
+                                headlineContent   = { Text(stringResource(R.string.usb_partition_n, part.slot + 1)) },
+                                supportingContent = { Text("${part.typeName} - ${part.sizeBytes.fmtSize()}") },
+                                modifier          = Modifier.clickable {
+                                    viewModel.dismissUsbLayout()
+                                    viewModel.addUsbContainer(part)
+                                }
+                            )
+                        }
+                    }
+                    ListItem(
+                        colors            = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        leadingContent    = { Icon(Icons.Outlined.Usb, contentDescription = null) },
+                        headlineContent   = { Text(stringResource(R.string.usb_whole_drive)) },
+                        supportingContent = { Text("${layout.label} - ${layout.sizeBytes.fmtSize()}") },
+                        modifier          = Modifier.clickable {
+                            viewModel.dismissUsbLayout()
+                            viewModel.addUsbContainer(null)
                         }
                     )
                     Spacer(Modifier.height(navBarPadding + 8.dp))

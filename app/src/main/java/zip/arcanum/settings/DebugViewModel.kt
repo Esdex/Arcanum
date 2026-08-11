@@ -287,7 +287,8 @@ class DebugViewModel @Inject constructor(
                 .openTransport(readOnly = false)
             report.append(log)
             if (dev != null) {
-                when (val r = usbVolumes.mount(dev, password, readOnly = false)) {
+                // Whole device deliberately: this is the detach test, not a partition test.
+                when (val r = usbVolumes.mount(dev, password = password, readOnly = false)) {
                     is zip.arcanum.crypto.CryptoResult.Success ->
                         report.append("[mount] held, handle=${r.value}\n")
                             .append("Pull the drive now. The app should report it and clean up.\n")

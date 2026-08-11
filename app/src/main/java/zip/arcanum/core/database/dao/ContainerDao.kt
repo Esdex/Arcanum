@@ -76,6 +76,10 @@ interface ContainerDao {
      * That means no plaintext identifier survives such an operation, and the stored
      * fingerprint has to be updated or the vault stops recognising its own drive.
      */
+    /** Where the volume was actually found: a hint, refreshed when it turns out to be stale. */
+    @Query("UPDATE containers SET usbStartByte = :startByte WHERE id = :id")
+    suspend fun updateUsbStartByte(id: String, startByte: Long)
+
     @Query("UPDATE containers SET usbSaltHash = :newHash WHERE usbSaltHash = :oldHash AND usbSaltHash != ''")
     suspend fun updateUsbSaltHash(oldHash: String, newHash: String)
 

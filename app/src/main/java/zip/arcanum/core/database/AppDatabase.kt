@@ -20,14 +20,15 @@ import zip.arcanum.core.database.entities.MountPointEntity
         CalculationEntity::class,
         MountPointEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     companion object {
-        const val VERSION = 12
+        /** Must match the `version` in the @Database annotation above - the debug screen reports it. */
+        const val VERSION = 13
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -100,6 +101,17 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_11_12 = object : Migration(11, 12) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE containers ADD COLUMN usbSaltHash TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        /**
+         * Where a USB vault starts on its drive. 0 means the whole device, which is what
+         * every vault created before partitions were supported is, so the default keeps
+         * them correct without a data fix (#131).
+         */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE containers ADD COLUMN usbStartByte INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

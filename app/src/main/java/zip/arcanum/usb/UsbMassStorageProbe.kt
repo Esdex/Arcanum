@@ -448,7 +448,7 @@ class UsbMassStorageProbe(
         line("  0x55AA boot signature: $bootSig")
         line("  entropy of the sector (${sector0.size} bytes): ${"%.2f".format(shannonBits(sector0))} bits/byte " +
             "(near 8.00 means encrypted or random, low means a partition table or filesystem)")
-        if (bootSig) describePartitionTable(sector0)
+        if (bootSig) describePartitionTable(sector0, dev.blockSize, dev.blockCount)
 
         // The last sector is the only read whose LBA uses the full 32-bit width, which
         // is where an addressing mistake would surface.
@@ -729,32 +729,25 @@ class UsbMassStorageProbe(
      * overwrites this sector first: what is listed here is exactly what stops existing
      * once the drive becomes a VeraCrypt volume.
      */
-    private fun describePartitionTable(sector0: ByteArray) {
+    /**
+     * Prints what [parseMbr] makes of the table. Deliberately the same parser the picker
+     * uses, so a drive that reads oddly here reads the same way in the app rather than
+     * leaving two implementations to disagree.
+     */
+    private fun describePartitionTable(sector0: ByteArray, sectorSize: Int, deviceSectors: Long) {
         line("  partition table:")
-        var any = false
-        for (i in 0 until 4) {
-            val off = 446 + i * 16
-            val type = sector0[off + 4].toInt() and 0xFF
-            if (type == 0x00) continue
-            any = true
-            val bb = ByteBuffer.wrap(sector0, off + 8, 8).order(ByteOrder.LITTLE_ENDIAN)
-            val start = bb.int.toLong() and 0xFFFFFFFFL
-            val count = bb.int.toLong() and 0xFFFFFFFFL
-            val boot = if ((sector0[off].toInt() and 0xFF) == 0x80) " active" else ""
-            line("    #$i type=0x%02x (%s)%s startLBA=%d sectors=%d (%d MB)".format(
-                type, partitionTypeName(type), boot, start, count, count * 512 / (1024 * 1024)
+        val parts = parseMbr(sector0, sectorSize, deviceSectors)
+        if (parts.isEmpty()) {
+            line("    (no usable entries - empty, or every entry failed the range checks)")
+            return
+        }
+        for (p in parts) {
+            line("    #%d type=0x%02x (%s)%s startLBA=%d sectors=%d (%d MB)".format(
+                p.slot, p.typeByte, p.typeName, if (p.active) " active" else "",
+                p.startLba, p.sectorCount, p.sizeBytes / (1024 * 1024)
             ))
         }
-        if (!any) line("    (all four entries empty)")
-    }
-
-    private fun partitionTypeName(t: Int): String = when (t) {
-        0x01, 0x04, 0x06, 0x0E -> "FAT12/16"
-        0x0B, 0x0C -> "FAT32"
-        0x07 -> "exFAT/NTFS"
-        0x83 -> "Linux"
-        0xEE -> "GPT protective - real layout is a GPT header at LBA 1"
-        else -> "unknown"
+        if (isGptProtective(parts)) line("    real layout is a GPT header at LBA 1, not read here")
     }
 
     private fun hexdump(b: ByteArray, count: Int): String {

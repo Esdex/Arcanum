@@ -46,6 +46,7 @@ class BackupHeaderViewModel @Inject constructor(
     private var containerPath: String = ""
     private var safUri: String = ""
     private var usbSaltHash: String = ""
+    private var usbStartByte: Long = 0L
 
     fun init(id: String) {
         containerId = id
@@ -54,6 +55,7 @@ class BackupHeaderViewModel @Inject constructor(
             containerPath = c.path
             safUri        = c.safUri
             usbSaltHash   = c.usbSaltHash
+            usbStartByte  = c.usbStartByte
         }
     }
 
@@ -153,10 +155,10 @@ class BackupHeaderViewModel @Inject constructor(
             return
         }
 
-        val op = usbVolumes.withMatchingVolume(usbSaltHash, readOnly = true) { dev ->
+        val op = usbVolumes.withMatchingVolume(usbSaltHash, readOnly = true, startHint = usbStartByte) { dev, span ->
             engine.backupVolumeHeaderUsb(
-                transport   = dev,
-                deviceSize  = dev.sizeBytes,
+                transport   = zip.arcanum.usb.UsbPartitionView(dev, span.startByte, span.sizeBytes),
+                deviceSize  = span.sizeBytes,
                 password    = s.password,
                 keyfileData = s.keyfileData,
                 pim         = s.pim,

@@ -294,13 +294,32 @@ class UsbBlockDevice private constructor(
      * Null when the sector cannot be read. Note that it is NOT evidence a VeraCrypt
      * volume is present: ciphertext and random bytes are indistinguishable by design, so
      * a blank drive yields a perfectly good hash of nothing in particular.
+     *
+     * [startByte] is where the volume begins: 0 for a whole-device volume, or the start
+     * of a partition. It must be given, because hashing sector 0 of a partitioned drive
+     * hashes the MBR instead of a salt - and the first 440 bytes of a table written by
+     * fdisk are zeros, so every such drive would produce the same fingerprint and the app
+     * would take one drive for another (#131).
      */
-    fun volumeFingerprint(): String? = synchronized(lock) {
+    fun volumeFingerprint(startByte: Long = 0): String? = synchronized(lock) {
         val sector = ByteArray(blockSize.coerceAtLeast(SALT_BYTES))
-        if (!read(0, sector.size, sector)) return null
+        if (!read(startByte, sector.size, sector)) return null
         val digest = java.security.MessageDigest.getInstance("SHA-256")
             .digest(sector.copyOf(SALT_BYTES))
         digest.joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * The four primary MBR entries, or an empty list when the drive carries no usable
+     * table - which is what a whole-device volume looks like.
+     *
+     * Read-only and cheap: one sector. Nothing here decides what a partition contains,
+     * only where it starts and how big it is.
+     */
+    fun readPartitionTable(): List<UsbPartition> = synchronized(lock) {
+        val sector = ByteArray(blockSize.coerceAtLeast(512))
+        if (!read(0, sector.size, sector)) return emptyList()
+        parseMbr(sector, blockSize, blockCount)
     }
 
     /**

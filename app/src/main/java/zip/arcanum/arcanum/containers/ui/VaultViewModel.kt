@@ -281,6 +281,7 @@ class VaultViewModel @Inject constructor(
             // lets "no drive" and "the wrong drive" say different things - the second
             // would otherwise leave someone retrying at a drive that will never match.
             var usbDevice: UsbBlockDevice? = null
+            var usbSpan: UsbVolumeManager.VolumeSpan? = null
             if (isUsb) {
                 mountLogger.log("Source: USB drive")
                 if (!usbVolumes.ensurePermission()) {
@@ -289,8 +290,19 @@ class VaultViewModel @Inject constructor(
                     persistMountLog()
                     return@launch
                 }
-                when (val opened = usbVolumes.openMatching(container.usbSaltHash, readOnly)) {
-                    is UsbVolumeManager.OpenResult.Ok -> usbDevice = opened.device
+                when (val opened = usbVolumes.openMatching(
+                    container.usbSaltHash, readOnly, container.usbStartByte,
+                )) {
+                    is UsbVolumeManager.OpenResult.Ok -> {
+                        usbDevice = opened.device
+                        usbSpan = opened.span
+                        if (opened.span.startByte != container.usbStartByte) {
+                            // The volume moved: found by its salt, not where it was last
+                            // seen. Record the new place so the next mount is one read.
+                            mountLogger.log("Volume found at offset ${opened.span.startByte}, not the remembered ${container.usbStartByte}")
+                            repo.updateUsbStartByte(container.id, opened.span.startByte)
+                        }
+                    }
                     UsbVolumeManager.OpenResult.NoDrive -> {
                         mountLogger.log("Mount aborted: no USB drive attached")
                         _mountState.value = MountState.Error(USB_NOT_CONNECTED)
@@ -370,7 +382,9 @@ class VaultViewModel @Inject constructor(
                     // ownership of the transport, so the drive being pulled later has a
                     // single owner to tear the volume down.
                     usbVolumes.mount(
-                        device = usbDevice, password = password, readOnly = readOnly,
+                        device = usbDevice,
+                        span = usbSpan ?: UsbVolumeManager.VolumeSpan(0L, usbDevice.sizeBytes),
+                        password = password, readOnly = readOnly,
                         keyfileData = keyfileData, pim = pim,
                         algorithm = algorithm, hashAlgorithm = hashAlgorithm,
                         protectHiddenPassword = protectHiddenPassword,
@@ -587,14 +601,18 @@ class VaultViewModel @Inject constructor(
      * Whether the drive actually holds a VeraCrypt volume cannot be determined here.
      * Ciphertext is indistinguishable from random bytes, so a blank drive is added just as
      * happily; the truth comes out at mount time, exactly as it does for a file.
+     *
+     * [partition] is what the user picked: null for the whole drive, otherwise the volume
+     * starts at that partition. Passing the wrong one is not dangerous, only useless - the
+     * salt read there will not decrypt and the vault will refuse to mount.
      */
-    fun addUsbContainer() {
+    fun addUsbContainer(partition: zip.arcanum.usb.UsbPartition? = null) {
         viewModelScope.launch {
             if (!billingManager.isPro.value && repo.getAllContainersRaw().first().size >= 2) {
                 _addVaultResult.value = AddVaultResult.LimitReached
                 return@launch
             }
-            val identity = usbVolumes.identifyAttachedDrive().getOrElse { e ->
+            val identity = usbVolumes.identifyAttachedDrive(partition).getOrElse { e ->
                 _addVaultResult.value =
                     if (e is zip.arcanum.usb.UsbVolumeManager.NoDriveException) AddVaultResult.NoUsbDrive
                     else AddVaultResult.Error(e.message ?: "Unknown error")
@@ -605,7 +623,9 @@ class VaultViewModel @Inject constructor(
                 return@launch
             }
             try {
-                repo.addUsbContainer(identity.saltHash, identity.label, identity.sizeBytes)
+                repo.addUsbContainer(
+                    identity.saltHash, identity.label, identity.sizeBytes, identity.startByte,
+                )
                 _addVaultResult.value = AddVaultResult.Added(identity.label)
             } catch (e: Exception) {
                 _addVaultResult.value = AddVaultResult.Error(e.message ?: "Unknown error")
@@ -615,6 +635,36 @@ class VaultViewModel @Inject constructor(
 
     /** Passive presence check: no claim, so the drive stays where Android put it. */
     fun isUsbDriveAttached(): Boolean = usbVolumes.attachedDrive() != null
+
+    private val _usbLayout = MutableStateFlow<zip.arcanum.usb.UsbVolumeManager.DriveLayout?>(null)
+    /** Non-null while the partition picker is up. */
+    val usbLayout: StateFlow<zip.arcanum.usb.UsbVolumeManager.DriveLayout?> = _usbLayout.asStateFlow()
+
+    private val _usbLayoutLoading = MutableStateFlow(false)
+    val usbLayoutLoading: StateFlow<Boolean> = _usbLayoutLoading.asStateFlow()
+
+    /**
+     * Reads the drive's partition table so the user can say what to add.
+     *
+     * A drive with no table is not an error and does not need a picker: there is only the
+     * whole device to choose, so this adds it directly and the user sees no extra step.
+     */
+    fun loadUsbLayout() {
+        viewModelScope.launch {
+            _usbLayoutLoading.value = true
+            val layout = usbVolumes.listPartitions().getOrElse { e ->
+                _usbLayoutLoading.value = false
+                _addVaultResult.value =
+                    if (e is zip.arcanum.usb.UsbVolumeManager.NoDriveException) AddVaultResult.NoUsbDrive
+                    else AddVaultResult.Error(e.message ?: "Unknown error")
+                return@launch
+            }
+            _usbLayoutLoading.value = false
+            if (layout.partitions.isEmpty()) addUsbContainer(null) else _usbLayout.value = layout
+        }
+    }
+
+    fun dismissUsbLayout() { _usbLayout.value = null }
 
     /** Asks for USB permission for the attached drive, so [addUsbContainer] can claim it. */
     suspend fun ensureUsbPermission(): Boolean = usbVolumes.ensurePermission()

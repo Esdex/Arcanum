@@ -27,7 +27,9 @@ class ChangePasswordParams @Inject constructor() {
          * opening, using and closing it all happen in one place, and nothing has to
          * survive being handed across the service boundary.
          */
-        val usbSaltHash: String = ""
+        val usbSaltHash: String = "",
+        /** Where the volume starts on its drive; 0 for a whole device (#131). */
+        val usbStartByte: Long = 0L
     )
 
     private val pending = AtomicReference<Params?>()
