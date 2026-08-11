@@ -472,7 +472,25 @@ class CreateContainerViewModel @Inject constructor(
         if (!registrationStarted.compareAndSet(false, true)) return
         val s = _state.value
         viewModelScope.launch {
-            val id = if (s.safUri.isNotEmpty()) {
+            val id = if (s.location == StorageLocation.USB_DRIVE) {
+                // A USB vault is remembered by the hash of the header salt just written,
+                // not by a path - it has none. The fingerprint has to be read back from
+                // the drive, because only the volume itself knows the salt that was
+                // generated during creation.
+                val dev = usbVolumes.openAnyDrive(readOnly = true)
+                val fingerprint = dev?.volumeFingerprint()
+                val label = dev?.inquiry() ?: dev?.device?.deviceName
+                val size = dev?.sizeBytes ?: 0L
+                dev?.close()
+                if (fingerprint == null) {
+                    // Registering a file vault with an empty path is what used to happen
+                    // here, and it produced an entry that could never be mounted.
+                    _usbRegisterFailed.value = true
+                    registrationStarted.set(false)
+                    return@launch
+                }
+                repo.addUsbContainer(fingerprint, label ?: "USB drive", size)
+            } else if (s.safUri.isNotEmpty()) {
                 val actualSize = context.contentResolver
                     .openFileDescriptor(android.net.Uri.parse(s.safUri), "r")
                     ?.use { it.statSize }
@@ -493,6 +511,10 @@ class CreateContainerViewModel @Inject constructor(
             _createdContainerId.value = id
         }
     }
+
+    private val _usbRegisterFailed = MutableStateFlow(false)
+    val usbRegisterFailed = _usbRegisterFailed.asStateFlow()
+    fun clearUsbRegisterFailed() { _usbRegisterFailed.value = false }
 
     fun cancelCreation() {
         context.stopService(Intent(context, ContainerCreationService::class.java))

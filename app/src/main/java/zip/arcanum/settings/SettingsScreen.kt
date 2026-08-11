@@ -2447,6 +2447,22 @@ private fun DebugSubScreen(
                     ) {
                         Text("Mount USB volume (read-only)", style = MaterialTheme.typography.labelMedium)
                     }
+                    TextButton(
+                        onClick  = { debugViewModel.runUsbWriteLadder() },
+                        enabled  = !state.usbProbeRunning,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    ) {
+                        Text("USB write ladder (finds the size limit, DESTROYS the drive)",
+                             style = MaterialTheme.typography.labelMedium)
+                    }
+                    TextButton(
+                        onClick  = { debugViewModel.runUsbEnduranceWrite() },
+                        enabled  = !state.usbProbeRunning,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    ) {
+                        Text("USB endurance write (64 MB, DESTROYS the drive)",
+                             style = MaterialTheme.typography.labelMedium)
+                    }
                     state.usbHeld?.let { held ->
                         Text(
                             text     = "Held mounted: $held",
