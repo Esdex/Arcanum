@@ -1043,4 +1043,9 @@
     <string name="vault_config_op_eject">Eject</string>
     <string name="vault_config_op_eject_desc">Close the vault and release the drive</string>
     <string name="usb_safe_to_remove_body">The vault is closed and the drive released. You can unplug it now.</string>
+    <string name="create_location_usb">USB drive</string>
+    <string name="create_location_usb_desc">Encrypt an entire flash drive. Everything on it is erased.</string>
+    <string name="create_location_usb_found">%1$d GB will be available inside the vault</string>
+    <string name="create_location_usb_none">No USB drive detected. Connect one and try again.</string>
+    <string name="create_size_usb_fixed">The whole drive becomes the vault, so its size is fixed.</string>
 </resources>

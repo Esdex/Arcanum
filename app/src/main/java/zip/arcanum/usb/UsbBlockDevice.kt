@@ -309,10 +309,21 @@ class UsbBlockDevice private constructor(
         bufOffset: Int,
         writing: Boolean
     ): Boolean {
-        if (closed) return false
-        if (offset % blockSize != 0L || length % blockSize != 0) return false
-        if (length < 0 || bufOffset < 0 || bufOffset + length > buf.size) return false
-        if (offset < 0 || offset + length > sizeBytes) return false
+        // Each refusal says which one it was: "the write failed" is not enough to act on
+        // when the causes are as different as a dead device and a misaligned request.
+        if (closed || dead) {
+            lastError = if (dead) "device stopped responding" else "transport closed"
+            return log("$lastError")
+        }
+        if (offset % blockSize != 0L || length % blockSize != 0) {
+            return log("unaligned: offset=$offset length=$length blockSize=$blockSize")
+        }
+        if (length < 0 || bufOffset < 0 || bufOffset + length > buf.size) {
+            return log("buffer too small: need ${bufOffset + length}, have ${buf.size}")
+        }
+        if (offset < 0 || offset + length > sizeBytes) {
+            return log("past the end: offset=$offset length=$length size=$sizeBytes")
+        }
 
         var done = 0
         while (done < length) {
@@ -322,7 +333,7 @@ class UsbBlockDevice private constructor(
             val cdb = cdb10(if (writing) 0x2A else 0x28, lba, sectors)
             val at = bufOffset + done
             val ok = if (writing) scsiOut(cdb, buf, at, chunk) else scsiIn(cdb, buf, at, chunk)
-            if (!ok) return false
+            if (!ok) return log("${if (writing) "write" else "read"} of $chunk B at lba $lba failed: ${lastError ?: "no reason"}")
             done += chunk
         }
         return true
@@ -356,6 +367,12 @@ class UsbBlockDevice private constructor(
      * longer there - a live drive rejecting a command answers with a CSW instead. So this
      * is the one failure treated as fatal to the whole transport rather than to one call.
      */
+    /** Logs and returns false, so a refusal is one expression at the call site. */
+    private fun log(reason: String): Boolean {
+        android.util.Log.e("ArcanumUsb", reason)
+        return false
+    }
+
     private fun failDead(): Boolean {
         dead = true
         lastError = "the device stopped responding - was it unplugged?"

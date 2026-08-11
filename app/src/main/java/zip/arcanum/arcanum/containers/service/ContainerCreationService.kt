@@ -28,6 +28,7 @@ class ContainerCreationService : Service() {
 
     @Inject lateinit var cryptoEngine: VeraCryptEngine
     @Inject lateinit var creationParams: ContainerCreationParams
+    @Inject lateinit var usbVolumes: zip.arcanum.usb.UsbVolumeManager
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -74,8 +75,38 @@ class ContainerCreationService : Service() {
                 }
             }
 
+            // Carried alongside the code because CryptoError has no value for "no drive".
+            var usbError: String? = null
             val result = try {
-                if (p.safFd >= 0) {
+                if (p.usbWholeDevice) {
+                    // Creating destroys whatever is on the drive, so there is nothing to
+                    // match against: any attached mass-storage device is the target, and
+                    // the confirmation the user already gave is what authorises it.
+                    val dev = usbVolumes.openAnyDrive(readOnly = false)
+                    if (dev == null) {
+                        usbError = "USB drive not connected\nConnect the drive and try again."
+                        zip.arcanum.crypto.CryptoResult.Failure(zip.arcanum.crypto.CryptoError.IO_ERROR)
+                    } else {
+                        try {
+                            cryptoEngine.createContainerUsb(
+                                transport        = dev,
+                                deviceSize       = dev.sizeBytes,
+                                sizeBytes        = p.sizeBytes,
+                                password         = p.password,
+                                algorithm        = p.algorithm,
+                                hashAlgorithm    = p.hashAlgorithm,
+                                filesystem       = p.filesystem,
+                                quickFormat      = p.quickFormat,
+                                entropyBytes     = p.entropyBytes,
+                                keyfileData     = p.keyfileData,
+                                progressListener = listener,
+                                pim              = p.pim
+                            )
+                        } finally {
+                            dev.close()
+                        }
+                    }
+                } else if (p.safFd >= 0) {
                     cryptoEngine.createContainerFd(
                         fd               = p.safFd,
                         sizeBytes        = p.sizeBytes,
@@ -120,7 +151,8 @@ class ContainerCreationService : Service() {
                     totalBytes   = p.sizeBytes
                 )
             } else {
-                val err = (result as? zip.arcanum.crypto.CryptoResult.Failure)?.error?.name
+                val err = usbError
+                    ?: (result as? zip.arcanum.crypto.CryptoResult.Failure)?.error?.name
                 _progress.value = CreationProgress(
                     fraction   = 0f,
                     isComplete = true,

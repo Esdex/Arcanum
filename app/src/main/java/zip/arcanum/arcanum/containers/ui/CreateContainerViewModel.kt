@@ -30,7 +30,7 @@ import kotlin.math.roundToInt
 internal const val DEFAULT_GENERATED_KEYFILE_NAME = "arcanum-keyfile"
 
 enum class VolumeType { STANDARD, HIDDEN }
-enum class StorageLocation { APP_STORAGE, INTERNAL_STORAGE }
+enum class StorageLocation { APP_STORAGE, INTERNAL_STORAGE, USB_DRIVE }
 enum class CipherAlgorithm(val displayName: String, val description: String, val speed: AlgorithmSpeed) {
     AES("AES", "Best performance on modern hardware", AlgorithmSpeed.FAST),
     SERPENT("Serpent", "Conservative security margin", AlgorithmSpeed.MEDIUM),
@@ -90,6 +90,11 @@ data class CreateContainerState(
     val filePath: String = "",
     val fileName: String = "vault.hc",
     val safUri: String = "",
+    /** Usable data size of the attached drive, 0 until one is detected (#95). */
+    val usbDataSizeBytes: Long = 0L,
+    val usbDeviceLabel: String = "",
+    /** Set when detection found no usable drive, so the screen can raise the gate. */
+    val usbDetectFailed: Boolean = false,
     val includeInBackup: Boolean = false,
     val algorithm: CipherAlgorithm = CipherAlgorithm.AES,
     val hashAlgorithm: HashAlgorithm = HashAlgorithm.SHA512,
@@ -132,6 +137,7 @@ class CreateContainerViewModel @Inject constructor(
     private val repo: ContainerRepository,
     private val creationParams: ContainerCreationParams,
     private val keyfileGenerator: KeyfileGenerator,
+    private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -155,6 +161,40 @@ class CreateContainerViewModel @Inject constructor(
 
     fun update(transform: CreateContainerState.() -> CreateContainerState) =
         _state.update { it.transform() }
+
+    /**
+     * Measures the attached drive so the size step can show what the volume will be.
+     *
+     * Claims the drive briefly, which takes it away from Android's file manager until it
+     * is replugged. Acceptable here: the user has just chosen to encrypt this drive, and
+     * everything on it is about to be destroyed anyway.
+     */
+    fun detectUsbDrive() {
+        viewModelScope.launch {
+            if (!usbVolumes.ensurePermission()) {
+                _state.update { it.copy(usbDataSizeBytes = 0L, usbDeviceLabel = "", usbDetectFailed = true) }
+                return@launch
+            }
+            val dev = usbVolumes.openAnyDrive(readOnly = true)
+            if (dev == null) {
+                _state.update { it.copy(usbDataSizeBytes = 0L, usbDeviceLabel = "", usbDetectFailed = true) }
+                return@launch
+            }
+            val label = dev.inquiry() ?: dev.device.deviceName
+            val usable = VeraCryptEngine.usbDataSizeFor(dev.sizeBytes)
+            dev.close()
+            _state.update {
+                it.copy(
+                    usbDataSizeBytes = usable,
+                    usbDeviceLabel   = label,
+                    usbDetectFailed  = false,
+                    sizeMb           = usable / (1024L * 1024L)
+                )
+            }
+        }
+    }
+
+    fun clearUsbDetectFailed() = _state.update { it.copy(usbDetectFailed = false) }
 
     fun nextStep() = _state.update { it.copy(currentStep = (it.currentStep + 1).coerceAtMost(it.totalSteps)) }
     fun prevStep() = _state.update { it.copy(currentStep = (it.currentStep - 1).coerceAtLeast(1)) }
@@ -407,7 +447,8 @@ class CreateContainerViewModel @Inject constructor(
         val servicePfd = safParcelFd?.dup()
         creationParams.set(ContainerCreationParams.Params(
             path             = fullPath,
-            sizeBytes        = s.sizeMb * 1024L * 1024L,
+            sizeBytes        = if (s.location == StorageLocation.USB_DRIVE) s.usbDataSizeBytes
+                               else s.sizeMb * 1024L * 1024L,
             password         = s.password,
             algorithm        = s.algorithm.ordinal,
             hashAlgorithm    = s.hashAlgorithm.ordinal,
@@ -421,7 +462,8 @@ class CreateContainerViewModel @Inject constructor(
             keyfileData     = s.keyfileData.map { it.copyOf() },
             pim              = s.pim,
             safFd            = servicePfd?.fd ?: -1,
-            safPfd           = servicePfd
+            safPfd           = servicePfd,
+            usbWholeDevice   = s.location == StorageLocation.USB_DRIVE
         ))
         context.startForegroundService(Intent(context, ContainerCreationService::class.java))
     }

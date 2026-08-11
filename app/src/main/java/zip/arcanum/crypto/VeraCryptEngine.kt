@@ -651,6 +651,47 @@ class VeraCryptEngine @Inject constructor() {
         }.toResult()
     }
 
+    /**
+     * Creates a VeraCrypt volume occupying a whole USB device (#95).
+     *
+     * [sizeBytes] is the DATA size, as everywhere else here; [deviceSize] is the drive's
+     * capacity, passed so the native side can refuse a volume that would not fit. Use
+     * [usbDataSizeFor] to derive one from the other.
+     *
+     * Destroys everything on the drive, including its partition table.
+     */
+    suspend fun createContainerUsb(
+        transport: Any,
+        deviceSize: Long,
+        sizeBytes: Long,
+        password: String,
+        algorithm: Int = 0,
+        hashAlgorithm: Int = 0,
+        filesystem: Int = 0,
+        quickFormat: Boolean = true,
+        entropyBytes: ByteArray = ByteArray(0),
+        keyfileData: List<ByteArray> = emptyList(),
+        progressListener: CreationProgressListener? = null,
+        pim: Int = 0
+    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+        usePasswordBytes(password) { passwordBytes ->
+            nativeCreateContainerUsb(
+                transport, deviceSize, sizeBytes, passwordBytes,
+                keyfileData.toTypedArray().ifEmpty { null },
+                algorithm, hashAlgorithm, filesystem, quickFormat, entropyBytes,
+                progressListener, pim
+            )
+        }.toResult()
+    }
+
+    private external fun nativeCreateContainerUsb(
+        transport: Any, deviceSize: Long, sizeBytes: Long,
+        password: ByteArray, keyfileData: Array<ByteArray>?,
+        algorithm: Int, hashAlgorithm: Int, filesystem: Int,
+        quickFormat: Boolean, entropyBytes: ByteArray,
+        progressListener: CreationProgressListener?, pim: Int
+    ): Int
+
     private external fun nativeChangePasswordUsb(
         transport: Any, deviceSize: Long,
         oldPassword: ByteArray, oldKeyfileData: Array<ByteArray>?, oldPim: Int,
@@ -877,6 +918,22 @@ class VeraCryptEngine @Inject constructor() {
 
     // ── Companion ──────────────────────────────────────────────────────
     companion object {
+        /** VeraCrypt header area at the front of a volume, and the backup area at the end. */
+        private const val VC_DATA_OFFSET = 131072L
+        private const val VC_BACKUP_AREA = 131072L
+
+        /**
+         * The data size a whole-device volume can hold on a drive of [deviceSize] bytes:
+         * the capacity minus both header areas, rounded down to a whole sector.
+         *
+         * Kept here rather than in the USB layer because the two constants are the volume
+         * format's, not the transport's.
+         */
+        fun usbDataSizeFor(deviceSize: Long): Long {
+            val usable = deviceSize - VC_DATA_OFFSET - VC_BACKUP_AREA
+            return if (usable <= 0) 0L else (usable / 512L) * 512L
+        }
+
         const val ALGO_AUTO = -1
         const val HASH_AUTO = -1
 

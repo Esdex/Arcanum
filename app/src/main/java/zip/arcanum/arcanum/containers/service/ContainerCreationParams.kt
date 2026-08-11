@@ -21,6 +21,12 @@ class ContainerCreationParams @Inject constructor() {
         val pim: Int,
         val safFd: Int = -1,
         val safPfd: ParcelFileDescriptor? = null,
+        /**
+         * True when the volume occupies a whole USB device (#95). No path and no
+         * descriptor then: the service opens the drive itself, so a claimed USB
+         * interface never has to cross the service boundary.
+         */
+        val usbWholeDevice: Boolean = false,
     )
 
     private val pending = AtomicReference<Params?>()
