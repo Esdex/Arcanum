@@ -255,11 +255,19 @@ class ContainerRepository @Inject constructor(
     }
 
     /**
-     * Adds a vault that occupies a whole USB device (#95). Identified by the hash of its
-     * header salt rather than a path, since the drive has neither a path nor a stable
-     * device name. See ContainerEntity.usbSaltHash.
+     * Adds a vault held on a USB drive (#95). Identified by the hash of its header salt
+     * rather than a path, since the drive has neither a path nor a stable device name.
+     * See ContainerEntity.usbSaltHash.
+     *
+     * [startByte] is 0 for a whole-device volume, or the start of the partition holding
+     * it (#131), and is stored only as a hint - see ContainerEntity.usbStartByte.
      */
-    suspend fun addUsbContainer(saltHash: String, displayName: String, size: Long): String {
+    suspend fun addUsbContainer(
+        saltHash: String,
+        displayName: String,
+        size: Long,
+        startByte: Long = 0L,
+    ): String {
         val id = UUID.randomUUID().toString()
         dao.insertContainer(ContainerEntity(
             id             = id,
@@ -268,6 +276,7 @@ class ContainerRepository @Inject constructor(
             size           = size,
             algorithm      = "AES-256-XTS",
             usbSaltHash    = saltHash,
+            usbStartByte   = startByte,
             createdAt      = System.currentTimeMillis(),
             lastAccessedAt = 0L
         ))
@@ -277,6 +286,10 @@ class ContainerRepository @Inject constructor(
     /** See ContainerDao.updateUsbSaltHash: a header rewrite changes the volume's salt. */
     suspend fun updateUsbSaltHash(oldHash: String, newHash: String) =
         dao.updateUsbSaltHash(oldHash, newHash)
+
+    /** See ContainerDao.updateUsbStartByte: the volume was found somewhere else on the drive. */
+    suspend fun updateUsbStartByte(id: String, startByte: Long) =
+        dao.updateUsbStartByte(id, startByte)
 
     /** True when a vault with this volume is already in the list. */
     suspend fun containsUsbSaltHash(saltHash: String): Boolean =
@@ -304,6 +317,7 @@ class ContainerRepository @Inject constructor(
             name            = name,
             path            = path,
             usbSaltHash     = usbSaltHash,
+            usbStartByte    = usbStartByte,
             size            = ms?.dataSize ?: size,
             algorithm       = algorithm,
             prf             = prf,

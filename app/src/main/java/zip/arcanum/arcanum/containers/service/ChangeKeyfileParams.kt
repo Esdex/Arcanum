@@ -19,7 +19,9 @@ class ChangeKeyfileParams @Inject constructor() {
         val newHashAlgorithm: Int,
         val extraEntropy: ByteArray,
         /** Non-empty when the volume is a whole USB device (#95); see ChangePasswordParams. */
-        val usbSaltHash: String = ""
+        val usbSaltHash: String = "",
+        /** Where the volume starts on its drive; 0 for a whole device (#131). */
+        val usbStartByte: Long = 0L
     )
 
     private val ref = AtomicReference<Params?>(null)

@@ -41,5 +41,15 @@ data class ContainerEntity(
      * vault. Hashed rather than stored raw so the database holds no bytes that appear
      * verbatim on the drive.
      */
-    @ColumnInfo(defaultValue = "") val usbSaltHash: String = ""
+    @ColumnInfo(defaultValue = "") val usbSaltHash: String = "",
+
+    /**
+     * Byte offset of the volume on its drive: 0 for a whole device, otherwise the start
+     * of the partition holding it (#131).
+     *
+     * A hint, not an identity. Repartitioning a drive moves the volume without changing
+     * its salt, so mounting falls back to searching the partitions for a matching
+     * fingerprint; this only spares that search in the ordinary case.
+     */
+    @ColumnInfo(defaultValue = "0") val usbStartByte: Long = 0L,
 )

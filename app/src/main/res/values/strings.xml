@@ -1031,10 +1031,15 @@
     <string name="vault_config_title">Vault Config</string>
 
     <string name="vault_storage_usb">USB drive</string>
-    <string name="vault_storage_usb_hint">A whole flash drive encrypted as one vault</string>
+    <string name="vault_storage_usb_hint">A flash drive, or one partition of it</string>
     <string name="usb_not_connected_title">No USB drive connected</string>
     <string name="usb_not_connected_body">Connect the drive holding this vault, then try again. The drive leaves Android\'s file manager while Arcanum is using it and comes back when you unplug it.</string>
     <string name="usb_try_again">Try again</string>
+    <string name="usb_pick_title">Choose what to add</string>
+    <string name="usb_pick_hint">A vault looks unrecognised from the outside. Which partition holds one cannot be checked without the password, so pick the one you put it in.</string>
+    <string name="usb_partition_n">Partition %1$d</string>
+    <string name="usb_whole_drive">Whole drive</string>
+    <string name="usb_gpt_note">This drive uses a GPT layout, which Arcanum does not read yet. Only the whole drive can be added.</string>
     <string name="usb_wrong_device">Wrong USB device: this drive does not hold that vault.</string>
     <string name="notif_usb_safe_to_remove">Safe to remove</string>
     <string name="vault_eject_title">Eject %1$s?</string>

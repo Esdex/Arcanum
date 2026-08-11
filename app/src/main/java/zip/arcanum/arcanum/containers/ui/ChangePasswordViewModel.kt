@@ -66,6 +66,7 @@ class ChangePasswordViewModel @Inject constructor(
     private var containerPath: String = ""
     private var safUri: String = ""
     private var usbSaltHash: String = ""
+    private var usbStartByte: Long = 0L
 
     private val collectedEntropy: ByteArray = ByteArray(ENTROPY_REQUIRED * 2)
     private var entropyIndex: Int = 0
@@ -85,6 +86,7 @@ class ChangePasswordViewModel @Inject constructor(
             containerPath = c.path
             safUri        = c.safUri
             usbSaltHash   = c.usbSaltHash
+            usbStartByte  = c.usbStartByte
         }
     }
 
@@ -161,7 +163,8 @@ class ChangePasswordViewModel @Inject constructor(
             newPim           = s.newPim,
             wipePassCount    = s.wipeMode.passCount,
             extraEntropy     = collectedEntropy.copyOf(entropyIndex),
-            usbSaltHash      = usbSaltHash
+            usbSaltHash      = usbSaltHash,
+            usbStartByte     = usbStartByte
         ))
 
         // Clear keyfile paths from state — service owns them now

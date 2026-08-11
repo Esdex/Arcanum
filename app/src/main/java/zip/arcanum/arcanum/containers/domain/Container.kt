@@ -24,6 +24,8 @@ data class Container(
     val pkcs5Iterations: Int = 0,
     val headerModifiedAt: Long = 0L,
     val isReadOnly: Boolean = false,
-    /** Non-empty when this vault occupies a whole USB device (#95). See ContainerEntity. */
-    val usbSaltHash: String = ""
+    /** Non-empty when this vault lives on a USB drive (#95). See ContainerEntity. */
+    val usbSaltHash: String = "",
+    /** Where it starts on that drive: 0 for the whole device, else a partition (#131). */
+    val usbStartByte: Long = 0L
 )

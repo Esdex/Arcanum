@@ -111,7 +111,20 @@ class UsbVolumeManager @Inject constructor(
     data class DriveIdentity(
         val saltHash: String,
         val label: String,
-        val sizeBytes: Long
+        val sizeBytes: Long,
+        /**
+         * Where the volume starts: 0 for a whole drive, otherwise the chosen partition.
+         * Stored as a hint only - the salt hash remains the proof of identity, so a
+         * repartitioned drive can still be found by searching rather than going stale.
+         */
+        val startByte: Long = 0,
+    )
+
+    /** What a drive looks like from outside, which is all that can be known without a password. */
+    data class DriveLayout(
+        val label: String,
+        val sizeBytes: Long,
+        val partitions: List<UsbPartition>,
     )
 
     /**
@@ -119,8 +132,14 @@ class UsbVolumeManager @Inject constructor(
      * Collapsing the last two would leave a user pressing "try again" at a drive that is
      * plugged in and will never match.
      */
+    /**
+     * Where a volume sits on a drive: the whole device, or one partition of it (#131).
+     * [sizeBytes] bounds it, so a volume can never read or write past its partition.
+     */
+    data class VolumeSpan(val startByte: Long, val sizeBytes: Long)
+
     sealed interface OpenResult {
-        data class Ok(val device: UsbBlockDevice) : OpenResult
+        data class Ok(val device: UsbBlockDevice, val span: VolumeSpan) : OpenResult
         /** Nothing is plugged in, or nothing that is a mass-storage device. */
         object NoDrive : OpenResult
         /** A drive is here, but it does not hold the volume this vault was saved from. */
@@ -188,7 +207,9 @@ class UsbVolumeManager @Inject constructor(
      * reading offset 0 requires the interface - but it happens at a moment the user may
      * not expect, so the UI should say so.
      */
-    suspend fun identifyAttachedDrive(): Result<DriveIdentity> = withContext(Dispatchers.IO) {
+    suspend fun identifyAttachedDrive(
+        partition: UsbPartition? = null,
+    ): Result<DriveIdentity> = withContext(Dispatchers.IO) {
         val device = attachedDrive() ?: return@withContext Result.failure(NoDriveException())
         val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
         if (!manager.hasPermission(device)) {
@@ -196,22 +217,88 @@ class UsbVolumeManager @Inject constructor(
         }
         runCatching {
             UsbBlockDevice.open(manager, device, readOnly = true).use { dev ->
-                val hash = dev.volumeFingerprint()
+                val start = partition?.startByte ?: 0L
+                val hash = dev.volumeFingerprint(start)
                     ?: throw java.io.IOException("could not read the volume header")
                 DriveIdentity(
                     saltHash = hash,
                     label = dev.inquiry() ?: device.deviceName,
-                    sizeBytes = dev.sizeBytes
+                    // A vault on a partition is the size of that partition, not of the drive.
+                    sizeBytes = partition?.sizeBytes ?: dev.sizeBytes,
+                    startByte = start,
                 )
             }
         }
     }
 
     /**
-     * Opens the attached drive only if it carries the volume identified by [saltHash].
-     * On any outcome but [OpenResult.Ok] nothing is left claimed.
+     * Reads the drive's partition table so the user can choose what to add.
+     *
+     * Claims the interface, like every other operation here, so Android drops the drive
+     * for the duration. An empty partition list is a normal answer and means the drive
+     * carries no table - the whole-device case.
      */
-    suspend fun openMatching(saltHash: String, readOnly: Boolean): OpenResult =
+    suspend fun listPartitions(): Result<DriveLayout> = withContext(Dispatchers.IO) {
+        val device = attachedDrive() ?: return@withContext Result.failure(NoDriveException())
+        val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+        if (!manager.hasPermission(device)) {
+            return@withContext Result.failure(IllegalStateException("no USB permission"))
+        }
+        runCatching {
+            UsbBlockDevice.open(manager, device, readOnly = true).use { dev ->
+                DriveLayout(
+                    label = dev.inquiry() ?: device.deviceName,
+                    sizeBytes = dev.sizeBytes,
+                    partitions = dev.readPartitionTable(),
+                )
+            }
+        }
+    }
+
+    /**
+     * Finds where the volume identified by [saltHash] begins on [dev], or null.
+     *
+     * [startHint] is tried first, so the ordinary case - a drive nobody has repartitioned -
+     * costs a single sector read. Only when that misses are the partitions searched, which
+     * is what lets a vault survive its partition being moved or renumbered: the salt is the
+     * identity, the offset is only where it was last seen (#131).
+     */
+    private fun locateVolume(dev: UsbBlockDevice, saltHash: String, startHint: Long): VolumeSpan? {
+        val partitions = lazy { dev.readPartitionTable().filterNot { it.isExtendedContainer() } }
+
+        fun spanAt(start: Long): VolumeSpan =
+            if (start == 0L) VolumeSpan(0L, dev.sizeBytes)
+            else partitions.value.firstOrNull { it.startByte == start }
+                ?.let { VolumeSpan(it.startByte, it.sizeBytes) }
+            // An offset that is no longer a partition boundary: honour it, but bound it by
+            // what is left of the drive rather than inventing a length.
+                ?: VolumeSpan(start, (dev.sizeBytes - start).coerceAtLeast(0L))
+
+        if (dev.volumeFingerprint(startHint) == saltHash) return spanAt(startHint)
+
+        val candidates = buildList {
+            if (startHint != 0L) add(0L)
+            partitions.value.forEach { add(it.startByte) }
+        }
+        for (start in candidates) {
+            if (start == startHint) continue
+            if (dev.volumeFingerprint(start) == saltHash) return spanAt(start)
+        }
+        return null
+    }
+
+    /**
+     * Opens the attached drive only if it carries the volume identified by [saltHash],
+     * searching the drive's partitions for it. On any outcome but [OpenResult.Ok] nothing
+     * is left claimed.
+     *
+     * [startHint] is where the vault last saw its volume - 0 for a whole device.
+     */
+    suspend fun openMatching(
+        saltHash: String,
+        readOnly: Boolean,
+        startHint: Long = 0L,
+    ): OpenResult =
         withContext(Dispatchers.IO) {
             val device = attachedDrive() ?: return@withContext OpenResult.NoDrive
             val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
@@ -223,17 +310,20 @@ class UsbVolumeManager @Inject constructor(
             } catch (e: Exception) {
                 return@withContext OpenResult.Failed(e.message ?: e.javaClass.simpleName)
             }
-            val hash = dev.volumeFingerprint()
-            if (hash == null) {
+            val probe = dev.volumeFingerprint(startHint)
+            if (probe == null) {
                 dev.close()
                 return@withContext OpenResult.Failed("could not read the volume header")
             }
-            if (hash != saltHash) {
-                val found = DriveIdentity(hash, dev.inquiry() ?: device.deviceName, dev.sizeBytes)
+            val span = locateVolume(dev, saltHash, startHint)
+            if (span == null) {
+                val found = DriveIdentity(
+                    probe, dev.inquiry() ?: device.deviceName, dev.sizeBytes, startHint,
+                )
                 dev.close()
                 return@withContext OpenResult.WrongVolume(found)
             }
-            OpenResult.Ok(dev)
+            OpenResult.Ok(dev, span)
         }
 
     /**
@@ -284,19 +374,24 @@ class UsbVolumeManager @Inject constructor(
     suspend fun <T> withMatchingVolume(
         saltHash: String,
         readOnly: Boolean,
+        startHint: Long = 0L,
         refingerprint: Boolean = false,
-        block: suspend (UsbBlockDevice) -> T
+        block: suspend (UsbBlockDevice, VolumeSpan) -> T
     ): VolumeOp<T> {
         if (_mounted.value != null) {
             return VolumeOp.Failed("unmount the vault before changing it")
         }
-        return when (val opened = openMatching(saltHash, readOnly)) {
+        return when (val opened = openMatching(saltHash, readOnly, startHint)) {
             is OpenResult.Ok -> {
                 try {
-                    val value = block(opened.device)
+                    val value = block(opened.device, opened.span)
                     // Read while the drive is still open - afterwards there is nothing
                     // left to ask, and the old fingerprint no longer matches anything.
-                    val fresh = if (refingerprint) opened.device.volumeFingerprint() else null
+                    // At the volume's own offset: hashing sector 0 of a partitioned drive
+                    // would store the MBR's hash and lose the vault (#131).
+                    val fresh =
+                        if (refingerprint) opened.device.volumeFingerprint(opened.span.startByte)
+                        else null
                     VolumeOp.Done(value, fresh)
                 } finally {
                     opened.device.close()
@@ -315,6 +410,8 @@ class UsbVolumeManager @Inject constructor(
      */
     suspend fun mount(
         device: UsbBlockDevice,
+        /** Where the volume lives on the drive. Defaults to the whole device. */
+        span: VolumeSpan = VolumeSpan(0L, device.sizeBytes),
         password: String,
         readOnly: Boolean,
         keyfileData: List<ByteArray> = emptyList(),
@@ -335,8 +432,11 @@ class UsbVolumeManager @Inject constructor(
         }
 
         val result = engine.mountContainerUsb(
-            transport = device,
-            deviceSize = device.sizeBytes,
+            // Always a view, even for a whole device, so there is one path to test rather
+            // than a partition case that only runs on some drives. At offset 0 with the
+            // full size it is a pass-through.
+            transport = UsbPartitionView(device, span.startByte, span.sizeBytes),
+            deviceSize = span.sizeBytes,
             password = password,
             keyfileData = keyfileData,
             pim = pim,
@@ -355,7 +455,7 @@ class UsbVolumeManager @Inject constructor(
                     handle = result.value,
                     deviceName = device.device.deviceName,
                     label = label,
-                    sizeBytes = device.sizeBytes,
+                    sizeBytes = span.sizeBytes,
                     readOnly = readOnly
                 )
             }

@@ -29,6 +29,11 @@
 # a renamed method here fails only at runtime, on a mounted USB volume — the worst
 # possible place to discover it.
 -keep class zip.arcanum.usb.UsbBlockDevice { *; }
+# UsbPartitionView is handed to that same native code in place of the device when a vault
+# lives in a partition (#131), so it is found by the same GetMethodID lookups and needs the
+# same protection. Without this rule a release build mounts whole-device vaults fine and
+# fails only on partitioned ones.
+-keep class zip.arcanum.usb.UsbPartitionView { *; }
 -keep class zip.arcanum.crypto.VeraCryptEngine$CreationProgressListener { *; }
 
 # MountProgressListener is called back from C++ via JNI — onTrying(String,String,int,int)
