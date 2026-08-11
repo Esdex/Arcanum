@@ -72,11 +72,61 @@ class UsbBlockDevice private constructor(
 
         private const val TIMEOUT_MS = 5_000
 
-        /** Ceiling on one bulkTransfer call. Larger buffers are split and looped. */
-        private const val MAX_BULK_BYTES = 64 * 1024
+        /**
+         * The status phase gets its own, much longer budget.
+         *
+         * A data phase moves at link speed and is done in milliseconds; the status that
+         * follows is where the drive actually commits the write to flash, and a cheap
+         * stick doing an erase cycle mid-format can sit on that for seconds. Measured
+         * here: a 512 KB write during mkfs exceeded five seconds and was reported as
+         * "no CSW returned", which looked like a transport fault and was not one.
+         */
+        private const val STATUS_TIMEOUT_MS = 30_000
 
-        /** Ceiling on one SCSI command. Above this the drive stops getting faster. */
-        const val MAX_TRANSFER_BYTES = 512 * 1024
+        /**
+         * Kept, wired to nothing, because the investigation it served answered its
+         * question: writes fail by SIZE, not by wear. See MAX_BULK_BYTES.
+         */
+        const val DIAGNOSTIC_MODE = false
+
+        /**
+         * Ceiling on ONE bulkTransfer call - the single most important number here.
+         *
+         * Measured with a size ladder on a SanDisk 3.2Gen1: writes of 4, 8, 16 and 32 KB
+         * complete in 1-11 ms, and a 64 KB write gets no status at all, leaving the drive
+         * answering nothing - not even TEST UNIT READY - until it is physically replugged.
+         * The SCSI command is innocent: what breaks is asking Android to move that much in
+         * one call. 16 KB is the historic usbfs limit and what mass-storage libraries use;
+         * 32 KB happened to pass here, which is not a reason to sit on the edge.
+         *
+         * Everything else today was a symptom of this: the "wedge after ~30 MB", the
+         * failed formats, the aborted imports. Do not raise it to chase throughput without
+         * running the ladder again on more than one drive.
+         */
+        private const val MAX_BULK_BYTES = 16 * 1024
+
+        /**
+         * Ceiling on one SCSI command.
+         *
+         * Was 512 KB, chosen from a throughput sweep across an idle drive - where it read
+         * and wrote happily at 32 MB/s. It did not survive real work: during mkfs and
+         * during a file import, 512 KB WRITE(10) commands stopped returning a status at
+         * all, and waiting twenty seconds did not help. Reads at that size never failed;
+         * only writes, and only once other traffic was interleaved with them.
+         *
+         * 128 KB is in the range real drivers use - the kernel's own usb-storage caps a
+         * transfer at about 120 KB, which is not caution but experience with what devices
+         * actually tolerate. The measured cost is 29.6 MB/s against 32.3, ten percent,
+         * for writes that complete.
+         */
+        const val MAX_TRANSFER_BYTES = 128 * 1024
+
+        /**
+         * Floor for the adaptive back-off below. One cluster's worth: small enough that
+         * any device implementing the protocol at all should manage it, and large enough
+         * that a drive stuck here is merely slow rather than unusable.
+         */
+        const val MIN_TRANSFER_BYTES = 16 * 1024
 
         /**
          * VeraCrypt's XTS folds an absolute 512-byte sector number into every sector,
@@ -138,6 +188,11 @@ class UsbBlockDevice private constructor(
                 }
 
                 val dev = UsbBlockDevice(device, connection, iface, epIn, epOut, readOnly)
+
+                // NOTE: a Bulk-Only reset here was tried and made things strictly
+                // worse - READ CAPACITY, which worked without it, began failing, and the
+                // prescribed UNIT ATTENTION handshake afterwards did not repair it. Do
+                // not reintroduce it without measuring again.
                 dev.readCapacity()
                 ok = true
                 return dev
@@ -152,6 +207,8 @@ class UsbBlockDevice private constructor(
 
     private val lock = Any()
     private var tag = 1
+
+
     private var closed = false
     private var inRequestSense = false
 
@@ -332,6 +389,10 @@ class UsbBlockDevice private constructor(
             val sectors = chunk / blockSize
             val cdb = cdb10(if (writing) 0x2A else 0x28, lba, sectors)
             val at = bufOffset + done
+            // No retry, and no shrinking on failure. Both were here to survive drives
+            // that "could not manage large commands", which was never the illness - the
+            // per-call transfer size was. Retrying into a device whose state we are no
+            // longer sure of is how a single fault became an unrecoverable one.
             val ok = if (writing) scsiOut(cdb, buf, at, chunk) else scsiIn(cdb, buf, at, chunk)
             if (!ok) return log("${if (writing) "write" else "read"} of $chunk B at lba $lba failed: ${lastError ?: "no reason"}")
             done += chunk
@@ -367,6 +428,57 @@ class UsbBlockDevice private constructor(
      * longer there - a live drive rejecting a command answers with a CSW instead. So this
      * is the one failure treated as fatal to the whole transport rather than to one call.
      */
+    /**
+     * TEST UNIT READY - six zero bytes, no data phase, the cheapest question there is.
+     * Used after a failure to find out whether the device is still speaking at all.
+     */
+    private fun testUnitReady(): Boolean {
+        val myTag = tag++
+        val cbw = buildCbw(ByteArray(6), 0, deviceToHost = false, myTag = myTag)
+        if (connection.bulkTransfer(epOut, cbw, cbw.size, TIMEOUT_MS) != CBW_LENGTH) return false
+        val csw = ByteArray(CSW_LENGTH)
+        return connection.bulkTransfer(epIn, csw, csw.size, TIMEOUT_MS) == CSW_LENGTH
+    }
+
+    /**
+     * Bulk-Only Mass Storage Reset, followed by clearing both endpoint halts.
+     *
+     * The recovery the specification prescribes when host and device may disagree about
+     * what is in flight - after a status that never arrived, for instance. Without it a
+     * retry is sent into a device that is still finishing the previous command.
+     */
+    private fun botReset(): Boolean {
+        val rc = connection.controlTransfer(
+            0x21,               // host to device, class, interface
+            0xFF,               // Bulk-Only Mass Storage Reset
+            0, iface.id,
+            null, 0, TIMEOUT_MS
+        )
+        clearHalt(epIn)
+        clearHalt(epOut)
+        return rc >= 0
+    }
+
+    /**
+     * Clears a stalled bulk endpoint - CLEAR_FEATURE(ENDPOINT_HALT) on the standard
+     * control pipe.
+     *
+     * Required by Bulk-Only Transport, not optional politeness: a device that stalls a
+     * data phase leaves the endpoint halted, and every command after it fails until the
+     * halt is cleared. Skipping this is why a single failed write turned into a dead
+     * transport rather than a retryable hiccup.
+     */
+    private fun clearHalt(endpoint: UsbEndpoint): Boolean {
+        val rc = connection.controlTransfer(
+            0x02,               // host to device, standard, endpoint
+            0x01,               // CLEAR_FEATURE
+            0x00,               // ENDPOINT_HALT
+            endpoint.address,
+            null, 0, TIMEOUT_MS
+        )
+        return rc >= 0
+    }
+
     /** Logs and returns false, so a refusal is one expression at the call site. */
     private fun log(reason: String): Boolean {
         android.util.Log.e("ArcanumUsb", reason)
@@ -380,11 +492,22 @@ class UsbBlockDevice private constructor(
     }
 
     private fun readCsw(myTag: Int): Boolean {
+        val startedAt = android.os.SystemClock.elapsedRealtime()
         val csw = ByteArray(CSW_LENGTH)
-        if (connection.bulkTransfer(epIn, csw, csw.size, TIMEOUT_MS) != CSW_LENGTH) {
+        if (connection.bulkTransfer(epIn, csw, csw.size, STATUS_TIMEOUT_MS) != CSW_LENGTH) {
             lastError = "no CSW returned"
+            // Deliberately nothing else. A Bulk-Only reset here is the specified
+            // recovery, but it was never shown to help, and the one time a reset was
+            // tried elsewhere - right after claiming the interface - it broke READ
+            // CAPACITY, which had worked without it. Losing a status now means the
+            // caller gets a clean failure rather than a device in a state we invented.
             return false
         }
+        // A status that took seconds is the difference between "the drive is slow" and
+        // "the drive is broken", and only a measurement can say which.
+        val waited = android.os.SystemClock.elapsedRealtime() - startedAt
+        if (waited > 1000) android.util.Log.w("ArcanumUsb", "status took ${waited}ms")
+
         val cb = ByteBuffer.wrap(csw).order(ByteOrder.LITTLE_ENDIAN)
         val sig = cb.int
         val rtag = cb.int
@@ -513,7 +636,12 @@ class UsbBlockDevice private constructor(
         while (got < length) {
             val want = minOf(MAX_BULK_BYTES, length - got)
             val n = connection.bulkTransfer(epIn, dest, destOffset + got, want, TIMEOUT_MS)
-            if (n <= 0) return false
+            if (n <= 0) {
+                lastError = "data-in stalled after $got/$length bytes (rc=$n)"
+                clearHalt(epIn)
+                readCsw(myTag)          // drain it, or the next command reads this one's
+                return false
+            }
             got += n
         }
         return readCsw(myTag)
@@ -529,7 +657,12 @@ class UsbBlockDevice private constructor(
         while (sent < length) {
             val want = minOf(MAX_BULK_BYTES, length - sent)
             val n = connection.bulkTransfer(epOut, src, srcOffset + sent, want, TIMEOUT_MS)
-            if (n <= 0) return false
+            if (n <= 0) {
+                lastError = "data-out stalled after $sent/$length bytes (rc=$n)"
+                clearHalt(epOut)
+                readCsw(myTag)
+                return false
+            }
             sent += n
         }
         return readCsw(myTag)

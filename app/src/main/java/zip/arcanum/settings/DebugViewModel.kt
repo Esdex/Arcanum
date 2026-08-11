@@ -299,6 +299,24 @@ class DebugViewModel @Inject constructor(
         }
     }
 
+    fun runUsbWriteLadder() {
+        if (state.value.usbProbeRunning) return
+        viewModelScope.launch {
+            _state.update { it.copy(usbProbeRunning = true, usbProbeReport = null) }
+            val report = zip.arcanum.usb.UsbMassStorageProbe(context, veraCryptEngine).runWriteLadder()
+            _state.update { it.copy(usbProbeRunning = false, usbProbeReport = report) }
+        }
+    }
+
+    fun runUsbEnduranceWrite() {
+        if (state.value.usbProbeRunning) return
+        viewModelScope.launch {
+            _state.update { it.copy(usbProbeRunning = true, usbProbeReport = null) }
+            val report = zip.arcanum.usb.UsbMassStorageProbe(context, veraCryptEngine).runEnduranceWrite()
+            _state.update { it.copy(usbProbeRunning = false, usbProbeReport = report) }
+        }
+    }
+
     fun unmountHeldUsb() {
         viewModelScope.launch {
             val rc = usbVolumes.unmount()

@@ -48,10 +48,11 @@
 #include <unordered_map>
 #endif
 
-/* Mirrors UsbBlockDevice.MAX_TRANSFER_BYTES. The transport splits requests at that size
- * anyway; this is the scratch array a request is copied through, so the two matching
- * keeps one JNI round trip per SCSI command rather than several. */
-#define USB_SCRATCH_BYTES (512 * 1024)
+/* Mirrors UsbBlockDevice.MAX_TRANSFER_BYTES - keep the two equal, or a combined write is
+ * assembled at one size and then split again at another, which wastes a JNI round trip
+ * per command. Lowered from 512 KB with the transport: writes that large stopped
+ * returning a status on real hardware. See the note on MAX_TRANSFER_BYTES. */
+#define USB_SCRATCH_BYTES (128 * 1024)
 
 namespace {
 

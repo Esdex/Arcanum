@@ -281,6 +281,90 @@ class UsbMassStorageProbe(
             }
         }
 
+    /**
+     * DESTRUCTIVE. Writes a long, unbroken run straight through the transport - no
+     * encryption, no filesystem, no write combining.
+     *
+     * This exists to split the problem in half. A drive that Android itself writes 170 MB
+     * to, but that stops answering after ~30 MB through us, is being upset by something
+     * we do; this says whether that something is the transport or everything above it.
+     * If the drive survives this, the transport is exonerated and the fault is in how the
+     * volume layer drives it - the read/write interleaving, or the combining buffer.
+     */
+    suspend fun runEnduranceWrite(): String =
+        withTarget("ENDURANCE WRITE - destroys the drive contents", readOnly = false) { dev ->
+            val chunk = 128 * 1024
+            val target = 64L * 1024 * 1024
+            val buf = ByteArray(chunk) { i -> (i * 31).toByte() }
+            line("[endurance] writing ${target / (1024 * 1024)} MB in ${chunk / 1024} KB commands,")
+            line("straight to the device - no XTS, no FatFs, no coalescing.")
+
+            var off = 0L
+            var lastReport = 0L
+            val t0 = System.currentTimeMillis()
+            while (off < target) {
+                if (!dev.write(off, chunk, buf)) {
+                    val mb = off / (1024 * 1024)
+                    line("[endurance] STOPPED after $mb MB at offset $off")
+                    line("reason: ${dev.lastError ?: "none given"}")
+                    line("")
+                    line("VERDICT: the transport alone can wedge this drive. The fault is")
+                    line("below the volume layer, in how these commands are issued.")
+                    return@withTarget
+                }
+                off += chunk
+                val mb = off / (1024 * 1024)
+                if (mb >= lastReport + 8) {
+                    lastReport = mb
+                    val secs = (System.currentTimeMillis() - t0) / 1000.0
+                    line("  $mb MB, %.1f MB/s".format(if (secs > 0) mb / secs else 0.0))
+                }
+            }
+            val secs = (System.currentTimeMillis() - t0) / 1000.0
+            line("[endurance] wrote ${target / (1024 * 1024)} MB in %.1f s (%.1f MB/s)"
+                .format(secs, (target / (1024 * 1024)) / secs))
+            line("")
+            line("VERDICT: the transport survives sustained writing.")
+        }
+
+    /**
+     * DESTRUCTIVE. One write per size, smallest first, stopping at the first refusal.
+     *
+     * Measured: a 512-byte write succeeds and lands exactly where addressed, while a
+     * single 128 KB write gets no status at all and leaves the drive answering nothing
+     * until it is replugged. So the fault is not "writing" - it is size. This finds where
+     * the boundary actually is instead of guessing at it, which is what the last several
+     * attempts did.
+     */
+    suspend fun runWriteLadder(): String =
+        withTarget("WRITE LADDER - destroys the drive contents", readOnly = false) { dev ->
+            val sizes = listOf(4, 8, 16, 32, 64, 128, 256, 512).map { it * 1024 }
+            line("[ladder] one write per size at LBA 2048, stopping at the first refusal.")
+            line("")
+            var largestOk = 0
+            for (sz in sizes) {
+                val buf = ByteArray(sz) { i -> (i * 7).toByte() }
+                val t0 = System.currentTimeMillis()
+                val ok = dev.write(2048L * 512, sz, buf)
+                val ms = System.currentTimeMillis() - t0
+                if (!ok) {
+                    line("  %6d KB  FAILED after %d ms - %s".format(sz / 1024, ms, dev.lastError ?: "no reason"))
+                    break
+                }
+                largestOk = sz
+                line("  %6d KB  ok (%d ms)".format(sz / 1024, ms))
+            }
+            line("")
+            if (largestOk == 0) {
+                line("VERDICT: even the smallest write in the ladder failed.")
+            } else if (largestOk == sizes.last()) {
+                line("VERDICT: every size passed. The boundary is not the size of one write.")
+            } else {
+                line("VERDICT: writes up to ${largestOk / 1024} KB work; the next size up kills")
+                line("the drive. That is the number the transport must never exceed.")
+            }
+        }
+
     private suspend fun withTarget(
         what: String,
         readOnly: Boolean,
