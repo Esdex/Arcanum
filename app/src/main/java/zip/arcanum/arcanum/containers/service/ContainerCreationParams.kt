@@ -27,6 +27,12 @@ class ContainerCreationParams @Inject constructor() {
          * interface never has to cross the service boundary.
          */
         val usbWholeDevice: Boolean = false,
+        /**
+         * Where on the drive the volume goes, and how much room it has. Both 0 means the
+         * whole device, which is what USB creation was before partitions (#131).
+         */
+        val usbStartByte: Long = 0L,
+        val usbSpanSize: Long = 0L,
     )
 
     private val pending = AtomicReference<Params?>()

@@ -14,7 +14,11 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -375,6 +379,51 @@ fun CreateContainerScreen(
                 )
             }
 
+            // ── Which part of the drive to encrypt ────────────────────────────
+            // Only when the drive has a table. A bare drive never asks: there would be
+            // one answer, and the wizard already said the whole drive is the target.
+            if (state.usbPartitions.isNotEmpty() && state.usbDataSizeBytes == 0L) {
+                AppDialog(
+                    onDismissRequest = { viewModel.cancelUsbTargetChoice() },
+                    title            = { Text(stringResource(R.string.usb_create_pick_title)) },
+                    text             = {
+                        Column {
+                            Text(
+                                text  = stringResource(R.string.usb_create_pick_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            state.usbPartitions.forEach { part ->
+                                ListItem(
+                                    colors            = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                    headlineContent   = { Text(stringResource(R.string.usb_partition_n, part.slot + 1)) },
+                                    supportingContent = { Text("${part.typeName} - ${part.sizeBytes.fmtCreateSize()}") },
+                                    modifier          = Modifier.clickable {
+                                        viewModel.selectUsbTarget(
+                                            state.usbDeviceLabel, part.startByte, part.sizeBytes,
+                                        )
+                                    }
+                                )
+                            }
+                            ListItem(
+                                colors            = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                headlineContent   = { Text(stringResource(R.string.usb_whole_drive)) },
+                                supportingContent = { Text(state.usbWholeSize.fmtCreateSize()) },
+                                modifier          = Modifier.clickable {
+                                    viewModel.selectUsbTarget(state.usbDeviceLabel, 0L, state.usbWholeSize)
+                                }
+                            )
+                        }
+                    },
+                    confirmButton    = {
+                        TextButton(onClick = { viewModel.cancelUsbTargetChoice() }) {
+                            Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
+
             // ── Cancel dialog ─────────────────────────────────────────────────
             if (showCancelDialog) {
                 AppDialog(
@@ -426,3 +475,14 @@ private fun isStepValid(state: CreateContainerState, availableSpaceMb: Long = Lo
     else -> true
 }
 
+/** Same shape as the vault list's, so a drive reads the same in both places. */
+private fun Long.fmtCreateSize(): String {
+    val gb = this / (1024.0 * 1024.0 * 1024.0)
+    val mb = this / (1024.0 * 1024.0)
+    val fmt = java.text.DecimalFormat("#.#")
+    return when {
+        gb >= 1.0 -> "${fmt.format(gb)} GB"
+        mb >= 1.0 -> "${fmt.format(mb)} MB"
+        else      -> "${fmt.format(this / 1024.0)} KB"
+    }
+}

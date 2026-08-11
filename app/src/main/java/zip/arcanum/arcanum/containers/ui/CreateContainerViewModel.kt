@@ -22,6 +22,7 @@ import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.KeyfileGenerator
 import zip.arcanum.crypto.VeraCryptEngine
+import zip.arcanum.usb.isExtendedContainer
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
@@ -95,6 +96,16 @@ data class CreateContainerState(
     val usbDeviceLabel: String = "",
     /** Set when detection found no usable drive, so the screen can raise the gate. */
     val usbDetectFailed: Boolean = false,
+    /**
+     * What the drive is divided into, empty when it has no partition table. Non-empty
+     * means the user has to say what to encrypt before the size is known (#131).
+     */
+    val usbPartitions: List<zip.arcanum.usb.UsbPartition> = emptyList(),
+    /** The chosen target: 0 and 0 mean the whole drive. */
+    val usbTargetStart: Long = 0L,
+    val usbTargetSize: Long = 0L,
+    /** The drive's full size, so "whole drive" can be offered alongside its partitions. */
+    val usbWholeSize: Long = 0L,
     val includeInBackup: Boolean = false,
     val algorithm: CipherAlgorithm = CipherAlgorithm.AES,
     val hashAlgorithm: HashAlgorithm = HashAlgorithm.SHA512,
@@ -181,15 +192,22 @@ class CreateContainerViewModel @Inject constructor(
                 return@launch
             }
             val label = dev.inquiry() ?: dev.device.deviceName
-            val usable = VeraCryptEngine.usbDataSizeFor(dev.sizeBytes)
+            val partitions = dev.readPartitionTable().filterNot { it.isExtendedContainer() }
+            val whole = dev.sizeBytes
             dev.close()
-            _state.update {
-                it.copy(
-                    usbDataSizeBytes = usable,
-                    usbDeviceLabel   = label,
-                    usbDetectFailed  = false,
-                    sizeMb           = usable / (1024L * 1024L)
-                )
+            if (partitions.isEmpty()) {
+                // Nothing to choose: the drive is the target, as it always was.
+                selectUsbTarget(label, 0L, whole)
+            } else {
+                _state.update {
+                    it.copy(
+                        usbDeviceLabel  = label,
+                        usbDetectFailed = false,
+                        usbPartitions   = partitions,
+                        usbWholeSize    = whole,
+                        usbDataSizeBytes = 0L,
+                    )
+                }
             }
         }
     }
@@ -463,9 +481,37 @@ class CreateContainerViewModel @Inject constructor(
             pim              = s.pim,
             safFd            = servicePfd?.fd ?: -1,
             safPfd           = servicePfd,
-            usbWholeDevice   = s.location == StorageLocation.USB_DRIVE
+            usbWholeDevice   = s.location == StorageLocation.USB_DRIVE,
+            usbStartByte     = s.usbTargetStart,
+            usbSpanSize      = s.usbTargetSize
         ))
         context.startForegroundService(Intent(context, ContainerCreationService::class.java))
+    }
+
+    /**
+     * Records what the volume will fill: the whole drive, or one partition of it.
+     *
+     * Everything in [spanSize] is destroyed, so this is also what the confirmation step
+     * has to describe accurately - naming the drive when only a partition dies would be
+     * the more frightening lie, and naming a partition when the drive dies the worse one.
+     */
+    fun selectUsbTarget(label: String, startByte: Long, spanSize: Long) {
+        val usable = VeraCryptEngine.usbDataSizeFor(spanSize)
+        _state.update {
+            it.copy(
+                usbDeviceLabel   = label,
+                usbDetectFailed  = false,
+                usbTargetStart   = startByte,
+                usbTargetSize    = spanSize,
+                usbDataSizeBytes = usable,
+                sizeMb           = usable / (1024L * 1024L),
+            )
+        }
+    }
+
+    /** Backs out of the choice without picking anything, leaving the step unfinished. */
+    fun cancelUsbTargetChoice() {
+        _state.update { it.copy(usbPartitions = emptyList(), usbDataSizeBytes = 0L) }
     }
 
     fun registerCreatedContainer() {
@@ -478,9 +524,9 @@ class CreateContainerViewModel @Inject constructor(
                 // the drive, because only the volume itself knows the salt that was
                 // generated during creation.
                 val dev = usbVolumes.openAnyDrive(readOnly = true)
-                val fingerprint = dev?.volumeFingerprint()
+                val fingerprint = dev?.volumeFingerprint(s.usbTargetStart)
                 val label = dev?.inquiry() ?: dev?.device?.deviceName
-                val size = dev?.sizeBytes ?: 0L
+                val size = if (s.usbTargetSize > 0L) s.usbTargetSize else (dev?.sizeBytes ?: 0L)
                 dev?.close()
                 if (fingerprint == null) {
                     // Registering a file vault with an empty path is what used to happen
@@ -489,7 +535,7 @@ class CreateContainerViewModel @Inject constructor(
                     registrationStarted.set(false)
                     return@launch
                 }
-                repo.addUsbContainer(fingerprint, label ?: "USB drive", size)
+                repo.addUsbContainer(fingerprint, label ?: "USB drive", size, s.usbTargetStart)
             } else if (s.safUri.isNotEmpty()) {
                 val actualSize = context.contentResolver
                     .openFileDescriptor(android.net.Uri.parse(s.safUri), "r")
