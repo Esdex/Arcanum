@@ -1039,6 +1039,8 @@
     <string name="usb_pick_hint">A vault looks unrecognised from the outside. Which partition holds one cannot be checked without the password, so pick the one you put it in.</string>
     <string name="usb_partition_n">Partition %1$d</string>
     <string name="usb_whole_drive">Whole drive</string>
+    <string name="usb_create_pick_title">What should be encrypted?</string>
+    <string name="usb_create_pick_hint">Everything inside what you choose is erased. A partition leaves the rest of the drive alone.</string>
     <string name="usb_gpt_note">This drive uses a GPT layout, which Arcanum does not read yet. Only the whole drive can be added.</string>
     <string name="usb_wrong_device">Wrong USB device: this drive does not hold that vault.</string>
     <string name="notif_usb_safe_to_remove">Safe to remove</string>

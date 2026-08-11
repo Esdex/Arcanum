@@ -87,10 +87,14 @@ class ContainerCreationService : Service() {
                         usbError = "USB drive not connected\nConnect the drive and try again."
                         zip.arcanum.crypto.CryptoResult.Failure(zip.arcanum.crypto.CryptoError.IO_ERROR)
                     } else {
+                        // Whole device unless the user picked a partition to fill.
+                        val spanStart = p.usbStartByte
+                        val spanSize  = if (p.usbSpanSize > 0L) p.usbSpanSize
+                                        else dev.sizeBytes - spanStart
                         try {
                             cryptoEngine.createContainerUsb(
-                                transport        = dev,
-                                deviceSize       = dev.sizeBytes,
+                                transport        = zip.arcanum.usb.UsbPartitionView(dev, spanStart, spanSize),
+                                deviceSize       = spanSize,
                                 sizeBytes        = p.sizeBytes,
                                 password         = p.password,
                                 algorithm        = p.algorithm,
