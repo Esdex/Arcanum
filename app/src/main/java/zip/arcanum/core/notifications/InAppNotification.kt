@@ -51,6 +51,19 @@ sealed class InAppNotification {
         override val priority = 1
     }
 
+    /**
+     * A paste where items did not make it. Until this existed a failed paste looked
+     * exactly like a successful one - silence either way (#129).
+     */
+    data class FilesPasteFailed(val failed: Int, val total: Int) : InAppNotification() {
+        override val priority = 3
+    }
+
+    /** A move into the folder the items are already in: correct, and worth saying. */
+    data object FilesAlreadyHere : InAppNotification() {
+        override val priority = 1
+    }
+
     /** Tapping the hero icon for details on a vault that is not open. */
     data object DetailsNeedMount : InAppNotification() {
         override val priority = 2

@@ -462,7 +462,12 @@ class FileManagerViewModel @Inject constructor(
 
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isOperationInProgress = true, operationMessage = "Pasting…") }
-            var count = 0
+            // Three outcomes, not two. A paste that moved nothing because the items are
+            // already here is fine; a paste where every item failed is not, and until now
+            // both ended in silence and looked exactly like success (#129).
+            var count   = 0
+            var failed  = 0
+            var skipped = 0
             val chunkSize = 1 * 1024 * 1024
 
             /* Names already in the destination, used to pick a free one when
@@ -482,7 +487,7 @@ class FileManagerViewModel @Inject constructor(
                        copy below would write the item onto itself and the delete
                        that follows a cut would then destroy it outright. A move
                        to where it already is has nothing to do. */
-                    if (intoOwnFolder && isCut) continue
+                    if (intoOwnFolder && isCut) { skipped++; continue }
 
                     /* Pasting a folder into itself or into its own subtree (cut
                        /a, paste in /a or /a/b) would recurse into the copy it is
@@ -490,7 +495,7 @@ class FileManagerViewModel @Inject constructor(
                     val srcDir = item.sourcePath.trimEnd('/')
                     val intoOwnSubtree = sameContainer && item.isDirectory &&
                         (currentPath == srcDir || currentPath.startsWith("$srcDir/"))
-                    if (intoOwnSubtree) continue
+                    if (intoOwnSubtree) { skipped++; continue }
 
                     /* A copy into the same folder becomes a duplicate rather than
                        a write onto itself, so it behaves like every other file
@@ -504,7 +509,7 @@ class FileManagerViewModel @Inject constructor(
                     if (item.isDirectory) {
                         val ok = copyDirectoryRecursive(item.sourceHandle, item.sourcePath, destHandle, destPath)
                         if (ok && isCut) runCatching { engine.deleteDirectory(item.sourceHandle, item.sourcePath) }
-                        if (ok) count++
+                        if (ok) count++ else failed++
                     } else {
                         var offset = 0L
                         var writeOk = true
@@ -519,9 +524,9 @@ class FileManagerViewModel @Inject constructor(
                         if (writeOk) {
                             if (isCut) runCatching { engine.deleteFile(item.sourceHandle, item.sourcePath) }
                             count++
-                        }
+                        } else failed++
                     }
-                } catch (_: Exception) { }
+                } catch (_: Exception) { failed++ }
             }
             clipboard.clear()
             refreshNow()
@@ -530,10 +535,15 @@ class FileManagerViewModel @Inject constructor(
                 isOperationInProgress = false,
                 operationMessage      = null,
                 clipboardCount        = 0,
-                pendingNotification   = if (count > 0) {
-                    if (isCut) InAppNotification.FilesMoved(count, destDesc)
-                    else InAppNotification.FilesPasted(count)
-                } else null
+                pendingNotification   = when {
+                    // Failure first: someone told "3 copied" and not told "2 were not"
+                    // walks away believing all five arrived.
+                    failed > 0  -> InAppNotification.FilesPasteFailed(failed, clipItems.size)
+                    count > 0   -> if (isCut) InAppNotification.FilesMoved(count, destDesc)
+                                   else InAppNotification.FilesPasted(count)
+                    skipped > 0 -> InAppNotification.FilesAlreadyHere
+                    else        -> null
+                }
             ) }
         }
     }
@@ -568,19 +578,24 @@ class FileManagerViewModel @Inject constructor(
 
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isOperationInProgress = true, operationMessage = "Copying…") }
-            var count = 0
+            // Three outcomes, not two. A paste that moved nothing because the items are
+            // already here is fine; a paste where every item failed is not, and until now
+            // both ended in silence and looked exactly like success (#129).
+            var count   = 0
+            var failed  = 0
+            var skipped = 0
             val chunkSize = 1 * 1024 * 1024
 
             for (item in toCopy) {
                 val parentDir = item.path.substringBeforeLast("/").let { if (it.isEmpty()) "/" else it }
-                if (destinationContainerId == s.containerId && parentDir == destinationPath) continue
+                if (destinationContainerId == s.containerId && parentDir == destinationPath) { skipped++; continue }
 
                 try {
                     val destItemPath = if (destinationPath == "/") "/${item.name}" else "$destinationPath/${item.name}"
                     _state.update { it.copy(operationMessage = "Copying ${item.name}…") }
                     if (item.isDirectory) {
                         val ok = copyDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath)
-                        if (ok) count++
+                        if (ok) count++ else failed++
                     } else {
                         var offset = 0L
                         var writeOk = true
@@ -592,16 +607,21 @@ class FileManagerViewModel @Inject constructor(
                             if (chunk.size < chunkSize) break
                         }
                         if (!writeOk) runCatching { engine.deleteFile(destHandle, destItemPath) }
-                        if (writeOk) count++
+                        if (writeOk) count++ else failed++
                     }
-                } catch (_: Exception) { }
+                } catch (_: Exception) { failed++ }
             }
 
             exitSelectionMode()
             _state.update { it.copy(
                 isOperationInProgress = false,
                 operationMessage      = null,
-                pendingNotification   = if (count > 0) InAppNotification.FilesPasted(count) else null
+                pendingNotification   = when {
+                    failed > 0  -> InAppNotification.FilesPasteFailed(failed, toCopy.size)
+                    count > 0   -> InAppNotification.FilesPasted(count)
+                    skipped > 0 -> InAppNotification.FilesAlreadyHere
+                    else        -> null
+                }
             ) }
         }
     }
@@ -618,11 +638,14 @@ class FileManagerViewModel @Inject constructor(
 
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isOperationInProgress = true, operationMessage = "Moving…") }
-            var count = 0
+            // See paste(): a move that moves nothing has to say which kind of nothing.
+            var count   = 0
+            var failed  = 0
+            var skipped = 0
 
             for (item in toMove) {
                 val parentDir = item.path.substringBeforeLast("/").let { if (it.isEmpty()) "/" else it }
-                if (destinationContainerId == s.containerId && parentDir == destinationPath) continue
+                if (destinationContainerId == s.containerId && parentDir == destinationPath) { skipped++; continue }
 
                 val destItemPath = if (destinationPath == "/") "/${item.name}" else "$destinationPath/${item.name}"
                 _state.update { it.copy(operationMessage = "Moving ${item.name}…") }
@@ -637,7 +660,7 @@ class FileManagerViewModel @Inject constructor(
                     item.isDirectory -> moveDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath)
                     else -> moveFile(sourceHandle, item.path, destHandle, destItemPath, item.size)
                 }
-                if (moved) count++
+                if (moved) count++ else failed++
             }
 
             exitSelectionMode()
@@ -645,7 +668,12 @@ class FileManagerViewModel @Inject constructor(
             _state.update { it.copy(
                 isOperationInProgress = false,
                 operationMessage      = null,
-                pendingNotification   = if (count > 0) InAppNotification.FilesMoved(count, destinationName) else null
+                pendingNotification   = when {
+                    failed > 0  -> InAppNotification.FilesPasteFailed(failed, toMove.size)
+                    count > 0   -> InAppNotification.FilesMoved(count, destinationName)
+                    skipped > 0 -> InAppNotification.FilesAlreadyHere
+                    else        -> null
+                }
             ) }
         }
     }

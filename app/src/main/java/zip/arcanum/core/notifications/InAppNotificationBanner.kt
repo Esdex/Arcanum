@@ -248,6 +248,18 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         title           = ctx.resources.getQuantityString(R.plurals.notif_items_copied, this.count, this.count),
         subtitle        = ctx.getString(R.string.notif_files_pasted_subtitle)
     )
+    is InAppNotification.FilesPasteFailed -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFDC2626),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_paste_failed, this.failed, this.total),
+        subtitle        = ctx.getString(R.string.notif_paste_failed_subtitle)
+    )
+    InAppNotification.FilesAlreadyHere -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFF6B7280),
+        icon            = Icons.Outlined.CheckCircle,
+        title           = ctx.getString(R.string.notif_already_here),
+        subtitle        = ctx.getString(R.string.notif_already_here_subtitle)
+    )
     is InAppNotification.FilesMoved -> NotificationDisplayConfig(
         backgroundColor = Color(0xFF16A34A),
         icon            = Icons.AutoMirrored.Outlined.DriveFileMove,
