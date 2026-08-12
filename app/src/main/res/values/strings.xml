@@ -328,7 +328,12 @@
     <string name="vault_cd_exit_selection">Exit selection</string>
     <string name="vault_selection_count">%1$d selected</string>
     <string name="vault_select_all">Select all</string>
-    <string name="vault_cd_delete_selected">Delete selected</string>
+    <string name="vault_cd_forget_selected">Forget selected</string>
+    <plurals name="vault_forget_many_title">
+        <item quantity="one">Forget %1$d vault?</item>
+        <item quantity="other">Forget %1$d vaults?</item>
+    </plurals>
+    <string name="vault_forget_many_body">Arcanum will forget them and delete everything it cached about them - thumbnails and the index of what was inside. The vaults themselves are not touched: their container files, and any drives, stay exactly as they are, and you can add them back at any time.</string>
     <string name="vault_empty_title">No vaults yet</string>
     <string name="vault_empty_subtitle">Create or open an existing VeraCrypt container</string>
     <string name="vault_storage_app">App Storage</string>

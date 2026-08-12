@@ -277,7 +277,6 @@
     <string name="vault_cd_exit_selection">선택 종료</string>
     <string name="vault_selection_count">%1$d개 선택됨</string>
     <string name="vault_select_all">모두 선택</string>
-    <string name="vault_cd_delete_selected">선택 항목 삭제</string>
     <string name="vault_empty_title">보관함이 없습니다</string>
     <string name="vault_empty_subtitle">기존 VeraCrypt 컨테이너를 만들거나 여세요</string>
     <string name="vault_storage_app">앱 저장소</string>

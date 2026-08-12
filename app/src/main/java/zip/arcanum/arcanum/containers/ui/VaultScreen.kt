@@ -129,6 +129,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -208,6 +209,7 @@ fun VaultScreen(
     var notification              by remember { mutableStateOf<InAppNotification?>(null) }
     var selectionMode      by remember { mutableStateOf(false) }
     var selectedIds        by remember { mutableStateOf(emptySet<String>()) }
+    var showForgetSelectedDialog by remember { mutableStateOf(false) }
     var contextMenuContainerId   by remember { mutableStateOf<String?>(null) }
     var showUpgradeDialog            by remember { mutableStateOf(false) }
     var containerNotFound            by remember { mutableStateOf<ContainerEntity?>(null) }
@@ -357,15 +359,15 @@ fun VaultScreen(
                                 }) {
                                     Text(stringResource(R.string.vault_select_all))
                                 }
+                                // This never deleted anything on disk for any vault type -
+                                // it removed the records and nothing else - so it is named
+                                // for what it does, and now asks first, which a bin icon
+                                // firing on one tap did not.
                                 IconButton(
-                                    onClick = {
-                                        viewModel.deleteContainers(selectedIds)
-                                        selectionMode = false
-                                        selectedIds = emptySet()
-                                    },
+                                    onClick = { showForgetSelectedDialog = true },
                                     enabled = selectedIds.isNotEmpty()
                                 ) {
-                                    Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.vault_cd_delete_selected))
+                                    Icon(Icons.Outlined.LinkOff, contentDescription = stringResource(R.string.vault_cd_forget_selected))
                                 }
                             }
                         )
@@ -661,7 +663,30 @@ fun VaultScreen(
                 )
             }
 
-            // ── Remove-from-list confirm dialog ──────────────────────────────
+            // ── Forget the selection ─────────────────────────────────────────
+            if (showForgetSelectedDialog && selectedIds.isNotEmpty()) {
+                val n = selectedIds.size
+                AppDialog(
+                    onDismissRequest = { showForgetSelectedDialog = false },
+                    title            = { Text(pluralStringResource(R.plurals.vault_forget_many_title, n, n)) },
+                    text             = { Text(stringResource(R.string.vault_forget_many_body)) },
+                    confirmButton    = {
+                        TextButton(onClick = {
+                            showForgetSelectedDialog = false
+                            viewModel.deleteContainers(selectedIds)
+                            selectionMode = false
+                            selectedIds   = emptySet()
+                        }) { Text(stringResource(R.string.vault_forget_confirm)) }
+                    },
+                    dismissButton    = {
+                        TextButton(onClick = { showForgetSelectedDialog = false }) {
+                            Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
+
+            // ── Forget one vault, from its row ───────────────────────────────
             containerToRemoveFromList?.let { c ->
                 AppDialog(
                     onDismissRequest = { containerToRemoveFromList = null },

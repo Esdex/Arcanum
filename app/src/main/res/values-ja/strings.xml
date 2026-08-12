@@ -277,7 +277,6 @@
     <string name="vault_cd_exit_selection">選択を終了</string>
     <string name="vault_selection_count">%1$d 件選択中</string>
     <string name="vault_select_all">すべて選択</string>
-    <string name="vault_cd_delete_selected">選択項目を削除</string>
     <string name="vault_empty_title">ボールトがありません</string>
     <string name="vault_empty_subtitle">既存のVeraCryptコンテナを作成または開いてください</string>
     <string name="vault_storage_app">アプリストレージ</string>

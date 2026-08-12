@@ -298,7 +298,6 @@
     <string name="vault_cd_exit_selection">Выйти из режима выбора</string>
     <string name="vault_selection_count">Выбрано: %1$d</string>
     <string name="vault_select_all">Выбрать всё</string>
-    <string name="vault_cd_delete_selected">Удалить выбранные</string>
     <string name="vault_empty_title">Нет хранилищ</string>
     <string name="vault_empty_subtitle">Создайте или откройте существующий контейнер VeraCrypt</string>
     <string name="vault_storage_app">Хранилище приложения</string>

@@ -284,7 +284,6 @@
     <string name="vault_cd_exit_selection">Seçimden çık</string>
     <string name="vault_selection_count">%1$d seçildi</string>
     <string name="vault_select_all">Tümünü seç</string>
-    <string name="vault_cd_delete_selected">Seçilenleri sil</string>
     <string name="vault_empty_title">Henüz kasa yok</string>
     <string name="vault_empty_subtitle">Mevcut bir VeraCrypt kapsayıcısı oluşturun veya açın</string>
     <string name="vault_storage_app">Uygulama Depolama</string>

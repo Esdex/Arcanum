@@ -277,7 +277,6 @@
     <string name="vault_cd_exit_selection">退出选择</string>
     <string name="vault_selection_count">已选 %1$d 个</string>
     <string name="vault_select_all">全选</string>
-    <string name="vault_cd_delete_selected">删除所选</string>
     <string name="vault_empty_title">暂无保险库</string>
     <string name="vault_empty_subtitle">创建或打开现有的 VeraCrypt 容器</string>
     <string name="vault_storage_app">应用存储</string>
