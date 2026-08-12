@@ -229,17 +229,15 @@ fun StepVolumeLocation(
         )
         AnimatedVisibility(visible = state.location == StorageLocation.USB_DRIVE) {
             Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                if (state.usbDataSizeBytes > 0L) {
-                    Text(
-                        text  = state.usbDeviceLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(Modifier.height(2.dp))
+                // The drive's own size, not the vault's: what the vault gets is decided on
+                // the next step, and this used to key off that number - which stays zero
+                // until then, so the line silently stopped appearing at all.
+                if (state.usbWholeSize > 0L) {
                     Text(
                         text  = stringResource(
                             R.string.create_location_usb_found,
-                            state.usbDataSizeBytes / (1024L * 1024L * 1024L)
+                            state.usbDeviceLabel,
+                            state.usbWholeSize.fmtUsbSize()
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
