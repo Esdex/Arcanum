@@ -1087,4 +1087,6 @@
     <string name="create_location_usb_found">%1$d GB will be available inside the vault</string>
     <string name="create_location_usb_none">No USB drive detected. Connect one and try again.</string>
     <string name="create_size_usb_fixed">The whole drive becomes the vault, so its size is fixed.</string>
+    <string name="create_size_usb_partition">Partition %1$d becomes the vault, so its size is fixed. The rest of the drive is left alone.</string>
+    <string name="create_size_usb_target">%1$s, partition %2$d</string>
 </resources>
