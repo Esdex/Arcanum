@@ -77,6 +77,8 @@ fun CreateContainerScreen(
 
     val state              by viewModel.state.collectAsState()
     val createdContainerId by viewModel.createdContainerId.collectAsState()
+    val usbRegisterFailed  by viewModel.usbRegisterFailed.collectAsState()
+    val usbBackupFailed    by viewModel.usbBackupHeaderFailed.collectAsState()
     var prevStep           by remember { mutableIntStateOf(1) }
     var showCancelDialog   by remember { mutableStateOf(false) }
 
@@ -396,6 +398,38 @@ fun CreateContainerScreen(
                         TextButton(onClick = { viewModel.clearUsbDetectFailed() }) {
                             Text(stringResource(R.string.common_cancel))
                         }
+                    }
+                )
+            }
+
+            // ── The volume was written but could not be vouched for ───────────
+            // Both of these leave a real volume on the drive and no vault in the list,
+            // which is the honest outcome: an entry that cannot be recognised again is
+            // worse than none. Neither was reported to the user before.
+            if (usbRegisterFailed || usbBackupFailed) {
+                val backup = usbBackupFailed
+                AppDialog(
+                    onDismissRequest = {
+                        viewModel.clearUsbRegisterFailed(); viewModel.clearUsbBackupHeaderFailed()
+                    },
+                    title = {
+                        Text(stringResource(
+                            if (backup) R.string.usb_backup_failed_title
+                            else R.string.usb_register_failed_title
+                        ))
+                    },
+                    text = {
+                        Text(stringResource(
+                            if (backup) R.string.usb_backup_failed_body
+                            else R.string.usb_register_failed_body
+                        ))
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.clearUsbRegisterFailed()
+                            viewModel.clearUsbBackupHeaderFailed()
+                            onBack()
+                        }) { Text(stringResource(R.string.common_ok)) }
                     }
                 )
             }

@@ -659,6 +659,14 @@ class CreateContainerViewModel @Inject constructor(
         _state.update { it.copy(usbPartitions = emptyList(), usbDataSizeBytes = 0L) }
     }
 
+    /**
+     * Set when the volume's backup header could not be read back after creation, which
+     * means the drive did not keep what it said it had written.
+     */
+    private val _usbBackupHeaderFailed = MutableStateFlow(false)
+    val usbBackupHeaderFailed = _usbBackupHeaderFailed.asStateFlow()
+    fun clearUsbBackupHeaderFailed() { _usbBackupHeaderFailed.value = false }
+
     fun registerCreatedContainer() {
         if (!registrationStarted.compareAndSet(false, true)) return
         val s = _state.value
@@ -672,11 +680,27 @@ class CreateContainerViewModel @Inject constructor(
                 val fingerprint = dev?.volumeFingerprint(s.usbTargetStart)
                 val label = dev?.inquiry() ?: dev?.device?.deviceName
                 val size = if (s.usbTargetSize > 0L) s.usbTargetSize else (dev?.sizeBytes ?: 0L)
+
+                // The far end of the volume is the one place written and never read back.
+                // A drive that quietly keeps nothing up there - or an addressing mistake at
+                // the top of a 32-bit LBA - would leave a vault with no backup header, and
+                // nothing would say so until the day it was needed.
+                val backupOk = dev != null && size > 0L && run {
+                    val at = s.usbTargetStart + VeraCryptEngine.usbBackupHeaderOffset(size)
+                    val h = dev.volumeFingerprint(at)
+                    h != null && h != zip.arcanum.usb.UsbBlockDevice.ZERO_SALT_SHA256 && h != fingerprint
+                }
                 dev?.close()
+
                 if (fingerprint == null) {
                     // Registering a file vault with an empty path is what used to happen
                     // here, and it produced an entry that could never be mounted.
                     _usbRegisterFailed.value = true
+                    registrationStarted.set(false)
+                    return@launch
+                }
+                if (!backupOk) {
+                    _usbBackupHeaderFailed.value = true
                     registrationStarted.set(false)
                     return@launch
                 }

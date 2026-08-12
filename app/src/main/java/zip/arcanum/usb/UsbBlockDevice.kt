@@ -138,6 +138,16 @@ class UsbBlockDevice private constructor(
         /** VeraCrypt header salt: 64 plaintext bytes at offset 0, before the encrypted body. */
         const val SALT_BYTES = 64
 
+        /**
+         * What [volumeFingerprint] returns for 64 bytes of nothing.
+         *
+         * It is a perfectly valid hash, which is the problem: a span the drive reports as
+         * empty produces it, and so does every MBR-partitioned drive when hashed from
+         * sector 0 (#131). Named so that a check for "nothing is here" reads as one.
+         */
+        const val ZERO_SALT_SHA256 =
+            "f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b"
+
         /** True when this device exposes a mass-storage / SCSI / Bulk-Only interface. */
         fun massStorageInterface(device: UsbDevice): UsbInterface? {
             for (i in 0 until device.interfaceCount) {
