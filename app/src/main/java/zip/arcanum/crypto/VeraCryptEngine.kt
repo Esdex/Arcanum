@@ -706,6 +706,13 @@ class VeraCryptEngine @Inject constructor() {
     ): Int
 
     /**
+     * Pushes anything held back on our side down to the medium, leaving the volume
+     * mounted. Cheap, and worth doing whenever the app might be killed without warning.
+     */
+    suspend fun flushContainer(handle: Long): Int =
+        withContext(Dispatchers.IO) { nativeFlushContainer(handle) }
+
+    /**
      * Formats a bare partition as FAT32 - the ordinary partition of a partitioned USB
      * drive (#131), not a vault and not encrypted.
      *
@@ -714,6 +721,8 @@ class VeraCryptEngine @Inject constructor() {
      */
     suspend fun formatFatPartition(transport: Any, sizeBytes: Long): CryptoResult<Unit> =
         withContext(Dispatchers.IO) { nativeFormatFatPartition(transport, sizeBytes).toResult() }
+
+    private external fun nativeFlushContainer(handle: Long): Int
 
     private external fun nativeFormatFatPartition(transport: Any, sizeBytes: Long): Int
 

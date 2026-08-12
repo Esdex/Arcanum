@@ -1183,6 +1183,32 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerUsb(
 }
 
 
+/* ─── JNI: nativeFlushContainer ─────────────────────────────────────── */
+
+/*
+ * Pushes everything held on our side down to the medium, leaving the volume mounted.
+ *
+ * The USB backend holds up to a megabyte of writes back so that repeated updates to the
+ * same block cost one command instead of ten. That is a good trade while the app is in
+ * front of the user and a bad one the moment Android decides to kill it in the
+ * background, because those bytes exist nowhere else. Flushing on the way out costs a
+ * command or two and removes the whole category.
+ *
+ * Safe to call on any mounted volume: for a file-backed one the backend's sync is an
+ * fsync, which is worth doing for the same reason.
+ */
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeFlushContainer(
+        JNIEnv */*env*/, jobject /*thiz*/, jlong handle)
+{
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    int pdrv = decode_handle(handle);
+    if (pdrv < 0) return ERR_FILE;
+    if (g_drives[pdrv].backend.sync)
+        g_drives[pdrv].backend.sync(g_drives[pdrv].backend.self);
+    return ERR_OK;
+}
+
 /* ─── JNI: nativeCloseContainer ─────────────────────────────────────── */
 
 extern "C" JNIEXPORT jint JNICALL
