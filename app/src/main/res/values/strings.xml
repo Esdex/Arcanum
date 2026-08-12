@@ -347,9 +347,10 @@
     <string name="vault_not_found_remove">Remove from List</string>
     <string name="vault_not_found_confirm_title">Remove from list?</string>
     <string name="vault_not_found_confirm_body">The container will be removed from the list. The file will not be deleted.</string>
-    <string name="vault_remove_title">Remove \"%1$s\"?</string>
-    <string name="vault_remove_body">The vault will be removed from the list. The container file on disk will not be deleted.</string>
+    <string name="vault_remove_title">Forget \"%1$s\"?</string>
+    <string name="vault_remove_body">Arcanum will forget this vault and delete everything it cached about it - thumbnails and the index of what was inside. The vault itself is not touched: the container file, or the drive, stays exactly as it is, and you can add it back at any time.</string>
     <string name="vault_remove_confirm">Remove</string>
+    <string name="vault_forget_confirm">Forget</string>
     <string name="vault_delete_title">Delete \"%1$s\"?</string>
     <string name="vault_delete_body">The container file and all encrypted data inside it will be permanently deleted. This cannot be undone.</string>
     <string name="vault_delete_confirm">Delete</string>
@@ -420,7 +421,7 @@
     <string name="vault_remove_biometric_body">You\'ll need to enter your password manually to unlock \"%1$s\".</string>
     <string name="vault_menu_select">Select</string>
     <string name="vault_menu_config">Config</string>
-    <string name="vault_menu_remove">Remove from list</string>
+    <string name="vault_menu_remove">Forget</string>
     <string name="vault_menu_delete">Delete</string>
 
     <!-- Settings screen -->

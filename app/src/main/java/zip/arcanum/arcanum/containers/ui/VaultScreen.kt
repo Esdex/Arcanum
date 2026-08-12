@@ -69,6 +69,7 @@ import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.FolderOff
+import androidx.compose.material.icons.outlined.LinkOff
 import androidx.compose.material.icons.outlined.FolderOpen
 import zip.arcanum.usb.isExtendedContainer
 import androidx.compose.material.icons.outlined.Storage
@@ -78,7 +79,6 @@ import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.CheckBox
-import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.Checkbox
@@ -671,7 +671,7 @@ fun VaultScreen(
                         TextButton(onClick = {
                             containerToRemoveFromList = null
                             viewModel.removeFromList(c.id)
-                        }) { Text(stringResource(R.string.vault_remove_confirm)) }
+                        }) { Text(stringResource(R.string.vault_forget_confirm)) }
                     },
                     dismissButton    = {
                         TextButton(onClick = { containerToRemoveFromList = null }) { Text(stringResource(R.string.common_cancel)) }
@@ -1353,7 +1353,7 @@ private fun VaultCard(
         )
         DropdownMenuItem(
             text        = { Text(stringResource(R.string.vault_menu_remove)) },
-            leadingIcon = { Icon(Icons.Outlined.RemoveCircleOutline, contentDescription = null) },
+            leadingIcon = { Icon(Icons.Outlined.LinkOff, contentDescription = null) },
             onClick     = { onShowContextMenuChange(false); onRemoveFromList() }
         )
     }
