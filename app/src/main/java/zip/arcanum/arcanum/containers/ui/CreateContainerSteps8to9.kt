@@ -61,7 +61,15 @@ fun StepCreating(state: CreateContainerState) {
                 )
             }
             Spacer(Modifier.height(8.dp))
-            Text(state.fileName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            // A USB vault has no filename - it has a drive, and possibly a partition of
+            // one. Without this the line under the progress ring was simply empty.
+            val target = if (state.location == StorageLocation.USB_DRIVE) {
+                state.usbPartitions
+                    .firstOrNull { it.startByte == state.usbTargetStart && state.usbTargetStart > 0L }
+                    ?.let { stringResource(R.string.create_size_usb_target, state.usbDeviceLabel, it.slot + 1) }
+                    ?: state.usbDeviceLabel
+            } else state.fileName
+            Text(target, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (state.creationSpeed.isNotBlank()) {
                 Text(state.creationSpeed, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
