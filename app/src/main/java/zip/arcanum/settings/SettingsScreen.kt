@@ -1914,7 +1914,7 @@ private fun WhatsNewEntry(
                 )
                 if (subtitle != null) {
                     Text(
-                        text  = subtitle,
+                        text  = linkified(subtitle),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
