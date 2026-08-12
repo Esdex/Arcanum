@@ -26,6 +26,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
+import zip.arcanum.usb.UsbBlockDevice
 import zip.arcanum.usb.UsbPartitioner
 import java.text.DecimalFormat
 
@@ -362,6 +364,14 @@ private fun NewPartitionEditor(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        if (rememberDriveSlow(active = true)) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text  = stringResource(R.string.usb_drive_slow),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
     if (state.usbPartitionError.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
@@ -383,6 +393,26 @@ private fun NewPartitionEditor(
             modifier = Modifier.fillMaxWidth()
         ) { Text(stringResource(R.string.usb_new_go)) }
     }
+}
+
+/**
+ * True while the drive has recently kept a command waiting (#133).
+ *
+ * Polled rather than pushed: the transport records a timestamp from whatever thread is
+ * doing I/O, and a second of staleness costs nothing here. Only runs while [active], so
+ * an idle screen does no work.
+ */
+@Composable
+fun rememberDriveSlow(active: Boolean): Boolean {
+    var slow by remember { mutableStateOf(false) }
+    LaunchedEffect(active) {
+        if (!active) { slow = false; return@LaunchedEffect }
+        while (true) {
+            slow = UsbBlockDevice.driveIsSlow()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    return slow
 }
 
 /** Local to this page: the wizard's other size labels are built the same way. */

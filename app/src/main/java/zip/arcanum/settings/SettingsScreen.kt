@@ -2405,6 +2405,13 @@ private fun DebugSubScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
+                            onClick  = { debugViewModel.runUsbDriveReport() },
+                            enabled  = !state.usbProbeRunning,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Drive report", style = MaterialTheme.typography.labelMedium)
+                        }
+                        OutlinedButton(
                             onClick  = { debugViewModel.runUsbProbe() },
                             enabled  = !state.usbProbeRunning,
                             modifier = Modifier.weight(1f)

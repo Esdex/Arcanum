@@ -57,6 +57,52 @@ class UsbMassStorageProbe(
     }
 
     /**
+     * Everything worth pasting into a bug report about a drive, and nothing else.
+     *
+     * Read-only. Separate from [run] because that one is a diagnostic transcript meant to
+     * be read while debugging the transport; this is a dozen lines someone can attach to
+     * "my drive does not work" without having to know which of them matters (#133).
+     */
+    suspend fun runDriveReport(): String =
+        withTarget("drive report - read-only", readOnly = true) { dev ->
+            val d = dev.device
+            line("[drive]")
+            line("  inquiry     ${dev.inquiry() ?: "(no answer)"}")
+            line("  vid:pid     %04x:%04x".format(d.vendorId, d.productId))
+            line("  capacity    ${dev.sizeBytes} bytes (${dev.sizeBytes / (1024 * 1024)} MB)")
+            line("  block size  ${dev.blockSize}")
+            line("  blocks      ${dev.blockCount}")
+            line()
+
+            line("[commands]")
+            // Not an error when it fails - plenty of drives decline it - but it decides
+            // whether an unmount can promise anything about the drive's own cache.
+            val syncOk = dev.sync()
+            line("  SYNCHRONIZE CACHE  ${if (syncOk) "accepted" else "refused"}" +
+                 (dev.lastError?.let { " ($it)" } ?: ""))
+            line("  one bulk transfer  ${UsbBlockDevice.MAX_TRANSFER_BYTES / 1024} KB per command")
+            line()
+
+            line("[partitions]")
+            val parts = dev.readPartitionTable()
+            if (parts.isEmpty()) {
+                line("  no usable table - a whole-device volume looks like this")
+            } else {
+                for (p in parts) {
+                    line("  #%d type=0x%02x (%s) start=%d size=%d MB".format(
+                        p.slot, p.typeByte, p.typeName, p.startLba, p.sizeBytes / (1024 * 1024)
+                    ))
+                }
+            }
+
+            dev.ioStats()?.let {
+                line()
+                line("[i/o census, this session]")
+                it.trimEnd().lines().forEach { l -> line("  $l") }
+            }
+        }
+
+    /**
      * DESTRUCTIVE. Writes a pattern to one sector, reads it back, then restores the
      * original bytes. A separate entry point from [run] so the read-only button cannot
      * reach a write command; the transport is also opened read-only for [run], so even
