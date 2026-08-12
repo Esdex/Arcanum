@@ -941,6 +941,19 @@ class VeraCryptEngine @Inject constructor() {
          * Kept here rather than in the USB layer because the two constants are the volume
          * format's, not the transport's.
          */
+        /**
+         * Where the backup header sits: the last [VC_BACKUP_AREA] of the volume.
+         *
+         * Reading it back after creation is the only check on the far end of a volume.
+         * It catches a drive that accepts writes it does not keep, and an addressing
+         * mistake at the top of the address space - READ(10) carries a 32-bit LBA, so the
+         * far end is exactly where an overflow would show. It does NOT catch a drive whose
+         * writes fold back on themselves: the read folds to the same place as the write
+         * and returns what was just put there. See #132 for why that one needs the drive
+         * filled to be found at all.
+         */
+        fun usbBackupHeaderOffset(volumeBytes: Long): Long = volumeBytes - VC_BACKUP_AREA
+
         fun usbDataSizeFor(deviceSize: Long): Long {
             val usable = deviceSize - VC_DATA_OFFSET - VC_BACKUP_AREA
             return if (usable <= 0) 0L else (usable / 512L) * 512L
