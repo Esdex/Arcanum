@@ -349,12 +349,18 @@ fun StepVolumeSize(
     val secureSecs = (state.sizeMb / 80.0).toLong().coerceAtLeast(1)
 
     StepContent(title = stringResource(R.string.create_step4_title)) {
-        // A whole-device volume has no size to choose - the drive decides it. The step is
-        // kept rather than skipped so the number is seen before anything is destroyed,
-        // and so the step numbering does not depend on the location picked earlier.
+        // A USB volume has no size to choose - whatever it was given to fill decides it.
+        // The step is kept rather than skipped so the number is seen before anything is
+        // destroyed, and so the numbering does not depend on the location picked earlier.
         if (state.location == StorageLocation.USB_DRIVE) {
+            // Which of the two it is matters here: "the whole drive becomes the vault" is
+            // alarming and true for one case, and simply wrong for the other.
+            val partition = state.usbPartitions.firstOrNull { it.startByte == state.usbTargetStart }
+                ?.takeIf { state.usbTargetStart > 0L }
             Text(
-                text  = state.usbDeviceLabel,
+                text  = partition?.let {
+                    stringResource(R.string.create_size_usb_target, state.usbDeviceLabel, it.slot + 1)
+                } ?: state.usbDeviceLabel,
                 style = MaterialTheme.typography.titleMedium
             )
             Spacer(Modifier.height(4.dp))
@@ -367,7 +373,9 @@ fun StepVolumeSize(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text  = stringResource(R.string.create_size_usb_fixed),
+                text  = partition?.let {
+                    stringResource(R.string.create_size_usb_partition, it.slot + 1)
+                } ?: stringResource(R.string.create_size_usb_fixed),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
