@@ -342,6 +342,51 @@ class UsbVolumeManager @Inject constructor(
         runCatching { UsbBlockDevice.open(manager, device, readOnly) }.getOrNull()
     }
 
+    /**
+     * Repartitions the attached drive into an ordinary FAT32 partition and one to hold a
+     * vault, and formats the ordinary one (#131).
+     *
+     * EVERYTHING on the drive is destroyed. The caller must have said so plainly first;
+     * nothing here asks.
+     *
+     * Refuses while a volume is mounted, for the same reason every other write does: two
+     * owners issuing commands to one interface.
+     */
+    suspend fun partitionDrive(plainBytes: Long): Result<UsbPartitioner.Plan> =
+        withContext(Dispatchers.IO) {
+            val dev = openAnyDrive(readOnly = false)
+                ?: return@withContext Result.failure(NoDriveException())
+            try {
+                val plan = UsbPartitioner.plan(dev.sizeBytes, dev.blockSize, plainBytes)
+                    ?: return@withContext Result.failure(
+                        IllegalArgumentException("that split does not fit this drive")
+                    )
+
+                val sector = ByteArray(dev.blockSize)
+                UsbPartitioner.buildMbr(plan).copyInto(sector)
+                if (!dev.write(0, sector.size, sector)) {
+                    return@withContext Result.failure(
+                        java.io.IOException("could not write the partition table")
+                    )
+                }
+                dev.sync()
+
+                // The formatter is handed a view, so its offset 0 is the partition's own
+                // first sector and it cannot reach the table it was just given.
+                val view = UsbPartitionView(dev, plan.plain.startByte, plan.plain.sizeBytes)
+                when (val r = engine.formatFatPartition(view, plan.plain.sizeBytes)) {
+                    is CryptoResult.Failure -> return@withContext Result.failure(
+                        java.io.IOException("formatting the ordinary partition failed: ${r.error}")
+                    )
+                    else -> Unit
+                }
+                dev.sync()
+                Result.success(plan)
+            } finally {
+                dev.close()
+            }
+        }
+
     class NoDriveException : Exception("no USB mass-storage device attached")
 
     /** The outcome of an operation run against a remembered volume. */

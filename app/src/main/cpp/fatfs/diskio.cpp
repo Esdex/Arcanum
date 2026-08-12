@@ -37,11 +37,13 @@ DRESULT disk_read(BYTE pdrv, BYTE *buf, LBA_t sector, UINT count) {
     if (!ctx->backend.read(ctx->backend.self, buf, total, off))
         return RES_ERROR;
 
-    for (UINT i = 0; i < count; i++) {
-        vc_crypt_sector(ctx->cipherCtx,
-                        buf + (size_t)i * VC_SECTOR_SIZE,
-                        baseSector + (uint64_t)(sector + i),
-                        false);
+    if (!ctx->plaintext) {
+        for (UINT i = 0; i < count; i++) {
+            vc_crypt_sector(ctx->cipherCtx,
+                            buf + (size_t)i * VC_SECTOR_SIZE,
+                            baseSector + (uint64_t)(sector + i),
+                            false);
+        }
     }
     return RES_OK;
 }
@@ -72,6 +74,12 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buf, LBA_t sector, UINT count) {
     uint64_t baseSector = ctx->dataOffset / VC_SECTOR_SIZE;
     uint64_t off        = ctx->dataOffset + (uint64_t)sector * VC_SECTOR_SIZE;
     size_t   total      = (size_t)count * (size_t)VC_SECTOR_SIZE;
+
+    /* A plaintext drive has nothing to encrypt and therefore nothing to copy: the
+     * caller's buffer goes straight out. This is the ordinary partition of a
+     * partitioned USB drive (#131), never a volume. */
+    if (ctx->plaintext)
+        return ctx->backend.write(ctx->backend.self, buf, total, off) ? RES_OK : RES_ERROR;
 
     /* Batched path: encrypt the whole span into one heap buffer, one backend write.
      * Falls back to the original per-sector path on malloc failure so a large

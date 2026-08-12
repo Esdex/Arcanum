@@ -70,9 +70,11 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
             return -1;
         }
         uint8_t *p = static_cast<uint8_t *>(buf);
-        for (uint32_t i = 0; i < nsec; i++)
-            vc_crypt_sector(ctx->cipherCtx, p + (size_t)i * VC_SECTOR_SIZE,
-                            baseSector + firstSector + i, /*encrypt=*/false);
+        /* A plaintext drive has no cipher context at all - see DriveContext::plaintext. */
+        if (!ctx->plaintext)
+            for (uint32_t i = 0; i < nsec; i++)
+                vc_crypt_sector(ctx->cipherCtx, p + (size_t)i * VC_SECTOR_SIZE,
+                                baseSector + firstSector + i, /*encrypt=*/false);
         EXT4_LOGD("read block %llu (%u sectors)", (unsigned long long)block, nsec);
         return 0;
     }
@@ -107,9 +109,10 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
         return -1;
     }
     memcpy(enc, buf, block_size);
-    for (uint32_t i = 0; i < nsec; i++)
-        vc_crypt_sector(ctx->cipherCtx, enc + (size_t)i * VC_SECTOR_SIZE,
-                        baseSector + firstSector + i, /*encrypt=*/true);
+    if (!ctx->plaintext)
+        for (uint32_t i = 0; i < nsec; i++)
+            vc_crypt_sector(ctx->cipherCtx, enc + (size_t)i * VC_SECTOR_SIZE,
+                            baseSector + firstSector + i, /*encrypt=*/true);
     bool ok = ctx->backend.write(ctx->backend.self, enc, block_size, byteOff);
     free(enc);
     if (!ok) {

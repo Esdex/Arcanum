@@ -146,11 +146,12 @@ fun CreateContainerScreen(
 
     BackHandler {
         when {
-            state.currentStep in listOf(9, 15) && state.isCreating -> showCancelDialog = true
-            state.currentStep == 10 && state.volumeType == VolumeType.STANDARD -> onBack()
-            state.currentStep == 10 && state.volumeType == VolumeType.HIDDEN   -> { /* locked: outer already created */ }
-            state.currentStep in 11..14 -> viewModel.prevStep()
-            state.currentStep in listOf(15, 16) -> { /* locked after hidden creation starts */ }
+            state.currentStep in listOf(10, 16) && state.isCreating -> showCancelDialog = true
+            state.currentStep == 11 && state.volumeType == VolumeType.STANDARD -> onBack()
+            state.currentStep == 11 && state.volumeType == VolumeType.HIDDEN   -> { /* locked: outer already created */ }
+            state.currentStep in 12..15 -> viewModel.prevStep()
+            state.currentStep == 3 && state.usbSplitStep -> viewModel.cancelUsbSplit()
+            state.currentStep in listOf(16, 17) -> { /* locked after hidden creation starts */ }
             state.currentStep > 1   -> viewModel.prevStep()
             else                    -> onBack()
         }
@@ -168,10 +169,10 @@ fun CreateContainerScreen(
     }
 
     LaunchedEffect(state.currentStep) {
-        if (state.currentStep == 9 && !state.isCreating && !state.isCreated) {
+        if (state.currentStep == 10 && !state.isCreating && !state.isCreated) {
             viewModel.startCreation()
         }
-        if (state.currentStep == 15 && !state.isCreating && !state.isHiddenCreated) {
+        if (state.currentStep == 16 && !state.isCreating && !state.isHiddenCreated) {
             viewModel.startHiddenCreation()
         }
         prevStep = state.currentStep
@@ -191,8 +192,8 @@ fun CreateContainerScreen(
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // ── Top bar ────────────────────────────────────────────────
-                val showTopBar = state.currentStep < 9 ||
-                    (state.volumeType == VolumeType.HIDDEN && state.currentStep in 10..14)
+                val showTopBar = state.currentStep < 10 ||
+                    (state.volumeType == VolumeType.HIDDEN && state.currentStep in 11..15)
                 if (showTopBar) {
                     Row(
                         modifier          = Modifier
@@ -203,10 +204,11 @@ fun CreateContainerScreen(
                         IconButton(
                             onClick = {
                                 when {
-                                    state.currentStep in 10..14 &&
+                                    state.currentStep in 11..15 &&
                                     state.volumeType == VolumeType.HIDDEN &&
-                                    state.currentStep == 10 -> { /* locked */ }
-                                    state.currentStep in 11..14 -> viewModel.prevStep()
+                                    state.currentStep == 11 -> { /* locked */ }
+                                    state.currentStep in 12..15 -> viewModel.prevStep()
+                                    state.currentStep == 3 && state.usbSplitStep -> viewModel.cancelUsbSplit()
                                     state.currentStep > 1 -> viewModel.prevStep()
                                     else                  -> onBack()
                                 }
@@ -222,7 +224,10 @@ fun CreateContainerScreen(
                             modifier   = Modifier.weight(1f)
                         )
                         Text(
-                            text     = stringResource(R.string.create_step_counter, state.currentStep, state.totalSteps - 1),
+                            text     = stringResource(
+                                R.string.create_step_counter,
+                                state.displayStep, state.displayTotal - 1
+                            ),
                             style    = MaterialTheme.typography.bodySmall,
                             color    = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(end = 16.dp)
@@ -233,7 +238,7 @@ fun CreateContainerScreen(
                 // ── Progress bar ──────────────────────────────────────────────
                 if (showTopBar) {
                     LinearProgressIndicator(
-                        progress   = { (state.currentStep - 1) / (state.totalSteps - 2f) },
+                        progress   = { (state.displayStep - 1) / (state.displayTotal - 2f) },
                         modifier   = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
@@ -269,20 +274,29 @@ fun CreateContainerScreen(
                                     onClearSaf               = viewModel::clearSafUri,
                                     onDetectUsb              = viewModel::detectUsbDrive
                                 )
-                        3    -> StepEncryptionAlgorithm(state, viewModel::update)
-                        4    -> StepVolumeSize(state, viewModel::update, availableSpaceMb)
-                        5    -> StepPassword(
+                        3    -> StepUsbPartitions(
+                                    state         = state,
+                                    onSelect      = { start, size ->
+                                        viewModel.selectUsbTarget(state.usbDeviceLabel, start, size)
+                                    },
+                                    onBeginSplit  = viewModel::beginUsbSplit,
+                                    onCancelSplit = viewModel::cancelUsbSplit,
+                                    onApplySplit  = viewModel::applyUsbSplit
+                                )
+                        4    -> StepEncryptionAlgorithm(state, viewModel::update)
+                        5    -> StepVolumeSize(state, viewModel::update, availableSpaceMb)
+                        6    -> StepPassword(
                                     state             = state,
                                     onUpdate          = viewModel::update,
                                     onAddKeyfile      = { keyfilePickerLauncher.launch("*/*") },
                                     onGenerateKeyfile = { keyfileFolderLauncher.launch(null) },
                                     onRemoveKeyfile   = viewModel::removeKeyfile
                                 )
-                        6    -> StepFormatMode(state, viewModel::update)
-                        7    -> StepFilesystem(state, viewModel::update)
-                        8    -> StepEntropy(state, viewModel::addEntropyPoint)
-                        9    -> StepCreating(state)
-                        10   -> if (state.volumeType == VolumeType.HIDDEN) {
+                        7    -> StepFormatMode(state, viewModel::update)
+                        8    -> StepFilesystem(state, viewModel::update)
+                        9    -> StepEntropy(state, viewModel::addEntropyPoint)
+                        10   -> StepCreating(state)
+                        11   -> if (state.volumeType == VolumeType.HIDDEN) {
                                     StepHiddenInfo(state)
                                 } else {
                                     StepSuccess(
@@ -294,18 +308,18 @@ fun CreateContainerScreen(
                                         }
                                     )
                                 }
-                        11   -> StepHiddenAlgorithm(state, viewModel::update)
-                        12   -> StepHiddenSize(state, viewModel::update)
-                        13   -> StepHiddenPassword(
+                        12   -> StepHiddenAlgorithm(state, viewModel::update)
+                        13   -> StepHiddenSize(state, viewModel::update)
+                        14   -> StepHiddenPassword(
                                     state             = state,
                                     onUpdate          = viewModel::update,
                                     onAddKeyfile      = { hiddenKeyfilePickerLauncher.launch("*/*") },
                                     onGenerateKeyfile = { hiddenKeyfileFolderLauncher.launch(null) },
                                     onRemoveKeyfile   = viewModel::removeHiddenKeyfile
                                 )
-                        14   -> StepHiddenEntropy(state, viewModel::addHiddenEntropyPoint)
-                        15   -> StepCreatingHidden(state)
-                        16   -> StepSuccessHidden(
+                        15   -> StepHiddenEntropy(state, viewModel::addHiddenEntropyPoint)
+                        16   -> StepCreatingHidden(state)
+                        17   -> StepSuccessHidden(
                                     state,
                                     onDone      = onBack,
                                     onOpenVault = {
@@ -318,14 +332,14 @@ fun CreateContainerScreen(
                 }
 
                 // ── Next / Create button ──────────────────────────────────────
-                val showNextButton = state.currentStep < 9 ||
-                    (state.volumeType == VolumeType.HIDDEN && state.currentStep in 10..14)
+                val showNextButton = state.currentStep < 10 ||
+                    (state.volumeType == VolumeType.HIDDEN && state.currentStep in 11..15)
                 if (showNextButton) {
                     Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                         val buttonLabel = when {
-                            state.currentStep == 8 && state.volumeType == VolumeType.HIDDEN   -> stringResource(R.string.create_btn_outer)
-                            state.currentStep == 8 && state.volumeType == VolumeType.STANDARD -> stringResource(R.string.create_btn_create)
-                            state.currentStep == 14 -> stringResource(R.string.create_btn_hidden)
+                            state.currentStep == 9 && state.volumeType == VolumeType.HIDDEN   -> stringResource(R.string.create_btn_outer)
+                            state.currentStep == 9 && state.volumeType == VolumeType.STANDARD -> stringResource(R.string.create_btn_create)
+                            state.currentStep == 15 -> stringResource(R.string.create_btn_hidden)
                             else                    -> stringResource(R.string.create_btn_next)
                         }
                         Button(
@@ -379,51 +393,6 @@ fun CreateContainerScreen(
                 )
             }
 
-            // ── Which part of the drive to encrypt ────────────────────────────
-            // Only when the drive has a table. A bare drive never asks: there would be
-            // one answer, and the wizard already said the whole drive is the target.
-            if (state.usbPartitions.isNotEmpty() && state.usbDataSizeBytes == 0L) {
-                AppDialog(
-                    onDismissRequest = { viewModel.cancelUsbTargetChoice() },
-                    title            = { Text(stringResource(R.string.usb_create_pick_title)) },
-                    text             = {
-                        Column {
-                            Text(
-                                text  = stringResource(R.string.usb_create_pick_hint),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            state.usbPartitions.forEach { part ->
-                                ListItem(
-                                    colors            = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                    headlineContent   = { Text(stringResource(R.string.usb_partition_n, part.slot + 1)) },
-                                    supportingContent = { Text("${part.typeName} - ${part.sizeBytes.fmtCreateSize()}") },
-                                    modifier          = Modifier.clickable {
-                                        viewModel.selectUsbTarget(
-                                            state.usbDeviceLabel, part.startByte, part.sizeBytes,
-                                        )
-                                    }
-                                )
-                            }
-                            ListItem(
-                                colors            = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                headlineContent   = { Text(stringResource(R.string.usb_whole_drive)) },
-                                supportingContent = { Text(state.usbWholeSize.fmtCreateSize()) },
-                                modifier          = Modifier.clickable {
-                                    viewModel.selectUsbTarget(state.usbDeviceLabel, 0L, state.usbWholeSize)
-                                }
-                            )
-                        }
-                    },
-                    confirmButton    = {
-                        TextButton(onClick = { viewModel.cancelUsbTargetChoice() }) {
-                            Text(stringResource(R.string.common_cancel))
-                        }
-                    }
-                )
-            }
-
             // ── Cancel dialog ─────────────────────────────────────────────────
             if (showCancelDialog) {
                 AppDialog(
@@ -454,35 +423,27 @@ private fun isStepValid(state: CreateContainerState, availableSpaceMb: Long = Lo
     2    -> when (state.location) {
                 StorageLocation.APP_STORAGE      -> state.fileName.isNotBlank()
                 StorageLocation.INTERNAL_STORAGE -> state.fileName.isNotBlank() && state.safUri.isNotBlank()
-                // No file to name; what has to be true is that a drive was found.
-                StorageLocation.USB_DRIVE        -> state.usbDataSizeBytes > 0L
+                // Two answers, one per page: first that a drive was found at all, then
+                // that something on it was chosen to fill.
+                // A drive has to have been found; what to fill is asked on step 3.
+                StorageLocation.USB_DRIVE        -> state.usbWholeSize > 0L
             }
-    3    -> true
-    4    -> state.sizeMb > 0L && state.sizeMb <= availableSpaceMb
-    5    -> state.password.length >= 4 && state.password == state.confirmPassword &&
+    3    -> state.usbDataSizeBytes > 0L   // a partition, or the whole drive, is chosen
+    4    -> true
+    5    -> state.sizeMb > 0L && state.sizeMb <= availableSpaceMb
+    6    -> state.password.length >= 4 && state.password == state.confirmPassword &&
             !(state.pim in 1..484 && state.password.length < 20)
-    6    -> true
     7    -> true
-    8    -> state.entropyPoints >= 500
-    10   -> true   // HiddenInfo — always can proceed
-    11   -> true   // HiddenAlgorithm
-    12   -> state.hiddenSizeMb in 4L..(state.sizeMb - 4L)
-    13   -> state.hiddenPassword.length >= 4 &&
+    8    -> true
+    9    -> state.entropyPoints >= 500
+    11   -> true   // HiddenInfo — always can proceed
+    12   -> true   // HiddenAlgorithm
+    13   -> state.hiddenSizeMb in 4L..(state.sizeMb - 4L)
+    14   -> state.hiddenPassword.length >= 4 &&
             state.hiddenPassword == state.hiddenConfirmPassword &&
             state.hiddenPassword != state.password &&
             !(state.hiddenPim in 1..484 && state.hiddenPassword.length < 20 && state.hiddenKeyfileData.isEmpty())
-    14   -> state.hiddenEntropyPoints >= 500
+    15   -> state.hiddenEntropyPoints >= 500
     else -> true
 }
 
-/** Same shape as the vault list's, so a drive reads the same in both places. */
-private fun Long.fmtCreateSize(): String {
-    val gb = this / (1024.0 * 1024.0 * 1024.0)
-    val mb = this / (1024.0 * 1024.0)
-    val fmt = java.text.DecimalFormat("#.#")
-    return when {
-        gb >= 1.0 -> "${fmt.format(gb)} GB"
-        mb >= 1.0 -> "${fmt.format(mb)} MB"
-        else      -> "${fmt.format(this / 1024.0)} KB"
-    }
-}

@@ -705,6 +705,18 @@ class VeraCryptEngine @Inject constructor() {
         newKeyfileData: Array<ByteArray>?, newHashAlgorithm: Int, extraEntropy: ByteArray
     ): Int
 
+    /**
+     * Formats a bare partition as FAT32 - the ordinary partition of a partitioned USB
+     * drive (#131), not a vault and not encrypted.
+     *
+     * [transport] must be a view of the partition, so its offset 0 is the partition's
+     * first sector. Everything in it is destroyed.
+     */
+    suspend fun formatFatPartition(transport: Any, sizeBytes: Long): CryptoResult<Unit> =
+        withContext(Dispatchers.IO) { nativeFormatFatPartition(transport, sizeBytes).toResult() }
+
+    private external fun nativeFormatFatPartition(transport: Any, sizeBytes: Long): Int
+
     private external fun nativeBackupVolumeHeaderUsb(
         transport: Any, deviceSize: Long,
         password: ByteArray, keyfileData: Array<ByteArray>?, pim: Int, outputFd: Int

@@ -1040,6 +1040,17 @@
     <string name="usb_partition_n">Partition %1$d</string>
     <string name="usb_whole_drive">Whole drive</string>
     <string name="usb_create_pick_title">What should be encrypted?</string>
+    <string name="create_step_usb_title">The drive and its partitions</string>
+    <string name="create_step_usb_drive">%1$s, %2$s</string>
+    <string name="create_step_usb_whole_desc">Use all %1$s. The drive stops looking like a flash drive and Android offers to format it on every connection.</string>
+    <string name="usb_split_option">Split the drive</string>
+    <string name="usb_split_option_hint">One ordinary partition, one for the vault. Erases everything.</string>
+    <string name="usb_split_title">How much stays ordinary?</string>
+    <string name="usb_split_body">The rest of the drive becomes the vault. Everything on the drive is erased. The ordinary partition is formatted as FAT32 and behaves like a normal flash drive; the vault beside it is invisible to Android.</string>
+    <string name="usb_split_plain">Ordinary storage: %1$s</string>
+    <string name="usb_split_vault">Vault: %1$s</string>
+    <string name="usb_split_go">Split and format</string>
+    <string name="usb_splitting">Writing the partition table and formatting…</string>
     <string name="usb_create_pick_hint">Everything inside what you choose is erased. A partition leaves the rest of the drive alone.</string>
     <string name="usb_gpt_note">This drive uses a GPT layout, which Arcanum does not read yet. Only the whole drive can be added.</string>
     <string name="usb_wrong_device">Wrong USB device: this drive does not hold that vault.</string>

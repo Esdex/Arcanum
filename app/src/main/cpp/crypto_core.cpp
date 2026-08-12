@@ -316,7 +316,9 @@ int alloc_drive(const BlockBackend &be, uint64_t dataOff, uint64_t sectors,
                 const uint8_t *masterKey, int algId, int hashId,
                 bool isHidden, uint64_t hiddenBoundary,
                 uint32_t iterCount, bool readOnly) {
-    if (algId < 0 || algId >= NUM_ALGORITHMS) return -1;
+    /* A null key means a bare, unencrypted block device - see DriveContext::plaintext. */
+    const bool plaintext = (masterKey == nullptr);
+    if (!plaintext && (algId < 0 || algId >= NUM_ALGORITHMS)) return -1;
     for (int i = 0; i < MAX_DRIVES; i++) {
         if (!g_drives[i].active) {
             g_drives[i].backend          = be;
@@ -333,6 +335,7 @@ int alloc_drive(const BlockBackend &be, uint64_t dataOff, uint64_t sectors,
             g_drives[i].pkcs5Iterations  = iterCount;
             g_drives[i].isHidden         = isHidden;
             g_drives[i].readOnly         = readOnly;
+            g_drives[i].plaintext        = plaintext;
             g_drives[i].hiddenBoundary   = hiddenBoundary;
             /* generation was preserved (not zeroed) by the previous free_drive();
              * bump it now so a stale handle from that earlier occupant of this
@@ -341,6 +344,12 @@ int alloc_drive(const BlockBackend &be, uint64_t dataOff, uint64_t sectors,
              * never denotes a "valid" generation. */
             g_drives[i].generation++;
             if (g_drives[i].generation == 0) g_drives[i].generation = 1;
+
+            if (plaintext) {
+                LOGI("[drive] slot %d is a PLAINTEXT device - no cipher, nothing encrypted", i);
+                g_drives[i].cipherCtx = nullptr;
+                return i;
+            }
 
             auto *ctx = static_cast<GenCipherCtx*>(malloc(sizeof(GenCipherCtx)));
             if (!ctx) { g_drives[i].active = false; return -1; }
