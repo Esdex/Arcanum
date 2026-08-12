@@ -1,10 +1,20 @@
 package zip.arcanum.arcanum.containers.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -64,6 +74,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -81,6 +92,8 @@ import zip.arcanum.R
 import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.components.AppDialog
+import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.InAppNotificationBanner
 import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.LocalHazeState
 import zip.arcanum.core.components.SettingsSwitch
@@ -150,6 +163,7 @@ fun VaultConfigScreen(
     var showUnmountDialog    by remember { mutableStateOf(false) }
     var renameText           by remember { mutableStateOf("") }
     var detailsContainer     by remember { mutableStateOf<Container?>(null) }
+    var notification         by remember { mutableStateOf<InAppNotification?>(null) }
     val scope                = rememberCoroutineScope()
 
     LaunchedEffect(renameResult) {
@@ -166,6 +180,9 @@ fun VaultConfigScreen(
                         else Modifier
 
     CompositionLocalProvider(LocalHazeState provides hazeState) {
+        // The banner shares a Box with the Scaffold rather than living inside its content,
+        // so it lands over the top bar instead of under it.
+        Box(Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -261,7 +278,15 @@ fun VaultConfigScreen(
                         .padding(innerPadding)
                 ) {
                     // ── Hero ──────────────────────────────────────────────────────
-                    VaultConfigHero(container = container, isDynamic = isDynamic, isMounted = isMounted)
+                    VaultConfigHero(
+                        container = container,
+                        isDynamic = isDynamic,
+                        isMounted = isMounted,
+                        onOpenDetails = {
+                            scope.launch { detailsContainer = viewModel.getContainerDomain(containerId) }
+                        },
+                        onBlocked = { notification = InAppNotification.DetailsNeedMount }
+                    )
 
                     // ── Operations ───────────────────────────────────────────────
                     VaultOperationItem(
@@ -356,22 +381,19 @@ fun VaultConfigScreen(
                         onClick   = { requireDrive { onRestoreHeader(containerId) } }
                     )
 
-                    // General + Encryption details — only meaningful while mounted
-                    // (algorithm, key size, PIM etc. are read from the volume header).
-                    VaultOperationItem(
-                        icon      = Icons.Outlined.Info,
-                        rawColor  = Color(0xFF5C6BC0),
-                        title     = stringResource(R.string.vault_details_title),
-                        subtitle  = stringResource(if (isMounted) R.string.vault_details_desc else R.string.vault_details_mount_first),
-                        isDynamic = isDynamic,
-                        enabled   = isMounted,
-                        onClick   = { scope.launch { detailsContainer = viewModel.getContainerDomain(containerId) } }
-                    )
-
                     Spacer(Modifier.navigationBarsPadding())
                     Spacer(Modifier.height(8.dp))
                 }
             }
+        }
+
+        // ── Notification banner ───────────────────────────────────────────────
+        InAppNotificationBanner(
+            notification = notification,
+            onDismiss    = { notification = null },
+            onAction     = { notification = null },
+            modifier     = Modifier.align(Alignment.TopCenter).statusBarsPadding().zIndex(20f)
+        )
         }
 
         // ── Rename dialog ─────────────────────────────────────────────────────────
@@ -641,7 +663,9 @@ fun VaultConfigScreen(
 private fun VaultConfigHero(
     container: ContainerEntity?,
     isDynamic: Boolean,
-    isMounted: Boolean = false
+    isMounted: Boolean = false,
+    onOpenDetails: () -> Unit = {},
+    onBlocked: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val isInAppStorage = remember(container?.path, container?.safUri) {
@@ -667,6 +691,31 @@ private fun VaultConfigHero(
         animationSpec = tween(300),
         label         = "hero_tint"
     )
+
+    val hop     = remember { Animatable(0f) }
+    val shake   = remember { Animatable(0f) }
+    var shakeTrigger by remember { mutableIntStateOf(0) }
+    val haptics = LocalHapticFeedback.current
+
+    // Only while mounted: a hop on a vault that cannot show details would be inviting a
+    // press that ends in a refusal.
+    LaunchedEffect(isMounted) {
+        if (!isMounted) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(4000)
+            hop.animateTo(-26f, tween(200, easing = LinearOutSlowInEasing))
+            hop.animateTo(0f, spring(dampingRatio = 0.3f, stiffness = 700f))
+        }
+    }
+
+    LaunchedEffect(shakeTrigger) {
+        if (shakeTrigger == 0) return@LaunchedEffect
+        repeat(3) {
+            shake.animateTo(12f, tween(50))
+            shake.animateTo(-12f, tween(50))
+        }
+        shake.animateTo(0f, tween(50))
+    }
 
     val displayPath = remember(container?.path, container?.safUri, container?.name) {
         when {
@@ -700,11 +749,25 @@ private fun VaultConfigHero(
             .padding(vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // The icon is the way into the details, the way the lock is the way in on the
+        // mount screen. It only invites a press while the vault is open, because that is
+        // the only time it has anything to show - the algorithm, key size and PIM all
+        // come from a header that is not readable until then.
         Box(
             modifier         = Modifier
+                .offset { IntOffset(shake.value.roundToInt(), hop.value.roundToInt()) }
                 .size(96.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape)
-                .background(iconBg),
+                .background(iconBg)
+                .clickable {
+                    if (isMounted) {
+                        onOpenDetails()
+                    } else {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onBlocked()
+                        shakeTrigger++
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
             Icon(
