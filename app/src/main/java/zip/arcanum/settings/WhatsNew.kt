@@ -6,8 +6,17 @@ import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Stars
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -79,3 +88,38 @@ fun loadWhatsNew(context: Context): WhatsNewData = runCatching {
         whatsNewJson.decodeFromString<WhatsNewData>(reader.readText())
     }
 }.getOrElse { WhatsNewData() }
+
+/**
+ * Bare URLs the release notes mention, made tappable.
+ *
+ * Kept deliberately narrow: only an explicit scheme, a www host, or this project's own
+ * docs domain. A general "looks like a domain" pattern would light up "e.g." and version
+ * numbers, and a release note is prose - the cost of a false positive is a link that
+ * goes nowhere.
+ */
+private val LINK_PATTERN = Regex("""https?://\S+|www\.\S+|arcanum\.zip/\S+""")
+
+/** Trailing punctuation belongs to the sentence, not to the address. */
+private const val TRAILING = ".,;:!?)"
+
+@Composable
+fun linkified(text: String): AnnotatedString {
+    val styles = TextLinkStyles(
+        style = SpanStyle(
+            color = MaterialTheme.colorScheme.primary,
+            textDecoration = TextDecoration.Underline
+        )
+    )
+    return buildAnnotatedString {
+        var cursor = 0
+        for (m in LINK_PATTERN.findAll(text)) {
+            val shown = m.value.trimEnd { it in TRAILING }
+            if (shown.isEmpty()) continue
+            append(text.substring(cursor, m.range.first))
+            val href = if (shown.startsWith("http")) shown else "https://$shown"
+            withLink(LinkAnnotation.Url(href, styles)) { append(shown) }
+            cursor = m.range.first + shown.length
+        }
+        append(text.substring(cursor))
+    }
+}
