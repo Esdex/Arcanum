@@ -128,16 +128,16 @@ class UsbVolumeManager @Inject constructor(
     )
 
     /**
-     * The three states the UI has to tell apart when reaching for a remembered vault.
-     * Collapsing the last two would leave a user pressing "try again" at a drive that is
-     * plugged in and will never match.
-     */
-    /**
      * Where a volume sits on a drive: the whole device, or one partition of it (#131).
      * [sizeBytes] bounds it, so a volume can never read or write past its partition.
      */
     data class VolumeSpan(val startByte: Long, val sizeBytes: Long)
 
+    /**
+     * The three states the UI has to tell apart when reaching for a remembered vault.
+     * Collapsing the last two would leave a user pressing "try again" at a drive that is
+     * plugged in and will never match.
+     */
     sealed interface OpenResult {
         data class Ok(val device: UsbBlockDevice, val span: VolumeSpan) : OpenResult
         /** Nothing is plugged in, or nothing that is a mass-storage device. */
@@ -431,6 +431,13 @@ class UsbVolumeManager @Inject constructor(
             return CryptoResult.Failure(zip.arcanum.crypto.CryptoError.TOO_MANY_MOUNTED)
         }
 
+        // Debug builds only: the census answers what a mount actually asks of the drive,
+        // and per-offset detail is the part that grows, so it lives and dies with a mount.
+        if (zip.arcanum.BuildConfig.DEBUG) {
+            device.resetIoStats()
+            device.setIoStatsDetail(true)
+        }
+
         val result = engine.mountContainerUsb(
             // Always a view, even for a whole device, so there is one path to test rather
             // than a partition case that only runs on some drives. At offset 0 with the
@@ -484,6 +491,12 @@ class UsbVolumeManager @Inject constructor(
         if (volume == null) return@withContext 0
 
         val rc = runCatching { engine.closeContainer(volume.handle) }.getOrDefault(-1)
+        // Read before the transport goes: the census covers the whole mounted session,
+        // including the flush that closing the container just did.
+        if (zip.arcanum.BuildConfig.DEBUG) {
+            dev?.ioStats()?.let { android.util.Log.i("ArcanumUsb", "I/O census for this mount:\n$it") }
+            dev?.setIoStatsDetail(false)
+        }
         runCatching { dev?.close() }
 
         _events.tryEmit(if (detached) Event.Detached(volume.label) else Event.Unmounted)

@@ -636,8 +636,20 @@ class UsbBlockDevice private constructor(
         } catch (e: UnsatisfiedLinkError) { /* release build */ }
     }
 
+    /**
+     * Turns on per-offset tracking, which is what answers "would a cache help?" - and is
+     * also the only part that grows without bound, so it stays off outside a measurement.
+     */
+    fun setIoStatsDetail(on: Boolean) {
+        try {
+            runCatching { System.loadLibrary("arcanum-native") }
+            nativeSetIoStatsDetail(on)
+        } catch (e: UnsatisfiedLinkError) { /* release build */ }
+    }
+
     private external fun nativeIoStats(): String?
     private external fun nativeResetIoStats()
+    private external fun nativeSetIoStatsDetail(on: Boolean)
 
     private external fun nativeReadThroughBackend(
         transport: UsbBlockDevice,

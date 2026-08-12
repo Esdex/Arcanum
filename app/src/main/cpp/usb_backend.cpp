@@ -85,6 +85,15 @@ struct IoStats {
 };
 IoStats g_stats;
 
+/*
+ * The two maps above are the only unbounded thing here: one entry per distinct offset
+ * ever touched, never released. That is affordable for a diagnostic run and not for
+ * ordinary use, where a long session on a large volume would grow them without limit -
+ * so detail is off unless something asks for it. The counters, buckets and timings cost
+ * a few adds and stay on, which is what a report after an ordinary mount needs.
+ */
+bool g_statsDetail = false;
+
 uint64_t now_nanos() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -103,7 +112,7 @@ void stat_read(uint64_t off, size_t len) {
     g_stats.reads++;
     g_stats.readBytes += len;
     g_stats.readBuckets[size_bucket(len)]++;
-    if (++g_stats.readSeen[off] > 1) { g_stats.repeatReads++; g_stats.repeatBytes += len; }
+    if (g_statsDetail && ++g_stats.readSeen[off] > 1) { g_stats.repeatReads++; g_stats.repeatBytes += len; }
 }
 
 void stat_write(uint64_t off, size_t len) {
@@ -120,7 +129,7 @@ void stat_write(uint64_t off, size_t len) {
     g_stats.writes++;
     g_stats.writeBytes += len;
     g_stats.writeBuckets[size_bucket(len)]++;
-    if (++g_stats.writeSeen[off] > 1) g_stats.rewrites++;
+    if (g_statsDetail && ++g_stats.writeSeen[off] > 1) g_stats.rewrites++;
 }
 #define STAT_READ(off, len)  stat_read((off), (len))
 #define STAT_WRITE(off, len) stat_write((off), (len))
@@ -136,6 +145,29 @@ void stat_write(uint64_t off, size_t len) {
 #define STAT_WRITE_DONE()    ((void)0)
 #define STAT_DEVICE_WRITE()  ((void)0)
 #endif
+
+/*
+ * Read cache, sized from the census rather than from taste.
+ *
+ * ext4 reads in 4 KB units and repeats itself constantly: measured over one mount that
+ * imported a 50 MB file, 78078 reads of which 82.3% were offsets already read, 234 MB
+ * that a cache would have served without touching the drive. At about a millisecond of
+ * round trip per command that is where the minute went. FAT never showed this because
+ * FatFs asks for long contiguous runs.
+ *
+ * A miss fetches a whole aligned chunk, so this is also the readahead the transport's
+ * header says it wants: one 64 KB command in place of sixteen 4 KB ones.
+ */
+#define USB_CACHE_CHUNK  (64 * 1024)
+#define USB_CACHE_CHUNKS 128              /* 8 MB, one mounted volume at a time */
+#define CHUNK_EMPTY      UINT64_MAX
+
+struct CacheChunk {
+    uint64_t off = CHUNK_EMPTY;   /* chunk-aligned device offset */
+    uint32_t len = 0;             /* valid bytes; short only at the end of the device */
+    uint64_t stamp = 0;           /* last use, for eviction */
+    uint8_t *data = nullptr;
+};
 
 struct UsbBackend {
     jobject    transport;   /* global ref to a Kotlin UsbBlockDevice */
@@ -153,7 +185,62 @@ struct UsbBackend {
     size_t     wlen;        /* bytes currently held */
     uint64_t   woff;        /* device offset wbuf[0] belongs at */
     bool       failed;      /* a deferred write failed; see the note in flush_writes */
+
+    CacheChunk *cache;      /* USB_CACHE_CHUNKS entries, or null if it could not be had */
+    uint64_t    cacheClock;
+    /* A whole chunk read past the end of the volume is refused, which is correct and
+     * would otherwise be attempted, and logged, on every read of the last chunk. The
+     * first refusal records where that starts and the cache stays out of it. */
+    uint64_t    noCacheFrom;
 };
+
+/* True when [off, off+len) overlaps whatever the write buffer is still holding. */
+bool pending_overlaps(const UsbBackend *be, uint64_t off, size_t len) {
+    if (be->wlen == 0) return false;
+    return !(off + len <= be->woff || off >= be->woff + be->wlen);
+}
+
+CacheChunk *cache_find(UsbBackend *be, uint64_t aligned) {
+    if (!be->cache) return nullptr;
+    /* A linear scan of 128 entries is a few hundred nanoseconds against a millisecond
+     * of USB round trip, so the simplest structure that cannot be got wrong wins. */
+    for (int i = 0; i < USB_CACHE_CHUNKS; i++)
+        if (be->cache[i].off == aligned) return &be->cache[i];
+    return nullptr;
+}
+
+/* An empty slot if there is one, otherwise the least recently used. */
+CacheChunk *cache_victim(UsbBackend *be) {
+    CacheChunk *lru = &be->cache[0];
+    for (int i = 0; i < USB_CACHE_CHUNKS; i++) {
+        CacheChunk *c = &be->cache[i];
+        if (c->off == CHUNK_EMPTY) return c;
+        if (c->stamp < lru->stamp) lru = c;
+    }
+    return lru;
+}
+
+/*
+ * Keeps resident chunks current with a write that has been accepted but may still be
+ * sitting in the write buffer.
+ *
+ * Without this a read could hit a chunk cached before the write and hand back bytes the
+ * filesystem has already replaced. Chunks that are not resident need nothing: a later
+ * read of that range misses, and the miss path flushes before going to the device.
+ */
+void cache_absorb_write(UsbBackend *be, uint64_t off, const uint8_t *src, size_t len) {
+    if (!be->cache || len == 0) return;
+    uint64_t end = off + len;
+    for (int i = 0; i < USB_CACHE_CHUNKS; i++) {
+        CacheChunk *c = &be->cache[i];
+        if (c->off == CHUNK_EMPTY || c->len == 0) continue;
+        uint64_t cend = c->off + c->len;
+        if (end <= c->off || off >= cend) continue;
+        uint64_t s = (off > c->off) ? off : c->off;
+        uint64_t e = (end < cend) ? end : cend;
+        memcpy(c->data + (s - c->off), src + (s - off), (size_t)(e - s));
+    }
+}
 
 /* Returns an env for this thread, setting *attached when it had to attach one. */
 JNIEnv *acquire_env(bool *attached) {
@@ -227,6 +314,50 @@ bool flush_writes_owned_env(UsbBackend *be) {
     return ok;
 }
 
+/* Straight to the transport, in command-sized pieces. No cache, no flushing. */
+bool device_read(UsbBackend *be, JNIEnv *env, uint64_t off, size_t len, uint8_t *dst) {
+    size_t done = 0;
+    while (done < len) {
+        jint chunk = (jint)((len - done > USB_SCRATCH_BYTES) ? USB_SCRATCH_BYTES : (len - done));
+        jboolean r = env->CallBooleanMethod(be->transport, be->readMid,
+                                            (jlong)(off + done), chunk, be->scratch, (jint)0);
+        if (check_exception(env, "read") || r == JNI_FALSE) {
+            LOGE("[usb] read failed at offset %llu (%d bytes)",
+                 (unsigned long long)(off + done), (int)chunk);
+            return false;
+        }
+        env->GetByteArrayRegion(be->scratch, 0, chunk, reinterpret_cast<jbyte *>(dst + done));
+        if (check_exception(env, "GetByteArrayRegion")) return false;
+        done += (size_t)chunk;
+    }
+    return true;
+}
+
+/* Brings one aligned chunk in. Null means the caller should read directly instead. */
+CacheChunk *cache_fill(UsbBackend *be, JNIEnv *env, uint64_t aligned) {
+    if (!be->cache) return nullptr;
+    /* The device has to be current across the WHOLE chunk, not merely across the bytes
+     * that were asked for: caching a span with unflushed writes in it would store bytes
+     * the filesystem has already replaced, and nothing would ever correct them. */
+    if (pending_overlaps(be, aligned, USB_CACHE_CHUNK) && !flush_writes(be, env)) return nullptr;
+
+    CacheChunk *c = cache_victim(be);
+    if (!c->data) {
+        c->data = static_cast<uint8_t *>(malloc(USB_CACHE_CHUNK));
+        if (!c->data) return nullptr;
+    }
+    c->off = CHUNK_EMPTY;   /* a failed read must not leave this slot looking valid */
+    c->len = 0;
+    if (!device_read(be, env, aligned, USB_CACHE_CHUNK, c->data)) {
+        be->noCacheFrom = aligned;
+        return nullptr;
+    }
+    c->off = aligned;
+    c->len = USB_CACHE_CHUNK;
+    c->stamp = ++be->cacheClock;
+    return c;
+}
+
 bool usb_read(void *self, void *buf, size_t len, uint64_t off) {
     auto *be = static_cast<UsbBackend *>(self);
     STAT_READ(off, len);
@@ -238,32 +369,47 @@ bool usb_read(void *self, void *buf, size_t len, uint64_t off) {
         return false;
     }
 
-    /* Anything still buffered has not reached the device, so a read that overlaps it
-     * would come back stale. Flushing first is the simple correct answer, and costs
-     * nothing in practice: a write run is almost never interrupted by a read (measured
-     * 9 reads against 143 writes while writing a 2 MB file). */
-    if (!flush_writes(be, env)) {
-        release_env(attached);
-        STAT_READ_DONE();
-        return false;
-    }
-
+    /*
+     * Buffered writes have not reached the device, so anything read from it that
+     * overlaps them would come back stale. This used to flush unconditionally, which was
+     * right for FAT - 9 reads against 143 writes while writing a 2 MB file - and wrong
+     * for ext4, whose reads are interleaved with writes constantly: every one of them
+     * ended the run and left write combining with 4% of writes contiguous. The overlap
+     * test costs two comparisons and flushes only when it must.
+     */
     bool ok = true;
-    size_t done = 0;
-    while (done < len) {
-        jint chunk = (jint)((len - done > USB_SCRATCH_BYTES) ? USB_SCRATCH_BYTES : (len - done));
-        jboolean r = env->CallBooleanMethod(be->transport, be->readMid,
-                                            (jlong)(off + done), chunk, be->scratch, (jint)0);
-        if (check_exception(env, "read") || r == JNI_FALSE) {
-            LOGE("[usb] read failed at offset %llu (%d bytes)",
-                 (unsigned long long)(off + done), (int)chunk);
-            ok = false;
-            break;
+    uint8_t *out = static_cast<uint8_t *>(buf);
+
+    if (len >= USB_CACHE_CHUNK || !be->cache) {
+        /* Already at or above the size the cache would fetch, so going through it would
+         * only split one command into several. */
+        if (pending_overlaps(be, off, len)) ok = flush_writes(be, env);
+        if (ok) ok = device_read(be, env, off, len, out);
+    } else {
+        size_t done = 0;
+        while (ok && done < len) {
+            uint64_t cur = off + done;
+            uint64_t aligned = cur - (cur % USB_CACHE_CHUNK);
+            CacheChunk *c = nullptr;
+            if (aligned < be->noCacheFrom) {
+                c = cache_find(be, aligned);
+                if (!c) c = cache_fill(be, env, aligned);
+            }
+            if (!c) {
+                /* The tail of the volume, or no memory: ask for exactly what was wanted. */
+                size_t rest = len - done;
+                if (pending_overlaps(be, cur, rest)) ok = flush_writes(be, env);
+                if (ok) ok = device_read(be, env, cur, rest, out + done);
+                break;
+            }
+            size_t inChunk = (size_t)(cur - aligned);
+            size_t avail = (c->len > inChunk) ? (c->len - inChunk) : 0;
+            if (avail == 0) { ok = false; break; }
+            size_t n = (len - done < avail) ? (len - done) : avail;
+            memcpy(out + done, c->data + inChunk, n);
+            c->stamp = ++be->cacheClock;
+            done += n;
         }
-        env->GetByteArrayRegion(be->scratch, 0, chunk,
-                                reinterpret_cast<jbyte *>(static_cast<uint8_t *>(buf) + done));
-        if (check_exception(env, "GetByteArrayRegion")) { ok = false; break; }
-        done += (size_t)chunk;
     }
 
     release_env(attached);
@@ -317,6 +463,7 @@ bool usb_write(void *self, const void *buf, size_t len, uint64_t off) {
             done += (size_t)chunk;
         }
         if (!ok) be->failed = true;
+        else cache_absorb_write(be, off, src, len);
     } else {
         /* A write that does not continue the buffered run cannot be merged with it, and
          * must not overtake it either - so the run goes out first and this one starts a
@@ -330,6 +477,10 @@ bool usb_write(void *self, const void *buf, size_t len, uint64_t off) {
             if (be->wlen == 0) be->woff = off;
             memcpy(be->wbuf + be->wlen, src, len);
             be->wlen += len;
+            /* Accepted, so a read must see these bytes even though the device has not
+             * got them yet. Resident chunks are updated here; absent ones are covered by
+             * the miss path, which flushes before it reads. */
+            cache_absorb_write(be, off, src, len);
             if (be->wlen >= USB_SCRATCH_BYTES) ok = flush_writes(be, env);
         }
     }
@@ -380,6 +531,10 @@ void usb_close(void *self) {
     } else {
         LOGE("[usb] close: no JNIEnv, two global refs leak for the life of the process");
     }
+    if (be->cache) {
+        for (int i = 0; i < USB_CACHE_CHUNKS; i++) free(be->cache[i].data);
+        free(be->cache);
+    }
     free(be->wbuf);
     free(be);
 }
@@ -393,6 +548,18 @@ bool usb_backend_init(BlockBackend *out, JNIEnv *env, jobject transport, bool re
     auto *be = static_cast<UsbBackend *>(calloc(1, sizeof(UsbBackend)));
     if (!be) return false;
     be->readOnly = readOnly;
+    /* calloc gave zeros, and zero is a valid chunk offset - so the empty marker and the
+     * "cache is fine everywhere" marker both have to be written out explicitly. */
+    be->noCacheFrom = CHUNK_EMPTY;
+    be->cache = static_cast<CacheChunk *>(calloc(USB_CACHE_CHUNKS, sizeof(CacheChunk)));
+    if (be->cache) {
+        for (int i = 0; i < USB_CACHE_CHUNKS; i++) {
+            be->cache[i].off = CHUNK_EMPTY;
+            be->cache[i].data = nullptr;
+        }
+    } else {
+        LOGE("[usb] no memory for the read cache - falling back to direct reads");
+    }
 
     be->readMid  = env->GetMethodID(cls, "read",  "(JI[BI)Z");
     be->writeMid = env->GetMethodID(cls, "write", "(JI[BI)Z");
@@ -441,6 +608,17 @@ Java_zip_arcanum_usb_UsbBlockDevice_nativeResetIoStats(JNIEnv * /*env*/, jobject
     g_stats = IoStats();
 }
 
+/* Turns per-offset tracking on for a diagnostic run. Off also frees what it collected. */
+extern "C" JNIEXPORT void JNICALL
+Java_zip_arcanum_usb_UsbBlockDevice_nativeSetIoStatsDetail(JNIEnv * /*env*/, jobject /*thiz*/,
+                                                           jboolean on) {
+    g_statsDetail = (on == JNI_TRUE);
+    if (!g_statsDetail) {
+        g_stats.readSeen.clear();  g_stats.readSeen.rehash(0);
+        g_stats.writeSeen.clear(); g_stats.writeSeen.rehash(0);
+    }
+}
+
 /* Returns the census as text. Read after unmounting, so it covers the whole session. */
 extern "C" JNIEXPORT jstring JNICALL
 Java_zip_arcanum_usb_UsbBlockDevice_nativeIoStats(JNIEnv *env, jobject /*thiz*/) {
@@ -451,7 +629,7 @@ Java_zip_arcanum_usb_UsbBlockDevice_nativeIoStats(JNIEnv *env, jobject /*thiz*/)
     };
     snprintf(buf, sizeof(buf),
         "reads  %llu calls, %llu KB, sizes <=512B:%llu <=4K:%llu <=32K:%llu <=128K:%llu >128K:%llu\n"
-        "  of those %llu (%.1f%%) were offsets already read - %llu KB a cache would have served\n"
+        "  of those %llu (%.1f%%) were offsets already read - %llu KB a cache would have served%s\n"
         "writes %llu calls, %llu KB, sizes <=512B:%llu <=4K:%llu <=32K:%llu <=128K:%llu >128K:%llu\n"
         "  of those %llu (%.1f%%) rewrote an offset already written\n"
         "  %llu of them (%.1f%%) began exactly where the previous write ended;\n"
@@ -464,6 +642,7 @@ Java_zip_arcanum_usb_UsbBlockDevice_nativeIoStats(JNIEnv *env, jobject /*thiz*/)
         (unsigned long long)s.readBuckets[4],
         (unsigned long long)s.repeatReads, pct(s.repeatReads, s.reads),
         (unsigned long long)(s.repeatBytes / 1024),
+        g_statsDetail ? "" : "   [NOT COUNTED - per-offset detail is off]",
         (unsigned long long)s.writes, (unsigned long long)(s.writeBytes / 1024),
         (unsigned long long)s.writeBuckets[0], (unsigned long long)s.writeBuckets[1],
         (unsigned long long)s.writeBuckets[2], (unsigned long long)s.writeBuckets[3],
