@@ -51,6 +51,11 @@ sealed class InAppNotification {
         override val priority = 1
     }
 
+    /** Tapping the lock with nothing to unlock with - a prompt, not a failure. */
+    data object MountNeedsCredentials : InAppNotification() {
+        override val priority = 2
+    }
+
     data class VaultError(
         val vaultId: String,
         val message: String

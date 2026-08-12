@@ -102,7 +102,10 @@ fun InAppNotificationBanner(
         )
 
         Box(
-            modifier = Modifier
+            // The caller's modifier goes first and was being dropped entirely: NavGraph has
+            // been passing an alignment, a status-bar inset and a zIndex that never took
+            // effect. Honouring it is what lets a screen say where its banner belongs.
+            modifier = modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp)
                 .offset { IntOffset(animatedOffset.roundToInt(), 0) }
@@ -178,6 +181,12 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         icon            = Icons.Outlined.Eject,
         title           = ctx.getString(R.string.notif_usb_safe_to_remove),
         subtitle        = vaultName
+    )
+    InAppNotification.MountNeedsCredentials -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFDC2626),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_mount_try_again),
+        subtitle        = ctx.getString(R.string.notif_mount_try_again_body)
     )
     is InAppNotification.VaultError -> NotificationDisplayConfig(
         backgroundColor = Color(0xFFDC2626),

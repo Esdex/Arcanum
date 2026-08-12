@@ -7,6 +7,14 @@ import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.InAppNotificationBanner
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -14,6 +22,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,7 +49,6 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -50,7 +58,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import zip.arcanum.core.components.AppSheet
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -366,6 +373,77 @@ private fun MountScreenContent(
     val pim       = pimValue.toIntOrNull() ?: 0
     val isError   = mountState is VaultViewModel.MountState.Error
     val isLoading = mountState is VaultViewModel.MountState.Loading
+
+    // One action, two callers no more: the top bar's icon is gone and the button at the
+    // bottom of the form does this. Hoisted rather than duplicated - it is the whole
+    // biometric-enrolment dance, and two copies would drift.
+    // The lock is the only way to mount now, so it has to advertise itself: a small hop
+    // every few seconds while the screen sits idle, and a shake when it is tapped with
+    // nothing to unlock with.
+    var notification by remember { mutableStateOf<InAppNotification?>(null) }
+
+    // Shown once, to new installs and to anyone who updates into the moved control. The
+    // flag defaults to true so a slow read of the preference cannot flash the dialog at
+    // someone who has already dismissed it.
+    val mountHintShown by viewModel.mountHintShown.collectAsState()
+    var showMountHint  by remember { mutableStateOf(false) }
+    LaunchedEffect(mountHintShown) { if (!mountHintShown) showMountHint = true }
+    val lockHop   = remember { Animatable(0f) }
+    val lockShake = remember { Animatable(0f) }
+    var shakeTrigger by remember { mutableIntStateOf(0) }
+    val haptics    = LocalHapticFeedback.current
+
+    LaunchedEffect(isLoading) {
+        if (isLoading) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(4000)
+            lockHop.animateTo(-26f, tween(200, easing = LinearOutSlowInEasing))
+            lockHop.animateTo(0f, spring(dampingRatio = 0.3f, stiffness = 700f))
+        }
+    }
+
+    LaunchedEffect(shakeTrigger) {
+        if (shakeTrigger == 0) return@LaunchedEffect
+        repeat(3) {
+            lockShake.animateTo(12f, tween(50))
+            lockShake.animateTo(-12f, tween(50))
+        }
+        lockShake.animateTo(0f, tween(50))
+    }
+
+    val doMount: () -> Unit = {
+        focusManager.clearFocus()
+        keyboardController?.hide()
+        val protectedPassword = if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null
+        val protectedPim = if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0
+        val protectedKeyfileData = if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList()
+        if (biometricEnabled) {
+            val cryptoObj = viewModel.getBiometricCryptoObjectForEncrypt()
+            if (cryptoObj != null) {
+                isDecryptModeState.value  = false
+                pendingEncryptState.value = EncryptPending(
+                    password                  = password,
+                    pim                       = pim,
+                    hash                      = selectedHash,
+                    protectHidden             = protectedPassword,
+                    protectHiddenPim          = protectedPim,
+                    protectHiddenKeyfileData  = protectedKeyfileData
+                )
+                biometricPrompt.authenticate(
+                    BiometricPrompt.PromptInfo.Builder()
+                        .setTitle(bioSaveTitle)
+                        .setSubtitle(bioSaveSubtitle)
+                        .setNegativeButtonText(bioSkip)
+                        .build(),
+                    cryptoObj
+                )
+            } else {
+                latestOnUnlock.value(password, pim, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
+            }
+        } else {
+            latestOnUnlock.value(password, pim, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
+        }
+    }
     val canUnlock = bioMode == BioUiMode.Form && (password.isNotEmpty() || keyfiles.isNotEmpty()) && !isLoading
 
     BackHandler(enabled = !isMounting) {
@@ -414,55 +492,6 @@ private fun MountScreenContent(
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                         }
                     },
-                    actions = {
-                        if (isLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(4.dp))
-                        } else {
-                            IconButton(
-                                enabled = canUnlock,
-                                onClick = {
-                                    focusManager.clearFocus()
-                                    keyboardController?.hide()
-                                    val protectedPassword = if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null
-                                    val protectedPim = if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0
-                                    val protectedKeyfileData = if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList()
-                                    if (biometricEnabled) {
-                                        val cryptoObj = viewModel.getBiometricCryptoObjectForEncrypt()
-                                        if (cryptoObj != null) {
-                                            isDecryptModeState.value  = false
-                                            pendingEncryptState.value = EncryptPending(
-                                                password                  = password,
-                                                pim                       = pim,
-                                                hash                      = selectedHash,
-                                                protectHidden             = protectedPassword,
-                                                protectHiddenPim          = protectedPim,
-                                                protectHiddenKeyfileData  = protectedKeyfileData
-                                            )
-                                            biometricPrompt.authenticate(
-                                                BiometricPrompt.PromptInfo.Builder()
-                                                    .setTitle(bioSaveTitle)
-                                                    .setSubtitle(bioSaveSubtitle)
-                                                    .setNegativeButtonText(bioSkip)
-                                                    .build(),
-                                                cryptoObj
-                                            )
-                                        } else {
-                                            latestOnUnlock.value(password, pim, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
-                                        }
-                                    } else {
-                                        latestOnUnlock.value(password, pim, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    Icons.Outlined.LockOpen,
-                                    contentDescription = null,
-                                    tint = if (canUnlock) MaterialTheme.colorScheme.primary
-                                           else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                )
-                            }
-                        }
-                    }
                 )
             }
         ) { innerPadding ->
@@ -478,11 +507,26 @@ private fun MountScreenContent(
             ) {
                 // ── Hero ─────────────────────────────────────────────────────
                 Spacer(Modifier.height(32.dp))
+                val unlockLabel = stringResource(R.string.mount_cd_unlock)
                 Box(
                     modifier         = Modifier
+                        .offset { IntOffset(lockShake.value.roundToInt(), lockHop.value.roundToInt()) }
                         .size(96.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .clickable(enabled = !isLoading) {
+                            if (canUnlock) {
+                                doMount()
+                            } else {
+                                // Refusing quietly would leave the tap looking broken. The
+                                // shake, the buzz and the banner all say the same thing
+                                // three ways, because one of them is the one that lands.
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                notification = InAppNotification.MountNeedsCredentials
+                                shakeTrigger++
+                            }
+                        }
+                        .semantics { contentDescription = unlockLabel },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -708,37 +752,6 @@ private fun MountScreenContent(
                                 Text(stringResource(R.string.vault_mount_add_keyfile), style = MaterialTheme.typography.labelMedium)
                             }
 
-                            if (biometricAvailable) {
-                                HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                                Row(
-                                    modifier          = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.Fingerprint,
-                                        contentDescription = null,
-                                        tint     = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        stringResource(R.string.vault_mount_biometric_toggle),
-                                        style    = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Switch(
-                                        checked         = biometricEnabled,
-                                        onCheckedChange = { newValue ->
-                                            if (!newValue && localHasBiometricSaved) {
-                                                showRemoveBioDialog = true
-                                            } else {
-                                                biometricEnabled = newValue
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -765,6 +778,35 @@ private fun MountScreenContent(
                                 exit    = shrinkVertically()
                             ) {
                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    if (biometricAvailable) {
+                                        Row(
+                                            modifier          = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                Icons.Outlined.Fingerprint,
+                                                contentDescription = null,
+                                                tint     = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                stringResource(R.string.vault_mount_biometric_toggle),
+                                                style    = MaterialTheme.typography.bodyMedium,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Switch(
+                                                checked         = biometricEnabled,
+                                                onCheckedChange = { newValue ->
+                                                    if (!newValue && localHasBiometricSaved) {
+                                                        showRemoveBioDialog = true
+                                                    } else {
+                                                        biometricEnabled = newValue
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -898,11 +940,35 @@ private fun MountScreenContent(
                                     }
                                 }
                             }
+
                         }
                     }
                 }
             }
         }
+
+        // ── First-visit hint ──────────────────────────────────────────────────
+        if (showMountHint) {
+            AppDialog(
+                onDismissRequest = { showMountHint = false; viewModel.markMountHintShown() },
+                title            = { Text(stringResource(R.string.mount_hint_title)) },
+                text             = { Text(stringResource(R.string.mount_hint_body)) },
+                confirmButton    = {
+                    TextButton(onClick = {
+                        showMountHint = false
+                        viewModel.markMountHintShown()
+                    }) { Text(stringResource(R.string.mount_hint_ok)) }
+                }
+            )
+        }
+
+        // ── Notification banner ───────────────────────────────────────────────
+        InAppNotificationBanner(
+            notification = notification,
+            onDismiss    = { notification = null },
+            onAction     = { notification = null },
+            modifier     = Modifier.align(Alignment.TopCenter).statusBarsPadding().zIndex(20f)
+        )
 
         // ── Mounting overlay ──────────────────────────────────────────────────
         if (isMounting) {

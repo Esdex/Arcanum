@@ -51,6 +51,8 @@
     <string name="notif_vault_mounted">Vault mounted successfully</string>
     <string name="notif_vault_unmounted">Vault unmounted</string>
     <string name="notif_vault_error">Failed to open vault</string>
+    <string name="notif_mount_try_again">Try again</string>
+    <string name="notif_mount_try_again_body">Enter the vault password, or add a keyfile</string>
     <string name="notif_export_success">File exported successfully</string>
     <string name="notif_vault_added">Vault added</string>
     <string name="notif_vault_added_subtitle">Tap to unlock %1$s</string>
@@ -399,6 +401,10 @@
     <string name="vault_mount_pim_label">PIM (optional)</string>
     <string name="vault_mount_pim_placeholder">Leave empty if not set</string>
     <string name="mount_screen_title">Mount</string>
+    <string name="mount_cd_unlock">Unlock the vault</string>
+    <string name="mount_hint_title">How to unlock</string>
+    <string name="mount_hint_body">Enter the vault password, or add a keyfile, then tap the lock at the top of the screen. It is the unlock button.</string>
+    <string name="mount_hint_ok">Got it</string>
     <string name="vault_mount_add_keyfile">Add Keyfile (optional)</string>
     <string name="vault_mount_add_keyfile_hidden">Add Hidden Volume Keyfile (optional)</string>
     <string name="vault_mount_read_only">Read Only</string>
