@@ -728,6 +728,11 @@ class VaultViewModel @Inject constructor(
         if (!isLocked && System.currentTimeMillis() - lastMountTimeMillis < 3_000L) return
         viewModelScope.launch {
             repo.getAllContainersRaw().first().filter { it.isMounted }.forEach { c ->
+                // Flush first, and regardless of the settings below. The USB backend holds
+                // writes back to merge them, and Android kills backgrounded apps without
+                // warning - those bytes exist nowhere else. Whether the vault should also
+                // be closed is a choice; whether it should lose data is not.
+                repo.getContainerHandle(c.id)?.let { cryptoEngine.flushContainer(it) }
                 if (c.unmountOnBackground || (isLocked && c.unmountOnLock)) {
                     val handle = repo.getContainerHandle(c.id)
                     if (handle != null) closeByHandle(handle)

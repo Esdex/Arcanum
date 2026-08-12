@@ -277,6 +277,11 @@ class ContainerRepository @Inject constructor(
             algorithm      = "AES-256-XTS",
             usbSaltHash    = saltHash,
             usbStartByte   = startByte,
+            // On by default for a USB vault, and only for a USB vault: the drive is
+            // physically removable, so a locked phone with one still mounted is a vault
+            // left open on a thing that can be walked off with. A default, not a rule -
+            // the toggle is in the vault's settings like every other.
+            unmountOnLock  = true,
             createdAt      = System.currentTimeMillis(),
             lastAccessedAt = 0L
         ))
