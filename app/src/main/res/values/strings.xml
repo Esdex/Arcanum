@@ -51,6 +51,10 @@
     <string name="notif_vault_mounted">Vault mounted successfully</string>
     <string name="notif_vault_unmounted">Vault unmounted</string>
     <string name="notif_vault_error">Failed to open vault</string>
+    <string name="notif_paste_failed">%1$d of %2$d items could not be pasted</string>
+    <string name="notif_paste_failed_subtitle">Anything half-written was removed. The rest went through.</string>
+    <string name="notif_already_here">Nothing to move</string>
+    <string name="notif_already_here_subtitle">Those items are already in this folder</string>
     <string name="notif_details_need_mount">Error</string>
     <string name="notif_details_need_mount_body">Mount the vault first to see its details</string>
     <string name="notif_mount_try_again">Try again</string>
