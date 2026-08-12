@@ -122,13 +122,6 @@ class UsbBlockDevice private constructor(
         const val MAX_TRANSFER_BYTES = 128 * 1024
 
         /**
-         * Floor for the adaptive back-off below. One cluster's worth: small enough that
-         * any device implementing the protocol at all should manage it, and large enough
-         * that a drive stuck here is merely slow rather than unusable.
-         */
-        const val MIN_TRANSFER_BYTES = 16 * 1024
-
-        /**
          * VeraCrypt's XTS folds an absolute 512-byte sector number into every sector,
          * so a drive that reports anything else cannot host a compatible volume without
          * a different sector mapping. Refused at open rather than silently mis-encrypted.
