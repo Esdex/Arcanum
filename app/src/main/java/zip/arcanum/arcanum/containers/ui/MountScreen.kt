@@ -393,8 +393,8 @@ private fun MountScreenContent(
     var shakeTrigger by remember { mutableIntStateOf(0) }
     val haptics    = LocalHapticFeedback.current
 
-    LaunchedEffect(isLoading) {
-        if (isLoading) return@LaunchedEffect
+    LaunchedEffect(isLoading, bioMode) {
+        if (isLoading || bioMode != BioUiMode.Form) return@LaunchedEffect
         while (true) {
             kotlinx.coroutines.delay(4000)
             lockHop.animateTo(-26f, tween(200, easing = LinearOutSlowInEasing))
@@ -507,8 +507,12 @@ private fun MountScreenContent(
             ) {
                 // ── Hero ─────────────────────────────────────────────────────
                 Spacer(Modifier.height(32.dp))
+                // Only where it does something. The biometric states have their own
+                // controls - a fingerprint circle while the prompt is up, "try again" and
+                // "use password" after it is dismissed - and a lock that cannot be pressed
+                // sitting above them reads as a broken button.
                 val unlockLabel = stringResource(R.string.mount_cd_unlock)
-                Box(
+                if (bioMode == BioUiMode.Form) Box(
                     modifier         = Modifier
                         .offset { IntOffset(lockShake.value.roundToInt(), lockHop.value.roundToInt()) }
                         .size(96.dp)
@@ -536,7 +540,7 @@ private fun MountScreenContent(
                         modifier = Modifier.size(48.dp)
                     )
                 }
-                Spacer(Modifier.height(16.dp))
+                if (bioMode == BioUiMode.Form) Spacer(Modifier.height(16.dp))
                 Text(
                     text       = container.name,
                     style      = MaterialTheme.typography.titleLarge,
