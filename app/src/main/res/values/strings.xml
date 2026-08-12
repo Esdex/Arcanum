@@ -51,6 +51,8 @@
     <string name="notif_vault_mounted">Vault mounted successfully</string>
     <string name="notif_vault_unmounted">Vault unmounted</string>
     <string name="notif_vault_error">Failed to open vault</string>
+    <string name="notif_details_need_mount">Error</string>
+    <string name="notif_details_need_mount_body">Mount the vault first to see its details</string>
     <string name="notif_mount_try_again">Try again</string>
     <string name="notif_mount_try_again_body">Enter the vault password, or add a keyfile</string>
     <string name="notif_export_success">File exported successfully</string>
@@ -811,8 +813,6 @@
     <string name="vault_storage_volume_gap_caption">%1$s of the %2$s volume is usable — expanding grew the volume but not the filesystem inside it</string>
     <string name="nav_storage">Storage</string>
     <string name="vault_details_title">Vault details</string>
-    <string name="vault_details_desc">General and encryption information</string>
-    <string name="vault_details_mount_first">Mount the vault to view</string>
     <string name="vault_info_op_change_password">Change Password</string>
     <string name="vault_info_op_backup_header">Backup Header</string>
     <string name="vault_info_op_change_keyfile">Change Keyfile</string>

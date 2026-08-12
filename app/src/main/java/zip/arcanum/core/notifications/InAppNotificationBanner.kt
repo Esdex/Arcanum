@@ -182,6 +182,12 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         title           = ctx.getString(R.string.notif_usb_safe_to_remove),
         subtitle        = vaultName
     )
+    InAppNotification.DetailsNeedMount -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFDC2626),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_details_need_mount),
+        subtitle        = ctx.getString(R.string.notif_details_need_mount_body)
+    )
     InAppNotification.MountNeedsCredentials -> NotificationDisplayConfig(
         backgroundColor = Color(0xFFDC2626),
         icon            = Icons.Outlined.Warning,
