@@ -31,41 +31,73 @@ object UsbPartitioner {
     /** The smallest ordinary partition worth making: below this FAT32 is not worth having. */
     const val MIN_PLAIN_BYTES = 64L * 1024 * 1024
 
-    data class Plan(
-        val plain: UsbPartition,
-        val vault: UsbPartition,
-    )
-
-    /**
-     * Works out where the two partitions go, or null when they will not fit.
-     *
-     * [plainBytes] is what the user asked to leave as ordinary storage; it is rounded up
-     * to the alignment, so the vault gets whatever is left rather than the two overlapping.
-     */
-    fun plan(deviceBytes: Long, sectorSize: Int, plainBytes: Long): Plan? {
-        if (sectorSize <= 0) return null
-        val total = deviceBytes / sectorSize
-        val plainSectors = roundUp(plainBytes / sectorSize, ALIGN_SECTORS)
-        val vaultStart = ALIGN_SECTORS + plainSectors
-        if (plainBytes < MIN_PLAIN_BYTES) return null
-        // The vault needs room for a header, a backup header and something in between.
-        if (vaultStart + ALIGN_SECTORS >= total) return null
-
-        val vaultSectors = total - vaultStart
-        return Plan(
-            plain = UsbPartition(0, PLAIN_TYPE, ALIGN_SECTORS, plainSectors, sectorSize, active = true),
-            vault = UsbPartition(1, VAULT_TYPE, vaultStart, vaultSectors, sectorSize, active = false),
-        )
+    /** A run of sectors no partition covers, already aligned and ready to be used. */
+    data class FreeExtent(val startLba: Long, val sectorCount: Long, val sectorSize: Int) {
+        val startByte: Long get() = startLba * sectorSize
+        val sizeBytes: Long get() = sectorCount * sectorSize
     }
 
-    /** The 512 bytes of sector 0 describing [plan]. Bytes 0..445 stay zero: no boot code. */
-    fun buildMbr(plan: Plan): ByteArray {
-        val mbr = ByteArray(512)
-        writeEntry(mbr, 446, plan.plain)
-        writeEntry(mbr, 462, plan.vault)
-        mbr[510] = 0x55.toByte()
-        mbr[511] = 0xAA.toByte()
-        return mbr
+    /**
+     * The gaps between [partitions], in order, with the first 1 MiB reserved for the
+     * table and alignment.
+     *
+     * Extents shorter than [MIN_PLAIN_BYTES] are dropped: a partition that small is not
+     * worth offering, and the alignment gap in front of the first partition would
+     * otherwise show up as a usable one.
+     */
+    fun freeExtents(
+        deviceBytes: Long,
+        sectorSize: Int,
+        partitions: List<UsbPartition>,
+    ): List<FreeExtent> {
+        if (sectorSize <= 0) return emptyList()
+        val total = deviceBytes / sectorSize
+        val used = partitions.sortedBy { it.startLba }
+        val out = ArrayList<FreeExtent>()
+        var cursor = ALIGN_SECTORS
+        for (p in used) {
+            if (p.startLba > cursor) addExtent(out, cursor, p.startLba, sectorSize)
+            cursor = maxOf(cursor, p.startLba + p.sectorCount)
+        }
+        if (total > cursor) addExtent(out, cursor, total, sectorSize)
+        return out
+    }
+
+    private fun addExtent(out: MutableList<FreeExtent>, fromLba: Long, toLba: Long, sectorSize: Int) {
+        val start = roundUp(fromLba, ALIGN_SECTORS)
+        if (toLba <= start) return
+        val sectors = toLba - start
+        if (sectors * sectorSize < MIN_PLAIN_BYTES) return
+        out += FreeExtent(start, sectors, sectorSize)
+    }
+
+    /** The first unused entry in the table, or -1 when all four are taken. */
+    fun freeSlot(partitions: List<UsbPartition>): Int {
+        val taken = partitions.map { it.slot }.toSet()
+        return (0..3).firstOrNull { it !in taken } ?: -1
+    }
+
+    /**
+     * Writes one entry into an existing table, leaving the other three alone.
+     *
+     * [sector0] must already hold a table, or be all zeros for a drive that has none.
+     */
+    fun addEntry(
+        sector0: ByteArray,
+        slot: Int,
+        startLba: Long,
+        sectorCount: Long,
+        typeByte: Int,
+        sectorSize: Int,
+    ): Boolean {
+        if (slot !in 0..3 || sector0.size < 512) return false
+        writeEntry(
+            sector0, 446 + slot * 16,
+            UsbPartition(slot, typeByte, startLba, sectorCount, sectorSize, active = false)
+        )
+        sector0[510] = 0x55.toByte()
+        sector0[511] = 0xAA.toByte()
+        return true
     }
 
     private fun writeEntry(mbr: ByteArray, off: Int, p: UsbPartition) {
@@ -78,6 +110,22 @@ object UsbPartitioner {
         ByteBuffer.wrap(mbr, off + 8, 8).order(ByteOrder.LITTLE_ENDIAN)
             .putInt(p.startLba.toInt())
             .putInt(p.sectorCount.toInt())
+    }
+
+    /**
+     * Blanks one entry of an existing table, leaving the other three alone.
+     *
+     * Only the sixteen bytes of that slot change. The data the partition held is not
+     * touched - nothing here overwrites a byte outside the table - so this removes the
+     * way to find it rather than the thing itself.
+     */
+    fun clearEntry(sector0: ByteArray, slot: Int): Boolean {
+        if (slot !in 0..3 || sector0.size < 512) return false
+        val off = 446 + slot * 16
+        java.util.Arrays.fill(sector0, off, off + 16, 0)
+        sector0[510] = 0x55.toByte()
+        sector0[511] = 0xAA.toByte()
+        return true
     }
 
     private fun roundUp(value: Long, to: Long): Long = ((value + to - 1) / to) * to

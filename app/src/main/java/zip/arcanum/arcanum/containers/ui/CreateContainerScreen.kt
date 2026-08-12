@@ -150,7 +150,7 @@ fun CreateContainerScreen(
             state.currentStep == 11 && state.volumeType == VolumeType.STANDARD -> onBack()
             state.currentStep == 11 && state.volumeType == VolumeType.HIDDEN   -> { /* locked: outer already created */ }
             state.currentStep in 12..15 -> viewModel.prevStep()
-            state.currentStep == 3 && state.usbSplitStep -> viewModel.cancelUsbSplit()
+            state.currentStep == 3 && state.usbNewPartitionStep -> viewModel.cancelUsbNewPartition()
             state.currentStep in listOf(16, 17) -> { /* locked after hidden creation starts */ }
             state.currentStep > 1   -> viewModel.prevStep()
             else                    -> onBack()
@@ -208,7 +208,7 @@ fun CreateContainerScreen(
                                     state.volumeType == VolumeType.HIDDEN &&
                                     state.currentStep == 11 -> { /* locked */ }
                                     state.currentStep in 12..15 -> viewModel.prevStep()
-                                    state.currentStep == 3 && state.usbSplitStep -> viewModel.cancelUsbSplit()
+                                    state.currentStep == 3 && state.usbNewPartitionStep -> viewModel.cancelUsbNewPartition()
                                     state.currentStep > 1 -> viewModel.prevStep()
                                     else                  -> onBack()
                                 }
@@ -279,9 +279,16 @@ fun CreateContainerScreen(
                                     onSelect      = { start, size ->
                                         viewModel.selectUsbTarget(state.usbDeviceLabel, start, size)
                                     },
-                                    onBeginSplit  = viewModel::beginUsbSplit,
-                                    onCancelSplit = viewModel::cancelUsbSplit,
-                                    onApplySplit  = viewModel::applyUsbSplit
+                                    onBeginNew      = viewModel::beginUsbNewPartition,
+                                    onCancelNew     = viewModel::cancelUsbNewPartition,
+                                    onSetForVault   = viewModel::setUsbNewForVault,
+                                    onCreate        = viewModel::createUsbPartition,
+                                    onRequestWholeDrive = viewModel::requestUsbWholeDrive,
+                                    onConfirmWholeDrive = viewModel::confirmUsbWholeDrive,
+                                    onCancelWholeDrive  = viewModel::cancelUsbWholeDrive,
+                                    onRequestDelete = viewModel::requestUsbPartitionDelete,
+                                    onConfirmDelete = viewModel::confirmUsbPartitionDelete,
+                                    onCancelDelete  = viewModel::cancelUsbPartitionDelete
                                 )
                         4    -> StepEncryptionAlgorithm(state, viewModel::update)
                         5    -> StepVolumeSize(state, viewModel::update, availableSpaceMb)

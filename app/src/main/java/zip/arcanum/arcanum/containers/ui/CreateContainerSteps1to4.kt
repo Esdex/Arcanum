@@ -135,43 +135,6 @@ fun StepVolumeLocation(
 
         Spacer(Modifier.height(12.dp))
 
-        // ── Option 3: USB drive ────────────────────────────────────────
-        // Unlike the two file locations, this consumes the WHOLE drive: there is no
-        // file to name and no size to choose, and everything already on it is lost.
-        SelectionCard(
-            selected    = state.location == StorageLocation.USB_DRIVE,
-            icon        = Icons.Outlined.Usb,
-            title       = stringResource(R.string.create_location_usb),
-            description = stringResource(R.string.create_location_usb_desc),
-            onClick     = {
-                onClearSaf()
-                onUpdate { copy(location = StorageLocation.USB_DRIVE, filePath = "", fileName = "") }
-                onDetectUsb()
-            }
-        )
-        AnimatedVisibility(visible = state.location == StorageLocation.USB_DRIVE) {
-            Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                if (state.usbDataSizeBytes > 0L) {
-                    Text(
-                        text  = state.usbDeviceLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text  = stringResource(
-                            R.string.create_location_usb_found,
-                            state.usbDataSizeBytes / (1024L * 1024L * 1024L)
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-
         // ── Option 2: App Storage ──────────────────────────────────────
         SelectionCard(
             selected    = state.location == StorageLocation.APP_STORAGE,
@@ -242,6 +205,44 @@ fun StepVolumeLocation(
                             val path = if (enabled) appStoragePathWithBackup else appStoragePath
                             onUpdate { copy(includeInBackup = enabled, filePath = path) }
                         }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ── Option 3: USB drive ────────────────────────────────────────
+        // Last of the three: unlike the file locations there is nothing to name here,
+        // and what the vault fills - a partition or the whole drive - is asked on the
+        // next step rather than assumed (#131).
+        SelectionCard(
+            selected    = state.location == StorageLocation.USB_DRIVE,
+            icon        = Icons.Outlined.Usb,
+            title       = stringResource(R.string.create_location_usb),
+            description = stringResource(R.string.create_location_usb_desc),
+            onClick     = {
+                onClearSaf()
+                onUpdate { copy(location = StorageLocation.USB_DRIVE, filePath = "", fileName = "") }
+                onDetectUsb()
+            }
+        )
+        AnimatedVisibility(visible = state.location == StorageLocation.USB_DRIVE) {
+            Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                if (state.usbDataSizeBytes > 0L) {
+                    Text(
+                        text  = state.usbDeviceLabel,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text  = stringResource(
+                            R.string.create_location_usb_found,
+                            state.usbDataSizeBytes / (1024L * 1024L * 1024L)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -503,7 +504,10 @@ fun SelectionCard(
     title: String,
     description: String,
     onClick: () -> Unit,
-    locked: Boolean = false
+    /** Premium-gated: draws the lock and the Pro badge. Not the same as unavailable. */
+    locked: Boolean = false,
+    /** Simply not available right now - dimmed, with nothing implied about Pro. */
+    enabled: Boolean = true
 ) {
     val borderColor = when {
         selected -> MaterialTheme.colorScheme.primary
@@ -512,6 +516,7 @@ fun SelectionCard(
     }
     Card(
         onClick  = onClick,
+        enabled  = enabled,
         border   = BorderStroke(if (selected) 2.dp else 1.dp, borderColor),
         colors   = CardDefaults.cardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
