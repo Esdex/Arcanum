@@ -33,6 +33,12 @@ class AppPreferences @Inject constructor(
         val DYNAMIC_COLOR         = booleanPreferencesKey("dynamic_color")
         val SCREEN_CAPTURE_PROT   = booleanPreferencesKey("screen_capture_protection")
         val DISGUISE_PROMPT_SHOWN = booleanPreferencesKey("disguise_prompt_shown")
+        /**
+         * A key that did not exist before is absent for everyone who updates, so they see
+         * the hint once for the same reason a fresh install does - which is exactly who
+         * should see it, since the mount screen's unlock control moved.
+         */
+        val MOUNT_HINT_SHOWN      = booleanPreferencesKey("mount_hint_shown")
         val FIRST_LOGIN_DONE      = booleanPreferencesKey("first_login_done")
         val CALCULATOR_ENABLED        = booleanPreferencesKey("calculator_enabled")
         val BIOMETRIC_UNLOCK_ENABLED  = booleanPreferencesKey("biometric_unlock_enabled")
@@ -106,6 +112,13 @@ class AppPreferences @Inject constructor(
 
     suspend fun setDisguisePromptShown(shown: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.DISGUISE_PROMPT_SHOWN] = shown }
+    }
+
+    val mountHintShown: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.MOUNT_HINT_SHOWN] ?: false }
+
+    suspend fun setMountHintShown() {
+        context.appPrefsDataStore.edit { it[Keys.MOUNT_HINT_SHOWN] = true }
     }
 
     val firstLoginDone: Flow<Boolean> = context.appPrefsDataStore.data

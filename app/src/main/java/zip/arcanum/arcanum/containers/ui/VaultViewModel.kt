@@ -104,6 +104,14 @@ class VaultViewModel @Inject constructor(
         }
     }
 
+    /** One-shot hint on the mount screen: where the unlock control now is. */
+    val mountHintShown: StateFlow<Boolean> = prefs.mountHintShown
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    fun markMountHintShown() {
+        viewModelScope.launch { prefs.setMountHintShown() }
+    }
+
     fun markUpdateSeen() {
         viewModelScope.launch { prefs.setLastSeenVersionCode(BuildConfig.VERSION_CODE) }
     }
