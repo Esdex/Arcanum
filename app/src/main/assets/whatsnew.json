@@ -1,6 +1,13 @@
 {
   "versions": [
     {
+      "version": "0.0.0",
+      "versionCode": 10,
+      "entries": [
+        { "type": "new", "title": "Vaults on USB flash drives", "description": "A vault can now live on a USB flash drive plugged into your phone, created here or opened from one made elsewhere, and a drive prepared here opens in desktop VeraCrypt. Give the vault a partition and the rest of the drive stays ordinary storage - the create wizard has a partition editor for it. Two things are worth knowing before you rely on one: a drive whose whole surface is a vault has no partition table, so Android offers to format it on every connection and accepting that destroys the vault; and pulling a drive without ejecting can lose the last writes, so use Eject and wait for the confirmation. Full details, including what Arcanum does not do about counterfeit drives, are at arcanum.zip/docs/usb-drives (#95) (#131)" }
+      ]
+    },
+    {
       "version": "1.5.0",
       "versionCode": 9,
       "entries": [
