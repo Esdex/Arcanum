@@ -284,7 +284,6 @@
     <string name="vault_cd_exit_selection">Quitter la sélection</string>
     <string name="vault_selection_count">%1$d sélectionné(s)</string>
     <string name="vault_select_all">Tout sélectionner</string>
-    <string name="vault_cd_delete_selected">Supprimer la sélection</string>
     <string name="vault_empty_title">Aucun coffre pour l\'instant</string>
     <string name="vault_empty_subtitle">Créez ou ouvrez un conteneur VeraCrypt existant</string>
     <string name="vault_storage_app">Stockage de l\'app</string>

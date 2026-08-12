@@ -221,21 +221,28 @@ fun VaultConfigScreen(
                                         showForgetDialog = true
                                     }
                                 )
-                                DropdownMenuItem(
-                                    text        = { Text(stringResource(R.string.vault_delete_confirm), color = MaterialTheme.colorScheme.error) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector        = Icons.Outlined.DeleteForever,
-                                            contentDescription = null,
-                                            tint               = MaterialTheme.colorScheme.error
-                                        )
-                                    },
-                                    enabled     = !isMounted,
-                                    onClick     = {
-                                        showMoreMenu   = false
-                                        showDeleteDialog = true
-                                    }
-                                )
+                                // No Delete for a USB vault. There is no file to remove -
+                                // the volume lives on a drive that is not the phone's - and
+                                // deleteVaultFile matches neither a path nor a SAF document
+                                // for one, so the red "delete forever" item did exactly what
+                                // Forget does while promising to destroy the vault.
+                                if (container?.usbSaltHash?.isNotEmpty() != true) {
+                                    DropdownMenuItem(
+                                        text        = { Text(stringResource(R.string.vault_delete_confirm), color = MaterialTheme.colorScheme.error) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector        = Icons.Outlined.DeleteForever,
+                                                contentDescription = null,
+                                                tint               = MaterialTheme.colorScheme.error
+                                            )
+                                        },
+                                        enabled     = !isMounted,
+                                        onClick     = {
+                                            showMoreMenu   = false
+                                            showDeleteDialog = true
+                                        }
+                                    )
+                                }
                             }
                         }
                     }

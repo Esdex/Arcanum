@@ -298,7 +298,6 @@
     <string name="vault_cd_exit_selection">Wyjdź z trybu zaznaczania</string>
     <string name="vault_selection_count">Wybrano: %1$d</string>
     <string name="vault_select_all">Zaznacz wszystko</string>
-    <string name="vault_cd_delete_selected">Usuń zaznaczone</string>
     <string name="vault_empty_title">Brak skarbców</string>
     <string name="vault_empty_subtitle">Utwórz lub otwórz istniejący kontener VeraCrypt</string>
     <string name="vault_storage_app">Pamięć aplikacji</string>
