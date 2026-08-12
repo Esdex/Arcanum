@@ -25,6 +25,7 @@ import javax.inject.Singleton
 class ContainerRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dao: ContainerDao,
+    private val mediaDao: zip.arcanum.core.database.dao.MediaFileDao,
     private val thumbnailManager: ThumbnailManager
 ) {
     private val _mountedContainerIds = MutableStateFlow<Set<String>>(emptySet())
@@ -65,6 +66,7 @@ class ContainerRepository @Inject constructor(
 
     suspend fun deleteContainer(container: Container) {
         thumbnailManager.clearCache(container.id)
+        mediaDao.deleteAllForContainer(container.id)
         dao.deleteContainerById(container.id)
     }
 
@@ -232,6 +234,10 @@ class ContainerRepository @Inject constructor(
         ids.forEach { id ->
             mounted.remove(id)?.parcelFd?.close()
             thumbnailManager.clearCache(id)
+            // The media index is not merely cache: its rows carry the names and paths of
+            // files that were inside the vault, and nothing was removing them when the
+            // vault went - media_files has no foreign key to cascade from.
+            mediaDao.deleteAllForContainer(id)
             revokeExternalAccess(id)
             dao.deleteContainerById(id)
         }

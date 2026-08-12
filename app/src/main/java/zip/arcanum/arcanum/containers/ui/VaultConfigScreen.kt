@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.LinkOff
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
@@ -145,6 +146,7 @@ fun VaultConfigScreen(
     var showAutoUnmountSheet by remember { mutableStateOf(false) }
     var showExternalAccessSheet by remember { mutableStateOf(false) }
     var showDeleteDialog     by remember { mutableStateOf(false) }
+    var showForgetDialog     by remember { mutableStateOf(false) }
     var showUnmountDialog    by remember { mutableStateOf(false) }
     var renameText           by remember { mutableStateOf("") }
     var detailsContainer     by remember { mutableStateOf<Container?>(null) }
@@ -210,6 +212,15 @@ fun VaultConfigScreen(
                                     }
                                 )
                                 HorizontalDivider()
+                                DropdownMenuItem(
+                                    text        = { Text(stringResource(R.string.vault_forget_confirm)) },
+                                    leadingIcon = { Icon(Icons.Outlined.LinkOff, contentDescription = null) },
+                                    enabled     = !isMounted,
+                                    onClick     = {
+                                        showMoreMenu     = false
+                                        showForgetDialog = true
+                                    }
+                                )
                                 DropdownMenuItem(
                                     text        = { Text(stringResource(R.string.vault_delete_confirm), color = MaterialTheme.colorScheme.error) },
                                     leadingIcon = {
@@ -454,6 +465,29 @@ fun VaultConfigScreen(
                 },
                 dismissButton    = {
                     TextButton(onClick = { showUnmountDialog = false }) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                }
+            )
+        }
+
+        // ── Forget confirm dialog ─────────────────────────────────────────────────
+        // Same words as the one on the vault list: it is the same action, and a user who
+        // has read it once should not have to work out whether this one differs.
+        if (showForgetDialog && container != null) {
+            AppDialog(
+                onDismissRequest = { showForgetDialog = false },
+                title            = { Text(stringResource(R.string.vault_remove_title, container.name)) },
+                text             = { Text(stringResource(R.string.vault_remove_body)) },
+                confirmButton    = {
+                    TextButton(onClick = {
+                        showForgetDialog = false
+                        viewModel.removeFromList(containerId)
+                        onBack()
+                    }) { Text(stringResource(R.string.vault_forget_confirm)) }
+                },
+                dismissButton    = {
+                    TextButton(onClick = { showForgetDialog = false }) {
                         Text(stringResource(R.string.common_cancel))
                     }
                 }
