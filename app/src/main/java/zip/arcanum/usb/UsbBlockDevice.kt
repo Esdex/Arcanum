@@ -131,6 +131,26 @@ class UsbBlockDevice private constructor(
         /** VeraCrypt header salt: 64 plaintext bytes at offset 0, before the encrypted body. */
         const val SALT_BYTES = 64
 
+        /** A status phase longer than this is the drive thinking, not the link moving bytes. */
+        private const val SLOW_STATUS_MS = 1_000L
+
+        /**
+         * When a command last kept us waiting, so the UI can say the drive is slow rather
+         * than show nothing while three thirty-second timeouts go by (#133).
+         *
+         * Deliberately a plain timestamp rather than a flow: it is written from whatever
+         * thread is doing I/O, read by whoever wants it, and a missed update means one
+         * second of a stale answer.
+         */
+        @Volatile
+        var lastSlowCommandAt: Long = 0L
+
+        /** True when the drive was visibly slow within [window] ms. */
+        fun driveIsSlow(window: Long = 8_000L): Boolean {
+            val at = lastSlowCommandAt
+            return at != 0L && android.os.SystemClock.elapsedRealtime() - at < window
+        }
+
         /**
          * What [volumeFingerprint] returns for 64 bytes of nothing.
          *
@@ -528,7 +548,10 @@ class UsbBlockDevice private constructor(
         // A status that took seconds is the difference between "the drive is slow" and
         // "the drive is broken", and only a measurement can say which.
         val waited = android.os.SystemClock.elapsedRealtime() - startedAt
-        if (waited > 1000) android.util.Log.w("ArcanumUsb", "status took ${waited}ms")
+        if (waited > SLOW_STATUS_MS) {
+            android.util.Log.w("ArcanumUsb", "status took ${waited}ms")
+            lastSlowCommandAt = android.os.SystemClock.elapsedRealtime()
+        }
 
         val cb = ByteBuffer.wrap(csw).order(ByteOrder.LITTLE_ENDIAN)
         val sig = cb.int

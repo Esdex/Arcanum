@@ -73,6 +73,18 @@ fun StepCreating(state: CreateContainerState) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // A drive that takes seconds per write stalls the bar without anything being
+            // wrong. Saying so beats leaving the user to guess (#133).
+            if (state.location == StorageLocation.USB_DRIVE &&
+                rememberDriveSlow(active = state.isCreating)
+            ) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text  = stringResource(R.string.usb_drive_slow),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

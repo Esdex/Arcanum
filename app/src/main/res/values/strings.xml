@@ -1060,6 +1060,7 @@
     <string name="usb_register_failed_body">The volume was written to the drive, but its header could not be read back, so there is nothing to recognise it by later. Try adding the drive from the vault list; if that fails too, the drive is not returning what was written to it.</string>
     <string name="usb_backup_failed_title">The drive did not keep the backup header</string>
     <string name="usb_backup_failed_body">The volume was written, but reading back its last sectors returned nothing. A drive that accepts writes it does not keep will lose this vault, so it has not been added. This is what a drive reporting more space than it has looks like.</string>
+    <string name="usb_drive_slow">This drive is answering slowly. It is still working - some drives take several seconds to commit each write.</string>
     <string name="usb_new_title">New partition</string>
     <string name="usb_new_free">Unallocated space available: %1$s</string>
     <string name="usb_new_size">Size: %1$s</string>

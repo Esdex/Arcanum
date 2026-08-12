@@ -300,6 +300,15 @@ class DebugViewModel @Inject constructor(
         }
     }
 
+    fun runUsbDriveReport() {
+        if (state.value.usbProbeRunning) return
+        viewModelScope.launch {
+            _state.update { it.copy(usbProbeRunning = true, usbProbeReport = null) }
+            val report = UsbMassStorageProbe(context, veraCryptEngine).runDriveReport()
+            _state.update { it.copy(usbProbeRunning = false, usbProbeReport = report) }
+        }
+    }
+
     fun runUsbWriteLadder() {
         if (state.value.usbProbeRunning) return
         viewModelScope.launch {
