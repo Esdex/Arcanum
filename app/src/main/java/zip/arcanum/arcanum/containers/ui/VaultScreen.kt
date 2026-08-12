@@ -329,6 +329,7 @@ fun VaultScreen(
     val appStorageLabel   = stringResource(R.string.vault_storage_app)
     val localStorageLabel = stringResource(R.string.vault_storage_local)
     val usbStorageLabel   = stringResource(R.string.vault_storage_usb)
+    val usbPartLabel      = stringResource(R.string.vault_storage_usb_partition)
     val navBarPadding     = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     CompositionLocalProvider(LocalHazeState provides hazeState) {
@@ -411,7 +412,11 @@ fun VaultScreen(
                             if (sortState.groupBy == VaultViewModel.GroupBy.LOCATION) {
                                 val grouped = containers.groupBy { c ->
                                     when {
-                                        c.usbSaltHash.isNotEmpty() -> usbStorageLabel
+                                        // A non-zero offset means the vault sits in a
+                                        // partition, so the drive holds other things too.
+                                        // Known from the record itself - no drive needed.
+                                        c.usbSaltHash.isNotEmpty() ->
+                                            if (c.usbStartByte > 0L) usbPartLabel else usbStorageLabel
                                         c.safUri.isEmpty() &&
                                             (c.path.startsWith(context.filesDir.absolutePath) ||
                                              c.path.startsWith(context.noBackupFilesDir.absolutePath)) -> appStorageLabel
@@ -1189,12 +1194,17 @@ private fun VaultCard(
     val appStr   = stringResource(R.string.vault_storage_app)
     val localStr = stringResource(R.string.vault_storage_local)
     val usbStr   = stringResource(R.string.vault_storage_usb)
-    val storageLabel = remember(container.path, container.safUri, container.usbSaltHash, appStr, localStr, usbStr) {
+    val usbPartStr = stringResource(R.string.vault_storage_usb_partition)
+    val storageLabel = remember(
+        container.path, container.safUri, container.usbSaltHash, container.usbStartByte,
+        appStr, localStr, usbStr, usbPartStr
+    ) {
         val p = container.path
         when {
             // Checked first: a USB vault has neither a path nor a SAF URI, so every
             // test below it would fall through to the local-storage default.
-            container.usbSaltHash.isNotEmpty()                  -> usbStr
+            container.usbSaltHash.isNotEmpty()                  ->
+                if (container.usbStartByte > 0L) usbPartStr else usbStr
             p.startsWith(context.filesDir.absolutePath)         -> appStr
             p.startsWith(context.noBackupFilesDir.absolutePath) -> appStr
             else                                                -> localStr

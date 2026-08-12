@@ -1031,6 +1031,7 @@
     <string name="vault_config_title">Vault Config</string>
 
     <string name="vault_storage_usb">USB drive</string>
+    <string name="vault_storage_usb_partition">USB partition</string>
     <string name="vault_storage_usb_hint">A flash drive, or one partition of it</string>
     <string name="usb_not_connected_title">No USB drive connected</string>
     <string name="usb_not_connected_body">Connect the drive holding this vault, then try again. The drive leaves Android\'s file manager while Arcanum is using it and comes back when you unplug it.</string>
