@@ -32,6 +32,23 @@ internal const val DEFAULT_GENERATED_KEYFILE_NAME = "arcanum-keyfile"
 
 enum class VolumeType { STANDARD, HIDDEN }
 enum class StorageLocation { APP_STORAGE, INTERNAL_STORAGE, USB_DRIVE }
+
+/**
+ * The drive and its partitions (#131). It exists only for a USB vault; every other
+ * location steps over it, which is why the number shown to the user is [displayStep]
+ * rather than the internal one.
+ */
+const val USB_STEP = 3
+
+private val CreateContainerState.usbStepShown: Boolean
+    get() = location == StorageLocation.USB_DRIVE
+
+/** What the counter should say, with the skipped step closing up rather than leaving a gap. */
+val CreateContainerState.displayStep: Int
+    get() = if (!usbStepShown && currentStep > USB_STEP) currentStep - 1 else currentStep
+
+val CreateContainerState.displayTotal: Int
+    get() = if (usbStepShown) totalSteps else totalSteps - 1
 enum class CipherAlgorithm(val displayName: String, val description: String, val speed: AlgorithmSpeed) {
     AES("AES", "Best performance on modern hardware", AlgorithmSpeed.FAST),
     SERPENT("Serpent", "Conservative security margin", AlgorithmSpeed.MEDIUM),
@@ -85,7 +102,7 @@ enum class FilesystemType(
 
 data class CreateContainerState(
     val currentStep: Int = 1,
-    val totalSteps: Int = 10,
+    val totalSteps: Int = 11,
     val volumeType: VolumeType = VolumeType.STANDARD,
     val location: StorageLocation = StorageLocation.INTERNAL_STORAGE,
     val filePath: String = "",
@@ -106,6 +123,11 @@ data class CreateContainerState(
     val usbTargetSize: Long = 0L,
     /** The drive's full size, so "whole drive" can be offered alongside its partitions. */
     val usbWholeSize: Long = 0L,
+    /** True while the "how much to leave as ordinary storage" editor is open (#131). */
+    val usbSplitStep: Boolean = false,
+    /** True while the drive is actually being repartitioned and formatted. */
+    val usbPartitioning: Boolean = false,
+    val usbPartitionError: String = "",
     val includeInBackup: Boolean = false,
     val algorithm: CipherAlgorithm = CipherAlgorithm.AES,
     val hashAlgorithm: HashAlgorithm = HashAlgorithm.SHA512,
@@ -195,27 +217,41 @@ class CreateContainerViewModel @Inject constructor(
             val partitions = dev.readPartitionTable().filterNot { it.isExtendedContainer() }
             val whole = dev.sizeBytes
             dev.close()
-            if (partitions.isEmpty()) {
-                // Nothing to choose: the drive is the target, as it always was.
-                selectUsbTarget(label, 0L, whole)
-            } else {
-                _state.update {
-                    it.copy(
-                        usbDeviceLabel  = label,
-                        usbDetectFailed = false,
-                        usbPartitions   = partitions,
-                        usbWholeSize    = whole,
-                        usbDataSizeBytes = 0L,
-                    )
-                }
+            // The chooser is shown even for a drive with no table: "whole drive" is no
+            // longer the only answer, since the drive can be split here (#131).
+            _state.update {
+                it.copy(
+                    usbDeviceLabel   = label,
+                    usbDetectFailed  = false,
+                    usbPartitions    = partitions,
+                    usbWholeSize     = whole,
+                    usbDataSizeBytes = 0L,
+                )
             }
         }
     }
 
     fun clearUsbDetectFailed() = _state.update { it.copy(usbDetectFailed = false) }
 
-    fun nextStep() = _state.update { it.copy(currentStep = (it.currentStep + 1).coerceAtMost(it.totalSteps)) }
-    fun prevStep() = _state.update { it.copy(currentStep = (it.currentStep - 1).coerceAtLeast(1)) }
+    /**
+     * Step 3 is the drive and its partitions, and only a USB vault has one - every other
+     * location steps straight over it. The counter shown to the user is [CreateContainerState.displayStep],
+     * so a file-hosted vault never sees a gap where the skipped step was.
+     */
+    private fun CreateContainerState.skips(step: Int): Boolean =
+        step == USB_STEP && location != StorageLocation.USB_DRIVE
+
+    fun nextStep() = _state.update {
+        var n = (it.currentStep + 1).coerceAtMost(it.totalSteps)
+        if (it.skips(n)) n = (n + 1).coerceAtMost(it.totalSteps)
+        it.copy(currentStep = n)
+    }
+
+    fun prevStep() = _state.update {
+        var n = (it.currentStep - 1).coerceAtLeast(1)
+        if (it.skips(n)) n = (n - 1).coerceAtLeast(1)
+        it.copy(currentStep = n)
+    }
 
     fun setSafUri(uri: Uri) {
         safParcelFd?.close()
@@ -267,7 +303,7 @@ class CreateContainerViewModel @Inject constructor(
     fun setVolumeType(type: VolumeType) {
         _state.update { it.copy(
             volumeType = type,
-            totalSteps = if (type == VolumeType.HIDDEN) 16 else 10
+            totalSteps = if (type == VolumeType.HIDDEN) 17 else 11
         ) }
     }
 
@@ -415,7 +451,7 @@ class CreateContainerViewModel @Inject constructor(
                         isCreating       = false,
                         isHiddenCreated  = true,
                         creationProgress = 1f,
-                        currentStep      = 16
+                        currentStep      = 17
                     ) }
                 }
                 is CryptoResult.Failure -> _state.update { it.copy(
@@ -452,7 +488,7 @@ class CreateContainerViewModel @Inject constructor(
                         creationTimeRemaining = if (secsLeft > 0) formatTime(secsLeft) else "",
                         isCreating            = !p.isComplete,
                         isCreated             = p.isComplete && p.error == null,
-                        currentStep           = if (p.isComplete && p.error == null) 10 else it.currentStep,
+                        currentStep           = if (p.isComplete && p.error == null) 11 else it.currentStep,
                         error                 = p.error
                     ) }
                 }
@@ -506,6 +542,40 @@ class CreateContainerViewModel @Inject constructor(
                 usbDataSizeBytes = usable,
                 sizeMb           = usable / (1024L * 1024L),
             )
+        }
+    }
+
+    fun beginUsbSplit()  { _state.update { it.copy(usbSplitStep = true, usbPartitionError = "") } }
+    fun cancelUsbSplit() { _state.update { it.copy(usbSplitStep = false) } }
+
+    /**
+     * Repartitions the drive and points the wizard at the new vault partition.
+     *
+     * Everything on the drive dies here, which is why this is only reachable from a step
+     * that says so. On failure the drive may be left with a table and no filesystem - the
+     * user can simply run this again, which is why the error keeps the step open.
+     */
+    fun applyUsbSplit(plainBytes: Long) {
+        viewModelScope.launch {
+            _state.update { it.copy(usbPartitioning = true, usbPartitionError = "") }
+            val result = usbVolumes.partitionDrive(plainBytes)
+            val plan = result.getOrElse { e ->
+                _state.update {
+                    it.copy(
+                        usbPartitioning = false,
+                        usbPartitionError = e.message ?: "Partitioning failed",
+                    )
+                }
+                return@launch
+            }
+            _state.update {
+                it.copy(
+                    usbPartitioning = false,
+                    usbSplitStep    = false,
+                    usbPartitions   = listOf(plan.plain, plan.vault),
+                )
+            }
+            selectUsbTarget(_state.value.usbDeviceLabel, plan.vault.startByte, plan.vault.sizeBytes)
         }
     }
 

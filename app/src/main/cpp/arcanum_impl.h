@@ -71,7 +71,15 @@ typedef struct {
                                                    inside itself, so the third guard is not silently lost. */
     uint64_t             hiddenBoundary;        /* absolute file offset; outer writes must not reach or exceed this (0 = no protection) */
     bool                 hiddenBoundaryTripped; /* set to true when disk_write blocks a write due to hiddenBoundary */
-    struct GenCipherCtx *cipherCtx;             /* heap-allocated, null when !active */
+    struct GenCipherCtx *cipherCtx;             /* heap-allocated, null when !active or plaintext */
+    bool                 plaintext;             /* no cipher at all: the drive is a bare block device.
+                                                   Only ever set by passing a null master key to
+                                                   alloc_drive, which only the raw-format entry point
+                                                   does - it formats the ORDINARY partition of a
+                                                   partitioned USB drive (#131), where there is nothing
+                                                   to encrypt. A volume must never reach this state, so
+                                                   the absence of a key is the trigger rather than a
+                                                   flag someone could set alongside one. */
     uint32_t             generation;            /* bumped on every alloc_drive() of this slot; part of the
                                                     jlong handle so a stale handle from a freed+reused slot
                                                     is rejected instead of silently operating on the wrong

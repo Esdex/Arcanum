@@ -2147,6 +2147,57 @@ struct ScopedUsbBackend {
     ScopedUsbBackend& operator=(const ScopedUsbBackend&) = delete;
 };
 
+/*
+ * Formats a bare partition as FAT32.
+ *
+ * This is the ORDINARY partition of a partitioned USB drive (#131) - the one that keeps
+ * the drive looking and behaving like a normal flash drive while the vault lives in the
+ * partition beside it. Nothing here is encrypted, and nothing here is a vault: the drive
+ * is claimed with a null master key, which is the only way to get a plaintext device and
+ * is reachable from nowhere else. [transport] must already be a view of the partition,
+ * so offset 0 here is the partition's first sector, not the drive's.
+ */
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeFormatFatPartition(
+        JNIEnv *env, jobject /*thiz*/, jobject transport, jlong sizeBytes)
+{
+    if (!transport || sizeBytes < 1024 * 1024) return ERR_FILE;
+
+    ScopedUsbBackend be(env, transport, /*readOnly=*/false);
+    if (!be.ok) return ERR_FILE;
+
+    FRESULT fr = FR_DISK_ERR;
+    int pdrv;
+    {
+        std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+        /* The drive borrows the backend: this function owns it through ScopedUsbBackend
+         * and frees it on return, so free_drive must not close it as well. */
+        BlockBackend forDrive = be.be;
+        forDrive.close = nullptr;
+        pdrv = alloc_drive(forDrive, /*dataOff=*/0,
+                           (uint64_t)sizeBytes / VC_SECTOR_SIZE,
+                           /*masterKey=*/nullptr, /*algId=*/0);
+        if (pdrv < 0) return ERR_NO_SLOT;
+
+        char drvPath[8];
+        snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
+        BYTE work[4096];
+        /* FM_SFD: no partition table inside the partition. The cluster size follows the
+         * same rule as a vault's - see vc_fat_cluster_size and issue #115, where leaving
+         * it at 0 quietly produced FAT16 with a 512-entry root directory. */
+        MKFS_PARM opts = { (BYTE)(FM_FAT | FM_FAT32 | FM_SFD), 2, 0, 0,
+                           vc_fat_cluster_size((uint64_t)sizeBytes) };
+        fr = f_mkfs(drvPath, &opts, work, sizeof(work));
+        free_drive(pdrv);
+    }
+    if (fr != FR_OK) {
+        LOGE("[format] f_mkfs on the plain partition failed (%d)", (int)fr);
+        return ERR_FS;
+    }
+    if (be.be.sync) be.be.sync(be.be.self);
+    return ERR_OK;
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePasswordUsb(
         JNIEnv *env, jobject /*thiz*/,
