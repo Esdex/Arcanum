@@ -343,27 +343,62 @@ class UsbVolumeManager @Inject constructor(
     }
 
     /**
-     * Repartitions the attached drive into an ordinary FAT32 partition and one to hold a
-     * vault, and formats the ordinary one (#131).
+     * Creates a partition in the drive's free space (#131).
      *
-     * EVERYTHING on the drive is destroyed. The caller must have said so plainly first;
-     * nothing here asks.
+     * [forVault] decides the type byte, and that byte is the whole reason a partitioned
+     * drive stays quiet: 0x83 is a type Android does not handle, so it reads the entry
+     * and moves on. An ordinary partition gets 0x0c and a FAT32 filesystem, because that
+     * is what the drive is supposed to look like from outside. Putting a vault into a
+     * partition marked 0x0c would bring back the format prompt this feature exists to
+     * avoid, which is why the caller has to say which it wants.
      *
-     * Refuses while a volume is mounted, for the same reason every other write does: two
-     * owners issuing commands to one interface.
+     * On a drive with no table at all this writes one, and that overwrites sector 0 -
+     * where a whole-device volume keeps its salt. The caller must have warned first.
      */
-    suspend fun partitionDrive(plainBytes: Long): Result<UsbPartitioner.Plan> =
+    suspend fun createPartition(sizeBytes: Long, forVault: Boolean): Result<List<UsbPartition>> =
         withContext(Dispatchers.IO) {
             val dev = openAnyDrive(readOnly = false)
                 ?: return@withContext Result.failure(NoDriveException())
             try {
-                val plan = UsbPartitioner.plan(dev.sizeBytes, dev.blockSize, plainBytes)
+                val sector = ByteArray(dev.blockSize)
+                if (!dev.read(0, sector.size, sector)) {
+                    return@withContext Result.failure(
+                        java.io.IOException("could not read the partition table")
+                    )
+                }
+                val existing = parseMbr(sector, dev.blockSize, dev.blockCount)
+                    .filterNot { it.isExtendedContainer() }
+
+                // No usable table: start from an empty one rather than from whatever
+                // random bytes were there, which is also what destroys a whole-device
+                // volume's header - the step above says so before getting here.
+                if (existing.isEmpty()) java.util.Arrays.fill(sector, 0)
+
+                val slot = UsbPartitioner.freeSlot(existing)
+                if (slot < 0) {
+                    return@withContext Result.failure(
+                        IllegalStateException("this drive already has four partitions")
+                    )
+                }
+
+                val extent = UsbPartitioner
+                    .freeExtents(dev.sizeBytes, dev.blockSize, existing)
+                    .maxByOrNull { it.sizeBytes }
                     ?: return@withContext Result.failure(
-                        IllegalArgumentException("that split does not fit this drive")
+                        IllegalStateException("no unallocated space left")
                     )
 
-                val sector = ByteArray(dev.blockSize)
-                UsbPartitioner.buildMbr(plan).copyInto(sector)
+                val wanted = (sizeBytes / dev.blockSize).coerceAtMost(extent.sectorCount)
+                if (wanted <= 0) {
+                    return@withContext Result.failure(
+                        IllegalArgumentException("that size does not fit the free space")
+                    )
+                }
+
+                val type = if (forVault) UsbPartitioner.VAULT_TYPE else UsbPartitioner.PLAIN_TYPE
+                if (!UsbPartitioner.addEntry(sector, slot, extent.startLba, wanted, type, dev.blockSize)) {
+                    return@withContext Result.failure(IllegalStateException("could not build the entry"))
+                }
                 if (!dev.write(0, sector.size, sector)) {
                     return@withContext Result.failure(
                         java.io.IOException("could not write the partition table")
@@ -371,17 +406,103 @@ class UsbVolumeManager @Inject constructor(
                 }
                 dev.sync()
 
-                // The formatter is handed a view, so its offset 0 is the partition's own
-                // first sector and it cannot reach the table it was just given.
-                val view = UsbPartitionView(dev, plan.plain.startByte, plan.plain.sizeBytes)
-                when (val r = engine.formatFatPartition(view, plan.plain.sizeBytes)) {
-                    is CryptoResult.Failure -> return@withContext Result.failure(
-                        java.io.IOException("formatting the ordinary partition failed: ${r.error}")
+                if (!forVault) {
+                    // The formatter gets a view, so its offset 0 is the new partition's
+                    // first sector and it cannot reach the table just written.
+                    val bytes = wanted * dev.blockSize
+                    val view = UsbPartitionView(dev, extent.startByte, bytes)
+                    when (val r = engine.formatFatPartition(view, bytes)) {
+                        is CryptoResult.Failure -> return@withContext Result.failure(
+                            java.io.IOException("formatting the new partition failed: ${r.error}")
+                        )
+                        else -> Unit
+                    }
+                    dev.sync()
+                }
+                Result.success(dev.readPartitionTable().filterNot { it.isExtendedContainer() })
+            } finally {
+                dev.close()
+            }
+        }
+
+    /**
+     * Re-marks the partition at [startByte] as Linux data, unless it already is (#131).
+     *
+     * A partition made for files carries 0x0c, and Android will try to mount anything
+     * with that type, fail on a volume, and offer to format it on every connection. Since
+     * putting a vault there destroys the filesystem anyway, the honest thing is to change
+     * the type to match what the partition now holds. Called when a vault is about to be
+     * created in a partition that was not made for one.
+     *
+     * A no-op, reported as success, when the entry is already 0x83 or the drive has no
+     * table - there is nothing to correct in either case.
+     */
+    suspend fun markPartitionForVault(startByte: Long): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            if (startByte <= 0L) return@withContext Result.success(Unit)
+            val dev = openAnyDrive(readOnly = false)
+                ?: return@withContext Result.failure(NoDriveException())
+            try {
+                val sector = ByteArray(dev.blockSize)
+                if (!dev.read(0, sector.size, sector)) {
+                    return@withContext Result.failure(
+                        java.io.IOException("could not read the partition table")
                     )
-                    else -> Unit
+                }
+                val target = parseMbr(sector, dev.blockSize, dev.blockCount)
+                    .firstOrNull { it.startByte == startByte }
+                    ?: return@withContext Result.success(Unit)
+                if (target.typeByte == UsbPartitioner.VAULT_TYPE) return@withContext Result.success(Unit)
+
+                if (!UsbPartitioner.addEntry(
+                        sector, target.slot, target.startLba, target.sectorCount,
+                        UsbPartitioner.VAULT_TYPE, dev.blockSize
+                    )
+                ) return@withContext Result.failure(IllegalStateException("could not rewrite the entry"))
+
+                if (!dev.write(0, sector.size, sector)) {
+                    return@withContext Result.failure(
+                        java.io.IOException("could not write the partition table")
+                    )
                 }
                 dev.sync()
-                Result.success(plan)
+                Result.success(Unit)
+            } finally {
+                dev.close()
+            }
+        }
+
+    /**
+     * Removes one partition's entry from the drive's table (#131).
+     *
+     * The bytes the partition held are left exactly as they were: only the table changes.
+     * That matters for what the confirmation has to say - this hides a partition, it does
+     * not erase it, and a vault inside one is still there for anyone who looks at raw
+     * sectors. Returns what the table looks like afterwards.
+     */
+    suspend fun deletePartition(slot: Int): Result<List<UsbPartition>> =
+        withContext(Dispatchers.IO) {
+            val dev = openAnyDrive(readOnly = false)
+                ?: return@withContext Result.failure(NoDriveException())
+            try {
+                val sector = ByteArray(dev.blockSize)
+                if (!dev.read(0, sector.size, sector)) {
+                    return@withContext Result.failure(
+                        java.io.IOException("could not read the partition table")
+                    )
+                }
+                if (!UsbPartitioner.clearEntry(sector, slot)) {
+                    return@withContext Result.failure(
+                        IllegalArgumentException("no such partition")
+                    )
+                }
+                if (!dev.write(0, sector.size, sector)) {
+                    return@withContext Result.failure(
+                        java.io.IOException("could not write the partition table")
+                    )
+                }
+                dev.sync()
+                Result.success(dev.readPartitionTable().filterNot { it.isExtendedContainer() })
             } finally {
                 dev.close()
             }

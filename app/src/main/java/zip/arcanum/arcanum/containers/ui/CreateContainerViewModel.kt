@@ -123,11 +123,17 @@ data class CreateContainerState(
     val usbTargetSize: Long = 0L,
     /** The drive's full size, so "whole drive" can be offered alongside its partitions. */
     val usbWholeSize: Long = 0L,
-    /** True while the "how much to leave as ordinary storage" editor is open (#131). */
-    val usbSplitStep: Boolean = false,
+    /** True while the new-partition editor is open (#131). */
+    val usbNewPartitionStep: Boolean = false,
+    /** What the partition being created is for: a vault, or ordinary files. */
+    val usbNewForVault: Boolean = true,
     /** True while the drive is actually being repartitioned and formatted. */
     val usbPartitioning: Boolean = false,
     val usbPartitionError: String = "",
+    /** Slot waiting for the user to confirm its removal from the table, or null. */
+    val usbDeleteSlot: Int? = null,
+    /** True while asking whether the whole drive really should replace its partitions. */
+    val usbWholeConfirm: Boolean = false,
     val includeInBackup: Boolean = false,
     val algorithm: CipherAlgorithm = CipherAlgorithm.AES,
     val hashAlgorithm: HashAlgorithm = HashAlgorithm.SHA512,
@@ -462,8 +468,31 @@ class CreateContainerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * A vault going into a partition that was not made for one needs that partition's
+     * type corrected first: left at 0x0c, Android would keep trying to mount it and keep
+     * offering to format it (#131). The partition's contents are about to be replaced by
+     * the volume anyway, so this loses nothing.
+     */
     fun startCreation() {
         val s = _state.value
+        val needsRemark = s.location == StorageLocation.USB_DRIVE && s.usbTargetStart > 0L &&
+            s.usbPartitions.firstOrNull { it.startByte == s.usbTargetStart }
+                ?.typeByte != zip.arcanum.usb.UsbPartitioner.VAULT_TYPE
+        if (!needsRemark) { startCreationInner(s); return }
+
+        viewModelScope.launch {
+            usbVolumes.markPartitionForVault(s.usbTargetStart).onFailure { e ->
+                // Not fatal: the vault will work, Android will merely keep pestering.
+                _state.update {
+                    it.copy(usbPartitionError = e.message ?: "Could not re-mark the partition")
+                }
+            }
+            startCreationInner(s)
+        }
+    }
+
+    private fun startCreationInner(s: CreateContainerState) {
         _state.update { it.copy(isCreating = true, creationProgress = 0f) }
 
         // Clear any stale completed state from a previous run before subscribing.
@@ -545,37 +574,83 @@ class CreateContainerViewModel @Inject constructor(
         }
     }
 
-    fun beginUsbSplit()  { _state.update { it.copy(usbSplitStep = true, usbPartitionError = "") } }
-    fun cancelUsbSplit() { _state.update { it.copy(usbSplitStep = false) } }
+    fun requestUsbWholeDrive()  { _state.update { it.copy(usbWholeConfirm = true) } }
+    fun cancelUsbWholeDrive()   { _state.update { it.copy(usbWholeConfirm = false) } }
+    fun confirmUsbWholeDrive() {
+        val st = _state.value
+        _state.update { it.copy(usbWholeConfirm = false) }
+        selectUsbTarget(st.usbDeviceLabel, 0L, st.usbWholeSize)
+    }
+
+    fun requestUsbPartitionDelete(slot: Int) { _state.update { it.copy(usbDeleteSlot = slot) } }
+    fun cancelUsbPartitionDelete()           { _state.update { it.copy(usbDeleteSlot = null) } }
 
     /**
-     * Repartitions the drive and points the wizard at the new vault partition.
+     * Removes the entry and re-reads the table.
      *
-     * Everything on the drive dies here, which is why this is only reachable from a step
-     * that says so. On failure the drive may be left with a table and no filesystem - the
-     * user can simply run this again, which is why the error keeps the step open.
+     * The chosen target is dropped whatever happens: it may have been the partition that
+     * just went, and carrying a stale offset into the rest of the wizard would create a
+     * volume somewhere nobody asked for.
      */
-    fun applyUsbSplit(plainBytes: Long) {
+    fun confirmUsbPartitionDelete() {
+        val slot = _state.value.usbDeleteSlot ?: return
         viewModelScope.launch {
-            _state.update { it.copy(usbPartitioning = true, usbPartitionError = "") }
-            val result = usbVolumes.partitionDrive(plainBytes)
-            val plan = result.getOrElse { e ->
+            _state.update {
+                it.copy(usbPartitioning = true, usbDeleteSlot = null, usbPartitionError = "")
+            }
+            val list = usbVolumes.deletePartition(slot).getOrElse { e ->
                 _state.update {
-                    it.copy(
-                        usbPartitioning = false,
-                        usbPartitionError = e.message ?: "Partitioning failed",
-                    )
+                    it.copy(usbPartitioning = false,
+                            usbPartitionError = e.message ?: "Could not delete the partition")
                 }
                 return@launch
             }
             _state.update {
                 it.copy(
-                    usbPartitioning = false,
-                    usbSplitStep    = false,
-                    usbPartitions   = listOf(plan.plain, plan.vault),
+                    usbPartitioning  = false,
+                    usbPartitions    = list,
+                    usbTargetStart   = 0L,
+                    usbTargetSize    = 0L,
+                    usbDataSizeBytes = 0L,
                 )
             }
-            selectUsbTarget(_state.value.usbDeviceLabel, plan.vault.startByte, plan.vault.sizeBytes)
+        }
+    }
+
+    fun beginUsbNewPartition()  {
+        _state.update { it.copy(usbNewPartitionStep = true, usbPartitionError = "") }
+    }
+    fun cancelUsbNewPartition() { _state.update { it.copy(usbNewPartitionStep = false) } }
+    fun setUsbNewForVault(forVault: Boolean) { _state.update { it.copy(usbNewForVault = forVault) } }
+
+    /**
+     * Creates a partition in the drive's unallocated space.
+     *
+     * A partition made for the vault becomes the wizard's target straight away, since
+     * that is plainly what it was for. An ordinary one does not: it is storage, and the
+     * user still has to say where the vault goes.
+     */
+    fun createUsbPartition(sizeBytes: Long) {
+        val forVault = _state.value.usbNewForVault
+        // Identify the new partition by the slot that was not there before: it lands in
+        // the largest free extent, which is not necessarily the one furthest along.
+        val before = _state.value.usbPartitions.map { it.slot }.toSet()
+        viewModelScope.launch {
+            _state.update { it.copy(usbPartitioning = true, usbPartitionError = "") }
+            val list = usbVolumes.createPartition(sizeBytes, forVault).getOrElse { e ->
+                _state.update {
+                    it.copy(usbPartitioning = false,
+                            usbPartitionError = e.message ?: "Could not create the partition")
+                }
+                return@launch
+            }
+            _state.update {
+                it.copy(usbPartitioning = false, usbNewPartitionStep = false, usbPartitions = list)
+            }
+            val made = list.firstOrNull { it.slot !in before }
+            if (forVault && made != null) {
+                selectUsbTarget(_state.value.usbDeviceLabel, made.startByte, made.sizeBytes)
+            }
         }
     }
 
