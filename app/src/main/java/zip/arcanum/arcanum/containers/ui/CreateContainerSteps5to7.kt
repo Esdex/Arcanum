@@ -377,7 +377,12 @@ fun StepFilesystem(
     state: CreateContainerState,
     onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit
 ) {
-    val recommended = if (state.sizeMb > 2L * 1024L * 1024L) FilesystemType.EXFAT else FilesystemType.FAT32
+    // 4 GB is FAT's per-file limit, and the only number that makes this choice mean
+    // anything: a vault smaller than that cannot hold a file FAT would refuse, so exFAT
+    // buys nothing and costs compatibility. This read 2L * 1024L * 1024L MB - two
+    // terabytes - so exFAT was never recommended to anyone.
+    val recommended =
+        if (state.sizeMb > 4L * 1024L) FilesystemType.EXFAT else FilesystemType.FAT32
     var infoFs by remember { mutableStateOf<FilesystemType?>(null) }
 
     LaunchedEffect(Unit) {
