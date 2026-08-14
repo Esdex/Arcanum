@@ -385,8 +385,11 @@ fun StepFilesystem(
         if (state.sizeMb > 4L * 1024L) FilesystemType.EXFAT else FilesystemType.FAT32
     var infoFs by remember { mutableStateOf<FilesystemType?>(null) }
 
-    LaunchedEffect(Unit) {
-        onUpdate { copy(filesystem = recommended) }
+    // Only until the user picks for themselves: this step is destroyed on the way to any
+    // other one and built again on the way back, so an unconditional effect here replaced
+    // a hand-picked filesystem with the recommendation on every return.
+    LaunchedEffect(recommended) {
+        if (!state.filesystemChosen) onUpdate { copy(filesystem = recommended) }
     }
 
     StepContent(
@@ -400,7 +403,7 @@ fun StepFilesystem(
                     selected    = state.filesystem == fs,
                     recommended = fs == recommended,
                     comingSoon  = false,
-                    onClick     = { onUpdate { copy(filesystem = fs) } },
+                    onClick     = { onUpdate { copy(filesystem = fs, filesystemChosen = true) } },
                     onInfo      = { infoFs = fs }
                 )
             }

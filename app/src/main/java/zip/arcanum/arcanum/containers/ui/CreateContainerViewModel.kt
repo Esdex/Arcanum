@@ -146,6 +146,10 @@ data class CreateContainerState(
     val keyfileDisplayNames: List<String> = emptyList(),
     val quickFormat: Boolean = true,
     val filesystem: FilesystemType = FilesystemType.FAT32,
+    /** True once the user picks a filesystem by hand. The step re-applies its
+     *  recommendation every time it is entered, and the wizard destroys a step when you
+     *  leave it, so without this a trip back to the size step undid the choice. */
+    val filesystemChosen: Boolean = false,
     val pim: Int = 0,
     val entropyPoints: Int = 0,
     /** Failure of the inline keyfile generator, kept apart from [error]: that
