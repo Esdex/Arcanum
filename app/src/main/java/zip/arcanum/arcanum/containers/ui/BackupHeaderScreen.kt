@@ -60,6 +60,9 @@ import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.core.components.OperationSuccess
 import zip.arcanum.core.components.OperationLoading
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun BackupHeaderScreen(
@@ -72,12 +75,18 @@ fun BackupHeaderScreen(
 
     LaunchedEffect(containerId) { viewModel.init(containerId) }
 
+    // Keyfile reads are off the main thread: a network-backed provider can block both
+    // the name query and the read for as long as it likes.
+    val keyfileScope = rememberCoroutineScope()
+
     val keyfileLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
-            val (bytes, name) = FileUtils.readKeyfileBytes(context, it) ?: return@rememberLauncherForActivityResult
-            viewModel.addKeyfile(bytes, name)
+            keyfileScope.launch {
+                val (bytes, name) = withContext(Dispatchers.IO) { FileUtils.readKeyfileBytes(context, it) } ?: return@launch
+                viewModel.addKeyfile(bytes, name)
+            }
         }
     }
 

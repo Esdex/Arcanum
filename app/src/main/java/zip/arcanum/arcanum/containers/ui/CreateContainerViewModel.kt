@@ -25,6 +25,8 @@ import zip.arcanum.crypto.VeraCryptEngine
 import zip.arcanum.usb.isExtendedContainer
 import javax.inject.Inject
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Base name for keyfiles made by the inline "generate new keyfile" action.
  *  A clash is resolved by the storage provider, never by overwriting. */
@@ -354,7 +356,7 @@ class CreateContainerViewModel @Inject constructor(
                 onSuccess = { generated ->
                     // Mirror the picked-keyfile path: creation consumes cached
                     // files, so the generated one is copied in the same way.
-                    val cached = FileUtils.readKeyfileBytes(context, generated.uri)
+                    val cached = withContext(Dispatchers.IO) { FileUtils.readKeyfileBytes(context, generated.uri) }
                     if (cached == null) {
                         _state.update { it.copy(keyfileError = "Keyfile created but could not be read back") }
                         return@fold
