@@ -64,6 +64,20 @@ sealed class InAppNotification {
         override val priority = 1
     }
 
+    /**
+     * Copy and Cut with a single vault mounted leave no trace on screen - the only sign
+     * is a Paste entry appearing inside the overflow menu, which has to be opened to be
+     * found. The reporter of #129 read that as a dead button. These say what happened
+     * and where the other half of the operation lives.
+     */
+    data class FilesCopied(val count: Int) : InAppNotification() {
+        override val priority = 1
+    }
+
+    data class FilesCut(val count: Int) : InAppNotification() {
+        override val priority = 1
+    }
+
     /** Tapping the hero icon for details on a vault that is not open. */
     data object DetailsNeedMount : InAppNotification() {
         override val priority = 2

@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.ContentCut
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.FolderZip
@@ -253,6 +255,18 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         icon            = Icons.Outlined.Warning,
         title           = ctx.getString(R.string.notif_paste_failed, this.failed, this.total),
         subtitle        = ctx.getString(R.string.notif_paste_failed_subtitle)
+    )
+    is InAppNotification.FilesCopied -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFF6B7280),
+        icon            = Icons.Outlined.ContentCopy,
+        title           = ctx.resources.getQuantityString(R.plurals.notif_items_clipboard_copied, this.count, this.count),
+        subtitle        = ctx.getString(R.string.notif_clipboard_subtitle)
+    )
+    is InAppNotification.FilesCut -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFF6B7280),
+        icon            = Icons.Outlined.ContentCut,
+        title           = ctx.resources.getQuantityString(R.plurals.notif_items_clipboard_cut, this.count, this.count),
+        subtitle        = ctx.getString(R.string.notif_clipboard_subtitle)
     )
     InAppNotification.FilesAlreadyHere -> NotificationDisplayConfig(
         backgroundColor = Color(0xFF6B7280),
