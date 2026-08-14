@@ -419,11 +419,13 @@ class FileManagerViewModel @Inject constructor(
                 )
             }
         }
+        if (items.isEmpty()) return
         clipboard.copy(items)
         _state.update { it.copy(
-            clipboardCount  = clipboard.count,
-            isSelectionMode = false,
-            selectedItems   = emptySet()
+            clipboardCount       = clipboard.count,
+            isSelectionMode      = false,
+            selectedItems        = emptySet(),
+            pendingNotification  = InAppNotification.FilesCopied(items.size)
         ) }
     }
 
@@ -443,11 +445,13 @@ class FileManagerViewModel @Inject constructor(
                 )
             }
         }
+        if (items.isEmpty()) return
         clipboard.cut(items)
         _state.update { it.copy(
-            clipboardCount  = clipboard.count,
-            isSelectionMode = false,
-            selectedItems   = emptySet()
+            clipboardCount       = clipboard.count,
+            isSelectionMode      = false,
+            selectedItems        = emptySet(),
+            pendingNotification  = InAppNotification.FilesCut(items.size)
         ) }
     }
 
