@@ -16,9 +16,12 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.displayCutoutPadding
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -82,17 +85,62 @@ fun CalculatorScreen(
         label         = "line1Color"
     )
 
-    Column(
-        modifier            = Modifier
+    BoxWithConstraints(
+        modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             // Keep the bottom button row clear of the navigation bar. Under 3-button nav the
             // bar is opaque and tall and would otherwise overlap it (#98); the background still
             // draws edge-to-edge behind the bar since it precedes this padding.
             .navigationBarsPadding()
-            .padding(start = 2.dp, end = 2.dp, top = 24.dp, bottom = 1.dp),
-        verticalArrangement = Arrangement.Bottom
+            .padding(start = 2.dp, end = 2.dp, top = 24.dp, bottom = 1.dp)
     ) {
+        // A wide, short viewport cannot take the display above the keypad: the buttons are
+        // circles, so a row of four is as tall as a quarter of the screen is wide, and five
+        // of those rows ran off the bottom (#124). Side by side, each half gets a sensible
+        // shape - and this is the same layout a phone shows when turned and a tablet shows
+        // most of the time.
+        if (maxWidth > maxHeight) {
+            Row(
+                modifier            = Modifier.fillMaxSize().displayCutoutPadding(),
+                verticalAlignment   = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier         = Modifier.weight(1f),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    CalculatorDisplay(displayUiState, line1Color)
+                }
+                CalculatorKeypad(
+                    modifier    = Modifier.weight(1f).fillMaxHeight(),
+                    isVerifying = isVerifying,
+                    onInput     = viewModel::onInput,
+                    onLongPressEquals = viewModel::onLongPressEquals
+                )
+            }
+        } else {
+            Column(
+                modifier            = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Bottom
+            ) {
+                CalculatorDisplay(displayUiState, line1Color)
+                CalculatorKeypad(
+                    modifier    = Modifier.fillMaxWidth(),
+                    isVerifying = isVerifying,
+                    onInput     = viewModel::onInput,
+                    onLongPressEquals = viewModel::onLongPressEquals
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalculatorDisplay(
+    displayUiState: DisplayUiState,
+    line1Color: androidx.compose.ui.graphics.Color
+) {
+    Column {
         // ── Display area ──────────────────────────────────────────────────────
         AnimatedContent(
             targetState   = displayUiState.isResult,
@@ -165,28 +213,48 @@ fun CalculatorScreen(
                 }
             }
         }
+    }
+}
 
-        // ── Button grid ───────────────────────────────────────────────────────
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+/**
+ * The keypad, sized by whichever axis runs out first. A button is a circle, so its height
+ * follows its width: taking the width alone, as this did, made each row a quarter of the
+ * viewport wide and therefore that tall, which is why the lower rows left the screen in
+ * landscape (#124). In portrait the width still decides, so the result is unchanged there.
+ */
+@Composable
+private fun CalculatorKeypad(
+    modifier: Modifier = Modifier,
+    isVerifying: Boolean,
+    onInput: (String) -> Unit,
+    onLongPressEquals: () -> Unit
+) {
+    val spacing = 4.dp
+    BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
+        val columns    = buttons.first().size
+        val byWidth    = (maxWidth  - spacing * (columns - 1))      / columns
+        val byHeight   = (maxHeight - spacing * (buttons.size - 1)) / buttons.size
+        // An unbounded height reports as infinite, and minOf then picks the width, which is
+        // the old behaviour - so a parent that does not constrain us cannot make this worse.
+        val buttonSize = minOf(byWidth, byHeight)
+
+        Column(verticalArrangement = Arrangement.spacedBy(spacing)) {
             buttons.forEach { row ->
-                Row(
-                    modifier              = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing)) {
                     row.forEach { label ->
                         if (label == "=") {
                             EqualsButton(
                                 isVerifying = isVerifying,
-                                onClick     = { viewModel.onInput("=") },
-                                onLongPress = { viewModel.onLongPressEquals() },
-                                modifier    = Modifier.weight(1f)
+                                onClick     = { onInput("=") },
+                                onLongPress = onLongPressEquals,
+                                modifier    = Modifier.size(buttonSize)
                             )
                         } else {
                             CalculatorButton(
                                 label    = label,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.size(buttonSize),
                                 enabled  = !isVerifying,
-                                onClick  = { viewModel.onInput(label) }
+                                onClick  = { onInput(label) }
                             )
                         }
                     }
