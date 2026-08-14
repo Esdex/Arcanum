@@ -971,7 +971,13 @@ private fun BreadcrumbRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier)
+            .then(
+                if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar)
+                // Off AMOLED there is no glass to sit on, and with nothing of its own the
+                // path had the file list scrolling visibly through it. Takes the top bar's
+                // own colour rather than choosing one, so the header stays one surface.
+                else Modifier.background(TopAppBarDefaults.topAppBarColors().containerColor)
+            )
     ) {
         Row(
             modifier = Modifier
