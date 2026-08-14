@@ -24,7 +24,7 @@ Five checks per file, each answering something the others cannot:
 
   fsck        output must be byte-identical to the same image's pristine run.
               Not "clean" - 17 of the 40 cases already carry an mke2fs remark
-              about an extent tree that could be narrower.
+              about an extent tree that could be narrower or shorter.
   debugfs     the extent map after the append, read by e2fsprogs rather than by
               our own reader, which would otherwise be marking its own homework
   content     the bytes before the append must be untouched, and the appended
@@ -95,8 +95,14 @@ def fsck(img):
 # So it is tolerated in both directions: appearing when a file grows deep enough,
 # and disappearing when a file grows past the shape that triggered it. Every other
 # line remains fatal in both directions.
+# e2fsck words this two ways and means the same kind of suggestion by both:
+# "narrower" for a node that could hold its entries in fewer slots, "shorter" for a
+# tree that could hold them in fewer levels. 1.47.4 raises the second on the
+# corpus's tailhole file, which the pattern used to miss - so a suggestion that
+# merely stopped applying after an append was read as a regression.
 BENIGN_REMARK = re.compile(
-    r"^\s*$|^Inode \d+ extent tree \(at level \d+\) could be narrower\.\s+Optimize\? no$")
+    r"^\s*$|^Inode \d+ extent tree \(at level \d+\) could be "
+    r"(?:narrower|shorter)\.\s+Optimize\? no$")
 
 
 def line_delta(before, after):
