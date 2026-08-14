@@ -356,11 +356,17 @@ fun MediaViewerScreen(
     // Bump to restart the 3s auto-hide countdown while the bars are already visible - e.g. when
     // the user taps or drags the seek bar, which shouldn't let the controls vanish under them.
     var barsPokeToken by remember { mutableStateOf(0) }
-    LaunchedEffect(showBars, barsPokeToken) {
+    // Declared up here because the auto-hide below has to know about it: the video menu is
+    // anchored inside the top bar, so hiding the bar takes the open menu down with it (#138).
+    var videoMenuExpanded by remember { mutableStateOf(false) }
+    LaunchedEffect(showBars, barsPokeToken, videoMenuExpanded) {
         val window = (context as? Activity)?.window ?: return@LaunchedEffect
         val wic = WindowCompat.getInsetsController(window, view)
         if (showBars) {
             wic.show(WindowInsetsCompat.Type.systemBars())
+            // The menu lives in the bar - leave both up until it is dismissed, then the effect
+            // re-runs on videoMenuExpanded and the countdown starts over from the full 3s.
+            if (videoMenuExpanded) return@LaunchedEffect
             delay(3_000); showBars = false
         } else {
             wic.hide(WindowInsetsCompat.Type.systemBars())
@@ -446,7 +452,6 @@ fun MediaViewerScreen(
     var showExifSheet      by remember { mutableStateOf(false) }
     var showRenameDialog   by remember { mutableStateOf(false) }
     var showGpsDialog      by remember { mutableStateOf(false) }
-    var videoMenuExpanded  by remember { mutableStateOf(false) }
 
     LaunchedEffect(showInfoSheet, uiState.currentFile?.id) {
         if (showInfoSheet && uiState.exifData == null && !uiState.isExifLoading) {
