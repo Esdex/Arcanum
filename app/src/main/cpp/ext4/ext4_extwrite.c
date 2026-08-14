@@ -316,19 +316,27 @@ static int split_root(ext4_wfs *fs, uint8_t *root, uint8_t *scratch,
 /*
  * Leaves the path's leaf with room for one more extent.
  *
- * Appending only ever adds at the end, so a full leaf does not need its contents
- * divided down the middle: a fresh empty leaf beside it is enough, and the full
- * one is left exactly as it was. What that costs is an index entry in the parent,
- * and when the parent is full the same question moves up a level.
+ * Appending only ever adds at the end, so nothing here is ever divided down the
+ * middle: a fresh empty node beside the full one is enough, and that holds at every
+ * level, not just at the leaf. What a new leaf costs is an index entry in its
+ * parent; when that parent is full the same question moves up, so the answer is to
+ * find the lowest ancestor that still has a free slot and hang a chain of new empty
+ * nodes off it - one per level, down to the new leaf (#119).
  *
- * A full root is answered by pushing it down into a block of its own, which
- * returns it to one entry and three free slots. A full index block below the root
- * is refused - it needs a sibling of its own and an entry in *its* parent, which
- * is the same problem one level up and is not written yet.
+ * Growing this way rather than by moving entries into a sibling is deliberate. A
+ * parent's key is the first logical block of the subtree under it, so a split that
+ * moves half a node across and updates one key but not the other leaves a tree that
+ * reads correctly from the left and wrongly from the right, silently. Empty new
+ * nodes keyed at next_logical cannot get that wrong: no existing key changes, and
+ * every key still equals the first block its subtree covers.
  *
- * The new leaf reuses the buffer the full one occupied. That is safe only because
- * the full leaf is never modified here and was written back when it was last
- * touched, so the copy on disk is already current.
+ * When every level including the root is full, the root is pushed down into a block
+ * of its own, which returns it to one entry and three free slots and gains the tree
+ * a level. Only a tree already at EXT4_MAX_DEPTH is refused, and refused cleanly.
+ *
+ * The new nodes reuse the buffers the full ones occupied. That is safe only because
+ * a full node is never modified here and was written back when it was last touched,
+ * so the copy on disk is already current.
  */
 static int grow_right_edge(ext4_wfs *fs, uint8_t *root, uint8_t *storage,
                            rightmost_path *p, uint32_t next_logical,
@@ -347,9 +355,17 @@ static int grow_right_edge(ext4_wfs *fs, uint8_t *root, uint8_t *storage,
             continue;
         }
 
-        int parent = p->depth - 1;
-        if (node_entries(p->buf[parent]) >= node_capacity(p->buf[parent])) {
-            if (parent != 0) return EXTW_ERR_FULL;
+        /* The lowest ancestor with a slot free; everything below it is full. */
+        int anchor = p->depth - 1;
+        while (anchor >= 0 &&
+               node_entries(p->buf[anchor]) >= node_capacity(p->buf[anchor]))
+            anchor--;
+
+        if (anchor < 0) {
+            /* Full to the root. One more level is the way on, unless the tree is
+             * already as deep as the format allows - then this is the real ceiling
+             * and the caller gets the clean refusal it always did. */
+            if (rd16(root + EH_DEPTH_OFF) >= EXT4_MAX_DEPTH) return EXTW_ERR_FULL;
             rc = split_root(fs, root, storage, inode_seed, 0, meta_blocks);
             if (rc != EXTW_OK) return rc;
             rc = find_rightmost_path(fs, root, storage, p);
@@ -357,28 +373,53 @@ static int grow_right_edge(ext4_wfs *fs, uint8_t *root, uint8_t *storage,
             continue;
         }
 
-        int64_t blk = ext4_alloc_block_goal(fs, p->block[p->depth] + 1);
-        if (blk < 0) return EXTW_ERR_NOSPACE;
+        uint64_t made[EXT4_MAX_DEPTH + 1];
+        int      made_n = 0;
+        uint64_t goal   = p->block[p->depth] + 1;
 
-        memset(leaf, 0, fs->block_size);
-        wr16(leaf, EXT4_EXTENT_MAGIC);
-        wr16(leaf + EH_ENTRIES_OFF, 0);
-        wr16(leaf + EH_MAX_OFF, (uint16_t)entries_per_extent_block(fs));
-        wr16(leaf + EH_DEPTH_OFF, 0);
-        p->block[p->depth] = (uint64_t)blk;
+        rc = EXTW_OK;
+        for (int level = anchor + 1; level <= p->depth; level++) {
+            int64_t blk = ext4_alloc_block_goal(fs, goal);
+            if (blk < 0) { rc = EXTW_ERR_NOSPACE; break; }
+            goal              = (uint64_t)blk + 1;
+            made[made_n++]    = (uint64_t)blk;
 
-        /* The index key is the first logical block its subtree covers, which for
-         * a leaf created to hold the next append is that block. */
-        uint8_t *pn   = p->buf[parent];
-        uint16_t pe   = node_entries(pn);
-        uint8_t *slot = pn + 12 + (size_t)pe * 12;
-        wr32(slot + EI_BLOCK_OFF, next_logical);
-        ei_set_child(slot, (uint64_t)blk);
-        wr16(pn + EH_ENTRIES_OFF, (uint16_t)(pe + 1));
+            uint8_t *node = p->buf[level];
+            memset(node, 0, fs->block_size);
+            wr16(node, EXT4_EXTENT_MAGIC);
+            wr16(node + EH_ENTRIES_OFF, 0);
+            wr16(node + EH_MAX_OFF, (uint16_t)entries_per_extent_block(fs));
+            /* A node's depth is fixed by where it hangs, and the new chain hangs
+             * along the old right edge: one less at each step, 0 at the leaf. */
+            wr16(node + EH_DEPTH_OFF, (uint16_t)(p->depth - level));
+            p->block[level] = (uint64_t)blk;
 
-        rc = flush_level(fs, p, parent, inode_seed);
-        if (rc != EXTW_OK) return rc;
-        (*meta_blocks)++;
+            /* Link into the level above - the anchor has a free slot by
+             * construction, and everything under it was emptied a moment ago. The
+             * key is the first logical block this subtree will cover, which for a
+             * node made to hold the next append is that block. */
+            uint8_t *pn   = p->buf[level - 1];
+            uint16_t pe   = node_entries(pn);
+            uint8_t *slot = pn + 12 + (size_t)pe * 12;
+            wr32(slot + EI_BLOCK_OFF, next_logical);
+            ei_set_child(slot, (uint64_t)blk);
+            wr16(pn + EH_ENTRIES_OFF, (uint16_t)(pe + 1));
+        }
+
+        if (rc != EXTW_OK) {
+            /* Nothing has reached the disk yet: hand the blocks back rather than
+             * strand them, and leave the tree on disk exactly as it was. */
+            for (int i = 0; i < made_n; i++) ext4_free_block(fs, made[i]);
+            return rc;
+        }
+
+        /* Everything from the anchor down, except the new leaf: that one is left
+         * for the caller to write once it holds its extent, as it always was. */
+        for (int level = anchor; level < p->depth; level++) {
+            rc = flush_level(fs, p, level, inode_seed);
+            if (rc != EXTW_OK) return rc;
+        }
+        *meta_blocks += (uint64_t)made_n;
         return EXTW_OK;
     }
     return EXTW_ERR_FULL;
