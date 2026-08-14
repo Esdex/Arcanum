@@ -115,6 +115,10 @@ import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.crypto.Cipher
 import kotlin.math.roundToInt
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private class KeyfileEntry(val content: ByteArray, val displayName: String, val uriString: String) {
     fun zero() = content.fill(0)
@@ -165,17 +169,24 @@ private fun MountScreenContent(
     var keyfiles by remember { mutableStateOf<List<KeyfileEntry>>(emptyList()) }
     var hiddenKeyfiles by remember { mutableStateOf<List<KeyfileEntry>>(emptyList()) }
 
+    // Keyfile reads are off the main thread: a keyfile can sit behind a network-backed
+    // provider, where both the name query and the read block for as long as it takes.
+    val keyfileScope = rememberCoroutineScope()
     val keyfilePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-        val (bytes, name) = FileUtils.readKeyfileBytes(context, uri) ?: return@rememberLauncherForActivityResult
-        keyfiles = keyfiles + KeyfileEntry(bytes, name, uri.toString())
+        keyfileScope.launch {
+            val (bytes, name) = withContext(Dispatchers.IO) { FileUtils.readKeyfileBytes(context, uri) } ?: return@launch
+            keyfiles = keyfiles + KeyfileEntry(bytes, name, uri.toString())
+        }
     }
     val hiddenKeyfilePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-        val (bytes, name) = FileUtils.readKeyfileBytes(context, uri) ?: return@rememberLauncherForActivityResult
-        hiddenKeyfiles = hiddenKeyfiles + KeyfileEntry(bytes, name, uri.toString())
+        keyfileScope.launch {
+            val (bytes, name) = withContext(Dispatchers.IO) { FileUtils.readKeyfileBytes(context, uri) } ?: return@launch
+            hiddenKeyfiles = hiddenKeyfiles + KeyfileEntry(bytes, name, uri.toString())
+        }
     }
 
     var isMounting                      by remember { mutableStateOf(false) }

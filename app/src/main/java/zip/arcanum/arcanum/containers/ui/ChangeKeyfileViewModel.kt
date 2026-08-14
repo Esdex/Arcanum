@@ -17,6 +17,8 @@ import zip.arcanum.arcanum.containers.service.ChangeKeyfileService
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.KeyfileGenerator
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private const val ENTROPY_REQUIRED = 500
 
@@ -121,7 +123,7 @@ class ChangeKeyfileViewModel @Inject constructor(
         viewModelScope.launch {
             keyfileGenerator.generateOne(treeUri, DEFAULT_GENERATED_KEYFILE_NAME).fold(
                 onSuccess = { generated ->
-                    val cached = FileUtils.readKeyfileBytes(context, generated.uri)
+                    val cached = withContext(Dispatchers.IO) { FileUtils.readKeyfileBytes(context, generated.uri) }
                     if (cached == null) {
                         _state.update { it.copy(keyfileError = "Keyfile created but could not be read back") }
                         return@fold

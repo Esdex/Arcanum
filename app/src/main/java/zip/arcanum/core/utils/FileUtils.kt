@@ -10,9 +10,25 @@ import java.io.RandomAccessFile
 object FileUtils {
 
     /**
+     * VeraCrypt mixes only the first megabyte of a keyfile into the password
+     * (VC_KEYFILE_MAX_READ in vc_header.cpp, and vc_process_keyfile_buf stops at it),
+     * so bytes past this point cannot change the outcome for any volume, ours or a
+     * desktop one. Reading only this much is therefore not a behaviour change.
+     */
+    const val KEYFILE_MAX_BYTES = 1 * 1024 * 1024
+
+    /**
      * Reads a SAF URI into a ByteArray without writing anything to disk.
      * Returns (bytes, displayName) or null on failure.
      * Caller should zero the array when done: bytes.fill(0).
+     *
+     * Reads at most [KEYFILE_MAX_BYTES]. It used to read the whole file, which killed
+     * the process on any large pick - a 350 MB file asked for a 350 MB allocation
+     * against a 256 MB heap (#136). That arrives as OutOfMemoryError, an Error and not
+     * an Exception, so the catch below never saw it and the app simply vanished.
+     *
+     * Both the name query and the read can block on a network-backed provider, so this
+     * must not be called on the main thread.
      */
     fun readKeyfileBytes(context: Context, uri: Uri): Pair<ByteArray, String>? = try {
         val displayName = context.contentResolver.query(
@@ -20,9 +36,20 @@ object FileUtils {
         )?.use { cursor ->
             if (cursor.moveToFirst()) cursor.getString(0) else null
         } ?: uri.lastPathSegment ?: "keyfile"
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+        val bytes = context.contentResolver.openInputStream(uri)?.use { stream ->
+            val buf = ByteArray(KEYFILE_MAX_BYTES)
+            var filled = 0
+            while (filled < KEYFILE_MAX_BYTES) {
+                val n = stream.read(buf, filled, KEYFILE_MAX_BYTES - filled)
+                if (n <= 0) break
+                filled += n
+            }
+            // Trim to what the file actually held, and wipe the oversized buffer rather
+            // than leaving a megabyte of keyfile lying in the heap.
+            if (filled == KEYFILE_MAX_BYTES) buf else buf.copyOf(filled).also { buf.fill(0) }
+        } ?: return null
         bytes to displayName
-    } catch (_: Exception) { null }
+    } catch (_: Throwable) { null }
 
     /*
      * There is deliberately no copyUriToCache() here any more.
