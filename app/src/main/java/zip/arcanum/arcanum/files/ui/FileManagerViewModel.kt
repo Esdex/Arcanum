@@ -88,8 +88,26 @@ class FileManagerViewModel @Inject constructor(
         val pendingNotification: InAppNotification? = null,
         val isOperationInProgress: Boolean = false,
         val operationMessage: String? = null,
+        val importProgress: ImportProgress? = null,
         val isReadOnly: Boolean = false,
         val thumbnails: Map<String, android.graphics.Bitmap> = emptyMap()
+    )
+
+    /**
+     * What the import indicator shows. Separate from [FileManagerState.operationMessage]
+     * because an import is the one operation that can say how far along it is: it streams
+     * in chunks, so the bytes written against the file's size are known as it goes.
+     *
+     * [total] is 0 when the number of files is not known ahead of time, which is the
+     * folder import - it walks the tree as it goes rather than counting first.
+     * [fraction] is null when the provider does not report a size, and the bar then falls
+     * back to running without a position rather than inventing one.
+     */
+    data class ImportProgress(
+        val fileName: String,
+        val index: Int,
+        val total: Int,
+        val fraction: Float?
     )
 
     private val _state = MutableStateFlow(FileManagerState())
@@ -876,13 +894,20 @@ class FileManagerViewModel @Inject constructor(
             var failureCode: Int? = null
             val chunkSize = 1 * 1024 * 1024
             val importedMedia = mutableListOf<Pair<String, Long>>()
-            for (uri in uris) {
+            for ((index, uri) in uris.withIndex()) {
                 if (hiddenProtected || failureCode != null) break
                 try {
                     val rawName = getFileNameFromUri(context, uri) ?: continue
                     val name = File(rawName).name.ifEmpty { continue }
                     val destPath = buildDestinationPath(s.currentPath, name)
-                    _state.update { it.copy(operationMessage = "Importing $name…") }
+                    val declaredSize = uriSize(context, uri)
+                    val progress = ImportProgress(
+                        fileName = name,
+                        index    = index + 1,
+                        total    = uris.size,
+                        fraction = if (declaredSize > 0L) 0f else null
+                    )
+                    _state.update { it.copy(importProgress = progress) }
                     var fileOk = false
                     var fileSize = 0L
                     context.contentResolver.openInputStream(uri)?.use { input ->
@@ -903,7 +928,16 @@ class FileManagerViewModel @Inject constructor(
                                     runCatching { engine.deleteFile(handle, destPath) }
                                     done = true
                                 }
-                                else -> { offset += read; fileOk = true }
+                                else -> {
+                                    offset += read
+                                    fileOk = true
+                                    if (declaredSize > 0L) {
+                                        val done_ = (offset.toFloat() / declaredSize).coerceIn(0f, 1f)
+                                        _state.update {
+                                            it.copy(importProgress = progress.copy(fraction = done_))
+                                        }
+                                    }
+                                }
                             }
                         }
                         fileSize = offset
@@ -923,6 +957,7 @@ class FileManagerViewModel @Inject constructor(
             _state.update { it.copy(
                 isOperationInProgress = false,
                 operationMessage      = null,
+                importProgress        = null,
                 pendingNotification   = when {
                     hiddenProtected      -> InAppNotification.HiddenVolumeWriteProtection
                     failureCode != null  -> InAppNotification.ImportFailed(importFailureReason(failureCode))
@@ -970,6 +1005,7 @@ class FileManagerViewModel @Inject constructor(
             _state.update { it.copy(
                 isOperationInProgress = false,
                 operationMessage      = null,
+                importProgress        = null,
                 pendingNotification   = when {
                     hiddenProtected      -> InAppNotification.HiddenVolumeWriteProtection
                     failureCode != null  -> InAppNotification.ImportFailed(importFailureReason(failureCode))
@@ -1016,7 +1052,10 @@ class FileManagerViewModel @Inject constructor(
         val projection  = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
             DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-            DocumentsContract.Document.COLUMN_MIME_TYPE
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+            // Asked for here rather than queried per file: the listing already costs one
+            // cursor, and the size is what lets the bar show a position.
+            DocumentsContract.Document.COLUMN_SIZE
         )
         var count           = 0
         var hiddenProtected = false
@@ -1028,6 +1067,7 @@ class FileManagerViewModel @Inject constructor(
             val idCol   = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
             val nameCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
             val mimeCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+            val sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
 
             while (cursor.moveToNext() && !hiddenProtected && failureCode == null) {
                 val childDocId  = cursor.getString(idCol) ?: continue
@@ -1049,7 +1089,18 @@ class FileManagerViewModel @Inject constructor(
                         if (subFailure != null) failureCode = subFailure
                     } else {
                         val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
-                        _state.update { it.copy(operationMessage = "Importing $childName…") }
+                        val childSize = if (sizeCol >= 0 && !cursor.isNull(sizeCol))
+                            cursor.getLong(sizeCol) else 0L
+                        // total 0: a folder import discovers its files as it walks, so there
+                        // is no count to show - the name and the current file's bar are what
+                        // it can honestly report.
+                        val childProgress = ImportProgress(
+                            fileName = safeName,
+                            index    = 0,
+                            total    = 0,
+                            fraction = if (childSize > 0L) 0f else null
+                        )
+                        _state.update { it.copy(importProgress = childProgress) }
                         var childFileSize = 0L
                         context.contentResolver.openInputStream(childUri)?.use { input ->
                             var offset = 0L
@@ -1069,7 +1120,15 @@ class FileManagerViewModel @Inject constructor(
                                         runCatching { engine.deleteFile(handle, childDest) }
                                         done = true
                                     }
-                                    else -> { offset += read }
+                                    else -> {
+                                        offset += read
+                                        if (childSize > 0L) {
+                                            val done_ = (offset.toFloat() / childSize).coerceIn(0f, 1f)
+                                            _state.update {
+                                                it.copy(importProgress = childProgress.copy(fraction = done_))
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             childFileSize = offset
@@ -1345,6 +1404,21 @@ class FileManagerViewModel @Inject constructor(
             val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
             if (cursor.moveToFirst() && idx >= 0) cursor.getString(idx) else null
         } ?: uri.lastPathSegment
+
+    /**
+     * What the provider says the file is, in bytes, or 0 when it will not say. Only the
+     * progress bar reads this, so an absent or nonsense size costs a bar without a
+     * position rather than a wrong one - never a failed import.
+     */
+    private fun uriSize(context: Context, uri: android.net.Uri): Long =
+        runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)
+                ?.use { cursor ->
+                    val idx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (cursor.moveToFirst() && idx >= 0 && !cursor.isNull(idx)) cursor.getLong(idx)
+                    else 0L
+                } ?: 0L
+        }.getOrDefault(0L)
 
     fun getMimeType(fileName: String): String {
         val ext = fileName.substringAfterLast('.', "").lowercase()
