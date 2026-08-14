@@ -1,5 +1,6 @@
 package zip.arcanum.arcanum.containers.ui
 
+import android.provider.DocumentsContract
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
@@ -284,8 +285,18 @@ fun VaultScreen(
         label         = "scrim_alpha"
     )
 
+    // Where the picker should open. A vault file is rarely in Recent, which is where the
+    // picker lands by default, so the user starts on an empty screen and has to find the
+    // roots drawer - which some OEM profiles do not draw at all (#126). Start at the folder
+    // of a vault already added, or at internal storage when there is none.
+    val pickerStartUri = remember(containers) {
+        containers.firstOrNull { it.safUri.isNotEmpty() }
+            ?.let { runCatching { android.net.Uri.parse(it.safUri) }.getOrNull() }
+            ?: DocumentsContract.buildDocumentUri(EXTERNAL_STORAGE_AUTHORITY, "primary:")
+    }
+
     val openDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
+        contract = OpenDocumentStartingAt(pickerStartUri)
     ) { uri ->
         if (uri != null) viewModel.addContainerFromUri(uri)
     }
@@ -1558,3 +1569,20 @@ private fun ContainerNotFoundOverlay(
     }
 }
 
+
+/** The provider behind "Internal storage" in the system picker. */
+private const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents"
+
+/**
+ * [ActivityResultContracts.OpenDocument] that asks the picker to start somewhere useful
+ * instead of Recent. The extra is a hint: a picker that does not honour it, or a provider
+ * that is not present in this profile, simply lands where it would have anyway.
+ */
+private class OpenDocumentStartingAt(
+    private val initialUri: android.net.Uri?
+) : ActivityResultContracts.OpenDocument() {
+    override fun createIntent(context: android.content.Context, input: Array<String>): android.content.Intent =
+        super.createIntent(context, input).apply {
+            if (initialUri != null) putExtra(DocumentsContract.EXTRA_INITIAL_URI, initialUri)
+        }
+}
