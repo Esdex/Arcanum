@@ -161,6 +161,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 private val MEDIA_EXTENSIONS = setOf(
     "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif",
@@ -456,12 +457,17 @@ fun FileManagerScreen(
 
                 AnimatedVisibility(visible = state.isOperationInProgress) {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        state.operationMessage?.let {
-                            Text(it, style = MaterialTheme.typography.bodySmall,
-                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(4.dp))
+                        val importing = state.importProgress
+                        if (importing != null) {
+                            ImportProgressRow(importing)
+                        } else {
+                            state.operationMessage?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall,
+                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.height(4.dp))
+                            }
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
                         }
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
                 }
             }
@@ -1797,3 +1803,60 @@ private fun fileTypeCategory(context: Context, name: String): String =
 private val DATE_FMT = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
 private fun formatDate(millis: Long): String =
     if (millis > 0) DATE_FMT.format(Date(millis)) else "—"
+
+/**
+ * The import indicator: which file is being written, how far into it, and - when several
+ * were picked - which one of them this is.
+ *
+ * The counter takes the right-hand slot in the header and the percentage takes the one
+ * beside the bar, so the two never compete for the same space: with one file there is no
+ * count worth showing, and with several the count is the more useful of the two.
+ */
+@Composable
+private fun ImportProgressRow(progress: FileManagerViewModel.ImportProgress) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text     = stringResource(R.string.files_importing_name, progress.fileName),
+            style    = MaterialTheme.typography.bodySmall,
+            color    = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        if (progress.total > 1) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text  = stringResource(R.string.files_import_counter, progress.index, progress.total),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+    Spacer(Modifier.height(4.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        val fraction = progress.fraction
+        if (fraction == null) {
+            // The provider would not say how large the file is, so the bar runs without a
+            // position rather than showing one that is made up.
+            LinearProgressIndicator(Modifier.weight(1f))
+        } else {
+            val animated by animateFloatAsState(
+                targetValue   = fraction,
+                animationSpec = tween(200),
+                label         = "importProgress"
+            )
+            LinearProgressIndicator(progress = { animated }, modifier = Modifier.weight(1f))
+            if (progress.total <= 1) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text      = stringResource(R.string.files_import_percent, (animated * 100).roundToInt()),
+                    style     = MaterialTheme.typography.bodySmall,
+                    color     = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End,
+                    // Fixed width so the bar does not shrink as the number grows a digit.
+                    modifier  = Modifier.width(40.dp)
+                )
+            }
+        }
+    }
+}
