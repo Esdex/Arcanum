@@ -45,6 +45,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -53,6 +54,25 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from appendcheck import (fsck, line_delta, BENIGN_REMARK, bench_map, debugfs_map,
                          bench_read, bench_csum_ok, debugfs_stat)      # noqa: E402
+
+# e2fsck words its optimisation suggestion two ways, and after a truncation they
+# do not mean the same thing at all.
+#
+#   "narrower"  a node's entries would fit in fewer slots. Cutting a file down
+#               leaves half-empty nodes by construction, and packing them is a
+#               rebalance this implementation does not claim to do. Benign.
+#   "shorter"   the tree holds a level that earns nothing. Removing exactly that
+#               is collapse_root's job, so it appearing after a truncate is the
+#               operation not having finished, not a suggestion.
+#
+# So this suite cannot use appendcheck's BENIGN_REMARK for lines that appear: that
+# pattern covers both wordings, which is right after an append - where a split can
+# legitimately leave a root with a single child - and wrong here. Widening it to
+# the "shorter" wording (9a468e0) is what quietly turned two mutants that break the
+# collapse outright from caught into unnoticed.
+APPEARS_BENIGN = re.compile(
+    r"^\s*$|^Inode \d+ extent tree \(at level \d+\) could be narrower\."
+    r"\s+Optimize\? no$")
 
 
 def run_tool(tool, img, ino, verb, n):
@@ -66,7 +86,7 @@ def compare_fsck(base_rc, base_lines, img, problems):
     if rc != base_rc:
         problems.append(f"fsck return code changed: {base_rc} -> {rc}")
     new, gone = line_delta(base_lines, lines)
-    appeared = [l for l in new  if not BENIGN_REMARK.match(l)]
+    appeared = [l for l in new  if not APPEARS_BENIGN.match(l)]
     vanished = [l for l in gone if not BENIGN_REMARK.match(l)]
     if appeared:
         problems.append(f"fsck now complains: {appeared[:4]}")
