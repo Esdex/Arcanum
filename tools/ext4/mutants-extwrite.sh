@@ -159,16 +159,28 @@ try "new sibling leaf keyed on the wrong logical block" \
     's@        wr32(slot + EI_BLOCK_OFF, next_logical);@        wr32(slot + EI_BLOCK_OFF, next_logical + 1);@'
 
 try "new sibling leaf not marked empty" \
-    's@        wr16(leaf + EH_ENTRIES_OFF, 0);@        wr16(leaf + EH_ENTRIES_OFF, 1);@'
+    's@            wr16(node + EH_ENTRIES_OFF, 0);@            wr16(node + EH_ENTRIES_OFF, 1);@'
 
 try "parent not told it gained a child" \
-    's@        wr16(pn + EH_ENTRIES_OFF, (uint16_t)(pe + 1));@@'
+    's@            wr16(pn + EH_ENTRIES_OFF, (uint16_t)(pe + 1));@@'
 
 try "parent left unwritten after gaining a child" \
-    's@        rc = flush_level(fs, p, parent, inode_seed);@        rc = EXTW_OK;@'
+    's@            rc = flush_level(fs, p, level, inode_seed);@            rc = EXTW_OK;@' \
+    "An append grows the tree one level at a time, so the anchor is the node the new
+              leaf hangs from - and while the tree is shallow that node is the root, which
+              lives inside the inode and is written by the caller rather than by flush_level.
+              The loop only carries anything once a chain of several levels is built at once,
+              which is fullcheck.py's ground: mutants-full.sh runs this as \"the levels below
+              the anchor are never flushed\", and catches it."
 
-try "new sibling given the depth of a leaf it is not" \
-    's@        wr16(leaf + EH_DEPTH_OFF, 0);@        wr16(leaf + EH_DEPTH_OFF, 1);@'
+# The chain built for a new right edge is one node per level from the anchor down,
+# and only the last of them is a leaf.
+try "new node given the depth of a leaf it is not" \
+    's@            wr16(node + EH_DEPTH_OFF, (uint16_t)(p->depth - level));@            wr16(node + EH_DEPTH_OFF, 0);@' \
+    "With a single new node the two forms agree - p->depth - level is 0 for a leaf - so
+              there is nothing to tell apart until a chain is built with an index node in it.
+              mutants-full.sh runs this as \"a new node claims depth 0 whatever level it hangs
+              at\", and catches it."
 
 # Running out of space part way. Needs an append far larger than the image, so
 # that the short-write path is the one being exercised.
