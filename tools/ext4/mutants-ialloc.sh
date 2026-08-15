@@ -107,11 +107,27 @@ try "tail shortened by one inode too few" \
 
 EXTRA=(--ifill --limit 4)
 
-try "INODE_UNINIT groups allocated from anyway" \
-    's@        if (rd16(d + EXT4_GD_FLAGS_OFF) \& EXT4_BG_INODE_UNINIT) continue;@@'
+try "an INODE_UNINIT group is skipped instead of being initialised" \
+    's@            if (init_inode_group(fs, g, d, bitmap)) continue;@            continue;@'
 
 try "allocation stops one group early" \
     's@    for (uint32_t g = 0; g < fs->groups; g++) {@    for (uint32_t g = 0; g + 1 < fs->groups; g++) {@'
+
+# Building the bitmap. Without the zeroing, `bitmap` still holds the last group
+# read - so inodes read as taken that were never taken, and the checksum stamped
+# over it does not describe what went to disk.
+
+try "the rebuilt inode bitmap is not zeroed" \
+    's@    memset(buf, 0, ipg / 8);@@'
+
+try "the group is left flagged after its bitmap is built" \
+    's@         (uint16_t)(rd16(d + EXT4_GD_FLAGS_OFF) \& ~EXT4_BG_INODE_UNINIT));@         (uint16_t)rd16(d + EXT4_GD_FLAGS_OFF));@'
+
+# Reached because mke2fs leaves the last group INODE_UNINIT, and e2fsck checks the
+# padding at the end of that group's bitmap block - "Padding at end of inode bitmap
+# is not set". Neither the bitmap checksum nor the free counts cover those bits.
+try "the padding past the group's own inodes is not marked in the bitmap block" \
+    's@    for (uint32_t bit = ipg; bit < fs->block_size \* 8u; bit++)@    for (uint32_t bit = ipg; bit < ipg; bit++)@'
 
 EXTRA=(--inodes 4)
 

@@ -29,17 +29,25 @@
  * them. That is invisible to a reader and invisible to a checksum verifier. Only
  * e2fsck sees it, which is why fsckcheck.py runs it after every write.
  *
- * Two groups are refused rather than handled:
+ * A group flagged BLOCK_UNINIT has no bitmap on disk at all - what sits in the
+ * bitmap block is whatever was there before the filesystem was made. It is not a
+ * damaged group, it is one nobody has needed yet, and mke2fs leaves most of a
+ * fresh volume in that state. Skipping them, which is what this used to do, made
+ * two thirds of a desktop-formatted container unreachable and reported the result
+ * as "no space" (#140). They are initialised on first use instead, which is what
+ * the kernel does: rebuild the bitmap from the layout, clear the flag, allocate
+ * normally.
  *
- *   BLOCK_UNINIT - the bitmap block was never written out, so what is on disk is
- *   not a bitmap. Allocating from it would mean synthesising the whole thing
- *   first, including the metadata blocks the group owns. That is its own piece of
- *   work and it is not this one.
+ * The rebuild is checked against the group's own free count before a byte of it
+ * is written - see init_block_group. That is the whole safety argument: nothing
+ * here trusts its model of where the metadata lies, it derives one and then
+ * requires the descriptor to agree with it.
  *
- *   Anything past the end of the filesystem. The final group is usually partial,
- *   and the bits covering blocks that do not exist are already set to 1, so a
- *   find-first-zero scan avoids them without being told to. The explicit clamp is
- *   what makes that true by construction instead of by luck.
+ * Anything past the end of the filesystem is refused. The final group is usually
+ * partial, and the bits covering blocks that do not exist are already set to 1, so
+ * a find-first-zero scan avoids them without being told to. The explicit clamp is
+ * what makes that true by construction instead of by luck - and once a group can
+ * be initialised here, setting those bits is this file's job rather than mke2fs's.
  *
  * The backup superblocks and descriptor tables are deliberately left stale. The
  * kernel does the same, refreshing them on unmount and resize rather than on every
@@ -79,18 +87,32 @@ static uint8_t *group_desc(const ext4_wfs *fs, uint32_t g) {
 
 static int is_64bit(const ext4_wfs *fs) { return fs->desc_size >= 64; }
 
+static uint64_t group_first_block(const ext4_wfs *fs, uint32_t g) {
+    return (uint64_t)fs->first_data_block + (uint64_t)g * fs->blocks_per_group;
+}
+
 /* Blocks this group actually covers. Every group holds blocks_per_group except
  * the last, which stops where the filesystem does. */
 static uint32_t group_block_count(const ext4_wfs *fs, uint32_t g) {
-    uint64_t start  = (uint64_t)fs->first_data_block +
-                      (uint64_t)g * fs->blocks_per_group;
-    uint64_t remain = fs->blocks_count - start;
+    uint64_t remain = fs->blocks_count - group_first_block(fs, g);
     return remain < fs->blocks_per_group ? (uint32_t)remain : fs->blocks_per_group;
 }
 
 static uint64_t group_bitmap_block(const ext4_wfs *fs, const uint8_t *d) {
     uint64_t b = rd32(d + EXT4_GD_BLOCK_BITMAP_LO_OFF);
     if (is_64bit(fs)) b |= (uint64_t)rd32(d + EXT4_GD_BLOCK_BITMAP_HI_OFF) << 32;
+    return b;
+}
+
+static uint64_t group_ibitmap_block(const ext4_wfs *fs, const uint8_t *d) {
+    uint64_t b = rd32(d + EXT4_GD_INODE_BITMAP_LO_OFF);
+    if (is_64bit(fs)) b |= (uint64_t)rd32(d + EXT4_GD_INODE_BITMAP_HI_OFF) << 32;
+    return b;
+}
+
+static uint64_t group_itable_block(const ext4_wfs *fs, const uint8_t *d) {
+    uint64_t b = rd32(d + EXT4_GD_INODE_TABLE_LO_OFF);
+    if (is_64bit(fs)) b |= (uint64_t)rd32(d + EXT4_GD_INODE_TABLE_HI_OFF) << 32;
     return b;
 }
 
@@ -204,7 +226,12 @@ static int fs_finish_open(ext4_wfs *fs) {
     uint32_t incompat = rd32(fs->sb + EXT4_SB_FEATURE_INCOMPAT_OFF);
     fs->desc_size = (incompat & EXT4_FEATURE_INCOMPAT_64BIT)
                     ? rd16(fs->sb + EXT4_SB_DESC_SIZE_OFF) : 32;
-    if (!fs->blocks_per_group || !fs->desc_size) goto fail;
+    /* The block bitmap is held as blocks_per_group/8 bytes, so a count that is not
+     * a whole number of bytes puts the last few blocks of every group past the end
+     * of that buffer - a read on the allocation path and a write on the rebuild
+     * one. It is not a real geometry either: mke2fs refuses a -g that is not a
+     * multiple of 8. */
+    if (!fs->blocks_per_group || (fs->blocks_per_group & 7) || !fs->desc_size) goto fail;
 
     /*
      * Refuse a filesystem whose journal still has work in it.
@@ -304,6 +331,136 @@ void ext4_fs_close(ext4_wfs *fs) {
     memset(fs, 0, sizeof(*fs));
 }
 
+/* ── Initialising a BLOCK_UNINIT group ────────────────────────────────────── */
+
+/* Blocks the group descriptor table occupies, and the room kept in front of it
+ * for the table to grow. Both sit immediately behind every backup superblock. */
+static uint32_t gdt_blocks(const ext4_wfs *fs) {
+    uint64_t bytes = (uint64_t)fs->groups * fs->desc_size;
+    return (uint32_t)((bytes + fs->block_size - 1) / fs->block_size);
+}
+
+static uint32_t itable_blocks(const ext4_wfs *fs) {
+    uint64_t bytes = (uint64_t)fs->inodes_per_group * fs->inode_size;
+    return (uint32_t)((bytes + fs->block_size - 1) / fs->block_size);
+}
+
+static int is_power_of(uint32_t n, uint32_t base) {
+    while (n > 1) {
+        if (n % base) return 0;
+        n /= base;
+    }
+    return n == 1;
+}
+
+/*
+ * Whether group `g` carries a backup superblock and descriptor table.
+ *
+ * With sparse_super - on by default, and in the supported RO_COMPAT set - that is
+ * groups 0, 1 and every power of 3, 5 or 7. Without it, every group has one. The
+ * distinction matters here and nowhere else in this file: getting it wrong marks
+ * a run of real data blocks as metadata, or hands the backup superblock out as
+ * free space.
+ */
+static int group_has_super(const ext4_wfs *fs, uint32_t g) {
+    if (!(rd32(fs->sb + EXT4_SB_FEATURE_RO_COMPAT_OFF) & EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER))
+        return 1;
+    if (g <= 1) return 1;
+    if ((g & 1) == 0) return 0;         /* every later one is odd */
+    return is_power_of(g, 3) || is_power_of(g, 5) || is_power_of(g, 7);
+}
+
+/* Marks whatever part of the run [start, start+count) falls inside the group
+ * covered by fs->bitmap, whose blocks run [gstart, gend). */
+static void mark_run(ext4_wfs *fs, uint64_t gstart, uint64_t gend,
+                     uint64_t start, uint32_t count) {
+    uint64_t lo = start < gstart ? gstart : start;
+    uint64_t hi = start + count > gend ? gend : start + count;
+    for (uint64_t b = lo; b < hi; b++) {
+        uint32_t bit = (uint32_t)(b - gstart);
+        fs->bitmap[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+    }
+}
+
+static uint32_t count_set_bits(const uint8_t *map, uint32_t bits) {
+    static const uint8_t nibble[16] = { 0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4 };
+    uint32_t whole = bits >> 3, n = 0;
+    for (uint32_t i = 0; i < whole; i++)
+        n += nibble[map[i] & 0xF] + nibble[map[i] >> 4];
+    for (uint32_t bit = whole << 3; bit < bits; bit++)
+        if (map[bit >> 3] & (1u << (bit & 7))) n++;
+    return n;
+}
+
+/*
+ * Builds group `g`'s block bitmap from the layout and writes it out, so the group
+ * can be allocated from like any other.
+ *
+ * What is in use in a never-touched group is exactly its metadata, and where that
+ * lies is derivable: the backup superblock and descriptor table at the group's
+ * front where there is one, plus any group's two bitmaps and inode table that
+ * happen to land inside this group - which under flex_bg is usually none of them,
+ * since flex_bg is what moves them elsewhere. Every group's descriptor is
+ * consulted rather than only this one's, so a layout that puts a neighbour's
+ * inode table here cannot go unnoticed.
+ *
+ * Nothing is written until the rebuilt bitmap agrees with the free count the
+ * descriptor already carries. That is the check that makes this safe rather than
+ * hopeful: if the two disagree, the model of the layout is wrong, and marking the
+ * wrong blocks free would hand out an inode table. The group is left flagged and
+ * skipped instead - the old behaviour, which costs space and nothing else.
+ *
+ * Returns 0 with the bitmap loaded and the flag cleared, or -1 having changed
+ * nothing on disk.
+ */
+static int init_block_group(ext4_wfs *fs, uint32_t g, uint8_t *d) {
+    uint32_t limit  = group_block_count(fs, g);
+    uint64_t gstart = group_first_block(fs, g);
+    uint64_t gend   = gstart + fs->blocks_per_group;
+
+    /* fs->bitmap is about to hold something that is not on disk yet, so the group
+     * it claims to cache has to be dropped first - a failure below must not leave
+     * a reader believing this is still some other group's bitmap. */
+    fs->bitmap_group = -1;
+    memset(fs->bitmap, 0, fs->bitmap_bytes);
+
+    if (group_has_super(fs, g))
+        mark_run(fs, gstart, gend, gstart, 1 + gdt_blocks(fs) +
+                 rd16(fs->sb + EXT4_SB_RESERVED_GDT_OFF));
+
+    uint32_t itb = itable_blocks(fs);
+    for (uint32_t g2 = 0; g2 < fs->groups; g2++) {
+        const uint8_t *d2 = group_desc(fs, g2);
+        mark_run(fs, gstart, gend, group_bitmap_block(fs, d2), 1);
+        mark_run(fs, gstart, gend, group_ibitmap_block(fs, d2), 1);
+        mark_run(fs, gstart, gend, group_itable_block(fs, d2), itb);
+    }
+
+    /* The last group stops before the group boundary. The bits past it cover
+     * blocks that do not exist and have to read as used, which is the bookkeeping
+     * leaving the group uninitialised used to avoid. */
+    for (uint32_t bit = limit; bit < fs->blocks_per_group; bit++)
+        fs->bitmap[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+
+    uint32_t free_here = limit - count_set_bits(fs->bitmap, limit);
+    if (free_here != group_free_blocks(fs, d)) {
+        EXT4_LOGE("group %u: rebuilt bitmap leaves %u blocks free, the descriptor "
+                  "says %u - leaving the group uninitialised", g, free_here,
+                  group_free_blocks(fs, d));
+        return -1;
+    }
+
+    if (write_bitmap(fs, d)) return -1;
+    fs->bitmap_group = (int64_t)g;
+    store_bitmap_csum(fs, d);
+    wr16(d + EXT4_GD_FLAGS_OFF,
+         (uint16_t)(rd16(d + EXT4_GD_FLAGS_OFF) & ~EXT4_BG_BLOCK_UNINIT));
+    store_desc_csum(fs, g, d);
+
+    EXT4_LOGI("group %u initialised: %u of %u blocks free", g, free_here, limit);
+    return 0;
+}
+
 #define ALLOC_NONE    (-1)   /* nothing free here, try elsewhere */
 #define ALLOC_CORRUPT (-2)   /* the group contradicts itself, stop entirely */
 
@@ -317,9 +474,14 @@ void ext4_fs_close(ext4_wfs *fs) {
  */
 static int64_t alloc_in_group(ext4_wfs *fs, uint32_t g, uint32_t start_bit) {
     uint8_t *d = group_desc(fs, g);
-    if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_BLOCK_UNINIT) return ALLOC_NONE;
     if (group_free_blocks(fs, d) == 0) return ALLOC_NONE;
-    if (load_bitmap(fs, g, d)) return ALLOC_CORRUPT;
+    if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_BLOCK_UNINIT) {
+        /* No bitmap on disk yet. Build one; a group that cannot be modelled is
+         * skipped rather than guessed at, so this stays ALLOC_NONE. */
+        if (init_block_group(fs, g, d)) return ALLOC_NONE;
+    } else if (load_bitmap(fs, g, d)) {
+        return ALLOC_CORRUPT;
+    }
 
     uint32_t limit = group_block_count(fs, g);
     for (uint32_t bit = start_bit; bit < limit; bit++) {
@@ -369,6 +531,9 @@ int ext4_free_block(ext4_wfs *fs, uint64_t block) {
     if (g >= fs->groups || bit >= group_block_count(fs, g)) return -1;
 
     uint8_t *d = group_desc(fs, g);
+    /* A group still flagged BLOCK_UNINIT has never been allocated from - taking a
+     * block is what initialises it - so a block being handed back from one did not
+     * come from here. Refuse rather than build a bitmap to clear a bit in. */
     if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_BLOCK_UNINIT) return -1;
     if (load_bitmap(fs, g, d)) return -1;
     if (!(fs->bitmap[bit >> 3] & (1u << (bit & 7)))) return -1;   /* already free */

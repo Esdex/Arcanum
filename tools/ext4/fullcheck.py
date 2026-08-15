@@ -24,18 +24,21 @@ level when every one of them is full.
 Two cases, because they need different ground:
 
   cap    an mke2fs image, so the filesystem the writer is judged on is not one we
-         formatted. The pool is what mke2fs leaves initialised, which is enough to
-         carry the file well past the old 7056-extent ceiling.
-  deep   an image our own mkfs formatted, where every group is usable and the pool
-         can be large enough to fill the root's four slots too. That forces the
-         root split - a depth-3 tree - which the cap case never reaches.
+         formatted. Most of its groups arrive with no block bitmap on disk, so this
+         is also where the append is required to run the volume genuinely dry
+         rather than stop at the last group that happened to have one (#140).
+  deep   an image our own mkfs formatted, where every group is initialised from the
+         start and the pool can be large enough to fill the root's four slots too.
+         That forces the root split - a depth-3 tree - which the cap case never
+         reaches.
 
 Judged by e2fsprogs, never by our own reader:
 
   setup e2fsck   the fragmentation setup must itself be clean before the target is
                  touched, so a break in the growth cannot hide as a setup fault
   progress       the append must get past the old cap rather than be refused; when
-                 it does stop it must be for want of space, never EXTW_ERR_FULL
+                 it does stop it must be for want of space, never EXTW_ERR_FULL,
+                 and the superblock must agree that no block is left
   e2fsck         the image is clean afterwards: the tree, i_size, i_blocks and the
                  free counts all agree
   structure      debugfs must show the tree deeper or wider than the old ceiling,
@@ -50,6 +53,7 @@ Judged by e2fsprogs, never by our own reader:
 """
 
 import argparse
+import errno
 import os
 import re
 import shutil
@@ -120,6 +124,20 @@ def readback_mismatch(img, ino, blocks, block_size, tmpdir):
     return None
 
 
+def probe(mnt):
+    """Writes the file that proves another driver can still mutate the image."""
+    with open(os.path.join(mnt, "after-growth.txt"), "w") as fh:
+        fh.write("written by another driver\n")
+
+
+def sb_free_and_total(img):
+    with open(img, "rb") as f:
+        f.seek(1024)
+        sb = f.read(1024)
+    u32 = lambda o: struct.unpack_from("<I", sb, o)[0]
+    return (u32(0x0C) | (u32(0x158) << 32), u32(0x04) | (u32(0x150) << 32))
+
+
 def fuse_roundtrip(img, problems):
     if not shutil.which("fuse2fs"):
         print("     note: fuse2fs not installed, skipping the second-driver check")
@@ -133,10 +151,22 @@ def fuse_roundtrip(img, problems):
                             "clean only to us")
             return
         try:
-            with open(os.path.join(mnt, "after-growth.txt"), "w") as fh:
-                fh.write("written by another driver\n")
+            probe(mnt)
         except OSError as e:
-            problems.append(f"fuse2fs mounted but could not write: {e}")
+            if e.errno != errno.ENOSPC:
+                problems.append(f"fuse2fs mounted but could not write: {e}")
+            else:
+                # The fill now stops with the volume genuinely full rather than
+                # with two thirds of it unreachable (#140), so there is nothing
+                # left to write into. Let the other driver make the room by
+                # deleting what we grew, which is a heavier write against that
+                # tree than adding a file next to it would have been.
+                try:
+                    os.unlink(os.path.join(mnt, "target"))
+                    probe(mnt)
+                except OSError as e2:
+                    problems.append(f"fuse2fs could not delete the grown file and "
+                                    f"write in its place: {e2}")
         sh("sync")
         unmount_fuse(mnt, proc)
         rc, out = fsck(img)
@@ -209,6 +239,18 @@ def run(case, img, per, block_size, fullwrite, tmpdir, problems):
                         f"old {old_cap}-extent ceiling - raise per, or the growth "
                         f"never happened")
         return
+
+    # Running out of space has to mean the volume is out of space. The cap case is
+    # formatted by mke2fs, which leaves most groups with no block bitmap on disk;
+    # skipping those made a third of the volume unreachable and reported the result
+    # as NOSPACE anyway (#140), which is indistinguishable from this test's own
+    # success unless the free count is looked at.
+    if arc == EXTW_ERR_NOSPACE:
+        free, total = sb_free_and_total(img)
+        if free != 0:
+            problems.append(f"[{case}] the append stopped for want of space with "
+                            f"{free} of {total} blocks still free - they are in "
+                            f"groups the allocator never reached")
 
     rc, out = fsck(img)
     if rc != 0:

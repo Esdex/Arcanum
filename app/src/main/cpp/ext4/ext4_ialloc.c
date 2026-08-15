@@ -30,12 +30,19 @@
  * That failure has no symptom at the point it happens. Every checksum still
  * matches, because the inodes in question are not covered by any of them until
  * something claims them.
+ *
+ * A group flagged INODE_UNINIT has no inode bitmap on disk. Like its block-side
+ * twin it is initialised on first use rather than skipped (#140) - see
+ * init_inode_group. Skipping it would have refused to create a file in most of a
+ * desktop-formatted volume, and would have done it while the superblock still
+ * reported those inodes as free.
  */
 #define _POSIX_C_SOURCE 200809L
 #define _FILE_OFFSET_BITS 64
 
 #include "ext4_alloc.h"
 #include "ext4_csum.h"
+#include "ext4_log.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -134,6 +141,55 @@ static void store_desc_csum(const ext4_wfs *fs, uint32_t g, uint8_t *d) {
          (uint16_t)ext4_group_desc_csum(fs->csum_seed, g, d, fs->desc_size));
 }
 
+/*
+ * Builds group `g`'s inode bitmap and writes it out, so the group can be
+ * allocated from like any other. The counterpart of init_block_group, and much
+ * the simpler of the two: an inode bitmap has no layout to reconstruct, because
+ * nothing but inodes lives in it. A group nobody has used holds no used inodes,
+ * so the bitmap is zeroes.
+ *
+ * The whole bitmap block is written, not the inodes_per_group/8 bytes the rest of
+ * this file touches. Past that point the bits cover inodes the group does not
+ * have and must read as used: e2fsck checks them ("Padding at end of inode bitmap
+ * is not set") and nothing else does - not the bitmap checksum, which stops at
+ * inodes_per_group/8 bytes, and not either free count. Leaving them would also
+ * leave whatever the volume held before inside a metadata block.
+ *
+ * The free count is required to say the group is untouched first. An inode bitmap
+ * that was never written cannot have had an inode taken from it, so a descriptor
+ * claiming otherwise means the flag and the count disagree, and the resolution is
+ * not this function's to guess.
+ *
+ * Returns 0 with the flag cleared and `buf` holding the new bitmap, or -1 having
+ * changed nothing on disk.
+ */
+static int init_inode_group(ext4_wfs *fs, uint32_t g, uint8_t *d, uint8_t *buf) {
+    uint32_t ipg = fs->inodes_per_group;
+    if (group_free_inodes(fs, d) != ipg) {
+        EXT4_LOGE("group %u: inode bitmap is uninitialised but the descriptor says "
+                  "%u of %u inodes are free - leaving the group alone", g,
+                  group_free_inodes(fs, d), ipg);
+        return -1;
+    }
+
+    uint8_t *block = calloc(1, fs->block_size);
+    if (!block) return -1;
+    for (uint32_t bit = ipg; bit < fs->block_size * 8u; bit++)
+        block[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+
+    uint64_t at = inode_bitmap_block(fs, d) * (uint64_t)fs->block_size;
+    int rc = ext4_io_pwrite(&fs->io, at, block, fs->block_size);
+    free(block);
+    if (rc) return -1;
+
+    memset(buf, 0, ipg / 8);
+    store_inode_bitmap_csum(fs, d, buf);
+    wr16(d + EXT4_GD_FLAGS_OFF,
+         (uint16_t)(rd16(d + EXT4_GD_FLAGS_OFF) & ~EXT4_BG_INODE_UNINIT));
+    store_desc_csum(fs, g, d);
+    return 0;
+}
+
 /* Zeroes inode table entries [from, to] within a group, so that shortening
  * bg_itable_unused past them cannot expose whatever the disk already held. */
 static int zero_inodes(ext4_wfs *fs, const uint8_t *d, uint32_t from, uint32_t to) {
@@ -159,12 +215,14 @@ int64_t ext4_alloc_inode(ext4_wfs *fs) {
 
     for (uint32_t g = 0; g < fs->groups; g++) {
         uint8_t *d = group_desc(fs, g);
-        /* INODE_UNINIT means this bitmap was never written, so what is on disk is
-         * not one. Synthesising it is its own piece of work; refused for now, the
-         * same way BLOCK_UNINIT is on the block side. */
-        if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_INODE_UNINIT) continue;
         if (group_free_inodes(fs, d) == 0) continue;
-        if (read_inode_bitmap(fs, d, bitmap)) break;
+        if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_INODE_UNINIT) {
+            /* No bitmap on disk yet. Build one; a group that contradicts itself is
+             * skipped rather than repaired here. */
+            if (init_inode_group(fs, g, d, bitmap)) continue;
+        } else if (read_inode_bitmap(fs, d, bitmap)) {
+            break;
+        }
 
         for (uint32_t i = 0; i < ipg; i++) {
             if (bitmap[i >> 3] & (1u << (i & 7))) continue;
@@ -234,6 +292,8 @@ int ext4_free_inode(ext4_wfs *fs, uint32_t ino) {
     if (g >= fs->groups) return -1;
 
     uint8_t *d = group_desc(fs, g);
+    /* Still flagged: no inode has ever been taken from this group, since taking
+     * one is what initialises it, so this one did not come from here. */
     if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_INODE_UNINIT) return -1;
 
     uint8_t *bitmap = malloc(ipg / 8);
