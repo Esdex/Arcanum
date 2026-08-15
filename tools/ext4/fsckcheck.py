@@ -26,6 +26,13 @@ Three legs, because no one of them is sufficient:
 
     ./fsckcheck.py --cases /tmp/cases
 
+Under --fill the round trip makes one exception, and only one: a group that
+arrived with no block bitmap on disk keeps the bitmap the allocator built for it,
+and keeps the cleared flag, because that is not something freeing the blocks again
+undoes - the kernel does not undo it either. Those two regions are named
+explicitly (uninit_regions) and every other byte in the image is still required
+back unchanged.
+
 The allocator is driven through this contract:
 
     ./alloc <image> alloc <count>    prints one allocated block per line
@@ -187,6 +194,187 @@ def check_recover_refused(alloc, img):
     return r.returncode != 0
 
 
+def read_layout(img):
+    """Everything the synthetic check below needs to edit a group descriptor."""
+    with open(img, "rb") as f:
+        f.seek(1024)
+        sb = f.read(1024)
+        u32 = lambda o: struct.unpack_from("<I", sb, o)[0]
+        u16 = lambda o: struct.unpack_from("<H", sb, o)[0]
+        bs = 1024 << u32(0x18)
+        bpg, first = u32(0x20), u32(0x14)
+        blocks = u32(0x04) | (u32(0x150) << 32)
+        dsz = u16(0xFE) if (u32(0x60) & 0x80) else 32
+        ngroups = (blocks - first + bpg - 1) // bpg
+        desc_at = (first + 1) * bs
+        f.seek(desc_at)
+        desc = f.read(ngroups * dsz)
+    return dict(bs=bs, bpg=bpg, first=first, blocks=blocks, dsz=dsz,
+                ngroups=ngroups, desc_at=desc_at, desc=desc,
+                seed=u32(0x270))
+
+
+def group_desc_csum(seed, group, desc):
+    """bg_checksum: seeded with the group number, over the descriptor with the
+    checksum field itself reading as zero."""
+    d = bytearray(desc)
+    struct.pack_into("<H", d, 0x1E, 0)
+    return crc32c(crc32c(seed, struct.pack("<I", group)), bytes(d)) & 0xFFFF
+
+
+def read_at(img, offset, length):
+    with open(img, "rb") as f:
+        f.seek(offset)
+        return f.read(length)
+
+
+def write_at(img, offset, data):
+    with open(img, "r+b") as f:
+        f.seek(offset)
+        f.write(data)
+
+
+def check_rebuilt_bitmap_matches_mke2fs(alloc, fsmeta, tmp):
+    """Rebuilding a group's bitmap has to produce what mke2fs wrote for it.
+
+    Every generated case uses flex_bg, which moves the bitmaps and inode tables out
+    of the groups they belong to - so in the corpus a BLOCK_UNINIT group holds no
+    metadata at all and its rebuilt bitmap is zeroes. Two parts of the rebuild are
+    therefore never reached there: a group that owns its own bitmaps and inode
+    table, and a group carrying a backup superblock and descriptor table. Neither
+    is exotic; both are what a container formatted without flex_bg looks like.
+
+    So the image here is made without flex_bg, and a group carrying a backup
+    superblock is flagged BLOCK_UNINIT by hand with its bitmap block scribbled
+    over, the same trick the journal-recovery check uses. mke2fs had already
+    written the true bitmap for that group, so after filling the image and freeing
+    it all again the block has to come back byte for byte. That is the rebuild
+    judged against e2fsprogs rather than against our own idea of the layout.
+
+    Not the last group, which is the one place this cannot be staged: e2fsck
+    refuses a BLOCK_UNINIT final group outright ("Last group block bitmap
+    uninitialized"), because the padding covering blocks past the end of the volume
+    has to be on disk. So the rebuild's padding step has no valid filesystem to be
+    exercised on. It is kept anyway - a group arriving in that state is one
+    e2fsck already calls damaged, and initialising it with the padding set is the
+    repair rather than the damage.
+    """
+    img = os.path.join(tmp, "ownmeta.img")
+    subprocess.run(["truncate", "-s", "64M", img], check=True)
+    r = subprocess.run(["mkfs.ext4", "-q", "-F", "-b", "1024", "-I", "256",
+                        "-O", "^has_journal,^dir_index,^flex_bg", img],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return [f"could not format the no-flex_bg image: {r.stderr.strip()[:200]}"]
+
+    lay = read_layout(img)
+    dsz, desc_at, bs, bpg = lay["dsz"], lay["desc_at"], lay["bs"], lay["bpg"]
+
+    def slot_of(g):
+        return lay["desc"][g * dsz:(g + 1) * dsz]
+
+    def owns_metadata(g, d):
+        start = lay["first"] + g * bpg
+        return all(start <= struct.unpack_from("<I", d, off)[0] < start + bpg
+                   for off in (0x00, 0x04, 0x08))
+
+    # A group that owns its metadata and whose bitmap does not sit at the group's
+    # very first block: what is in front of it is the backup superblock and the
+    # descriptor table, which is the run the rebuild has to reproduce. Group 0 is
+    # excluded because it holds the root directory, and the last because e2fsck
+    # will not accept it uninitialised.
+    target = None
+    for g in range(lay["ngroups"] - 2, 0, -1):
+        d = slot_of(g)
+        if struct.unpack_from("<H", d, 0x12)[0] & EXT4_BG_BLOCK_UNINIT:
+            continue
+        if owns_metadata(g, d) and struct.unpack_from("<I", d, 0x00)[0] > lay["first"] + g * bpg:
+            target = g
+            break
+    if target is None:
+        return ["no group in the no-flex_bg image carries both a backup superblock "
+                "and its own bitmaps, so the rebuild cannot be judged here"]
+
+    g = target
+    slot = desc_at + g * dsz
+    orig_desc = slot_of(g)
+    bitmap_block = struct.unpack_from("<I", orig_desc, 0x00)[0]
+    if dsz >= 64:
+        bitmap_block |= struct.unpack_from("<I", orig_desc, 0x20)[0] << 32
+    bitmap_at = bitmap_block * bs
+    orig_bitmap = read_at(img, bitmap_at, bs)
+
+    problems = []
+    # The group has to be untouched for "uninitialised" to be true of it, and an
+    # untouched group's used blocks are one run at its front. Checked from the
+    # bitmap mke2fs wrote, so it says nothing about where we think metadata lies.
+    bits = "".join(f"{byte:08b}"[::-1] for byte in orig_bitmap[:bpg // 8])
+    if bits.rstrip("0").rstrip("1") != "":
+        problems.append(f"group {g} has blocks in use beyond the run at its front, "
+                        f"so calling it uninitialised is not true of it")
+
+    # Flag it, drop the bitmap checksum the way mke2fs leaves it on an
+    # uninitialised group, restamp the descriptor, and destroy the bitmap so a
+    # rebuild that quietly reuses what is on disk cannot pass.
+    d = bytearray(orig_desc)
+    struct.pack_into("<H", d, 0x12,
+                     struct.unpack_from("<H", d, 0x12)[0] | EXT4_BG_BLOCK_UNINIT)
+    struct.pack_into("<H", d, 0x18, 0)
+    if dsz >= 64:
+        struct.pack_into("<H", d, 0x38, 0)
+    struct.pack_into("<H", d, 0x1E, group_desc_csum(lay["seed"], g, bytes(d)))
+    write_at(img, slot, bytes(d))
+    write_at(img, bitmap_at, b"\xA5" * lay["bs"])
+
+    base_rc, base_lines = fsck(img)
+    if base_rc != FSCK_OK:
+        return problems + [f"the hand-flagged image is not fsck-clean to begin with "
+                           f"(rc={base_rc}) - the check cannot judge anything"]
+
+    before_groups = read_groups(img)[2]
+    blocks, err = run_alloc(alloc, img, "fill")
+    if err:
+        return problems + [f"filling the no-flex_bg image failed: {err}"]
+
+    check_fill(img, before_groups, problems)
+
+    rc, lines = fsck(img)
+    baseline = list(base_lines)
+    new = []
+    for line in lines:
+        if line in baseline:
+            baseline.remove(line)
+        else:
+            new.append(line)
+    problems += residual_ok(new, blocks, img)
+
+    m = subprocess.run([fsmeta, img], capture_output=True, text=True)
+    if m.returncode != 0:
+        problems.append(f"checksums no longer verify: {m.stdout.strip()}")
+
+    _, err = run_alloc(alloc, img, "free", "-",
+                       stdin="".join(f"{b}\n" for b in blocks))
+    if err:
+        return problems + [f"free failed on the no-flex_bg image: {err}"]
+
+    rebuilt = read_at(img, bitmap_at, lay["bs"])
+    if rebuilt != orig_bitmap:
+        at = next(i for i in range(lay["bs"]) if rebuilt[i] != orig_bitmap[i])
+        problems.append(f"the rebuilt bitmap for group {g} is not the one mke2fs "
+                        f"wrote: first difference at byte {at} of the block "
+                        f"(ours {rebuilt[at]:#04x}, mke2fs {orig_bitmap[at]:#04x})")
+    back = read_at(img, slot, dsz)
+    if back != orig_desc:
+        problems.append(f"group {g}'s descriptor did not come back to what mke2fs "
+                        f"wrote once the blocks were freed again")
+
+    rt_rc, _ = fsck(img)
+    if rt_rc != FSCK_OK:
+        problems.append(f"the no-flex_bg image is not clean after the round trip "
+                        f"(rc={rt_rc})")
+    return problems
+
+
 def read_groups(img):
     """-> (first_data_block, blocks_per_group, [(flags, free_blocks), ...])
 
@@ -217,6 +405,68 @@ def read_groups(img):
     return first, bpg, out
 
 
+def uninit_regions(img):
+    """-> byte ranges that initialising a BLOCK_UNINIT group is allowed to change.
+
+    Building a bitmap for a group that never had one is not reversible by freeing
+    the blocks again: the bitmap block now holds a bitmap where it held whatever
+    the volume did before, the descriptor's flag is gone for good, and its bitmap
+    checksum covers real bytes. That is the kernel's behaviour too. So the round
+    trip stops asking for those two regions back and keeps asking for every other
+    byte in the image, which is where a one-sided update would show up.
+    """
+    with open(img, "rb") as f:
+        f.seek(1024)
+        sb = f.read(1024)
+        u32 = lambda o: struct.unpack_from("<I", sb, o)[0]
+        u16 = lambda o: struct.unpack_from("<H", sb, o)[0]
+        bs = 1024 << u32(0x18)
+        bpg, first = u32(0x20), u32(0x14)
+        blocks = u32(0x04) | (u32(0x150) << 32)
+        dsz = u16(0xFE) if (u32(0x60) & 0x80) else 32
+        ngroups = (blocks - first + bpg - 1) // bpg
+        desc_at = (first + 1) * bs
+        f.seek(desc_at)
+        desc = f.read(ngroups * dsz)
+
+    out = []
+    for g in range(ngroups):
+        d = desc[g * dsz:(g + 1) * dsz]
+        if not struct.unpack_from("<H", d, 0x12)[0] & EXT4_BG_BLOCK_UNINIT:
+            continue
+        bitmap = struct.unpack_from("<I", d, 0x00)[0]
+        if dsz >= 64:
+            bitmap |= struct.unpack_from("<I", d, 0x20)[0] << 32
+        out.append((desc_at + g * dsz, dsz))
+        out.append((bitmap * bs, bs))
+    return out
+
+
+def first_difference_outside(after, pristine, regions):
+    """-> offset of the first byte that differs and is not in an allowed region.
+
+    Compared segment by segment rather than byte by byte: these images run to tens
+    of megabytes and a Python loop over every byte of forty of them is the whole
+    runtime of the suite.
+    """
+    if len(after) != len(pristine):
+        return min(len(after), len(pristine))
+    segments, pos = [], 0
+    for start, length in sorted(regions):
+        if start > pos:
+            segments.append((pos, start))
+        pos = max(pos, start + length)
+    if pos < len(after):
+        segments.append((pos, len(after)))
+
+    for lo, hi in segments:
+        if after[lo:hi] == pristine[lo:hi]:
+            continue
+        a, p = after[lo:hi], pristine[lo:hi]
+        return lo + next(i for i in range(len(a)) if a[i] != p[i])
+    return None
+
+
 def run_alloc(alloc, img, *args, stdin=None):
     r = subprocess.run([alloc, img, *[str(a) for a in args]],
                        capture_output=True, text=True, input=stdin)
@@ -226,27 +476,35 @@ def run_alloc(alloc, img, *args, stdin=None):
     return blocks, None
 
 
-def check_fill(img, blocks, problems):
-    """A filled image pins down the two rules a nine-block run never reaches.
+def check_fill(img, before_groups, problems):
+    """A filled image pins down the rule a nine-block run never reaches.
 
-    Everything outside a BLOCK_UNINIT group has to be taken, and everything inside
-    one has to be left, so the free count left in the superblock is exactly the
-    free space those groups hold - no more, and no less either, since stopping
-    early would also land on that side of the comparison.
+    Every block in the volume has to be taken, including the ones in groups whose
+    bitmap did not exist until the allocator built it (#140). A group left flagged
+    is a group left unreachable, and the free count it still carries is the space
+    that was refused - so both are checked, and the free count catches a group that
+    was initialised but then skipped anyway.
+
+    Only some images have such a group - mke2fs sets the flag on the groups it does
+    not need to touch, which depends on the size - so how many did is reported in
+    the summary rather than required here. Coverage that does not depend on the
+    corpus comes from check_rebuilt_bitmap_matches_mke2fs, which manufactures the
+    state instead of hoping for it.
     """
-    first, bpg, groups = read_groups(img)
-    uninit = {g for g, (flags, _) in enumerate(groups) if flags & EXT4_BG_BLOCK_UNINIT}
+    uninit = {g for g, (flags, _) in enumerate(before_groups)
+              if flags & EXT4_BG_BLOCK_UNINIT}
+    _, _, after = read_groups(img)
+    still = sorted(g for g, (flags, _) in enumerate(after)
+                   if flags & EXT4_BG_BLOCK_UNINIT)
+    if still:
+        problems.append(f"groups {still[:8]} are still BLOCK_UNINIT after filling - "
+                        f"their blocks were never reachable")
 
-    trespass = sorted({(b - first) // bpg for b in blocks} & uninit)
-    if trespass:
-        problems.append(f"allocated inside BLOCK_UNINIT groups {trespass} - "
-                        f"those bitmaps were never written")
-
-    want = sum(free for g, (_, free) in enumerate(groups) if g in uninit)
     got = sb_free_blocks(img)
-    if got != want:
-        problems.append(f"after filling, {got} blocks are still free but the "
-                        f"BLOCK_UNINIT groups only hold {want}")
+    if got != 0:
+        held = sum(free for g, (_, free) in enumerate(after) if g in uninit)
+        problems.append(f"after filling, {got} blocks are still free "
+                        f"({held} of them in groups that started BLOCK_UNINIT)")
 
 
 EXT4_BG_INODE_UNINIT = 0x0001
@@ -277,23 +535,19 @@ def read_inode_groups(img):
     return ipg, out
 
 
-def check_ifill(img, inodes, problems):
-    """Filling pins down the rule four inodes never reach: a group whose bitmap
-    was never written must be left alone, so what stays free is exactly what
-    those groups hold - no more, and no less either."""
-    ipg, groups = read_inode_groups(img)
-    uninit = {g for g, (flags, _) in enumerate(groups) if flags & EXT4_BG_INODE_UNINIT}
+def check_ifill(img, before_groups, problems):
+    """The same rule for inodes: every one of them has to be reachable, including
+    those in a group whose bitmap the allocator had to build first."""
+    _, after = read_inode_groups(img)
+    still = sorted(g for g, (flags, _) in enumerate(after)
+                   if flags & EXT4_BG_INODE_UNINIT)
+    if still:
+        problems.append(f"groups {still[:8]} are still INODE_UNINIT after filling - "
+                        f"their inodes were never reachable")
 
-    trespass = sorted({(i - 1) // ipg for i in inodes} & uninit)
-    if trespass:
-        problems.append(f"allocated inside INODE_UNINIT groups {trespass} - "
-                        f"those bitmaps were never written")
-
-    want = sum(free for g, (_, free) in enumerate(groups) if g in uninit)
     got = sb_free_inodes(img)
-    if got != want:
-        problems.append(f"after filling, {got} inodes are still free but the "
-                        f"INODE_UNINIT groups only hold {want}")
+    if got != 0:
+        problems.append(f"after filling, {got} inodes are still free")
 
 
 def check_inode_case(case, alloc, fsmeta, count):
@@ -320,6 +574,7 @@ def check_inode_case(case, alloc, fsmeta, count):
             return [f"pristine image is not fsck-clean (rc={base_rc})"]
         free_before = sb_free_inodes(img)
 
+        before_groups = read_inode_groups(img)[1]
         inodes, err = (run_alloc(alloc, img, "ifill") if count is None
                        else run_alloc(alloc, img, "ialloc", count))
         if err:
@@ -349,7 +604,7 @@ def check_inode_case(case, alloc, fsmeta, count):
                             f"expected {len(inodes)}")
 
         if count is None:
-            check_ifill(img, inodes, problems)
+            check_ifill(img, before_groups, problems)
 
         m = subprocess.run([fsmeta, img], capture_output=True, text=True)
         if m.returncode != 0:
@@ -385,6 +640,8 @@ def check_case(case, alloc, fsmeta, count, keep, fill=False):
                     f"the baseline is unusable"]
         free_before = sb_free_blocks(img)
         pristine = open(img, "rb").read()
+        before_groups = read_groups(img)[2]
+        allowed = uninit_regions(img) if fill else []
 
         if fill:
             blocks, err = run_alloc(alloc, img, "fill")
@@ -395,7 +652,7 @@ def check_case(case, alloc, fsmeta, count, keep, fill=False):
         if len(blocks) != len(set(blocks)):
             problems.append("allocator returned the same block twice")
         if fill:
-            check_fill(img, blocks, problems)
+            check_fill(img, before_groups, problems)
 
         rc, lines = fsck(img)
         baseline = list(base_lines)
@@ -427,9 +684,8 @@ def check_case(case, alloc, fsmeta, count, keep, fill=False):
             problems.append(f"free failed: {err}")
         else:
             after = open(img, "rb").read()
-            if after != pristine:
-                diff_at = next((i for i in range(min(len(after), len(pristine)))
-                                if after[i] != pristine[i]), None)
+            diff_at = first_difference_outside(after, pristine, allowed)
+            if diff_at is not None:
                 problems.append(f"round trip did not restore the image "
                                 f"(first differing byte at offset {diff_at})")
             rt_rc, _ = fsck(img)
@@ -474,8 +730,9 @@ def main():
     if args.limit:
         cases = cases[:args.limit]
 
-    # One standalone check, on its own copy so the synthetic flag does not touch
-    # what the per-case runs see: a filesystem needing journal recovery is refused.
+    # Standalone checks, on their own images so the synthetic edits do not touch
+    # what the per-case runs see: a filesystem needing journal recovery is refused,
+    # and a rebuilt block bitmap matches the one mke2fs wrote.
     import shutil as _shutil, tempfile as _tempfile
     with _tempfile.TemporaryDirectory() as _t:
         _img = os.path.join(_t, "fs.img")
@@ -483,6 +740,14 @@ def main():
         if not check_recover_refused(args.alloc, _img):
             print("FAIL a filesystem needing journal recovery was opened for writing")
             return 1
+        problems = check_rebuilt_bitmap_matches_mke2fs(args.alloc, args.fsmeta, _t)
+        if problems:
+            print("FAIL rebuilding a BLOCK_UNINIT group's bitmap")
+            for p in problems:
+                print(f"     {p}")
+            return 1
+        if args.verbose:
+            print("ok   rebuilt bitmap matches mke2fs (no flex_bg, partial last group)")
 
     failed = 0
     for case in cases:
@@ -505,6 +770,20 @@ def main():
             else "fill" if args.fill else f"allocate {args.count}")
     print(f"\n{len(cases) - failed}/{len(cases)} images survived "
           f"{what} + fsck + checksums + round trip")
+
+    # How much of the corpus actually held a group with no bitmap on disk. A run
+    # where that is zero still proves the rest, but nothing about #140.
+    if args.fill or args.ifill:
+        if args.ifill:
+            flag, noun = EXT4_BG_INODE_UNINIT, "INODE_UNINIT"
+            groups_of = lambda p: read_inode_groups(p)[1]
+        else:
+            flag, noun = EXT4_BG_BLOCK_UNINIT, "BLOCK_UNINIT"
+            groups_of = lambda p: read_groups(p)[2]
+        covered = sum(1 for c in cases
+                      if any(f & flag for f, _ in groups_of(os.path.join(c, "fs.img"))))
+        print(f"{covered}/{len(cases)} of them had a {noun} group for the allocator "
+              f"to build a bitmap for")
     return 1 if failed else 0
 
 

@@ -123,14 +123,45 @@ try "free does not give the block back to the group count" \
 # in it, so the rule about BLOCK_UNINIT groups is not exercised at all until
 # everything in front of them has been taken. A few images are enough - filling is
 # the slow part of the suite, and the rule does not vary per image.
+#
+# The rebuild mutants below do not depend on --limit: fsckcheck.py makes its own
+# no-flex_bg image for them, where an uninitialised group owns its bitmaps and its
+# inode table, which no generated case does.
 
 CHECK_EXTRA=(--fill --limit 4)
 
-try "BLOCK_UNINIT groups allocated from anyway" \
-    's@if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_BLOCK_UNINIT) return ALLOC_NONE;@@'
+try "a BLOCK_UNINIT group is skipped instead of being initialised" \
+    's@if (init_block_group(fs, g, d)) return ALLOC_NONE;@return ALLOC_NONE;@'
 
 try "allocation stops one group early" \
     's@for (uint32_t g = 0; g < fs->groups; g++) {@for (uint32_t g = 0; g + 1 < fs->groups; g++) {@'
+
+# Rebuilding a group's bitmap. Each of these leaves the rebuild disagreeing with
+# the free count the descriptor already carries, so the group is refused and its
+# blocks stay out of reach - which is what the fill leg measures.
+
+try "the inode table is not counted as metadata when rebuilding a bitmap" \
+    's@mark_run(fs, gstart, gend, group_itable_block(fs, d2), itb);@@'
+
+try "the two bitmap blocks are not counted as metadata when rebuilding" \
+    's@mark_run(fs, gstart, gend, group_bitmap_block(fs, d2), 1);@@'
+
+try "the backup superblock and descriptor table are not counted as metadata" \
+    's@if (group_has_super(fs, g))@if (0)@'
+
+try "the room reserved for the descriptor table to grow is not counted" \
+    's@rd16(fs->sb + EXT4_SB_RESERVED_GDT_OFF)@0@'
+
+try "the group is left flagged after its bitmap is built" \
+    's@(uint16_t)(rd16(d + EXT4_GD_FLAGS_OFF) & ~EXT4_BG_BLOCK_UNINIT));@(uint16_t)rd16(d + EXT4_GD_FLAGS_OFF));@'
+
+# The one that matters most: a wrong rebuild with the guard that catches it taken
+# out. The bitmap then goes to disk saying the inode table is free space, which is
+# not a refusal to allocate but a filesystem handing its own metadata out. e2fsck
+# is what sees that, and it has to.
+
+try "a wrong rebuild written out because the free-count check was dropped" \
+    's@mark_run(fs, gstart, gend, group_itable_block(fs, d2), itb);@@; s@if (free_here != group_free_blocks(fs, d)) {@if (0) {@'
 
 CHECK_EXTRA=()
 

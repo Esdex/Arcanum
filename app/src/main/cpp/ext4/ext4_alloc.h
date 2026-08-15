@@ -34,6 +34,9 @@ extern "C" {
 #define EXT4_SB_BLOCKS_PER_GRP_OFF  0x20
 #define EXT4_SB_FEATURE_INCOMPAT_OFF 0x60
 #define EXT4_SB_FEATURE_RO_COMPAT_OFF 0x64
+/* Room kept in front of the descriptor table for it to grow, behind every backup
+ * superblock. Part of a group's metadata even though nothing lives there yet. */
+#define EXT4_SB_RESERVED_GDT_OFF    0xCE
 #define EXT4_SB_DESC_SIZE_OFF       0xFE
 #define EXT4_SB_BLOCKS_HI_OFF       0x150
 #define EXT4_SB_FREE_BLOCKS_HI_OFF  0x158
@@ -41,6 +44,9 @@ extern "C" {
 
 #define EXT4_FEATURE_INCOMPAT_64BIT   0x80
 #define EXT4_FEATURE_INCOMPAT_RECOVER 0x04   /* the journal has work outstanding */
+/* Backup superblocks only in groups 0, 1 and the powers of 3, 5 and 7. Without
+ * it every group carries one, which changes where a group's free space starts. */
+#define EXT4_FEATURE_RO_COMPAT_SPARSE_SUPER 0x01
 
 #define EXT4_SB_INODES_COUNT_OFF    0x00
 #define EXT4_SB_FREE_INODES_OFF     0x10
