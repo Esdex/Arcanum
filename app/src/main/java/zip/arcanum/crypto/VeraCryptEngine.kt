@@ -1011,6 +1011,20 @@ class VeraCryptEngine @Inject constructor() {
         const val ERR_EXISTS           = -12
 
         /**
+         * Native ERR_TOO_FRAGMENTED: an ext4 file's extent tree has no room left to
+         * describe another piece of it, so the write is refused even though the
+         * vault still has free blocks (#125).
+         *
+         * Kept apart from [ERR_NO_SPACE], which it used to be reported as, because
+         * the two contradict each other about the volume: this one arrives on a
+         * vault with space to spare. Since #119 the writer grows the tree instead
+         * of refusing, and what is left is the depth limit the ext4 format itself
+         * sets - so this is a code that exists to identify itself in a bug report,
+         * not one anyone should meet.
+         */
+        const val ERR_TOO_FRAGMENTED   = -13
+
+        /**
          * Keyfile generator size bounds — must match VC_KEYFILE_MIN_SIZE /
          * VC_KEYFILE_MAX_SIZE in `app/src/main/cpp/arcanum_internal.h`, which
          * rejects anything outside this range with [ERR_UNSUPPORTED].
@@ -1090,6 +1104,7 @@ private fun Int.toError(): CryptoError = when (this) {
     VeraCryptEngine.ERR_NO_SPACE        -> CryptoError.NO_SPACE
     VeraCryptEngine.ERR_READ_ONLY       -> CryptoError.READ_ONLY
     VeraCryptEngine.ERR_DIR_FULL        -> CryptoError.DIRECTORY_FULL
+    VeraCryptEngine.ERR_TOO_FRAGMENTED  -> CryptoError.TOO_FRAGMENTED
     VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> CryptoError.HIDDEN_BOUNDARY_PROTECTED
     VeraCryptEngine.ERR_NO_SLOT         -> CryptoError.TOO_MANY_MOUNTED
     else                                -> CryptoError.UNKNOWN

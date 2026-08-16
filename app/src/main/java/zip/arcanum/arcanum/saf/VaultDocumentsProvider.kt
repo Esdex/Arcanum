@@ -175,10 +175,14 @@ class VaultDocumentsProvider : DocumentsProvider() {
                 when (engine.writeAt(h, path, bytes, offset)) {
                     VeraCryptEngine.ERR_OK -> {}
                     VeraCryptEngine.ERR_READ_ONLY -> throw ErrnoException("onWrite", OsConstants.EROFS)
-                    // ENOSPC for both: an external app cannot act on the
+                    // ENOSPC for all three: an external app cannot act on the
                     // distinction, and "no space" is the closest true statement
-                    // for a directory that cannot take another entry.
+                    // for a directory that cannot take another entry, or for a
+                    // file too fragmented to extend (#125) - there is no errno
+                    // that means either. The distinction is kept where it can be
+                    // acted on, which is Arcanum's own import banner.
                     VeraCryptEngine.ERR_NO_SPACE,
+                    VeraCryptEngine.ERR_TOO_FRAGMENTED,
                     VeraCryptEngine.ERR_DIR_FULL  -> throw ErrnoException("onWrite", OsConstants.ENOSPC)
                     else -> throw ErrnoException("onWrite", OsConstants.EIO)
                 }
