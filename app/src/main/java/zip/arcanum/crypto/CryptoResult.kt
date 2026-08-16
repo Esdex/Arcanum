@@ -23,6 +23,14 @@ enum class CryptoError {
      * from [NO_SPACE] because the remedy is different: use a subfolder.
      */
     DIRECTORY_FULL,
+    /**
+     * Native ERR_TOO_FRAGMENTED: an ext4 file is in so many pieces that its extent
+     * tree cannot describe another one, and the write is refused. Distinct from
+     * [NO_SPACE] because the vault is not full - it has blocks free, just nowhere
+     * left to record where this file's next ones went. Copying the vault's contents
+     * into a fresh vault lays the files out in one piece again and clears it.
+     */
+    TOO_FRAGMENTED,
     /** Native ERR_HIDDEN_BOUNDARY: write blocked by hidden-volume protection. */
     HIDDEN_BOUNDARY_PROTECTED,
     /** Native ERR_NO_SLOT: no free drive slot (MAX_DRIVES containers already mounted). */

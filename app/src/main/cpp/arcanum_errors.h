@@ -34,3 +34,4 @@
 #define ERR_READ_ONLY       -10  /* write blocked: container mounted read-only */
 #define ERR_DIR_FULL        -11  /* directory cannot hold another entry (FAT root limit) */
 #define ERR_EXISTS          -12  /* target name already exists (rename/move) */
+#define ERR_TOO_FRAGMENTED  -13  /* ext4: the file's extent tree cannot grow further */

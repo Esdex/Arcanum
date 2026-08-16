@@ -36,6 +36,7 @@ class ErrorCodeSyncTest {
         "ERR_READ_ONLY" to VeraCryptEngine.ERR_READ_ONLY,
         "ERR_DIR_FULL" to VeraCryptEngine.ERR_DIR_FULL,
         "ERR_EXISTS" to VeraCryptEngine.ERR_EXISTS,
+        "ERR_TOO_FRAGMENTED" to VeraCryptEngine.ERR_TOO_FRAGMENTED,
     )
 
     @Test

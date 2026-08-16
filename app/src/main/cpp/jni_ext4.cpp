@@ -508,14 +508,18 @@ jint write_chunk(JNIEnv *env, int pdrv, ext4_wfs *w, uint32_t ino,
     int arc = ext4_append_blocks(w, ino, nblocks, fill_from_src, &src, &appended);
     env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
 
-    /* EXTW_ERR_FULL is reported as "no space" too: it means the file is too
-     * fragmented for its extent tree to grow further, which the user can only act
-     * on the same way as a full container - "it will not fit" is the honest surface
-     * for both. It is very hard to reach (a near-checkerboard container); the real
-     * fix is to split the full node (see the backlog issue), not to change this. */
+    /* EXTW_ERR_FULL used to be folded into ERR_NO_SPACE, on the grounds that either
+     * way the file will not fit and the user does the same thing next. It carries its
+     * own code now (#125), because the two say opposite things about the volume: this
+     * one fires on a volume with room to spare, and reporting it as "no space" would
+     * send a bug report looking for a space problem that is not there - the three
+     * weeks #114 cost me. Since #119 it is raised at one place only, the depth limit
+     * the format itself sets (ext4_extwrite.c), so it is nearer unreachable than rare.
+     * If it ever does turn up in a report, it needs to name itself. */
     if (arc != EXTW_OK || appended != nblocks)
-        return write_error(pdrv, (arc == EXTW_ERR_NOSPACE || arc == EXTW_ERR_FULL)
-                                     ? ERR_NO_SPACE : ERR_FS);
+        return write_error(pdrv, arc == EXTW_ERR_NOSPACE ? ERR_NO_SPACE
+                               : arc == EXTW_ERR_FULL    ? ERR_TOO_FRAGMENTED
+                                                         : ERR_FS);
     if (ext4_set_size(w, ino, final_size) != EXTW_OK)
         return write_error(pdrv, ERR_FS);
     /* The content changed, so move the modification time. Best-effort: the data is
@@ -612,8 +616,16 @@ jint ext4jni_write_file(JNIEnv *env, jlong handle, jstring jFilePath,
     /* The two helpers reach write_error() inside themselves, so the decision has
      * to be made on what came back. Everything left over from ERR_OK, a full
      * volume and a missing file means either a write that failed or a volume that
-     * would not read - both of which are worth a check. */
-    if (result != ERR_OK && result != ERR_NO_SPACE && result != ERR_FILE)
+     * would not read - both of which are worth a check.
+     *
+     * ERR_TOO_FRAGMENTED belongs with the full volume and not with the failures:
+     * an append that stops short still commits what it placed and leaves the
+     * counters agreeing with it (see ext4_append_blocks), so the volume is as
+     * sound after the refusal as before it. It used to arrive here as
+     * ERR_NO_SPACE, and leaving it out of this list would have made a change
+     * about wording start flagging vaults for a check. */
+    if (result != ERR_OK && result != ERR_NO_SPACE &&
+        result != ERR_TOO_FRAGMENTED && result != ERR_FILE)
         s.tear();
     return result;
 }
@@ -683,11 +695,13 @@ jint ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
         int wrc = ext4_write_at(s.fs(), &r.fs, ino, (uint64_t)offset,
                                 (const uint8_t *)data, (uint32_t)len);
         env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
-        /* EXTW_ERR_FULL joins NOSPACE: a file too fragmented for its extent tree to
-         * grow is a "will not fit" as far as the caller can do anything about it. */
+        /* Split apart for the reason write_chunk() gives at length: a refusal on a
+         * volume with room left has to be distinguishable from a full one (#125). */
         if (wrc != EXTW_OK) {
-            if (wrc == EXTW_ERR_NOSPACE || wrc == EXTW_ERR_FULL) {
+            if (wrc == EXTW_ERR_NOSPACE) {
                 result = ERR_NO_SPACE;
+            } else if (wrc == EXTW_ERR_FULL) {
+                result = ERR_TOO_FRAGMENTED;
             } else if (wrc == EXTW_ERR_RANGE) {
                 result = ERR_UNSUPPORTED;             /* a sparse/hole write */
             } else {

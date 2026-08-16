@@ -1029,10 +1029,11 @@ class FileManagerViewModel @Inject constructor(
      * tell the user.
      */
     private fun importFailureReason(code: Int): ImportFailureReason = when (code) {
-        VeraCryptEngine.ERR_DIR_FULL  -> ImportFailureReason.DIRECTORY_FULL
-        VeraCryptEngine.ERR_NO_SPACE  -> ImportFailureReason.NO_SPACE
-        VeraCryptEngine.ERR_READ_ONLY -> ImportFailureReason.READ_ONLY
-        else                          -> ImportFailureReason.UNKNOWN
+        VeraCryptEngine.ERR_DIR_FULL       -> ImportFailureReason.DIRECTORY_FULL
+        VeraCryptEngine.ERR_NO_SPACE       -> ImportFailureReason.NO_SPACE
+        VeraCryptEngine.ERR_TOO_FRAGMENTED -> ImportFailureReason.TOO_FRAGMENTED
+        VeraCryptEngine.ERR_READ_ONLY      -> ImportFailureReason.READ_ONLY
+        else                               -> ImportFailureReason.UNKNOWN
     }
 
     // Reduces an untrusted SAF display name to a bare filename, rejecting empty,

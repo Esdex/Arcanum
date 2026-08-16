@@ -12,6 +12,13 @@ enum class ImportFailureReason {
     DIRECTORY_FULL,
     /** Volume is out of clusters - remedy is freeing space, or moving to a larger vault. */
     NO_SPACE,
+    /**
+     * ext4 only: the file is in too many pieces for its extent tree to record
+     * another. Separate from [NO_SPACE] for the same reason [DIRECTORY_FULL] is -
+     * the vault has free space, so telling the user it is full sends them to free
+     * up room that will not help (#125). Remedy is a fresh vault to copy into.
+     */
+    TOO_FRAGMENTED,
     /** Vault turned out to be read-only underneath the UI's read-write state. */
     READ_ONLY,
     /** Anything else: I/O failure, unreadable source, unusable filename. */

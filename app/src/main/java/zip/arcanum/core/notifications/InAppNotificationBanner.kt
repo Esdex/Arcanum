@@ -326,6 +326,7 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
             when (this.reason) {
                 ImportFailureReason.DIRECTORY_FULL -> R.string.notif_import_failed_dir_full
                 ImportFailureReason.NO_SPACE       -> R.string.notif_import_failed_no_space
+                ImportFailureReason.TOO_FRAGMENTED -> R.string.notif_import_failed_fragmented
                 ImportFailureReason.READ_ONLY      -> R.string.notif_import_failed_read_only
                 ImportFailureReason.UNKNOWN        -> R.string.notif_import_failed_unknown
             }
