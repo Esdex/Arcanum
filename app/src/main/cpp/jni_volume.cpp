@@ -1065,9 +1065,12 @@ static jlong do_open_container(
          * drive decrypts. ext4 keeps no mounted state - its ops open the reader and
          * writer fresh each time - so there is no f_mount for it; the FatFs path is
          * unchanged. */
-        if (ext4jni_probe(pdrv)) {
+        bool ext4NeedsCheck = false;
+        if (ext4jni_probe(pdrv, &ext4NeedsCheck)) {
             ctx->isExt4 = true;
-            LOGI("[%s] mounted as ext4", logTag);
+            ctx->ext4NeedsCheck = ext4NeedsCheck;
+            LOGI("[%s] mounted as ext4%s", logTag,
+                 ext4NeedsCheck ? " (left mid-write, a check is owed)" : "");
             fr = FR_OK;
         } else {
             snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);

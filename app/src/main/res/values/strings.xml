@@ -1105,6 +1105,10 @@
     <string name="usb_gpt_note">This drive uses a GPT layout, which Arcanum does not read yet. Only the whole drive can be added.</string>
     <string name="usb_wrong_device">Wrong USB device: this drive does not hold that vault.</string>
     <string name="notif_usb_safe_to_remove">Safe to remove</string>
+    <!-- Shown once when an ext4 vault is opened whose last write session did not
+         finish. Not an error: the vault is usable and nothing is lost. -->
+    <string name="notif_vault_needs_check">This vault was interrupted</string>
+    <string name="notif_vault_needs_check_body">Nothing lost — a computer check tidies up</string>
     <string name="vault_eject_title">Eject %1$s?</string>
     <string name="vault_eject_body">The vault will be closed and everything written to it flushed to the drive. You can unplug the drive once this is done.</string>
     <string name="vault_eject_confirm">Eject</string>
