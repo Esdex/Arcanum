@@ -20,6 +20,15 @@
  * logical one, and the writable handle to put it back. Keeping the reader means
  * the extent walk that finds the block is the one already verified against
  * debugfs, rather than a second copy of it written for this.
+ *
+ * All three write paths below take a directory as they find it. A hash-indexed
+ * one - which is anything a desktop let grow past a block on a volume with
+ * dir_index - is rebuilt as an ordinary linear directory by whichever of them
+ * touches it first, and only then written to (#141). The index is not maintained:
+ * placing a name in a leaf whose hash range does not cover it leaves a file a
+ * listing shows and a lookup cannot find, and no shape is worth that. A directory
+ * whose first block does not begin with a real "." and ".." is not one this
+ * recognises, and comes back EXT4_DIRW_ERR_HTREE with nothing written.
  */
 #ifndef ARCANUM_EXT4_DIRWRITE_H
 #define ARCANUM_EXT4_DIRWRITE_H
@@ -41,7 +50,7 @@ extern "C" {
 #define EXT4_DIRW_ERR_ABSENT -4   /* nothing by that name to remove */
 #define EXT4_DIRW_ERR_NOROOM -5   /* no gap big enough in any existing block */
 #define EXT4_DIRW_ERR_NAME   -6   /* empty, too long, or contains / or NUL */
-#define EXT4_DIRW_ERR_HTREE  -8   /* hash-indexed directory, which this cannot write */
+#define EXT4_DIRW_ERR_HTREE  -8   /* hash-indexed, and not in a shape it can rebuild */
 
 /*
  * Puts `name` in `dir_ino`, pointing at `ino`.

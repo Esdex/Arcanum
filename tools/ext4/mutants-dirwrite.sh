@@ -160,11 +160,16 @@ try "growth adds nothing and reports success" \
 
 GROW=()
 
-# The hash-indexed guard. Checked with a synthetic flag rather than a real htree,
-# because nothing here can build one - see check_htree_refused in dirwcheck.py.
+# Rebuilding a directory that says it is hash-indexed. Checked with a synthetic
+# flag over the whole corpus, which is many more directory shapes than a real
+# index can be built on - see check_htree_flattened in dirwcheck.py. The rebuild
+# itself, over directories that really are indexed, is mutants-htree.sh.
 
-try "hash-indexed directories written to anyway" \
-    's@if (is_htree(dir)) {@if (0) {@'
+try "a directory flagged hash-indexed is refused rather than rebuilt" \
+    's@    if (!is_htree(dir)) return EXT4_DIRW_OK;@    if (is_htree(dir)) return EXT4_DIRW_ERR_HTREE;@'
+
+try "the flag is left set after the rebuild" \
+    's@         rd32(dir + INODE_FLAGS_OFF) \& ~EXT4_INODE_FLAG_INDEX);@         rd32(dir + INODE_FLAGS_OFF));@'
 
 echo
 if [ "$fail" -ne 0 ]; then

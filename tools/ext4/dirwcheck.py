@@ -29,6 +29,10 @@ Per directory:
   duplicate  adding the same name twice is refused rather than allowed
   absent     removing a name that is not there is refused
   remove     the listing comes back exactly, and fsck is clean again
+  rebuild    a directory flagged hash-indexed is rebuilt as a linear one and then
+             written to (#141) - the flag is synthetic here, which buys every
+             directory shape the generator produced; real indexes are
+             htreecheck.py's ground
 
 The listing coming back is stronger than it looks. Adding splits the gap inside
 some entry's rec_len and removing gives it back to the entry in front, so a wrong
@@ -153,38 +157,78 @@ def short_name_pass(img, dir_ino, bench, dirwrite, target,
     return problems, None
 
 
-def check_htree_refused(img, dir_ino, dirwrite, existing_name):
-    """A directory marked hash-indexed must be refused, not written to.
+def check_htree_flattened(img, dir_ino, bench, dirwrite, existing_name, existing):
+    """A directory marked hash-indexed is rebuilt as a linear one, then written to.
 
-    The flag is set here with debugfs rather than by building a real hash-indexed
-    directory, because nothing available can build one: mke2fs -d with 3000 files
-    and fuse2fs with 2000 both leave INDEX_FL clear, since everything here is
-    libext2fs and only the kernel builds them. So this checks the guard, not htree
-    support - which is the honest limit of what can be checked, and better than
-    leaving the guard resting on review alone.
+    The flag is set here with debugfs rather than by building a real index, and
+    that is on purpose rather than for want of a way: this runs over every
+    directory the generator produced, which is far more shapes - block sizes, fill
+    levels, entry sizes - than the handful htreecheck.py can build. What it
+    measures is that the rebuild leaves every one of them correct and e2fsck
+    completely clean. Real indexes, with a root, interior nodes and hash-ordered
+    leaves, are htreecheck.py's ground.
 
-    The image is left inconsistent by the flag alone, so fsck is not consulted;
-    the only question asked is whether the writer declines.
+    Removal is the operation used, because htreecheck.py flattens through the add
+    path: between them all three write paths rebuild before they touch anything.
+
+    The name to remove has to be one that is actually there. A name that is not
+    gets turned away by the lookup that precedes the removal, which never reaches
+    the rebuild - so a made-up name would pass whether it happened or not.
     """
     r = subprocess.run(["debugfs", "-w", "-R", f"sif <{dir_ino}> flags 0x81000", img],
                        capture_output=True, text=True)
     if r.returncode != 0:
-        return ["could not mark the directory hash-indexed for the refusal check"]
+        return ["could not mark the directory hash-indexed for the rebuild check"]
 
-    # The name to remove has to be one that is actually there. A name that is
-    # not gets turned away by the lookup that precedes the removal, which never
-    # reaches the guard - so testing with a made-up name would pass whether the
-    # guard existed or not.
     problems = []
-    for verb, args in (("add", ["add", "probe", "13", "1"]),
-                       ("create", ["create", "probe2", "1784639915"]),
-                       ("remove", ["remove", existing_name])):
-        rc, err = run(dirwrite, img, dir_ino, *args)
-        if rc == 0:
-            problems.append(f"{verb} went ahead on a hash-indexed directory")
-        elif "hash-indexed" not in err:
-            problems.append(f"{verb} refused a hash-indexed directory for the "
-                            f"wrong reason: {err}")
+    entry = next((e for e in existing if e[2] == existing_name), None)
+    rc, err = run(dirwrite, img, dir_ino, "remove", existing_name)
+    if rc != 0:
+        return [f"a directory flagged hash-indexed was not rebuilt: {err}"]
+
+    flags = subprocess.run(["debugfs", "-R", f"stat <{dir_ino}>", img],
+                           capture_output=True, text=True).stdout
+    if "0x81000" in flags:
+        problems.append("still flagged hash-indexed after the rebuild")
+
+    # The rebuild repacks every entry, so the listing comes back in a different
+    # order and only its contents can be compared.
+    after = our_listing(bench, img, dir_ino)
+    if after is None:
+        problems.append("could not list the directory after the rebuild")
+    else:
+        want = sorted(e for e in existing if e != entry)
+        if sorted(after) != want:
+            gained = [e for e in sorted(after) if e not in want]
+            lost = [e for e in want if e not in sorted(after)]
+            problems.append(f"the rebuild gained {gained[:3]} and lost {lost[:3]}")
+
+    ok, _ = dir_csum_ok(bench, img, dir_ino)
+    if not ok:
+        problems.append("a directory block checksum does not verify after the "
+                        "rebuild")
+
+    # Put it back, so the rebuilt directory is required to take a write too, and
+    # only then ask e2fsck. `remove` is the entry half of a link and the driver
+    # moves the count with it, so between the two operations the name's inode is
+    # at zero links and unfreed - an orphan e2fsck would report, and it would be
+    # the harness's doing rather than the rebuild's.
+    rc, err = run(dirwrite, img, dir_ino, "add", existing_name,
+                  entry[0], entry[1])
+    if rc != 0:
+        return problems + [f"adding the name back into the rebuilt directory "
+                           f"failed: {err}"]
+    if sorted(our_listing(bench, img, dir_ino) or []) != sorted(existing):
+        problems.append("the listing did not come back after the rebuild")
+
+    # Clean outright, not merely unchanged: the flag was the only thing wrong with
+    # the image and clearing it is part of what is being checked.
+    frc, flines, _ = fsck(img)
+    complaints = [l for l in flines if not BENIGN_REMARK.match(l)
+                  and not l.startswith("Pass ") and not l.startswith("e2fsck ")]
+    if frc != 0 or complaints:
+        problems.append(f"fsck is not clean after the rebuild (rc={frc}): "
+                        f"{complaints[:3]}")
     return problems
 
 
@@ -318,10 +362,11 @@ def main():
                 real = next((n for _, ft, n in listing
                              if ft == 1 and n not in (".", "..")), None)
                 hproblems = ([] if real is None else
-                             check_htree_refused(himg, dir_ino, args.dirwrite, real))
+                             check_htree_flattened(himg, dir_ino, args.bench,
+                                                   args.dirwrite, real, listing))
             if hproblems:
                 failed += 1
-                print(f"FAIL {os.path.basename(case)} inode {dir_ino} (htree guard)")
+                print(f"FAIL {os.path.basename(case)} inode {dir_ino} (htree rebuild)")
                 for p in hproblems:
                     print(f"     {p}")
 

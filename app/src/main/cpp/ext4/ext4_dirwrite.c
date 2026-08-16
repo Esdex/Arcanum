@@ -60,7 +60,7 @@ static void wr32(uint8_t *p, uint32_t v) {
 }
 
 /*
- * A hash-indexed directory is refused rather than written to.
+ * A hash-indexed directory cannot be written to as it stands.
  *
  * Everything here places an entry by walking blocks and taking the first gap
  * that fits. In an indexed directory that is not merely suboptimal, it is wrong:
@@ -69,13 +69,9 @@ static void wr32(uint8_t *p, uint32_t v) {
  * goes through the index - while still being listed by a linear walk. The
  * directory would look fine and behave as though the file were missing.
  *
- * The refusal cannot be exercised by this corpus, and that was established rather
- * than assumed: mke2fs -d with 3000 files, and fuse2fs with 2000 created through
- * a mount, both leave INDEX_FL clear. Everything available here is built on
- * libext2fs, which reads hash-indexed directories but does not build them - only
- * the kernel does, and mounting for real needs privileges this has no business
- * requiring. So the guard is held up by review, and by the fact that the
- * alternative to refusing is silent corruption.
+ * So the first write to one rebuilds it as an ordinary linear directory first
+ * (flatten_htree below) and proceeds on the shape this code fully controls. See
+ * issue #141.
  */
 static int is_htree(const uint8_t *inode) {
     return (rd32(inode + INODE_FLAGS_OFF) & EXT4_INODE_FLAG_INDEX) != 0;
@@ -245,6 +241,255 @@ static int grow_directory(ext4_wfs *w, uint32_t dir_ino, uint32_t seed) {
     return EXT4_DIRW_OK;
 }
 
+/* ── Turning a hash-indexed directory back into a linear one ──────────────── */
+
+/*
+ * An indexed directory is a tree laid over the same blocks a linear one uses.
+ * Block 0 is its root: a real "." and a real "..", whose rec_len is stretched to
+ * cover the whole rest of the block, and behind that cover the hash map. Interior
+ * nodes are a single dead entry spanning the block, with a map behind it in the
+ * same way. Only the leaves hold names, and a leaf is an ordinary linear block.
+ *
+ * That is why reading works today with no knowledge of any of it: a linear walk
+ * sees "." and ".." in the root, nothing at all in an interior node, and every
+ * name in the leaves. Exactly the live entries, exactly once. The rebuild is
+ * built on that same walk, so it inherits a reader already checked against
+ * debugfs rather than adding a second one.
+ *
+ * Rebuilding rather than maintaining the index is a deliberate trade. Maintaining
+ * it means hashing names with the volume's seed, choosing a leaf by hash range
+ * and splitting one when it fills - and a split that puts one entry on the wrong
+ * side leaves a name that a linear listing shows and a lookup cannot find, which
+ * is the failure mode this whole layer is shaped to avoid. Rebuilding costs one
+ * pass over a single directory, the shape it leaves behind is one every other
+ * path here already handles, and it is legal: the dir_index feature says indexed
+ * directories may exist, not that they must. What is lost is the index, on a
+ * directory large enough to have earned one - the desktop's own `e2fsck -D` puts
+ * it back if that ever matters.
+ */
+
+/*
+ * Closes an output block: the last entry's rec_len is stretched to the end of the
+ * chain so that the chain adds up to exactly the block, and the tail is stamped.
+ * An empty block gets the one dead entry that spans it.
+ */
+static void close_out_block(ext4_wfs *w, uint8_t *dst, uint32_t last_off,
+                            uint32_t used, uint32_t limit, uint32_t seed,
+                            int with_tail) {
+    if (used == 0) {
+        wr32(dst, 0);
+        wr16(dst + 4, (uint16_t)limit);
+    } else {
+        wr16(dst + last_off + 4, (uint16_t)(limit - last_off));
+    }
+    if (with_tail) ext4_dir_stamp_tail(dst, w->block_size, seed);
+}
+
+static int write_out_block(ext4_wfs *w, const ext4_fs *r, const uint8_t *inode,
+                           uint32_t logical, uint8_t *buf, uint32_t seed) {
+    uint64_t phys = 0;
+    int uninit = 0;
+    if (ext4_map_block(r, inode, logical, &phys, &uninit) != EXT4_OK)
+        return EXT4_DIRW_ERR_IO;
+    if (phys == 0 || uninit) return EXT4_DIRW_ERR_FORMAT;
+    return write_dir_block(w, phys, buf, seed);
+}
+
+/*
+ * One pass over the directory, packing every live entry into as few linear blocks
+ * as they take.
+ *
+ * With `dst` NULL nothing is written and the pass only measures; with `dst` given
+ * it writes. The two are the same walk on purpose - what the measuring pass
+ * accepts is exactly what the writing pass then does, so the checks below are
+ * made once and hold for both.
+ */
+static int flatten_pass(ext4_wfs *w, const ext4_fs *r, const uint8_t *dir,
+                        uint32_t blocks, uint32_t seed,
+                        uint8_t *src, uint8_t *dst, uint32_t *need_out) {
+    /* Room is reserved for a checksum tail exactly when the volume has one to
+     * reserve it for. Reserving it unconditionally would cost twelve bytes a
+     * block against a source that spent them on entries, and on a volume without
+     * metadata_csum enough of those add up to a whole block - which would make
+     * the rebuild need more blocks than it found and refuse a directory it can
+     * plainly hold. Matching the volume keeps the output exactly as dense as the
+     * input, which is what the guard further down rests on. */
+    const int with_tail = r->has_metadata_csum;
+    const uint32_t limit = with_tail ? w->block_size - DIR_TAIL_SIZE
+                                     : w->block_size;
+    uint32_t out_index = 0, used = 0, last_off = 0, seen = 0;
+
+    if (dst) memset(dst, 0, w->block_size);
+
+    for (uint32_t b = 0; b < blocks; b++) {
+        uint64_t phys = 0;
+        int prc = read_dir_block(w, r, dir, b, src, &phys);
+        if (prc == EXT4_DIRW_ERR_NOROOM) continue;    /* a hole holds no entries */
+        if (prc != EXT4_DIRW_OK) return prc;
+
+        uint32_t src_limit = chain_limit(w, src);
+        for (uint32_t off = 0; off + DIRENT_HEADER <= src_limit; ) {
+            uint32_t cur_ino = rd32(src + off);
+            uint16_t rec     = rd16(src + off + 4);
+            uint8_t  nlen    = src[off + 6];
+            uint8_t  ftype   = src[off + 7];
+            if (rec < DIRENT_HEADER || (rec & 3) || off + rec > src_limit)
+                return EXT4_DIRW_ERR_FORMAT;
+
+            if (cur_ino != 0 && nlen != 0 && ftype != EXT4_FT_DIR_CSUM) {
+                if (DIRENT_HEADER + (uint32_t)nlen > rec)
+                    return EXT4_DIRW_ERR_FORMAT;
+
+                /* "." and ".." lead the first block, in that order, in both
+                 * shapes. Anything else at the head is a directory this does not
+                 * recognise, and rebuilding it would be guessing. */
+                if (seen == 0 && !(nlen == 1 && src[off + DIRENT_HEADER] == '.'))
+                    return EXT4_DIRW_ERR_FORMAT;
+                if (seen == 1 && !(nlen == 2 && src[off + DIRENT_HEADER] == '.' &&
+                                                src[off + DIRENT_HEADER + 1] == '.'))
+                    return EXT4_DIRW_ERR_FORMAT;
+                seen++;
+
+                uint32_t need = entry_size(nlen);
+                if (used + need > limit) {
+                    if (dst) {
+                        close_out_block(w, dst, last_off, used, limit, seed, with_tail);
+                        int wrc = write_out_block(w, r, dir, out_index, dst, seed);
+                        if (wrc != EXT4_DIRW_OK) return wrc;
+                        memset(dst, 0, w->block_size);
+                    }
+                    out_index++;
+                    used = 0;
+                    last_off = 0;
+
+                    /* The rebuilt blocks go back over the ones being read, so the
+                     * output must never get ahead of the input: block `out_index`
+                     * is only overwritten once block `out_index` has been read.
+                     * Packing is denser than any layout it replaces - the root and
+                     * every interior node give up a whole block's worth - so this
+                     * holds by construction, and being told otherwise means the
+                     * directory is not one to rebuild in place. Measured before a
+                     * byte is written, which is what makes refusing here safe. */
+                    if (out_index > b) return EXT4_DIRW_ERR_NOROOM;
+                }
+
+                if (dst) {
+                    wr32(dst + used, cur_ino);
+                    wr16(dst + used + 4, (uint16_t)need);
+                    dst[used + 6] = nlen;
+                    dst[used + 7] = ftype;
+                    memcpy(dst + used + DIRENT_HEADER, src + off + DIRENT_HEADER, nlen);
+                }
+                last_off = used;
+                used += need;
+            }
+            off += rec;
+        }
+    }
+
+    if (seen < 2) return EXT4_DIRW_ERR_FORMAT;   /* no "." and ".." to be found */
+
+    if (dst) {
+        close_out_block(w, dst, last_off, used, limit, seed, with_tail);
+        int wrc = write_out_block(w, r, dir, out_index, dst, seed);
+        if (wrc != EXT4_DIRW_OK) return wrc;
+
+        /* Whatever the old shape needed and the new one does not stays part of the
+         * directory rather than being freed: an empty block, formatted and ready,
+         * which is the same thing removing every name from a block leaves behind.
+         * Freeing them would mean moving i_size and the extent tree as well, and a
+         * directory that just grew back would take them straight from the
+         * allocator again. */
+        for (uint32_t b = out_index + 1; b < blocks; b++) {
+            memset(dst, 0, w->block_size);
+            close_out_block(w, dst, 0, 0, limit, seed, with_tail);
+            wrc = write_out_block(w, r, dir, b, dst, seed);
+            if (wrc != EXT4_DIRW_OK) return wrc;
+        }
+    }
+
+    if (need_out) *need_out = out_index + 1;
+    return EXT4_DIRW_OK;
+}
+
+/*
+ * Rewrites `dir_ino` as a linear directory and clears its INDEX flag.
+ *
+ * `dir` is the caller's copy of the inode and is updated in place, so the caller
+ * carries on with the flag already cleared rather than reading it back through a
+ * handle that may not yet see the write.
+ *
+ * Two orderings decide what an interrupted rebuild leaves behind, and neither is
+ * free, so the one that fails better was taken:
+ *
+ *   - the flag is cleared first. Between that and the first block being rewritten
+ *     the directory is flagged linear while still holding index-shaped blocks -
+ *     which reads correctly, because a linear walk of those blocks is exactly what
+ *     this pass is built on. Every name stays reachable throughout.
+ *   - blocks are then rewritten from the front. A rebuild cut short leaves the
+ *     blocks already written holding entries the untouched ones behind them still
+ *     hold too, so the directory reads with duplicates - repairable, and nothing
+ *     is lost. Writing from the back instead would move entries out of a block
+ *     before their new home was written, and lose them.
+ *
+ * Clearing the flag last would have kept the index over blocks that no longer
+ * match it, which is the one outcome where a name is present and cannot be found.
+ * The remaining window is #142's ground.
+ */
+static int flatten_htree(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
+                         uint8_t *dir) {
+    uint32_t blocks = dir_block_count(r, dir);
+    if (blocks == 0) return EXT4_DIRW_ERR_FORMAT;
+
+    uint32_t seed = inode_seed_of(w, r, dir_ino);
+    uint8_t *src = malloc(w->block_size);
+    uint8_t *dst = malloc(w->block_size);
+    if (!src || !dst) { free(src); free(dst); return EXT4_DIRW_ERR_IO; }
+
+    /* Measured in full before anything is written. A directory this cannot lay
+     * out is left exactly as it was, which is the old behaviour and still the
+     * right one - a rebuild that ran out of room half way would be worse than
+     * never starting. */
+    uint32_t need = 0;
+    int rc = flatten_pass(w, r, dir, blocks, seed, src, NULL, &need);
+    if (rc != EXT4_DIRW_OK) goto done;
+
+    wr32(dir + INODE_FLAGS_OFF,
+         rd32(dir + INODE_FLAGS_OFF) & ~EXT4_INODE_FLAG_INDEX);
+    if (ext4_write_inode_raw(w, dir_ino, dir) != EXTW_OK) {
+        rc = EXT4_DIRW_ERR_IO;
+        goto done;
+    }
+
+    rc = flatten_pass(w, r, dir, blocks, seed, src, dst, NULL);
+    if (rc == EXT4_DIRW_OK)
+        EXT4_LOGI("dir inode %u was hash-indexed; rebuilt as %u linear block(s) "
+                  "of %u", dir_ino, need, blocks);
+
+done:
+    free(src);
+    free(dst);
+    return rc;
+}
+
+/*
+ * The one place the three write paths go through, so a directory is rebuilt on
+ * whichever of them touches it first and never more than once.
+ */
+static int ensure_linear(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
+                         uint8_t *dir) {
+    if (!is_htree(dir)) return EXT4_DIRW_OK;
+
+    int rc = flatten_htree(w, r, dir_ino, dir);
+    if (rc != EXT4_DIRW_OK) {
+        EXT4_LOGE("dir inode %u is hash-indexed and could not be rebuilt as a "
+                  "linear directory (%d); refusing to write to it rather than "
+                  "corrupting it", dir_ino, rc);
+        return EXT4_DIRW_ERR_HTREE;
+    }
+    return EXT4_DIRW_OK;
+}
+
 int ext4_dir_add(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
                  uint32_t ino, uint8_t file_type, const char *name) {
     uint8_t name_len;
@@ -256,11 +501,8 @@ int ext4_dir_add(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
 
-    if (is_htree(dir)) {
-        EXT4_LOGE("dir inode %u is hash-indexed (htree); refusing to write to it "
-                  "rather than corrupting it", dir_ino);
-        return EXT4_DIRW_ERR_HTREE;
-    }
+    int frc = ensure_linear(w, r, dir_ino, dir);
+    if (frc != EXT4_DIRW_OK) return frc;
 
     uint32_t need   = entry_size(name_len);
     uint32_t blocks = dir_block_count(r, dir);
@@ -369,11 +611,8 @@ int ext4_dir_remove(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
 
-    if (is_htree(dir)) {
-        EXT4_LOGE("dir inode %u is hash-indexed (htree); refusing to write to it "
-                  "rather than corrupting it", dir_ino);
-        return EXT4_DIRW_ERR_HTREE;
-    }
+    int frc = ensure_linear(w, r, dir_ino, dir);
+    if (frc != EXT4_DIRW_OK) return frc;
 
     uint32_t blocks = dir_block_count(r, dir);
     uint32_t seed   = inode_seed_of(w, r, dir_ino);
@@ -432,11 +671,8 @@ int ext4_dir_set_dotdot(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
 
-    if (is_htree(dir)) {
-        EXT4_LOGE("dir inode %u is hash-indexed (htree); refusing to rewrite its "
-                  "'..' rather than corrupting it", dir_ino);
-        return EXT4_DIRW_ERR_HTREE;
-    }
+    int frc = ensure_linear(w, r, dir_ino, dir);
+    if (frc != EXT4_DIRW_OK) return frc;
 
     uint32_t seed = inode_seed_of(w, r, dir_ino);
     uint8_t *buf  = malloc(w->block_size);
