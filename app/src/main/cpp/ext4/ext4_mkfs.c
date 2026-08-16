@@ -94,7 +94,9 @@
 #define INODE_CRTIME_OFF      0x90
 
 #define EXT4_MAGIC              0xEF53
-#define EXT4_STATE_CLEAN        1
+/* EXT4_STATE_CLEAN comes from ext4_alloc.h, which owns the field now that a
+ * write session clears and restores it rather than the formatter stamping it once
+ * (#142). Defining it twice was a warning waiting to disagree. */
 #define EXT4_ERRORS_CONTINUE    1
 #define EXT4_REV_DYNAMIC        1
 #define EXT4_GOOD_EXTRA_ISIZE   32

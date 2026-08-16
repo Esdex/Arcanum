@@ -110,6 +110,60 @@ bool open_writer(int pdrv, ext4_wfs *w) {
     return true;
 }
 
+/*
+ * One write session on a drive, bracketed so the volume says on disk whether a
+ * write is outstanding (#142).
+ *
+ * There is no journal, so an operation cut short - the app killed, the battery
+ * gone, a drive pulled - leaves whatever its last completed write put there.
+ * faultcheck.py sweeps every write of every operation and establishes that it is
+ * always something e2fsck repairs without costing anything else on the volume.
+ * That is only worth having if something says a repair is due, and nothing did:
+ * s_state was stamped clean by the formatter and never touched again.
+ *
+ * So: mark not-clean before the first write, mark clean again in the destructor,
+ * which every orderly return runs and a killed process does not. That is exactly
+ * the distinction wanted - the flag means "a session started and did not finish",
+ * not "an operation failed".
+ *
+ * tear() is for the case in between: the operation returned, but it returned
+ * because a write failed, so a residual is on disk and the mark has to stay. It
+ * sits next to the write_error() calls, which is where this file already decides
+ * that a write went wrong.
+ *
+ * The bracket also removes the six hand-written ext4_fs_close calls per exit path
+ * that used to be here, one of which is how a session leaked on an error return.
+ */
+class WriteSession {
+public:
+    explicit WriteSession(int pdrv) {
+        open_ = open_writer(pdrv, &w_);
+        if (open_ && ext4_fs_mark_dirty(&w_) != 0) {
+            LOGE("ext4: could not mark drive %d as being written to", pdrv);
+            ext4_fs_close(&w_);
+            open_ = false;
+        }
+    }
+    ~WriteSession() {
+        if (!open_) return;
+        if (!torn_) ext4_fs_mark_clean(&w_);
+        ext4_fs_close(&w_);
+    }
+    WriteSession(const WriteSession &) = delete;
+    WriteSession &operator=(const WriteSession &) = delete;
+
+    bool ok() const { return open_; }
+    ext4_wfs *fs() { return &w_; }
+
+    /* Leaves the volume marked as needing a check. */
+    void tear() { torn_ = true; }
+
+private:
+    ext4_wfs w_{};
+    bool open_ = false;
+    bool torn_ = false;
+};
+
 /* The pdrv behind a handle if it is an ext4 container, else -1. Caller holds
  * g_fatfs_mutex. */
 int ext4_pdrv(jlong handle) {
@@ -161,13 +215,22 @@ bool ext4jni_is_container(jlong handle) {
  * volume's own bytes - not the header - decide which filesystem it is. Read-only,
  * allocates nothing that outlives it.
  */
-bool ext4jni_probe(int pdrv) {
+bool ext4jni_probe(int pdrv, bool *needs_check_out) {
     Reader r;
     if (!open_reader(pdrv, &r, /*quiet=*/true)) return false;
     /* ext4_open already verified the 0xEF53 magic and parsed the geometry; its
      * success is the probe. */
     LOGI("ext4: drive %d is ext4 (block size %u, %llu blocks)", pdrv,
          r.fs.block_size, (unsigned long long)r.fs.blocks_count);
+
+    /* Read here and reported, never acted on. The volume mounts either way: what a
+     * cut-short write leaves is always something a check repairs without cost
+     * (faultcheck.py sweeps every write of every operation to establish that), so
+     * refusing to open would take the user's data away over something that is not
+     * a threat to it. See #142. */
+    if (needs_check_out) *needs_check_out = !r.fs.is_clean;
+    if (!r.fs.is_clean)
+        LOGI("ext4: drive %d was left mid-write - a check is owed", pdrv);
     return true;
 }
 
@@ -539,14 +602,19 @@ jint ext4jni_write_file(JNIEnv *env, jlong handle, jstring jFilePath,
     int prc = ext4_resolve_parent(&r.fs, path.c_str(), &dir_ino, name, sizeof(name));
     if (prc != EXT4_PATH_OK) return path_error(prc);
 
-    ext4_wfs w;
-    if (!open_writer(pdrv, &w)) return ERR_FS;
+    WriteSession s(pdrv);
+    if (!s.ok()) return ERR_FS;
 
     jint result = (offset == 0)
-        ? write_from_zero(env, pdrv, &w, &r.fs, dir_ino, name, jData, len)
-        : append_at_eof(env, pdrv, &w, &r.fs, dir_ino, name, jData, len, (uint64_t)offset);
+        ? write_from_zero(env, pdrv, s.fs(), &r.fs, dir_ino, name, jData, len)
+        : append_at_eof(env, pdrv, s.fs(), &r.fs, dir_ino, name, jData, len, (uint64_t)offset);
 
-    ext4_fs_close(&w);
+    /* The two helpers reach write_error() inside themselves, so the decision has
+     * to be made on what came back. Everything left over from ERR_OK, a full
+     * volume and a missing file means either a write that failed or a volume that
+     * would not read - both of which are worth a check. */
+    if (result != ERR_OK && result != ERR_NO_SPACE && result != ERR_FILE)
+        s.tear();
     return result;
 }
 
@@ -578,55 +646,61 @@ jint ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
     int prc = ext4_resolve_parent(&r.fs, path.c_str(), &dir_ino, name, sizeof(name));
     if (prc != EXT4_PATH_OK) return path_error(prc);
 
-    ext4_wfs w;
-    if (!open_writer(pdrv, &w)) return ERR_FS;
+    WriteSession s(pdrv);
+    if (!s.ok()) return ERR_FS;
 
     /* Opened, not recreated: create only when the name is not there, and never
      * write over a directory of that name. */
     uint32_t ino = 0;
     int lrc = ext4_dir_lookup(&r.fs, dir_ino, name, &ino);
     if (lrc == EXT4_DIRW_ERR_ABSENT) {
-        int crc = ext4_create_file(&w, &r.fs, dir_ino, name, 0644, now_seconds(), &ino);
+        int crc = ext4_create_file(s.fs(), &r.fs, dir_ino, name, 0644, now_seconds(), &ino);
         if (crc != EXT4_DIRW_OK) {
-            ext4_fs_close(&w);
-            return crc == EXT4_CREATE_ERR_NOINODE ? ERR_NO_SPACE : write_error(pdrv, ERR_FS);
+            if (crc == EXT4_CREATE_ERR_NOINODE) return ERR_NO_SPACE;
+            s.tear();
+            return write_error(pdrv, ERR_FS);
         }
     } else if (lrc != EXT4_DIRW_OK) {
-        ext4_fs_close(&w);
+        s.tear();                       /* the directory would not read */
         return ERR_FS;
     } else {
         uint8_t inode[256];
         memset(inode, 0, sizeof(inode));
         if (ext4_read_inode_raw(&r.fs, ino, inode, sizeof(inode)) != EXT4_OK) {
-            ext4_fs_close(&w);
+            s.tear();                   /* nor would the inode */
             return ERR_FS;
         }
-        if ((rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR) {
-            ext4_fs_close(&w);
-            return ERR_FS;   /* a directory is not a file to write into */
-        }
+        /* Not torn: nothing was written and nothing is wrong with the volume -
+         * the caller asked to write into a directory. */
+        if ((rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR)
+            return ERR_FS;
     }
 
     jint result = ERR_OK;
     if (len > 0) {
         jbyte *data = env->GetByteArrayElements(jData, nullptr);
-        if (!data) { ext4_fs_close(&w); return ERR_FS; }
-        int wrc = ext4_write_at(&w, &r.fs, ino, (uint64_t)offset,
+        if (!data) return ERR_FS;
+        int wrc = ext4_write_at(s.fs(), &r.fs, ino, (uint64_t)offset,
                                 (const uint8_t *)data, (uint32_t)len);
         env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
         /* EXTW_ERR_FULL joins NOSPACE: a file too fragmented for its extent tree to
          * grow is a "will not fit" as far as the caller can do anything about it. */
-        if (wrc != EXTW_OK)
-            result = (wrc == EXTW_ERR_NOSPACE || wrc == EXTW_ERR_FULL) ? ERR_NO_SPACE
-                   : wrc == EXTW_ERR_RANGE   ? ERR_UNSUPPORTED  /* a sparse/hole write */
-                                             : write_error(pdrv, ERR_FS);
-        else
-            ext4_set_mtime(&w, ino, now_seconds());   /* content changed */
+        if (wrc != EXTW_OK) {
+            if (wrc == EXTW_ERR_NOSPACE || wrc == EXTW_ERR_FULL) {
+                result = ERR_NO_SPACE;
+            } else if (wrc == EXTW_ERR_RANGE) {
+                result = ERR_UNSUPPORTED;             /* a sparse/hole write */
+            } else {
+                s.tear();
+                result = write_error(pdrv, ERR_FS);
+            }
+        } else {
+            ext4_set_mtime(s.fs(), ino, now_seconds());   /* content changed */
+        }
     }
     /* len == 0 has already touched the file into existence, which is what the SAF
      * path asks of an empty write. */
 
-    ext4_fs_close(&w);
     return result;
 }
 
@@ -648,15 +722,15 @@ jint ext4jni_create_directory(JNIEnv *env, jlong handle, jstring jDirPath) {
     int prc = ext4_resolve_parent(&r.fs, path.c_str(), &dir_ino, name, sizeof(name));
     if (prc != EXT4_PATH_OK) return path_error(prc);
 
-    ext4_wfs w;
-    if (!open_writer(pdrv, &w)) return ERR_FS;
+    WriteSession s(pdrv);
+    if (!s.ok()) return ERR_FS;
 
     uint32_t ino = 0;
-    int rc = ext4_mkdir(&w, &r.fs, dir_ino, name, 0755, now_seconds(), &ino);
-    ext4_fs_close(&w);
+    int rc = ext4_mkdir(s.fs(), &r.fs, dir_ino, name, 0755, now_seconds(), &ino);
 
     if (rc == EXT4_DIRW_OK) return ERR_OK;
     if (rc == EXT4_CREATE_ERR_NOINODE || rc == EXT4_DIRW_ERR_NOROOM) return ERR_NO_SPACE;
+    s.tear();
     return write_error(pdrv, ERR_FS);
 }
 
@@ -686,12 +760,12 @@ jint ext4jni_delete_file(JNIEnv *env, jlong handle, jstring jFilePath) {
     int prc = ext4_resolve_parent(&r.fs, path.c_str(), &dir_ino, name, sizeof(name));
     if (prc != EXT4_PATH_OK) return path_error(prc);
 
-    ext4_wfs w;
-    if (!open_writer(pdrv, &w)) return ERR_FS;
-    int rc = ext4_unlink_file(&w, &r.fs, dir_ino, name, now_seconds());
-    ext4_fs_close(&w);
-
-    return rc == EXT4_DIRW_OK ? ERR_OK : write_error(pdrv, ERR_FS);
+    WriteSession s(pdrv);
+    if (!s.ok()) return ERR_FS;
+    int rc = ext4_unlink_file(s.fs(), &r.fs, dir_ino, name, now_seconds());
+    if (rc == EXT4_DIRW_OK) return ERR_OK;
+    s.tear();
+    return write_error(pdrv, ERR_FS);
 }
 
 /* ─── ext4jni_delete_directory (recursive) ───────────────────────────── */
@@ -752,16 +826,20 @@ jint ext4jni_delete_directory(JNIEnv *env, jlong handle, jstring jDirPath) {
     int prc = ext4_resolve_parent(&r.fs, path.c_str(), &parent_ino, name, sizeof(name));
     if (prc != EXT4_PATH_OK) return path_error(prc);   /* EINVAL for the root */
 
-    ext4_wfs w;
-    if (!open_writer(pdrv, &w)) return ERR_FS;
+    WriteSession s(pdrv);
+    if (!s.ok()) return ERR_FS;
 
     uint32_t when = now_seconds();
-    int rc = empty_directory(&w, &r.fs, ino, when, 0);
-    if (rc == ERR_OK && ext4_rmdir(&w, &r.fs, parent_ino, name, when) != EXT4_DIRW_OK)
+    int rc = empty_directory(s.fs(), &r.fs, ino, when, 0);
+    if (rc == ERR_OK && ext4_rmdir(s.fs(), &r.fs, parent_ino, name, when) != EXT4_DIRW_OK)
         rc = ERR_FS;
-    ext4_fs_close(&w);
 
-    return rc == ERR_OK ? ERR_OK : write_error(pdrv, rc);
+    if (rc == ERR_OK) return ERR_OK;
+    /* A recursive delete that stops half way has removed some of the tree and not
+     * the rest, which is a perfectly consistent volume - but it got there because
+     * a write failed, so the mark stays. */
+    s.tear();
+    return write_error(pdrv, rc);
 }
 
 /* ─── ext4jni_rename ─────────────────────────────────────────────────── */
@@ -789,11 +867,10 @@ jint ext4jni_rename(JNIEnv *env, jlong handle, jstring jOld, jstring jNew) {
     prc = ext4_resolve_parent(&r.fs, newp.c_str(), &dst_parent, dst_name, sizeof(dst_name));
     if (prc != EXT4_PATH_OK) return path_error(prc);
 
-    ext4_wfs w;
-    if (!open_writer(pdrv, &w)) return ERR_FS;
+    WriteSession s(pdrv);
+    if (!s.ok()) return ERR_FS;
 
-    int rc = ext4_rename(&w, &r.fs, src_parent, src_name, dst_parent, dst_name);
-    ext4_fs_close(&w);
+    int rc = ext4_rename(s.fs(), &r.fs, src_parent, src_name, dst_parent, dst_name);
 
     /* A destination that already exists is the one outcome worth telling apart, so
      * the UI can say "name already exists" rather than a generic failure; the FatFs
@@ -801,6 +878,7 @@ jint ext4jni_rename(JNIEnv *env, jlong handle, jstring jOld, jstring jNew) {
      * name, an I/O error - stays a generic filesystem error. */
     if (rc == EXT4_DIRW_OK) return ERR_OK;
     if (rc == EXT4_DIRW_ERR_EXISTS) return ERR_EXISTS;
+    s.tear();
     return write_error(pdrv, ERR_FS);
 }
 

@@ -10,34 +10,49 @@
 # never linked or copied. See issue #7.
 
 r"""
-Proves that a write failing in the middle of a create-layer operation never
-corrupts the filesystem - it leaves only a residual e2fsck can repair.
+Proves what a write failing in the middle of an operation leaves behind.
 
     ./faultcheck.py
+    ./faultcheck.py --report      # also list the residuals each operation leaves
 
-mkdir, rename and the rest are ordered so that the moment a crash (or a failed
-write) could stop them is always one the filesystem can be left in: an inode is
-written before it is named, a name is added before the old one is removed, the
-counter updates come last. Without a journal these steps are not atomic, so a
-failure part way does leave *something* - a directory not yet linked, a parent
-link count off by one, a block marked used but attached to nothing. The claim is
-that it is always one of those, all of which e2fsck reconciles, and never a
-multiply-claimed block, a name pointing at no inode, or lost data.
+ext4 vaults carry no journal, on purpose (see #7): there is nothing to replay, so
+an operation stopped part way leaves whatever the last completed write put there.
+Every operation here is ordered so that those moments are ones the filesystem can
+be left in - an inode is written before anything names it, a name is removed
+before the inode it named is freed, the counters go last. faultop runs one
+operation with the Nth block write forced to fail and every other write, including
+any the code makes in response, allowed through. This sweeps N across every write
+of every operation.
 
-faultop drives one operation with the Nth block write forced to fail (the rest,
-including any the code does in response, succeed). This sweeps N across every
-write of a mkdir and of a rename and, after each, requires e2fsck to report
-nothing outside the set of repairable residuals below. Naming an inode before
-writing it, or freeing a block still referenced, would leave a dangling entry or a
-multiply-claimed block - neither of which is in that set - so the sweep would turn
-red. The allowed set was built by running it: each residual below is one a real
-fault produced, added only once its repairability was confirmed.
+The bar each fault point has to clear, and why it is this one:
 
-A journal would remove the residual entirely; that is issue #7 / the extent-writer
-split's sibling, not this. This proves the weaker thing the current design does
-guarantee - that a half-finished operation is always repairable, never corrupt.
+  repairable  `e2fsck -fy` on the residual, then `e2fsck -fn`, which must come
+              back completely clean. Not "e2fsck prints only lines from a list we
+              wrote down" - that was the old bar, and it was the wrong shape. It
+              had to be widened every time a new operation produced a new wording,
+              and widening it is indistinguishable from excusing a real fault.
+  lossless    everything on the volume before the operation is still there
+              afterwards, byte for byte, except what the operation was allowed to
+              touch. Taken with `debugfs rdump`, so the census is e2fsprogs's view
+              and not ours. This is the half a string list cannot express: e2fsck
+              is good enough to make almost anything "clean" - it will clone a
+              multiply-claimed block or delete a dangling entry and report success
+              - so what has to be measured is what the repair cost, not whether it
+              finished.
+
+Between them these say the thing a user cares about: if the phone dies mid-write,
+a check puts the vault back and takes nothing else with it. What is not promised
+is the operation itself surviving - a file being created when the power goes may
+or may not be there.
+
+--report prints, per operation, the distinct e2fsck findings the sweep produced,
+with the numbers taken out. It is evidence rather than a check: it is how the
+guarantee written for users was worked out, and how a change in what an operation
+leaves behind gets noticed.
 """
 
+import argparse
+import hashlib
 import os
 import re
 import shutil
@@ -48,33 +63,20 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 MKFS = os.path.join(HERE, "mkfs")
 DIRWRITE = os.path.join(HERE, "dirwrite")
+EXTWRITE = os.path.join(HERE, "extwrite")
 FAULTOP = os.path.join(HERE, "faultop")
 WHEN = "1784639915"
 
-# e2fsck lines that are noise, or the residuals a well-ordered, journal-less
-# operation is allowed to leave when a write fails part way. Anything a sweep
-# produces outside these means the failure corrupted something.
-ALLOWED = re.compile(
+# Lines that carry no finding: banners, pass headers, summaries. Only --report
+# uses this, and only to keep its output readable - nothing passes or fails on it.
+NOISE = re.compile(
     r"^e2fsck |"
     r"^Pass [1-5]|"
-    r"^$|"
-    r": clean, |"                                   # already-clean summary
-    r": \d+/\d+ files .*, \d+/\d+ blocks|"           # dirty summary line
-    r"(Clear|Fix|Connect to /lost\+found|Salvage)\? no|"
-    r"is a zero-length directory|"                   # orphan directory inode
-    r"Unattached (zero-length )?inode|"
-    r"Unconnected directory inode|"
-    r"was in /|"
-    r"ref count is \d+, should be|"                  # parent link off by one
-    r"Directories count wrong for group|"            # bg_used_dirs off by one, repairable
-    r"(Inode|Block) bitmap differences|"             # leaked/uncleared, repairable
-    r"Free (inodes|blocks) count wrong|"
-    r"Directory inode \d+, .*, offset 0: directory has no checksum|"
-    r"Padding at end|"
-    r"^\s+[-+]\d|"                                    # the +N/-N bitmap lists
+    r": clean, |"
+    r": \d+/\d+ files .*, \d+/\d+ blocks|"
     r"FILE SYSTEM WAS MODIFIED|"
-    r"^IGNORED\.|"                                    # -fn boilerplate for a skipped fix
-    r"WARNING: Filesystem still has errors"           # -fn banner when it left them
+    r"^IGNORED\.|"
+    r"WARNING: Filesystem still has errors"
 )
 
 
@@ -84,17 +86,6 @@ def sh(*a):
 
 def fsck_clean(img):
     return sh("e2fsck", "-fn", img).returncode == 0
-
-
-def only_repairable(img):
-    """-> (ok, offending text). ok when every e2fsck line is noise or a residual
-    from the ALLOWED set - i.e. nothing was corrupted."""
-    r = sh("e2fsck", "-fn", img)
-    if r.returncode == 0:
-        return True, ""
-    offending = [ln for ln in (r.stdout + r.stderr).splitlines()
-                 if ln.strip() and not ALLOWED.search(ln)]
-    return (not offending), "\n".join(offending[:8])
 
 
 def run_faultop(img, fail_at, *op):
@@ -109,9 +100,121 @@ def ino_of(img, path):
     return int(m.group(1)) if m else None
 
 
-def sweep(base_img, label, op, problems):
-    """Fault every write of `op` in turn; after each, e2fsck must find nothing
-    outside the repairable set."""
+def file_sha(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def is_clean_flag(img):
+    """Whether s_state says the volume was put down tidily, read with dumpe2fs.
+
+    Read from e2fsprogs rather than from the two bytes, so that what is checked is
+    what another driver concludes and not what we think we wrote.
+    """
+    for ln in sh("dumpe2fs", "-h", img).stdout.splitlines():
+        if ln.startswith("Filesystem state:"):
+            # Compared whole, not searched: "not clean" contains "clean", and a
+            # substring test here passed every image for an afternoon.
+            return ln.split(":", 1)[1].strip() == "clean"
+    return None
+
+
+def census(img, tmp):
+    """-> {path: sha256 or "dir"} for everything on the volume, via debugfs.
+
+    e2fsprogs walks the filesystem and writes it out; we only hash what lands.
+    Our own reader is deliberately not involved - a census taken with the code
+    under test would agree with that code by construction.
+
+    /lost+found's contents are left out: reconnecting an orphan into it is a
+    repair doing its job, not something the volume lost.
+    """
+    out = os.path.join(tmp, "census")
+    shutil.rmtree(out, ignore_errors=True)
+    os.makedirs(out)
+    sh("debugfs", "-R", f"rdump / {out}", img)
+
+    seen = {}
+    for dirpath, dirnames, filenames in os.walk(out):
+        rel = os.path.relpath(dirpath, out)
+        if rel == "lost+found" or rel.startswith("lost+found" + os.sep):
+            dirnames[:] = []
+            continue
+        for d in dirnames:
+            seen[os.path.normpath(os.path.join(rel, d))] = "dir"
+        for f in filenames:
+            p = os.path.join(dirpath, f)
+            try:
+                with open(p, "rb") as fh:
+                    seen[os.path.normpath(os.path.join(rel, f))] = \
+                        hashlib.sha256(fh.read()).hexdigest()
+            except OSError as e:
+                seen[os.path.normpath(os.path.join(rel, f))] = f"unreadable: {e}"
+    return seen
+
+
+def residual_lines(img):
+    """Every e2fsck finding, with the numbers taken out so a sweep of two hundred
+    fault points groups into the handful of distinct residuals it really is."""
+    r = sh("e2fsck", "-fn", img)
+    return {re.sub(r"\d+", "#", ln.strip())
+            for ln in (r.stdout + r.stderr).splitlines()
+            if ln.strip() and not NOISE.search(ln)}
+
+
+def repairs_losslessly(img, before, tmp, may_change):
+    """-> (ok, why not). Repairs the image, then asks what the repair cost."""
+    sh("e2fsck", "-fy", img)
+    if not fsck_clean(img):
+        return False, "e2fsck could not repair it - a second pass still finds faults"
+
+    after = census(img, tmp)
+    gone, changed = [], []
+    for path, mark in before.items():
+        if path in may_change:
+            continue
+        if path not in after:
+            gone.append(path)
+        elif after[path] != mark:
+            changed.append(path)
+    if gone or changed:
+        return False, (f"the repair cost something it was not allowed to: "
+                       f"lost {gone[:4]}, changed {changed[:4]}")
+    return True, ""
+
+
+def fault_points(writes, max_points):
+    """Which values of N to fault. Everything, unless there are too many.
+
+    An operation that writes two hundred blocks costs an e2fsck per point, so past
+    a limit this takes the first eight, the last eight and an even spread between.
+    The ends are where the states differ: at the start the operation has barely
+    begun, at the end it is all but committed, and the middle is the same shape
+    repeated. Which points were taken is printed, so a sampled sweep is never
+    mistaken for a complete one.
+    """
+    if max_points is None or writes <= max_points:
+        return list(range(1, writes + 1)), False
+    edge = 8
+    pts = set(range(1, edge + 1)) | set(range(writes - edge + 1, writes + 1))
+    middle = max_points - len(pts)
+    if middle > 0:
+        step = (writes - 2 * edge) / (middle + 1)
+        pts |= {int(edge + step * (i + 1)) for i in range(middle)}
+    return sorted(p for p in pts if 1 <= p <= writes), True
+
+
+def sweep(base_img, label, op, problems, may_change=(), report=None,
+          max_points=None):
+    """Fault every write of `op` in turn and judge what is left.
+
+    `may_change` names the paths the operation itself is entitled to add, remove
+    or rewrite. Everything else on the volume is required back untouched.
+    """
+    may_change = set(may_change)
     with tempfile.TemporaryDirectory() as tmp:
         img0 = os.path.join(tmp, "n.img")
         shutil.copy(base_img, img0)
@@ -122,38 +225,136 @@ def sweep(base_img, label, op, problems):
         if not fsck_clean(img0):
             problems.append(f"{label}: the unfaulted operation is not e2fsck-clean")
             return
+        if is_clean_flag(img0) is not True:
+            problems.append(f"{label}: the volume is not marked clean after an "
+                            f"operation that finished")
+            return
 
-        bad = 0
-        for n in range(1, writes + 1):
+        before = census(base_img, tmp)
+        base_sha = file_sha(base_img)
+        points, sampled = fault_points(writes, max_points)
+        bad = clean = 0
+        for n in points:
             img = os.path.join(tmp, f"f{n}.img")
             shutil.copy(base_img, img)
             run_faultop(img, n, *op)
-            ok, offending = only_repairable(img)
+            if report is not None:
+                report.setdefault(label, set()).update(residual_lines(img))
+            if fsck_clean(img):
+                clean += 1
+            # An operation that did not finish must either say so or have changed
+            # nothing at all. The second half is not a let-off: the first write of
+            # every operation is the mark itself, and a fault on that one leaves
+            # the volume exactly as it was found, which is the one case where
+            # still claiming to be clean is the truth.
+            #
+            # This is the half of #142 that nothing else here would notice: a
+            # residual e2fsck repairs is only harmless if something says a repair
+            # is due.
+            if is_clean_flag(img) is not False and file_sha(img) != base_sha:
+                bad += 1
+                if bad <= 3:
+                    problems.append(f"{label}: faulting write {n} of {writes} left "
+                                    f"the volume marked clean after changing it")
+                continue
+            ok, why = repairs_losslessly(img, before, tmp, may_change)
             if not ok:
                 bad += 1
                 if bad <= 3:
-                    problems.append(f"{label}: faulting write {n} of {writes} left a "
-                                    f"non-repairable state:\n{offending}")
+                    problems.append(f"{label}: faulting write {n} of {writes}: {why}")
         if bad == 0:
-            print(f"{label}: {writes} fault points, every failure repairable "
-                  f"(no corruption)")
+            how = (f"{len(points)} of {writes} writes sampled" if sampled
+                   else f"{writes} fault points")
+            print(f"{label}: {how}, {clean} left nothing to repair, "
+                  f"{len(points) - clean} repaired losslessly")
+
+
+def fresh(tmp, name, megs=16):
+    """An empty volume our own formatter made."""
+    img = os.path.join(tmp, name)
+    subprocess.run(["truncate", "-s", f"{megs}M", img], check=True)
+    sh(MKFS, img)
+    return img
+
+
+def make_file(img, parent, name, blocks):
+    """-> the inode of a new file carrying `blocks` blocks of content."""
+    out = sh(DIRWRITE, img, str(parent), "create", name, WHEN).stdout.strip()
+    ino = int(out) if out.isdigit() else ino_of(img, f"/{name}")
+    if blocks:
+        sh(EXTWRITE, img, str(ino), "append", str(blocks))
+    return ino
+
+
+def indexed_image(tmp, name, files, megs, inodes):
+    """A volume mke2fs made, with one directory e2fsck has since indexed.
+
+    The rebuild an indexed directory gets on its first write (#141) rewrites the
+    whole directory in place, which is the largest thing this layer does between
+    two consistent states, and the only one whose interrupted state was argued for
+    in the design rather than fallen out of it. Kept small on purpose - the sweep
+    costs one e2fsck per block the rebuild writes.
+    """
+    img = os.path.join(tmp, name + ".img")
+    seed = os.path.join(tmp, name + "-seed")
+    os.makedirs(os.path.join(seed, "many"), exist_ok=True)
+    for i in range(files):
+        with open(os.path.join(seed, "many", f"file-{i:04d}"), "w") as f:
+            f.write("x")
+    subprocess.run(["truncate", "-s", f"{megs}M", img], check=True)
+    if sh("mke2fs", "-q", "-t", "ext4", "-b", "1024", "-I", "256",
+          "-N", str(inodes), "-d", seed, img).returncode != 0:
+        return None, None, None
+    sh("e2fsck", "-fyD", img)
+    ino = ino_of(img, "/many")
+    if ino is None or "0x81000" not in sh("debugfs", "-R", f"stat <{ino}>", img).stdout:
+        return None, None, None
+    for ln in sh("debugfs", "-R", f"ls -l <{ino}>", img).stdout.splitlines():
+        m = re.match(r"\s*(\d+)\s+(\d+)", ln)
+        if m and m.group(2).startswith("100"):
+            return img, ino, int(m.group(1))
+    return None, None, None
 
 
 def main():
-    for t in (MKFS, DIRWRITE, FAULTOP):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--report", action="store_true",
+                    help="also list, per operation, every distinct residual a "
+                         "fault left - evidence, not a check")
+    ap.add_argument("--only", help="run one sweep by label prefix")
+    args = ap.parse_args()
+
+    for t in (MKFS, DIRWRITE, EXTWRITE, FAULTOP):
         if not os.path.exists(t):
             sys.exit(f"{t} not found - build it first")
 
     problems = []
-    with tempfile.TemporaryDirectory() as tmp:
-        mk = os.path.join(tmp, "mkdir.img")
-        subprocess.run(["truncate", "-s", "32M", mk], check=True)
-        sh(MKFS, mk)
-        sweep(mk, "mkdir /d", ("mkdir", "2", "d"), problems)
+    report = {} if args.report else None
 
-        rn = os.path.join(tmp, "rename.img")
-        subprocess.run(["truncate", "-s", "32M", rn], check=True)
-        sh(MKFS, rn)
+    def go(base, label, op, may_change=(), max_points=None):
+        if args.only and not label.startswith(args.only):
+            return
+        sweep(base, label, op, problems, may_change=may_change, report=report,
+              max_points=max_points)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        # Making and unmaking a name. The orderings that decide whether a fault
+        # leaves an orphan (repairable) or a dangling entry (not).
+        cr = fresh(tmp, "create.img")
+        go(cr, "create /new.txt", ("create", "2", "new.txt"), {"new.txt"})
+
+        mk = fresh(tmp, "mkdir.img")
+        go(mk, "mkdir /d", ("mkdir", "2", "d"), {"d"})
+
+        un = fresh(tmp, "unlink.img")
+        make_file(un, 2, "gone.txt", 12)
+        go(un, "unlink /gone.txt", ("unlink", "2", "gone.txt"), {"gone.txt"})
+
+        rd = fresh(tmp, "rmdir.img")
+        sh(DIRWRITE, rd, "2", "mkdir", "empty", WHEN)
+        go(rd, "rmdir /empty", ("rmdir", "2", "empty"), {"empty"})
+
+        rn = fresh(tmp, "rename.img")
         sh(DIRWRITE, rn, "2", "mkdir", "a", WHEN)
         sh(DIRWRITE, rn, "2", "mkdir", "b", WHEN)
         a, b = ino_of(rn, "/a"), ino_of(rn, "/b")
@@ -161,11 +362,58 @@ def main():
         if a is None or b is None or not fsck_clean(rn):
             problems.append("rename base setup is not e2fsck-clean")
         else:
-            sweep(rn, "rename /a/f.txt -> /b/f.txt",
-                  ("rename", str(a), "f.txt", str(b), "f.txt"), problems)
+            go(rn, "rename /a/f.txt -> /b/f.txt",
+               ("rename", str(a), "f.txt", str(b), "f.txt"),
+               {os.path.join("a", "f.txt"), os.path.join("b", "f.txt")})
+
+        # The extent writer. Blocks are taken from the allocator before anything
+        # references them and given back only after nothing does, so a fault leaks
+        # rather than hands the same block to two files.
+        apimg = fresh(tmp, "append.img")
+        ai = make_file(apimg, 2, "grow.txt", 4)
+        go(apimg, "append 8 blocks", ("append", str(ai), "8"), {"grow.txt"})
+
+        tr = fresh(tmp, "truncate.img")
+        ti = make_file(tr, 2, "cut.txt", 24)
+        go(tr, "truncate to 8 blocks", ("truncate", str(ti), "8"), {"cut.txt"})
+
+        # Inside the file's last block, which is the only range set_size accepts.
+        ss = fresh(tmp, "setsize.img")
+        si = make_file(ss, 2, "size.txt", 4)
+        go(ss, "set_size to 3500 bytes", ("setsize", str(si), "3500"), {"size.txt"})
+
+        # Straddles the end on purpose: some bytes land in blocks the file has,
+        # the rest have to be appended, so one call exercises both halves.
+        wa = fresh(tmp, "writeat.img")
+        wi = make_file(wa, 2, "spliced.txt", 6)
+        go(wa, "write_at across the end", ("writeat", str(wi), "5000", "4000"),
+           {"spliced.txt"})
+
+        # The directory rebuild (#141). Every name in the directory may move to a
+        # different block, but not one of them may be lost.
+        # Two of them. The shallow one is swept whole; the deep one has interior
+        # index nodes, which are the blocks a half-finished rebuild leaves behind
+        # that no linear reader can parse, so it is the case worth having even at
+        # 185 writes - sampled rather than swept.
+        for name, files, megs, inodes, cap in (("htree", 120, 16, 600, None),
+                                               ("htree-deep", 9000, 64, 12000, 20)):
+            hi, hino, htarget = indexed_image(tmp, name, files, megs, inodes)
+            if hi is None:
+                problems.append(f"could not build the {name} indexed directory")
+                continue
+            go(hi, f"add into an indexed directory ({name})",
+               ("add", str(hino), str(htarget), "faulted-entry"),
+               {os.path.join("many", "faulted-entry")}, max_points=cap)
+
+    if report is not None:
+        print("\nresiduals seen, by operation:")
+        for label in sorted(report):
+            print(f"\n  {label}")
+            for ln in sorted(report[label]) or ["(nothing - every fault left a clean image)"]:
+                print(f"    {ln}")
 
     if problems:
-        print("FAIL")
+        print("\nFAIL")
         for p in problems:
             print(f"     {p}")
         return 1

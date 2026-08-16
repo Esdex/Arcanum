@@ -308,6 +308,7 @@ long ext4_read_file(const ext4_fs *fs, const uint8_t *inode,
 #define SB_BLOCKS_PER_GROUP   0x20
 #define SB_INODES_PER_GROUP   0x28
 #define SB_MAGIC              0x38
+#define SB_STATE              0x3A
 #define SB_INODE_SIZE         0x58
 #define SB_FEATURE_INCOMPAT   0x60
 #define SB_DESC_SIZE          0xFE
@@ -330,6 +331,13 @@ int ext4_open(ext4_fs *fs, ext4_read_block_fn read_block, void *ctx) {
     if (read_block(ctx, 1, buf) != EXT4_OK) return EXT4_ERR_IO;
 
     if (rd16(buf + SB_MAGIC) != 0xEF53) return EXT4_ERR_FORMAT;
+
+    /* Bit 0 of s_state is what every ext4 driver means by "put down tidily". The
+     * writer clears it while it has writes outstanding and sets it again once they
+     * are all on disk (#142), so finding it clear here means the last session did
+     * not finish and a check is owed. Read, never acted on: this layer reports it
+     * and the caller decides. */
+    fs->is_clean = (rd16(buf + SB_STATE) & 1) != 0;
 
     uint32_t log_bs = rd32(buf + SB_LOG_BLOCK_SIZE);
     if (log_bs > 6) return EXT4_ERR_FORMAT;           /* keep the shift well-defined */

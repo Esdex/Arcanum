@@ -156,6 +156,7 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch { prefs.setLastSupportPromptAt(System.currentTimeMillis()) }
     }
 
+
     private val screenOffReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
             if (intent.action == Intent.ACTION_SCREEN_OFF) {
@@ -435,6 +436,7 @@ class VaultViewModel @Inject constructor(
                         var fsType     = -1
                         var keySize    = 0
                         var iterations = 0
+                        var needsCheck = false
                         withContext(Dispatchers.IO) {
                             isHidden   = cryptoEngine.getVolumeType(handle) == 1
                             dataSize   = cryptoEngine.getDataSize(handle).coerceAtLeast(0L)
@@ -443,6 +445,7 @@ class VaultViewModel @Inject constructor(
                             fsType     = cryptoEngine.getFilesystem(handle)
                             keySize    = cryptoEngine.getKeySize(handle)
                             iterations = cryptoEngine.getIterationCount(handle)
+                            needsCheck = cryptoEngine.ext4NeedsCheck(handle)
                         }
                         val hasHidden = !protectHiddenPassword.isNullOrBlank()
                         if (algId  >= 0) mountLogger.log("Cipher: ${VeraCryptEngine.algorithmIdToString(algId)}")
@@ -460,6 +463,10 @@ class VaultViewModel @Inject constructor(
                         if (keySize    >  0) repo.updateKeySize(container.id, keySize)
                         if (iterations >  0) repo.updatePkcs5Iterations(container.id, iterations)
                         mountLogger.log("Mount successful.")
+                        // Only logged here; the banner is raised by
+                        // ContainerScreenViewModel, on the screen this navigates to.
+                        if (needsCheck)
+                            mountLogger.log("The last session that wrote to this vault did not finish.")
                         lastMountTimeMillis = System.currentTimeMillis()
                         _mountState.value = MountState.Idle
                         onSuccess(container.id)

@@ -32,6 +32,12 @@ extern "C" {
 #define EXT4_SB_FIRST_DATA_BLK_OFF  0x14
 #define EXT4_SB_LOG_BLOCK_SIZE_OFF  0x18
 #define EXT4_SB_BLOCKS_PER_GRP_OFF  0x20
+/* s_state. Bit 0 is what every ext4 driver means by "this volume was put down
+ * tidily"; a driver clears it while it has writes outstanding and sets it again
+ * when they are all on disk, so finding it clear on open means the last session
+ * did not finish. See ext4_fs_mark_dirty. */
+#define EXT4_SB_STATE_OFF           0x3A
+#define EXT4_STATE_CLEAN            0x0001
 #define EXT4_SB_FEATURE_INCOMPAT_OFF 0x60
 #define EXT4_SB_FEATURE_RO_COMPAT_OFF 0x64
 /* Room kept in front of the descriptor table for it to grow, behind every backup
@@ -119,6 +125,32 @@ int  ext4_fs_open_io(ext4_wfs *fs, ext4_io io);
 
 int  ext4_fs_flush(ext4_wfs *fs);
 void ext4_fs_close(ext4_wfs *fs);
+
+/*
+ * Says on disk whether a write is outstanding, so that a session cut short can be
+ * told from one that finished.
+ *
+ * There is no journal here (see #7), so an operation stopped part way leaves
+ * whatever its last completed write put there - always something e2fsck repairs
+ * without cost, which faultcheck.py sweeps every write of every operation to
+ * establish, but something. Nothing on disk said so until this: s_state was
+ * stamped clean by the formatter and never touched again, so a vault killed in
+ * the middle still claimed to be tidy and a desktop mounting it ran no check.
+ *
+ * mark_dirty clears the clean bit and puts the superblock down before the
+ * operation's first write; mark_clean sets it and flushes everything after the
+ * last. Ordering is the whole point and it is not symmetric: dirty has to reach
+ * disk before anything it warns about, clean only after everything it covers.
+ *
+ * This is the field every ext4 driver already uses, rather than a marker of our
+ * own, so a Linux desktop opening the same container reaches the same conclusion
+ * and runs fsck by itself.
+ */
+int  ext4_fs_mark_dirty(ext4_wfs *fs);
+int  ext4_fs_mark_clean(ext4_wfs *fs);
+
+/* Reading the flag is the reader's job: ext4_open parses it into ext4_fs.is_clean,
+ * so nothing has to reach for the superblock bytes to ask. */
 
 /* Takes one block. Returns its number, or -1 when there is nowhere to put it. */
 int64_t ext4_alloc_block(ext4_wfs *fs);

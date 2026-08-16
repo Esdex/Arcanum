@@ -87,6 +87,11 @@ typedef struct {
     uint64_t blocks_count;
     uint32_t csum_seed;        /* seed for metadata checksums */
     int      has_metadata_csum;
+    /* s_state bit 0: whether the last session that wrote to this volume finished.
+     * Clear means an operation was cut short and e2fsck has something to tidy -
+     * always something repairable, which faultcheck.py establishes, but the volume
+     * is the only thing that knows. See ext4_fs_mark_dirty. */
+    int      is_clean;
 } ext4_fs;
 
 /* One resolved run of blocks. `uninit` marks a preallocated extent that reads

@@ -314,14 +314,42 @@ int ext4_fs_open_io(ext4_wfs *fs, ext4_io io) {
 
 /* Step 5's second half. The superblock checksum is computed over the superblock
  * as it will be written, so this is the last thing to happen. */
+/* The superblock and nothing else, checksum restamped so the two cannot be
+ * written apart. */
+static int write_superblock(ext4_wfs *fs) {
+    wr32(fs->sb + EXT4_SB_CSUM_OFF, ext4_superblock_csum(fs->sb));
+    return ext4_io_pwrite(&fs->io, EXT4_SB_OFFSET, fs->sb, sizeof(fs->sb)) ? -1 : 0;
+}
+
 int ext4_fs_flush(ext4_wfs *fs) {
     uint64_t desc_at = (fs->first_data_block + 1) * (uint64_t)fs->block_size;
     size_t desc_len = (size_t)fs->groups * fs->desc_size;
     if (ext4_io_pwrite(&fs->io, desc_at, fs->desc, desc_len)) return -1;
 
-    wr32(fs->sb + EXT4_SB_CSUM_OFF, ext4_superblock_csum(fs->sb));
-    if (ext4_io_pwrite(&fs->io, EXT4_SB_OFFSET, fs->sb, sizeof(fs->sb))) return -1;
+    if (write_superblock(fs)) return -1;
     return ext4_io_flush(&fs->io);
+}
+
+int ext4_fs_mark_dirty(ext4_wfs *fs) {
+    uint16_t state = rd16(fs->sb + EXT4_SB_STATE_OFF);
+    if (!(state & EXT4_STATE_CLEAN)) return 0;      /* already said so */
+    wr16(fs->sb + EXT4_SB_STATE_OFF, (uint16_t)(state & ~EXT4_STATE_CLEAN));
+
+    /* Only the superblock, and flushed on its own. The warning has to be on disk
+     * before the writes it warns about, so batching it into the flush at the end
+     * of the operation - where the descriptors go - would put it there after
+     * everything it exists to cover. */
+    if (write_superblock(fs)) return -1;
+    return ext4_io_flush(&fs->io);
+}
+
+int ext4_fs_mark_clean(ext4_wfs *fs) {
+    wr16(fs->sb + EXT4_SB_STATE_OFF,
+         (uint16_t)(rd16(fs->sb + EXT4_SB_STATE_OFF) | EXT4_STATE_CLEAN));
+    /* Through the ordinary flush, so the descriptors and the free counts reach
+     * disk in the same breath: the clean bit means "everything is down", and it
+     * would be a lie written before the things it speaks for. */
+    return ext4_fs_flush(fs);
 }
 
 void ext4_fs_close(ext4_wfs *fs) {

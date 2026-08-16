@@ -504,6 +504,12 @@ struct ContainerCtx {
     bool  isExt4 = false;  /* true when the volume is ext4, not FAT: the file ops in
                               jni_files.cpp dispatch to jni_ext4.cpp, and this open
                               skipped f_mount. */
+    bool  ext4NeedsCheck = false;  /* the ext4 superblock says the last session that
+                              wrote to this volume did not finish (#142). Recorded at
+                              mount and reported through nativeExt4NeedsCheck; nothing
+                              here acts on it, and the volume is mounted either way -
+                              what is left behind is always repairable, and refusing
+                              would cost the user access for no gain. */
 };
 extern std::unordered_map<int, ContainerCtx*> g_ctxMap;
 
@@ -517,7 +523,9 @@ extern std::unordered_map<int, ContainerCtx*> g_ctxMap;
  * at mount time (under the lock) to set ContainerCtx.isExt4.
  */
 bool         ext4jni_is_container(jlong handle);
-bool         ext4jni_probe(int pdrv);                    /* caller holds g_fatfs_mutex */
+/* `needs_check_out` receives whether the volume was left mid-write; only written
+ * when the probe succeeds. May be null. */
+bool         ext4jni_probe(int pdrv, bool *needs_check_out);  /* caller holds g_fatfs_mutex */
 bool         ext4jni_format(int pdrv, uint64_t dataSize); /* caller holds g_fatfs_mutex */
 jint         ext4jni_get_filesystem();
 jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath);

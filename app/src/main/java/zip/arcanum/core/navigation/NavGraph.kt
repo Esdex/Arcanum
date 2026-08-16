@@ -127,6 +127,17 @@ fun ContainerScreen(
 
     // Open on the user's preferred tab the first time this screen is shown. Guarded
     // so it never overrides a manual tab switch or a restored tab after process death.
+    // An ext4 vault whose last write session did not finish says so on the way in
+    // (#142). Raised into the banner this screen already owns rather than shown at
+    // mount time, because mounting navigates straight here.
+    val needsCheckNotice by viewModel.needsCheckNotice.collectAsState()
+    LaunchedEffect(needsCheckNotice) {
+        needsCheckNotice?.let {
+            notification = it
+            viewModel.clearNeedsCheckNotice()
+        }
+    }
+
     val defaultTabRoute by viewModel.defaultTabRoute.collectAsState()
     LaunchedEffect(defaultTabRoute) {
         if (!defaultTabApplied && defaultTabRoute != null) {

@@ -178,6 +178,14 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         title           = ctx.getString(R.string.notif_vault_unmounted),
         subtitle        = vaultName
     )
+    InAppNotification.VaultNeedsCheck -> NotificationDisplayConfig(
+        // Amber, not red: nothing is lost and nothing is broken, but it is worth
+        // knowing about - see InAppNotification.VaultNeedsCheck.
+        backgroundColor = Color(0xFFD97706),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_vault_needs_check),
+        subtitle        = ctx.getString(R.string.notif_vault_needs_check_body)
+    )
     is InAppNotification.UsbSafeToRemove -> NotificationDisplayConfig(
         backgroundColor = Color(0xFF16A34A),
         icon            = Icons.Outlined.Eject,

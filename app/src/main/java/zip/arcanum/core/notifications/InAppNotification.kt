@@ -38,6 +38,19 @@ sealed class InAppNotification {
     }
 
     /**
+     * An ext4 vault was opened whose superblock says the last session that wrote to
+     * it did not finish - the app killed, the battery gone, a drive pulled (#142).
+     *
+     * Deliberately not an error. The vault is mounted and every file in it is
+     * readable and writable; what a cut-short write leaves behind is bookkeeping a
+     * check tidies, and it is left to the user whether to bother. Raised once, when
+     * the vault is opened, because the first write clears the flag.
+     */
+    data object VaultNeedsCheck : InAppNotification() {
+        override val priority = 2
+    }
+
+    /**
      * A USB-hosted vault finished unmounting and the drive can be unplugged.
      *
      * Distinct from [VaultUnmounted] because the user has a physical action to take, and

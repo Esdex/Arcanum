@@ -515,6 +515,21 @@ class VeraCryptEngine @Inject constructor() {
     fun getAlgorithmId(handle: Long): Int = nativeGetAlgorithmId(handle)
     fun getHashId(handle: Long): Int = nativeGetHashId(handle)
     fun getFilesystem(handle: Long): Int = nativeGetFilesystem(handle)
+
+    /**
+     * Whether this ext4 vault was left part way through a write - the app killed,
+     * the battery gone, a drive pulled - and so has bookkeeping a check would tidy.
+     *
+     * Always false for FAT and exFAT, which keep no such flag, and false for a vault
+     * that was put down properly. What a cut-short write leaves behind is always
+     * something `e2fsck` repairs without costing anything else on the volume, so the
+     * vault is mounted and usable either way; this is only worth telling the user
+     * about so they can run a check on a desktop if they want one. See issue #142.
+     *
+     * Read at mount and remembered, so it answers about the session that was
+     * interrupted rather than about this one - the first write here clears the flag.
+     */
+    fun ext4NeedsCheck(handle: Long): Boolean = nativeExt4NeedsCheck(handle)
     fun getKeySize(handle: Long): Int = nativeGetKeySize(handle)
     fun getIterationCount(handle: Long): Int = nativeGetIterationCount(handle)
 
@@ -929,6 +944,8 @@ class VeraCryptEngine @Inject constructor() {
     private external fun nativeGetHashId(handle: Long): Int
 
     private external fun nativeGetFilesystem(handle: Long): Int
+
+    private external fun nativeExt4NeedsCheck(handle: Long): Boolean
 
     private external fun nativeGetDataSize(handle: Long): Long
     private external fun nativeGetFsUsage(handle: Long): LongArray?

@@ -480,6 +480,28 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeGetFilesystem(
     return (jint)it->second->fatFs.fs_type;
 }
 
+/* ─── JNI: nativeExt4NeedsCheck ──────────────────────────────────────── */
+/*
+ * Whether the ext4 volume behind `handle` says the last session that wrote to it
+ * did not finish (#142). False for a FAT volume, which keeps no such flag, and
+ * false for a handle that is not open.
+ *
+ * Read once at mount and remembered, rather than re-read here: the first write
+ * after mounting clears it, so asking later would answer about this session
+ * instead of the one that was interrupted.
+ */
+extern "C" JNIEXPORT jboolean JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeExt4NeedsCheck(
+        JNIEnv */*env*/, jobject /*thiz*/, jlong handle)
+{
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    int pdrv = decode_handle(handle);
+    if (pdrv < 0) return JNI_FALSE;
+    auto it = g_ctxMap.find(pdrv);
+    if (it == g_ctxMap.end()) return JNI_FALSE;
+    return it->second->ext4NeedsCheck ? JNI_TRUE : JNI_FALSE;
+}
+
 /* ─── JNI: nativeGetDataSize ─────────────────────────────────────────── */
 
 extern "C" JNIEXPORT jlong JNICALL
