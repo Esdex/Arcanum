@@ -35,6 +35,7 @@ class ErrorCodeSyncTest {
         "ERR_HIDDEN_BOUNDARY" to VeraCryptEngine.ERR_HIDDEN_BOUNDARY,
         "ERR_READ_ONLY" to VeraCryptEngine.ERR_READ_ONLY,
         "ERR_DIR_FULL" to VeraCryptEngine.ERR_DIR_FULL,
+        "ERR_EXISTS" to VeraCryptEngine.ERR_EXISTS,
     )
 
     @Test

@@ -1002,6 +1002,15 @@ class VeraCryptEngine @Inject constructor() {
         const val ERR_DIR_FULL         = -11
 
         /**
+         * Native ERR_EXISTS: [renameFile] refused because the destination name is
+         * already taken. No caller distinguishes it yet - every rename call site
+         * reads the result as OK-or-not - but the constant has to exist here for
+         * the same reason as the rest: ErrorCodeSyncTest fails the build when the
+         * two sides drift, and this one drifted unnoticed from 25 Jul 2026.
+         */
+        const val ERR_EXISTS           = -12
+
+        /**
          * Keyfile generator size bounds — must match VC_KEYFILE_MIN_SIZE /
          * VC_KEYFILE_MAX_SIZE in `app/src/main/cpp/arcanum_internal.h`, which
          * rejects anything outside this range with [ERR_UNSUPPORTED].
