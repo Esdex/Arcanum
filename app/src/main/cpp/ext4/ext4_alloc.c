@@ -218,7 +218,25 @@ static int fs_finish_open(ext4_wfs *fs) {
     fs->io.block_size    = fs->block_size;
     fs->blocks_per_group = rd32(fs->sb + EXT4_SB_BLOCKS_PER_GRP_OFF);
     fs->first_data_block = rd32(fs->sb + EXT4_SB_FIRST_DATA_BLK_OFF);
-    fs->csum_seed        = rd32(fs->sb + EXT4_SB_CSUM_SEED_OFF);
+    /*
+     * The seed every metadata checksum is computed from, and the reader has always
+     * derived it correctly while this side did not (#147).
+     *
+     * s_checksum_seed only holds the seed when the metadata_csum_seed feature is
+     * on. That feature exists so the UUID can be changed without rewriting every
+     * checksum on the volume; without it the field is simply not maintained, and
+     * the seed is the crc32c of the UUID. Reading the field unconditionally meant
+     * that on a volume with metadata_csum but no metadata_csum_seed - which is what
+     * an older mke2fs makes, and what `-O ^metadata_csum_seed` makes today - every
+     * checksum this driver stamped was computed from zero. Creating one file was
+     * enough to have e2fsck report invalid descriptor, inode and directory
+     * checksums on a volume that was clean beforehand: silent damage to somebody
+     * else's container, done by writing to it.
+     */
+    if (rd32(fs->sb + EXT4_SB_FEATURE_INCOMPAT_OFF) & EXT4_FEATURE_INCOMPAT_CSUM_SEED)
+        fs->csum_seed    = rd32(fs->sb + EXT4_SB_CSUM_SEED_OFF);
+    else
+        fs->csum_seed    = ext4_crc32c(~0u, fs->sb + EXT4_SB_UUID_OFF, 16);
     fs->inodes_per_group = rd32(fs->sb + EXT4_SB_INODES_PER_GRP_OFF);
     fs->inode_size       = rd16(fs->sb + EXT4_SB_INODE_SIZE_OFF);
     /* Match the reader: refuse an inode larger than the buffers hold. This side is

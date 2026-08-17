@@ -47,8 +47,12 @@ extern "C" {
 #define EXT4_SB_BLOCKS_HI_OFF       0x150
 #define EXT4_SB_FREE_BLOCKS_HI_OFF  0x158
 #define EXT4_SB_CSUM_SEED_OFF       0x270
+#define EXT4_SB_UUID_OFF            0x68
 
 #define EXT4_FEATURE_INCOMPAT_64BIT   0x80
+/* Whether s_checksum_seed holds the seed outright. Without this feature the field
+ * is not maintained and the seed is the crc32c of the UUID instead. */
+#define EXT4_FEATURE_INCOMPAT_CSUM_SEED 0x2000
 #define EXT4_FEATURE_INCOMPAT_RECOVER 0x04   /* the journal has work outstanding */
 /* Backup superblocks only in groups 0, 1 and the powers of 3, 5 and 7. Without
  * it every group carries one, which changes where a group's free space starts. */
