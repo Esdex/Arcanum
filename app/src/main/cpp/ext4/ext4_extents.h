@@ -73,6 +73,26 @@ extern "C" {
  */
 #define EXT4_MAX_BLOCK_SIZE 4096u
 
+/*
+ * The largest inode this driver handles, and the size every inode buffer in it is
+ * declared at. Same bargain as EXT4_MAX_BLOCK_SIZE: 256 is what mke2fs has made by
+ * default for years and the only size this app's own formatter writes, so rather
+ * than size every buffer for the 1024 the format allows, both opens refuse a
+ * bigger one (#144).
+ *
+ * Reads were never the problem - `ext4_read_inode_raw` clamps to the buffer it is
+ * given. Writes are: `write_inode` writes `fs->inode_size` bytes out of whatever
+ * buffer it is handed and checksums the same span, so on an `mke2fs -I 512` volume
+ * a 256-byte buffer meant the second half of every inode written through
+ * `ext4_write_inode_raw` came off the stack past the end of the buffer - carrying a
+ * checksum that verifies, so nothing downstream would ever notice. Demonstrated
+ * under ASan through `flatten_htree`, which is the one write path that reaches it.
+ *
+ * Declare inode buffers as EXT4_MAX_INODE_SIZE, never a bare 256, so that this
+ * bound and the buffers relying on it cannot drift apart.
+ */
+#define EXT4_MAX_INODE_SIZE 256u
+
 /* Reads one filesystem block into buf. Returns EXT4_OK or EXT4_ERR_IO. */
 typedef int (*ext4_read_block_fn)(void *ctx, uint64_t block, void *buf);
 

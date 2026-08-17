@@ -347,7 +347,12 @@ int ext4_open(ext4_fs *fs, ext4_read_block_fn read_block, void *ctx) {
     fs->inodes_per_group = rd32(buf + SB_INODES_PER_GROUP);
     fs->first_data_block = rd32(buf + SB_FIRST_DATA_BLOCK);
     fs->inode_size       = rd16(buf + SB_INODE_SIZE);
-    if (fs->inode_size < 128 || fs->inode_size > fs->block_size) return EXT4_ERR_FORMAT;
+    /* Refuse an inode larger than the buffers hold - see EXT4_MAX_INODE_SIZE. The
+     * reader alone would be safe (its inode read clamps), but the bound has to hold
+     * for the whole library or the writer cannot rely on it, and a volume that can
+     * be read and never written is not a useful thing to offer. */
+    if (fs->inode_size < 128 || fs->inode_size > EXT4_MAX_INODE_SIZE ||
+        fs->inode_size > fs->block_size) return EXT4_ERR_FORMAT;
     if (fs->inodes_per_group == 0) return EXT4_ERR_FORMAT;
 
     uint32_t incompat = rd32(buf + SB_FEATURE_INCOMPAT);

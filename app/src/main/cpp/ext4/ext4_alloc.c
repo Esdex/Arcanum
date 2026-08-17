@@ -221,6 +221,11 @@ static int fs_finish_open(ext4_wfs *fs) {
     fs->csum_seed        = rd32(fs->sb + EXT4_SB_CSUM_SEED_OFF);
     fs->inodes_per_group = rd32(fs->sb + EXT4_SB_INODES_PER_GRP_OFF);
     fs->inode_size       = rd16(fs->sb + EXT4_SB_INODE_SIZE_OFF);
+    /* Match the reader: refuse an inode larger than the buffers hold. This side is
+     * the one that needs it - `write_inode` writes and checksums fs->inode_size
+     * bytes out of a caller's buffer, so without this bound a bigger inode takes
+     * the difference off the stack and stamps a valid checksum over it (#144). */
+    if (fs->inode_size < 128 || fs->inode_size > EXT4_MAX_INODE_SIZE) goto fail;
     fs->blocks_count     = (uint64_t)rd32(fs->sb + EXT4_SB_BLOCKS_LO_OFF) |
                            ((uint64_t)rd32(fs->sb + EXT4_SB_BLOCKS_HI_OFF) << 32);
     uint32_t incompat = rd32(fs->sb + EXT4_SB_FEATURE_INCOMPAT_OFF);

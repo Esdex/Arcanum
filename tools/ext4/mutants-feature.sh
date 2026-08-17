@@ -9,7 +9,7 @@
 # app. e2fsprogs and fuse2fs are used as external oracles (separate processes),
 # never linked or copied. See issue #7.
 
-# Measures featurecheck.py against the feature-allowlist gates at open time.
+# Measures featurecheck.py against the gates the open path applies.
 #
 #   ./mutants-feature.sh
 #
@@ -18,6 +18,11 @@
 # them through bench (reader) and alloc (writer-only). Each mutant removes one gate;
 # the stand has to notice that a filesystem with an unsupported feature was then let
 # in, because letting one in is how a foreign container gets silently corrupted.
+#
+# The inode-size bound (#144) is gated the same way and mutated here for the same
+# reason. It is not a feature bit, but it is the same kind of promise: a volume the
+# driver's buffers cannot hold has to be turned away at open, and the two guards that
+# do it - one per open path - are each one line that a refactor could drop in silence.
 
 set -euo pipefail
 
@@ -67,6 +72,18 @@ try "the writer stops refusing an unknown INCOMPAT feature" ext4_alloc.c \
 # bigalloc/quota/verity container that it must only ever read.
 try "the writer stops refusing an unknown RO_COMPAT feature" ext4_alloc.c \
     's@(ro_compat & ~EXT4_SUPPORTED_RO_COMPAT)) {@(ro_compat \& 0)) {@'
+
+# The reader stops capping the inode size, so a 512- or 1024-byte-inode volume is
+# opened. Only the upper half of the range is dropped - the < 128 clause stays - so
+# the mutant is exactly the bound that #144 added and nothing else.
+try "the reader accepts an inode larger than the buffers hold" ext4_extents.c \
+    's@fs->inode_size > EXT4_MAX_INODE_SIZE ||@0 ||@'
+
+# The writer stops guarding the inode size. This is the one that matters: the reader
+# would still be safe on its own (its inode read clamps to the buffer), but the
+# writer hands those buffers to write_inode, which writes s_inode_size bytes.
+try "the writer accepts an inode larger than the buffers hold" ext4_alloc.c \
+    's@if (fs->inode_size < 128 || fs->inode_size > EXT4_MAX_INODE_SIZE) goto fail;@@'
 
 echo
 if [ "$fail" -ne 0 ]; then

@@ -900,7 +900,7 @@ int ext4_write_at(ext4_wfs *w, const ext4_fs *r, uint32_t ino,
                   uint64_t offset, const uint8_t *data, uint32_t len) {
     if (len == 0) return EXTW_OK;
 
-    uint8_t inode[256];
+    uint8_t inode[EXT4_MAX_INODE_SIZE];
     memset(inode, 0, sizeof(inode));
     if (ext4_read_inode_raw(r, ino, inode, sizeof(inode)) != EXT4_OK)
         return EXTW_ERR_IO;

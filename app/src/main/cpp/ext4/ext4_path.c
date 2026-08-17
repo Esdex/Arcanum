@@ -39,7 +39,7 @@ static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); 
 /* Whether `ino` is a directory. Sets *err on a read failure so the caller can tell
  * "not a directory" from "could not find out". */
 static int inode_is_dir(const ext4_fs *r, uint32_t ino, int *err) {
-    uint8_t inode[256];
+    uint8_t inode[EXT4_MAX_INODE_SIZE];
     memset(inode, 0, sizeof(inode));
     if (ext4_read_inode_raw(r, ino, inode, sizeof(inode)) != EXT4_OK) {
         *err = 1;

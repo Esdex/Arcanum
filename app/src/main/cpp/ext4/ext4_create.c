@@ -206,7 +206,7 @@ int ext4_unlink_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
      * and strand every entry it holds. Refused before the name is touched, so the
      * image is left exactly as it was. */
     {
-        uint8_t probe[256];
+        uint8_t probe[EXT4_MAX_INODE_SIZE];
         memset(probe, 0, sizeof(probe));
         if (ext4_read_inode_raw(r, ino, probe, sizeof(probe)) != EXT4_OK)
             return EXT4_DIRW_ERR_IO;
@@ -225,7 +225,7 @@ int ext4_unlink_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
         return rc;
     }
 
-    uint8_t inode[256];
+    uint8_t inode[EXT4_MAX_INODE_SIZE];
     memset(inode, 0, sizeof(inode));
     if (ext4_read_inode_raw(r, ino, inode, sizeof(inode)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
@@ -410,7 +410,7 @@ int ext4_rmdir(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     int rc = ext4_dir_lookup(r, dir_ino, name, &ino);
     if (rc != EXT4_DIRW_OK) return rc;
 
-    uint8_t inode[256];
+    uint8_t inode[EXT4_MAX_INODE_SIZE];
     memset(inode, 0, sizeof(inode));
     if (ext4_read_inode_raw(r, ino, inode, sizeof(inode)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
@@ -522,7 +522,7 @@ int ext4_rename(ext4_wfs *w, const ext4_fs *r,
     }
     if (rc != EXT4_DIRW_ERR_ABSENT) return rc;
 
-    uint8_t inode[256];
+    uint8_t inode[EXT4_MAX_INODE_SIZE];
     memset(inode, 0, sizeof(inode));
     if (ext4_read_inode_raw(r, src_ino, inode, sizeof(inode)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;

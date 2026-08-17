@@ -149,7 +149,7 @@ static uint32_t chain_limit(const ext4_wfs *w, const uint8_t *buf) {
 }
 
 static uint32_t inode_seed_of(ext4_wfs *w, const ext4_fs *r, uint32_t ino) {
-    uint8_t inode[256];
+    uint8_t inode[EXT4_MAX_INODE_SIZE];
     memset(inode, 0, sizeof(inode));
     if (ext4_read_inode_raw(r, ino, inode, sizeof(inode)) != EXT4_OK) return 0;
     return ext4_inode_csum_seed(w->csum_seed, ino, rd32(inode + INODE_GENERATION_OFF));
@@ -175,7 +175,7 @@ int ext4_dir_lookup(const ext4_fs *r, uint32_t dir_ino, const char *name,
     size_t n = name ? strlen(name) : 0;
     if (n == 0 || n > EXT4_DIRENT_MAX_NAME) return EXT4_DIRW_ERR_NAME;
 
-    uint8_t dir[256];
+    uint8_t dir[EXT4_MAX_INODE_SIZE];
     memset(dir, 0, sizeof(dir));
     if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
@@ -496,7 +496,7 @@ int ext4_dir_add(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     if (!name_ok(name, &name_len)) return EXT4_DIRW_ERR_NAME;
     if (ino == 0) return EXT4_DIRW_ERR_FORMAT;
 
-    uint8_t dir[256];
+    uint8_t dir[EXT4_MAX_INODE_SIZE];
     memset(dir, 0, sizeof(dir));
     if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
@@ -606,7 +606,7 @@ int ext4_dir_remove(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     uint8_t name_len;
     if (!name_ok(name, &name_len)) return EXT4_DIRW_ERR_NAME;
 
-    uint8_t dir[256];
+    uint8_t dir[EXT4_MAX_INODE_SIZE];
     memset(dir, 0, sizeof(dir));
     if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
@@ -666,7 +666,7 @@ int ext4_dir_set_dotdot(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
                         uint32_t new_parent) {
     if (new_parent == 0) return EXT4_DIRW_ERR_FORMAT;
 
-    uint8_t dir[256];
+    uint8_t dir[EXT4_MAX_INODE_SIZE];
     memset(dir, 0, sizeof(dir));
     if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
