@@ -75,8 +75,10 @@ try "the old parent never loses the link its '..' was" \
 try "a directory may be moved inside its own subtree (loop guard defeated)" \
     ext4_create.c 's@if (cur == moving_dir) return 1;@if (cur == moving_dir) return 0;@'
 
+# The choice moved into ftype_of, which now covers symlinks and device nodes too
+# (#147), so the mutant aims at that table instead of the old two-way expression.
 try "a moved directory's entry is typed as a regular file" \
-    ext4_create.c 's@uint8_t ftype  = is_dir ? EXT4_FT_DIR : EXT4_FT_REG_FILE;@uint8_t ftype  = EXT4_FT_REG_FILE;@'
+    ext4_create.c 's@    case EXT4_S_IFDIR:  return EXT4_FT_DIR;@    case EXT4_S_IFDIR:  return EXT4_FT_REG_FILE;@'
 
 try "renaming a thing to itself is treated as a real move" \
     ext4_create.c 's@if (src_parent == dst_parent && strcmp(src_name, dst_name) == 0) {@if (0) {@'
