@@ -63,13 +63,33 @@
 
 #define EXT4_INODE_FLAG_EXTENTS 0x00080000u
 #define EXT4_EXTENT_MAGIC       0xF30A
+#define INODE_FILE_ACL_OFF    0x68   /* i_file_acl_lo: the external xattr block */
+#define INODE_FILE_ACL_HI_OFF 0x76   /* osd2.linux2.l_i_file_acl_high */
+
 #define EXT4_S_IFREG            0x8000
 #define EXT4_S_IFDIR            0x4000
 #define EXT4_S_IFMT             0xF000
+/* Kinds this driver never creates but will meet on a volume made elsewhere. They
+ * matter here because none of them owns data blocks the way a file does. */
+#define EXT4_S_IFLNK            0xA000
+#define EXT4_S_IFCHR            0x2000
+#define EXT4_S_IFBLK            0x6000
+#define EXT4_S_IFIFO            0x1000
+#define EXT4_S_IFSOCK           0xC000
+
+/* An external extended-attribute block starts with this, and carries a count of
+ * the inodes sharing it. Observed on a block libext2fs wrote, not taken from
+ * anyone's source - see the clean-room note at the top of this file. */
+#define EXT4_XATTR_MAGIC        0xEA020000u
+#define XATTR_REFCOUNT_OFF      0x04
 #define EXT4_GOOD_EXTRA_ISIZE   32
 #define DIR_TAIL_SIZE           12
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
+static uint32_t rd32(const uint8_t *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
 static void wr16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
 static void wr32(uint8_t *p, uint32_t v) {
     p[0] = (uint8_t)v;         p[1] = (uint8_t)(v >> 8);
@@ -190,6 +210,119 @@ int ext4_create_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     return rc;
 }
 
+/*
+ * Whether this inode's data lives in blocks `ext4_truncate_blocks` can release.
+ *
+ * This driver only ever creates regular files and directories, so for a long time
+ * unlink simply truncated whatever it was handed. A volume made elsewhere holds
+ * more than that, and none of the rest owns data blocks: a device node keeps its
+ * major and minor inside i_block, a FIFO and a socket keep nothing there, and a
+ * short symlink keeps its target there. Truncating one of those fails, because
+ * i_block holds no extent header - and by then unlink has already taken the name
+ * out of the directory, so the entry is gone and the inode is stranded. e2fsck
+ * called it "Unattached inode 13", which is one leaked inode per symlink deleted
+ * on any tree that came from a Linux desktop (#147).
+ *
+ * The extent flag is what separates a short symlink from a long one, and it is
+ * what the kernel uses for the same purpose.
+ */
+/*
+ * The directory-entry type byte for an inode.
+ *
+ * A directory entry carries the kind of thing it names, so that a listing does not
+ * have to read every inode. Rename used to choose between "directory" and "regular
+ * file" and nothing else, which is true of everything this driver creates and not
+ * of everything it can be asked to move: moving a symlink relabelled it as a file,
+ * and e2fsck said so - "Entry 'moved.lnk' in /sub has an incorrect filetype (was 1,
+ * should be 7)". The entry and the inode disagreed about what the thing was, on a
+ * volume that was clean until we touched it (#147).
+ */
+static uint8_t ftype_of(const uint8_t *inode) {
+    switch (rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) {
+    case EXT4_S_IFDIR:  return EXT4_FT_DIR;
+    case EXT4_S_IFLNK:  return EXT4_FT_SYMLINK;
+    case EXT4_S_IFCHR:  return EXT4_FT_CHRDEV;
+    case EXT4_S_IFBLK:  return EXT4_FT_BLKDEV;
+    case EXT4_S_IFIFO:  return EXT4_FT_FIFO;
+    case EXT4_S_IFSOCK: return EXT4_FT_SOCK;
+    default:            return EXT4_FT_REG_FILE;
+    }
+}
+
+static int owns_data_blocks(const uint8_t *inode) {
+    switch (rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) {
+    case EXT4_S_IFCHR:
+    case EXT4_S_IFBLK:
+    case EXT4_S_IFIFO:
+    case EXT4_S_IFSOCK:
+        return 0;
+    case EXT4_S_IFLNK:
+        return (rd32(inode + INODE_FLAGS_OFF) & EXT4_INODE_FLAG_EXTENTS) != 0;
+    default:
+        return 1;
+    }
+}
+
+/*
+ * Gives back the external extended-attribute block, if the inode has one.
+ *
+ * Nothing in this driver writes extended attributes, but a file that arrived from
+ * a desktop can carry them, and when they do not fit inside the inode they live in
+ * a block of their own named by i_file_acl. Freeing the inode without freeing that
+ * block leaves it marked in use with nothing referring to it - e2fsck reports it as
+ * a block bitmap difference, and the space is gone until somebody runs a check.
+ *
+ * The block can be shared: identical attribute sets get pooled behind one block
+ * with a count of the inodes using it. When that count is above one the block is
+ * still in use by somebody else and must be left alone - decrementing it would mean
+ * rewriting the block and its checksum, which is more of the attribute format than
+ * this needs to understand, so the count is left as it stands and said out loud.
+ * The residual is a count that reads one too high, which a check corrects; the
+ * alternative is writing a checksum this driver cannot verify it got right.
+ */
+static void release_xattr_block(ext4_wfs *w, const uint8_t *inode, uint32_t ino) {
+    uint64_t blk = rd32(inode + INODE_FILE_ACL_OFF);
+    /* The high half of the block number shares its 16 bits with fields older
+     * filesystems used for something else, so it is only read where the 64-bit
+     * feature says it means this. */
+    if (rd32(w->sb + EXT4_SB_FEATURE_INCOMPAT_OFF) & EXT4_FEATURE_INCOMPAT_64BIT)
+        blk |= (uint64_t)rd16(inode + INODE_FILE_ACL_HI_OFF) << 32;
+    if (blk == 0) return;
+    if (blk >= w->blocks_count) {
+        EXT4_LOGE("inode %u names attribute block %llu, past the end of the volume",
+                  ino, (unsigned long long)blk);
+        return;
+    }
+
+    uint8_t *buf = malloc(w->block_size);
+    if (!buf) return;
+    int readable = ext4_io_pread(&w->io, blk * (uint64_t)w->block_size,
+                                 buf, w->block_size) == 0;
+    uint32_t magic    = readable ? rd32(buf) : 0;
+    uint32_t refcount = readable ? rd32(buf + XATTR_REFCOUNT_OFF) : 0;
+    free(buf);
+
+    if (!readable || magic != EXT4_XATTR_MAGIC) {
+        /* Not something this recognises. Leaving a block alone costs the space
+         * until the next check; freeing one that is not what it looks like would
+         * hand live data to the next file that asks for a block. */
+        EXT4_LOGE("inode %u names attribute block %llu, which does not look like "
+                  "one - leaving it", ino, (unsigned long long)blk);
+        return;
+    }
+    if (refcount > 1) {
+        EXT4_LOGI("inode %u shares attribute block %llu with %u others - leaving it",
+                  ino, (unsigned long long)blk, refcount - 1);
+        return;
+    }
+    if (ext4_free_block(w, blk))
+        EXT4_LOGE("inode %u: freeing attribute block %llu failed", ino,
+                  (unsigned long long)blk);
+    else
+        EXT4_LOGI("inode %u: gave back attribute block %llu", ino,
+                  (unsigned long long)blk);
+}
+
 int ext4_unlink_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
                      const char *name, uint32_t when) {
     EXT4_LOGI("unlink '%s' from dir inode %u", name, dir_ino);
@@ -213,6 +346,16 @@ int ext4_unlink_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
         if ((rd16(probe + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR) {
             EXT4_LOGE("unlink '%s': it is a directory - refusing (use rmdir)", name);
             return EXT4_CREATE_ERR_ISDIR;
+        }
+        /* Something that owns blocks but has no extent tree is an old-style file,
+         * whose data hangs off indirect blocks this driver cannot follow or
+         * release. Refused here, alongside the directory check, because the one
+         * thing that must not happen is discovering it after the name is gone. */
+        if (owns_data_blocks(probe) &&
+            !(rd32(probe + INODE_FLAGS_OFF) & EXT4_INODE_FLAG_EXTENTS)) {
+            EXT4_LOGE("unlink '%s': inode %u has no extent tree - refusing rather "
+                      "than stranding it", name, ino);
+            return EXT4_DIRW_ERR_FORMAT;
         }
     }
 
@@ -243,8 +386,17 @@ int ext4_unlink_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
 
     /* The last name is gone: the blocks go back, then the inode. Blocks first -
      * an inode marked free while its blocks are still claimed leaks them with
-     * nothing left to say whose they were. */
-    if (ext4_truncate_blocks(w, ino, 0) != EXTW_OK) return EXT4_DIRW_ERR_IO;
+     * nothing left to say whose they were.
+     *
+     * Only for the kinds that have data blocks at all. A device node, a FIFO, a
+     * socket and a short symlink keep what they have inside the inode, and asking
+     * truncation to walk an extent tree they do not have fails - after the name has
+     * already gone, which strands the inode. */
+    if (owns_data_blocks(inode) &&
+        ext4_truncate_blocks(w, ino, 0) != EXTW_OK) return EXT4_DIRW_ERR_IO;
+
+    /* Whatever kind it was, it may carry attributes in a block of their own. */
+    release_xattr_block(w, inode, ino);
 
     /*
      * Dropping the link count to zero is not enough to say an inode is gone.
@@ -455,6 +607,9 @@ int ext4_rmdir(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
 
     if (ext4_truncate_blocks(w, ino, 0) != EXTW_OK) return EXT4_DIRW_ERR_IO;
 
+    /* A directory carries attributes in a block of its own just as a file does. */
+    release_xattr_block(w, inode, ino);
+
     uint8_t *dead = malloc(w->inode_size);
     if (!dead) return EXT4_DIRW_ERR_IO;
     /* Bounded like the one in ext4_unlink_file, and for the same reason. */
@@ -538,7 +693,7 @@ int ext4_rename(ext4_wfs *w, const ext4_fs *r,
     if (ext4_read_inode_raw(r, src_ino, inode, sizeof(inode)) != EXT4_OK)
         return EXT4_DIRW_ERR_IO;
     int     is_dir = (rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR;
-    uint8_t ftype  = is_dir ? EXT4_FT_DIR : EXT4_FT_REG_FILE;
+    uint8_t ftype  = ftype_of(inode);
     int     across = (src_parent != dst_parent);
 
     /* A directory cannot descend into itself. Only possible when it changes parent,

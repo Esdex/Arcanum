@@ -93,8 +93,13 @@ try "freed inode left without a deletion time" \
 try "freed inode keeps its link count" \
     's@    wr16(dead + INODE_LINKS_COUNT_OFF, 0);@@'
 
+# Aimed at the condition rather than the call. The call is now guarded by
+# owns_data_blocks (#147), and the old pattern - which matched the bare line -
+# stopped matching in unlink and started matching the identical line in rmdir
+# instead. It reported MISS, not SKIP: the mutant was still built and run, it had
+# simply moved to a function createcheck.py does not exercise.
 try "blocks kept when the last name goes" \
-    's@    if (ext4_truncate_blocks(w, ino, 0) != EXTW_OK) return EXT4_DIRW_ERR_IO;@@'
+    's@    if (owns_data_blocks(inode) \&\&@    if (0 \&\&@'
 
 try "inode not handed back when the last name goes" \
     's@    if (ext4_free_inode(w, ino)) return EXT4_DIRW_ERR_IO;@@'
