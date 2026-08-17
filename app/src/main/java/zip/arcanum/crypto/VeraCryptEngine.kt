@@ -1025,6 +1025,19 @@ class VeraCryptEngine @Inject constructor() {
         const val ERR_TOO_FRAGMENTED   = -13
 
         /**
+         * Native ERR_BUSY: the operation was refused because that volume is mounted
+         * right now. Only header restore raises it (#147): a restored header can
+         * carry a different master key, and a mounted drive would go on writing with
+         * the keys it already has, which shows up as undecryptable data at the next
+         * mount and nowhere before it.
+         *
+         * [zip.arcanum.arcanum.containers.ui.RestoreHeaderViewModel] refuses this
+         * first and says so in plain words, so this arriving means the native guard
+         * caught something the UI did not.
+         */
+        const val ERR_BUSY             = -14
+
+        /**
          * Keyfile generator size bounds — must match VC_KEYFILE_MIN_SIZE /
          * VC_KEYFILE_MAX_SIZE in `app/src/main/cpp/arcanum_internal.h`, which
          * rejects anything outside this range with [ERR_UNSUPPORTED].
@@ -1107,6 +1120,7 @@ private fun Int.toError(): CryptoError = when (this) {
     VeraCryptEngine.ERR_TOO_FRAGMENTED  -> CryptoError.TOO_FRAGMENTED
     VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> CryptoError.HIDDEN_BOUNDARY_PROTECTED
     VeraCryptEngine.ERR_NO_SLOT         -> CryptoError.TOO_MANY_MOUNTED
+    VeraCryptEngine.ERR_BUSY            -> CryptoError.BUSY
     else                                -> CryptoError.UNKNOWN
 }
 

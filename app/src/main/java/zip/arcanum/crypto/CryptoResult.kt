@@ -33,6 +33,12 @@ enum class CryptoError {
     TOO_FRAGMENTED,
     /** Native ERR_HIDDEN_BOUNDARY: write blocked by hidden-volume protection. */
     HIDDEN_BOUNDARY_PROTECTED,
+    /**
+     * Native ERR_BUSY: refused because the volume is mounted. Raised by header
+     * restore only - a restored header may name a different master key, and a
+     * mounted drive would keep writing with the keys it already holds.
+     */
+    BUSY,
     /** Native ERR_NO_SLOT: no free drive slot (MAX_DRIVES containers already mounted). */
     TOO_MANY_MOUNTED,
     UNKNOWN
