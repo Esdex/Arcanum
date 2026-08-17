@@ -36,6 +36,10 @@ $CC $FLAGS -o "$HERE/writeat"  "$HERE/writeat.c" \
     $(L ext4_path.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
 $CC $FLAGS -o "$HERE/fullwrite" "$HERE/fullwrite.c" \
     $(L ext4_path.c ext4_create.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
-$CC $FLAGS -o "$HERE/faultop"  "$HERE/faultop.c" \
+# faultop diverts the allocators at link time so it can fail the Nth one (#147).
+# The wrapping applies to every object linked here, including the library's, which
+# is the point; faultop arms the counter only around the operation itself.
+$CC $FLAGS -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc \
+    -o "$HERE/faultop"  "$HERE/faultop.c" \
     $(L ext4_path.c ext4_create.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
 echo "built: bench fsmeta alloc extwrite dirwrite mkfs pathresolve chunkwrite rename writeat fullwrite faultop"

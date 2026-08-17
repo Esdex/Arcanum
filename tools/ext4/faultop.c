@@ -54,6 +54,47 @@
 
 #define WHEN 1784639915
 
+/*
+ * The second kind of fault: an allocation that fails.
+ *
+ * The library allocates on nearly every operation - an inode buffer, a block
+ * buffer, one per level of an extent tree - and every one of those is a branch
+ * that only runs when the machine is out of memory, which on a phone is a real
+ * state and not a hypothetical one. `faultcheck.py` sweeps write failures; this
+ * lets `allocfailcheck.py` sweep allocation failures over the same operations,
+ * which is why it lives here rather than in a driver of its own (#147).
+ *
+ * malloc, calloc and realloc are diverted at link time (-Wl,--wrap), so no source
+ * in the library changes and no test-only #ifdef appears in shipping code.
+ * Counting is armed only around the operation itself: the driver's own setup
+ * allocates too, and including that would make the numbers depend on the driver
+ * rather than on the library.
+ *
+ * EXT4_FAIL_ALLOC=n fails the n-th allocation; 0 or unset fails none. It is an
+ * environment variable rather than an argument so that faultop's existing command
+ * line - which faultcheck.py depends on - is untouched.
+ */
+void *__real_malloc(size_t n);
+void *__real_calloc(size_t n, size_t m);
+void *__real_realloc(void *p, size_t n);
+
+static long g_alloc_count = 0;
+static long g_alloc_fail_at = 0;
+static int  g_alloc_armed = 0;
+
+void *__wrap_malloc(size_t n) {
+    if (g_alloc_armed && ++g_alloc_count == g_alloc_fail_at) return NULL;
+    return __real_malloc(n);
+}
+void *__wrap_calloc(size_t n, size_t m) {
+    if (g_alloc_armed && ++g_alloc_count == g_alloc_fail_at) return NULL;
+    return __real_calloc(n, m);
+}
+void *__wrap_realloc(void *p, size_t n) {
+    if (g_alloc_armed && ++g_alloc_count == g_alloc_fail_at) return NULL;
+    return __real_realloc(p, n);
+}
+
 /* Reader over the plain file (its callback carries no block_size, so it holds one). */
 typedef struct { FILE *fp; uint32_t bs; } rctx;
 static int r_read(void *ctx, uint64_t block, void *buf) {
@@ -129,6 +170,14 @@ int main(int argc, char **argv) {
      * the whole point of the field. */
     if (ext4_fs_mark_dirty(&w)) { fprintf(stderr, "could not mark dirty\n"); return 2; }
 
+    /* Counting starts here, so the numbers belong to the operation and not to the
+     * setup above it. */
+    {
+        const char *e = getenv("EXT4_FAIL_ALLOC");
+        g_alloc_fail_at = e ? strtol(e, NULL, 10) : 0;
+    }
+    g_alloc_armed = 1;
+
     int orc;
     uint32_t a4 = argc > 4 ? (uint32_t)strtoul(argv[4], NULL, 10) : 0;
     if (!strcmp(op, "mkdir") && argc == 6) {
@@ -156,11 +205,13 @@ int main(int argc, char **argv) {
     } else if (!strcmp(op, "writeat") && argc == 7) {
         uint64_t at  = strtoull(argv[5], NULL, 10);
         uint32_t len = (uint32_t)strtoul(argv[6], NULL, 10);
-        uint8_t *data = malloc(len ? len : 1);
-        if (!data) { fprintf(stderr, "out of memory\n"); return 2; }
+        /* A fixed buffer, not an allocation. The allocation counter is armed by
+         * now, so a malloc here would be counted as one of the library's and
+         * failing it would kill this driver instead of exercising anything (#147). */
+        static uint8_t data[64 * 1024];
+        if (len > sizeof(data)) { fprintf(stderr, "len too large\n"); return 2; }
         for (uint32_t i = 0; i < len; i++) data[i] = (uint8_t)(0x40 + ((at + i) % 59));
         orc = ext4_write_at(&w, &r, a4, at, data, len);
-        free(data);
     } else if (!strcmp(op, "add") && argc == 7) {
         /* A name and a link count are two halves of one link, and the sweep is
          * judged on e2fsck being able to repair what is left - so the unfaulted
@@ -180,8 +231,9 @@ int main(int argc, char **argv) {
     if (orc == 0 && ext4_fs_mark_clean(&w)) orc = -1;
 
     ext4_fs_close(&w);
+    g_alloc_armed = 0;
     fflush(fp);
     fclose(fp);
-    printf("rc=%d writes=%ld\n", orc, wc.count);
+    printf("rc=%d writes=%ld allocs=%ld\n", orc, wc.count, g_alloc_count);
     return 0;
 }
