@@ -87,11 +87,32 @@ static int walk_block(const uint8_t *blk, uint32_t block_size,
     return EXT4_OK;
 }
 
+/*
+ * How far a directory walk may go, in bytes.
+ *
+ * i_size alone will not do: it comes off the image, a hole reads as zeroes rather
+ * than ending the walk, and so a directory claiming an exabyte walks for ever with
+ * an extent-tree walk per block. Two bounds, both facts about the format rather
+ * than judgements about the volume, so neither can turn away a real directory:
+ * a directory cannot be larger than the filesystem holding it, and without
+ * large_dir - refused at open - its size lives in i_size_lo alone.
+ *
+ * Shared so the two walks below cannot drift apart; ext4_dir_check_csums had the
+ * same loop and the same defect.
+ */
+static uint64_t dir_walk_limit(const ext4_fs *fs, const uint8_t *inode) {
+    uint64_t size = ext4_inode_size(inode);
+    uint64_t fs_bytes = fs->blocks_count * (uint64_t)fs->block_size;
+    if (size > fs_bytes) size = fs_bytes;
+    if (size > EXT4_MAX_DIR_SIZE) size = EXT4_MAX_DIR_SIZE;
+    return size;
+}
+
 int ext4_dir_iterate(const ext4_fs *fs, const uint8_t *inode,
                      ext4_dir_cb emit, void *user) {
     if (fs->block_size > EXT4_MAX_BLOCK_SIZE) return EXT4_ERR_FORMAT;
 
-    uint64_t size = ext4_inode_size(inode);
+    uint64_t size = dir_walk_limit(fs, inode);
     uint8_t  blk[EXT4_MAX_BLOCK_SIZE];
 
     /*
@@ -140,7 +161,7 @@ int ext4_dir_check_csums(const ext4_fs *fs, uint32_t ino, uint32_t generation,
     if (!fs->has_metadata_csum) return EXT4_OK;
 
     uint32_t seed = ext4_inode_csum_seed(fs->csum_seed, ino, generation);
-    uint64_t size = ext4_inode_size(inode);
+    uint64_t size = dir_walk_limit(fs, inode);
     uint8_t  blk[EXT4_MAX_BLOCK_SIZE];
 
     for (uint64_t off = 0; off < size; off += fs->block_size) {

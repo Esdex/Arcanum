@@ -353,7 +353,18 @@ int ext4_open(ext4_fs *fs, ext4_read_block_fn read_block, void *ctx) {
      * be read and never written is not a useful thing to offer. */
     if (fs->inode_size < 128 || fs->inode_size > EXT4_MAX_INODE_SIZE ||
         fs->inode_size > fs->block_size) return EXT4_ERR_FORMAT;
-    if (fs->inodes_per_group == 0) return EXT4_ERR_FORMAT;
+    /*
+     * A group's inode bitmap is exactly one block - that is what fixes the number
+     * of inodes a group can hold - so inodes_per_group can never exceed eight per
+     * byte of a block. Unbounded, it is a length the image chooses for buffers and
+     * for a crc32c: a superblock claiming 956366847 (found by fuzz.sh in under two
+     * minutes) turns every inode freed into a 114 MB allocation, a 114 MB read and
+     * a 114 MB checksum. No memory is corrupted - the sizes agree with each other -
+     * but on a phone that is an out-of-memory kill or a long freeze, arriving at
+     * mount time on a container someone else supplied (#147).
+     */
+    if (fs->inodes_per_group == 0 ||
+        fs->inodes_per_group > 8 * fs->block_size) return EXT4_ERR_FORMAT;
 
     uint32_t incompat = rd32(buf + SB_FEATURE_INCOMPAT);
     /* An INCOMPAT bit outside what this understands changes the on-disk layout in
