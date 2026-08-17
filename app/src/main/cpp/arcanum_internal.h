@@ -518,16 +518,25 @@ extern std::unordered_map<int, ContainerCtx*> g_ctxMap;
  * The ext4 half of the file operations. jni_files.cpp's JNI entry points dispatch
  * here when ext4jni_is_container(handle) is true, so the one nativeListFiles /
  * nativeReadFile / ... serves both filesystems and Kotlin never learns which is
- * underneath. Each of these takes g_fatfs_mutex itself, exactly like the FatFs
- * ops, so the dispatch check must NOT hold it. jni_volume.cpp calls ext4jni_probe
- * at mount time (under the lock) to set ContainerCtx.isExt4.
+ * underneath.
+ *
+ * g_fatfs_mutex is not recursive, so who takes it is part of each signature here
+ * and is annotated below. The rule in three parts:
+ *
+ *   - the file operations take it themselves, exactly like the FatFs ops, so a
+ *     dispatch to them must NOT already hold it. Every dispatch in jni_files.cpp
+ *     therefore sits above that function's own lock_guard, which is worth checking
+ *     when adding one: a dispatch below it hangs the app on the spot.
+ *   - probe and format are called from jni_volume.cpp with the lock already held.
+ *   - get_filesystem returns a constant and touches nothing, so it is safe on
+ *     either side of the lock. It is called from under one today.
  */
 bool         ext4jni_is_container(jlong handle);
 /* `needs_check_out` receives whether the volume was left mid-write; only written
  * when the probe succeeds. May be null. */
 bool         ext4jni_probe(int pdrv, bool *needs_check_out);  /* caller holds g_fatfs_mutex */
 bool         ext4jni_format(int pdrv, uint64_t dataSize); /* caller holds g_fatfs_mutex */
-jint         ext4jni_get_filesystem();
+jint         ext4jni_get_filesystem();                    /* takes no lock, needs none */
 jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath);
 jbyteArray   ext4jni_read_file(JNIEnv *env, jlong handle, jstring jFilePath,
                                jlong offset, jint length);

@@ -1919,6 +1919,30 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeBackupVolumeHeaderFd(
    restoring from external, the embedded backup too. Takes ownership of
    volFd. backupPath is non-null for the path wrapper; the fd wrapper passes
    safBackupFd instead. Both are ignored when fromExternal is false. */
+/*
+ * Whether this descriptor names a file some container is mounted from right now.
+ *
+ * Compared by device and inode rather than by path, so a second path to the same
+ * file - a different mount of the same storage, a symlink, a relative name - cannot
+ * slip past. A descriptor that will not stat is reported as *not* mounted: this
+ * guards a recovery operation, and refusing one because a check could not be made
+ * is worse than not making it.
+ */
+static bool file_is_mounted_now(int fd) {
+    struct stat want;
+    if (fd < 0 || fstat(fd, &want) != 0) return false;
+
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    for (const auto &entry : g_ctxMap) {
+        const ContainerCtx *ctx = entry.second;
+        if (!ctx || ctx->fd < 0) continue;
+        struct stat have;
+        if (fstat(ctx->fd, &have) != 0) continue;
+        if (have.st_dev == want.st_dev && have.st_ino == want.st_ino) return true;
+    }
+    return false;
+}
+
 static jint do_restore_volume_header(
         JNIEnv *env, int volFdIn, const BlockBackend *beIn, uint64_t sizeIn,
         const uint8_t *pwd, int pwdLen, jobjectArray jKeyfileData, jint pim,
@@ -1927,6 +1951,29 @@ static jint do_restore_volume_header(
     /* Unlike do_backup_volume_header, volFd is needed for the whole function
      * (the restore writes back into it), so it's owned for the whole scope. */
     UniqueFd volFd(volFdIn);
+
+    /*
+     * Not while it is mounted.
+     *
+     * A restored header can carry a different master key. The mounted drive keeps
+     * the keys it derived at mount time, so everything written after the restore is
+     * encrypted with the old ones while the header on disk describes the new - and
+     * that only becomes visible at the next mount, as data that will not decrypt.
+     * Nothing announces it in between.
+     *
+     * RestoreHeaderViewModel already refuses this and says "Unmount the vault
+     * before restoring its header", so in the app this is the second layer rather
+     * than the first. It is here because the first one is a single `if` in one
+     * ViewModel, and the cost of it being bypassed is silent loss.
+     *
+     * Only the descriptor form is checked. A USB-hosted volume arrives as a
+     * transport with no descriptor to compare, so for that one the ViewModel
+     * remains the only guard - written down rather than left to be discovered.
+     */
+    if (!beIn && file_is_mounted_now(volFd.get())) {
+        LOGE("restore refused: that volume is mounted right now");
+        return ERR_BUSY;
+    }
     const BlockBackend vol = beIn ? *beIn : fd_be(volFd.get());
 
     SecureBuffer<VC_MAX_PWD_LEN> effPwd;
