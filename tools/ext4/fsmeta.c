@@ -52,7 +52,16 @@ int main(int argc, char **argv) {
     uint32_t bpg       = rd32(sb + 0x20);
     uint32_t incompat  = rd32(sb + 0x60);
     uint32_t desc_size = (incompat & 0x80) ? rd16(sb + 0xFE) : 32;
-    uint32_t seed      = rd32(sb + 0x270);
+    /* s_checksum_seed holds the seed only when metadata_csum_seed is on; without
+     * that feature the field is not maintained and the seed is the crc32c of the
+     * UUID. This oracle read the field unconditionally, so on a `-O
+     * ^metadata_csum_seed` volume it reported every checksum in the image as bad -
+     * including the ones mke2fs itself had just written. It could not have judged
+     * the driver on such a volume either way, which is how the writer's identical
+     * mistake stayed hidden (#147). */
+    uint32_t seed      = (incompat & 0x2000)
+                         ? rd32(sb + 0x270)
+                         : ext4_crc32c(~0u, sb + 0x68, 16);
     uint32_t ipg       = rd32(sb + 0x28);
     uint32_t first_db  = rd32(sb + 0x14);
     uint64_t blocks    = (uint64_t)rd32(sb + 0x04) | ((uint64_t)rd32(sb + 0x150) << 32);
