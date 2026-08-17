@@ -255,9 +255,18 @@ int ext4_unlink_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
      */
     uint8_t *dead = malloc(w->inode_size);
     if (!dead) return EXT4_DIRW_ERR_IO;
-    memcpy(dead, inode, sizeof(inode));
-    if (w->inode_size > sizeof(inode))
-        memset(dead + sizeof(inode), 0, w->inode_size - sizeof(inode));
+    /* Copy no more than the smaller of the two. The source is a fixed
+     * EXT4_MAX_INODE_SIZE buffer and the destination is the inode's real size, so
+     * on a 128-byte-inode volume - deprecated, but `mke2fs -I 128` still makes one
+     * and the open path admits it - a plain sizeof(inode) copy wrote 128 bytes off
+     * the end of the allocation. Nothing downstream could see it: write_inode only
+     * puts fs->inode_size bytes on disk, so the image stayed correct and e2fsck
+     * stayed clean while the heap past the buffer was overwritten. Found with
+     * ASan, which is the only oracle that can see it (#144). */
+    size_t keep = w->inode_size < sizeof(inode) ? w->inode_size : sizeof(inode);
+    memcpy(dead, inode, keep);
+    if (w->inode_size > keep)
+        memset(dead + keep, 0, w->inode_size - keep);
     wr16(dead + INODE_LINKS_COUNT_OFF, 0);
     wr32(dead + INODE_DTIME_OFF, when);
     int wrc = ext4_write_inode_raw(w, ino, dead);
@@ -448,9 +457,11 @@ int ext4_rmdir(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
 
     uint8_t *dead = malloc(w->inode_size);
     if (!dead) return EXT4_DIRW_ERR_IO;
-    memcpy(dead, inode, sizeof(inode));
-    if (w->inode_size > sizeof(inode))
-        memset(dead + sizeof(inode), 0, w->inode_size - sizeof(inode));
+    /* Bounded like the one in ext4_unlink_file, and for the same reason. */
+    size_t keep = w->inode_size < sizeof(inode) ? w->inode_size : sizeof(inode);
+    memcpy(dead, inode, keep);
+    if (w->inode_size > keep)
+        memset(dead + keep, 0, w->inode_size - keep);
     wr16(dead + INODE_LINKS_COUNT_OFF, 0);
     wr32(dead + INODE_DTIME_OFF, when);
     int wrc = ext4_write_inode_raw(w, ino, dead);
