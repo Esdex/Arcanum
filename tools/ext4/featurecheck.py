@@ -10,7 +10,8 @@
 # never linked or copied. See issue #7.
 
 r"""
-Proves the open path refuses a filesystem whose features it does not understand.
+Proves the open path refuses a filesystem it cannot handle - by feature, and by the
+one piece of geometry that decides a buffer size.
 
     ./featurecheck.py
 
@@ -34,6 +35,16 @@ one we made - and it must open both ways. Then each unsupported bit is OR'd into
 primary superblock and the tools must react as the rule says. The bit is flipped
 raw; the open path does not verify the superblock checksum, which is exactly why a
 corrupt-feature volume would otherwise sail in.
+
+Then the inode size (#144). Unlike the feature bits this is not flipped in - the
+images are built by `mke2fs -I <n>`, because every size here is one mke2fs makes on
+request and a real volume could arrive at this size. 128 and 256 must open both ways;
+512 and 1024 must be refused by both, because `write_inode` writes and checksums
+`s_inode_size` bytes out of a caller's buffer and every one of those buffers is
+EXT4_MAX_INODE_SIZE (256) bytes. Without the refusal the difference comes off the
+stack and goes to disk under a checksum that verifies. That is the only reason 512 is
+refused: nothing else about it is unsupported, so if the buffers are ever sized for
+the format's full 1024 this check is what should change with them.
 """
 
 import argparse
@@ -141,13 +152,41 @@ def main():
                                 f"{'opened' if got_w else 'refused'}, expected "
                                 f"{'open' if want_w else 'refuse'}")
 
+        # (inode size, reader_should_open, writer_should_open). 128 is in here as
+        # much as 512 is: the guard is a range, and one written as a bare upper
+        # bound would let a 64-byte inode through, which is a buffer nothing reads
+        # correctly rather than one nothing writes safely.
+        for isize, want_r, want_w in ((128, True, True), (256, True, True),
+                                      (512, False, False), (1024, False, False)):
+            img = os.path.join(tmp, f"isize{isize}.img")
+            subprocess.run(["truncate", "-s", "64M", img], check=True)
+            r = sh("mke2fs", "-q", "-F", "-t", "ext4", "-O", "^has_journal",
+                   "-I", str(isize), img, "65536")
+            if r.returncode != 0:
+                # Not a failure of the code under test - say so plainly rather than
+                # reporting a refusal the driver never got the chance to make.
+                problems.append(f"inode size {isize}: mke2fs would not build the "
+                                f"image ({r.stderr.strip()[:120]})")
+                continue
+            got_r = reader_opens(img)   # read only, runs first
+            got_w = writer_opens(img)   # mutates img, but we are done with it
+            if got_r != want_r:
+                problems.append(f"inode size {isize}: reader "
+                                f"{'opened' if got_r else 'refused'}, expected "
+                                f"{'open' if want_r else 'refuse'}")
+            if got_w != want_w:
+                problems.append(f"inode size {isize}: writer "
+                                f"{'opened' if got_w else 'refused'}, expected "
+                                f"{'open' if want_w else 'refuse'}")
+
     if problems:
         print("FAIL")
         for p in problems:
             print(f"     {p}")
         return 1
     print("a stock foreign ext4 opens both ways; every unsupported feature bit is "
-          "refused (reader on INCOMPAT, writer on either field)")
+          "refused (reader on INCOMPAT, writer on either field); 128- and 256-byte "
+          "inodes open, 512 and 1024 are refused by both")
     return 0
 
 

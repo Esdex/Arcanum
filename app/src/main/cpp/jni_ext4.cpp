@@ -344,7 +344,7 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
                 || !is_dir)
             return env->NewObjectArray(0, infoCls, nullptr);
 
-        uint8_t dir[256];
+        uint8_t dir[EXT4_MAX_INODE_SIZE];
         memset(dir, 0, sizeof(dir));
         if (ext4_read_inode_raw(&r.fs, dir_ino, dir, sizeof(dir)) != EXT4_OK)
             return nullptr;
@@ -358,7 +358,7 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
         for (const DirEnt &d : raw) {
             uint64_t size = 0;
             jlong    mtime = 0;
-            uint8_t inode[256];
+            uint8_t inode[EXT4_MAX_INODE_SIZE];
             memset(inode, 0, sizeof(inode));
             if (ext4_read_inode_raw(&r.fs, d.ino, inode, sizeof(inode)) == EXT4_OK) {
                 size  = ext4_inode_size(inode);
@@ -424,7 +424,7 @@ jbyteArray ext4jni_read_file(JNIEnv *env, jlong handle, jstring jFilePath,
             return env->NewByteArray(0);
         }
 
-        uint8_t inode[256];
+        uint8_t inode[EXT4_MAX_INODE_SIZE];
         memset(inode, 0, sizeof(inode));
         if (ext4_read_inode_raw(&r.fs, ino, inode, sizeof(inode)) != EXT4_OK) {
             free(nativeBuf);
@@ -534,7 +534,7 @@ jint write_from_zero(JNIEnv *env, int pdrv, ext4_wfs *w, const ext4_fs *r,
     uint32_t existing = 0;
     int lrc = ext4_dir_lookup(r, dir_ino, name, &existing);
     if (lrc == EXT4_DIRW_OK) {
-        uint8_t inode[256];
+        uint8_t inode[EXT4_MAX_INODE_SIZE];
         memset(inode, 0, sizeof(inode));
         /* A failed read must refuse, not fall through. Without the mode there is no
          * way to tell a file from a directory, and unlinking a directory as if it
@@ -565,7 +565,7 @@ jint append_at_eof(JNIEnv *env, int pdrv, ext4_wfs *w, const ext4_fs *r,
     if (lrc == EXT4_DIRW_ERR_ABSENT) return ERR_FILE;   /* nothing to append to */
     if (lrc != EXT4_DIRW_OK) return ERR_FS;
 
-    uint8_t inode[256];
+    uint8_t inode[EXT4_MAX_INODE_SIZE];
     memset(inode, 0, sizeof(inode));
     if (ext4_read_inode_raw(r, ino, inode, sizeof(inode)) != EXT4_OK) return ERR_FS;
     if ((rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR) return ERR_FS;
@@ -676,7 +676,7 @@ jint ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
         s.tear();                       /* the directory would not read */
         return ERR_FS;
     } else {
-        uint8_t inode[256];
+        uint8_t inode[EXT4_MAX_INODE_SIZE];
         memset(inode, 0, sizeof(inode));
         if (ext4_read_inode_raw(&r.fs, ino, inode, sizeof(inode)) != EXT4_OK) {
             s.tear();                   /* nor would the inode */
@@ -795,7 +795,7 @@ int empty_directory(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
                     uint32_t when, int depth) {
     if (depth > 64) return ERR_FS;
 
-    uint8_t dir[256];
+    uint8_t dir[EXT4_MAX_INODE_SIZE];
     memset(dir, 0, sizeof(dir));
     if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK) return ERR_FS;
 
