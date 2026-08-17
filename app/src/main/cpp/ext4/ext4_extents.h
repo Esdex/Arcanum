@@ -93,6 +93,23 @@ extern "C" {
  */
 #define EXT4_MAX_INODE_SIZE 256u
 
+/*
+ * How large a directory may claim to be.
+ *
+ * A directory is walked a block at a time up to its i_size, and a hole inside it
+ * reads as zeroes rather than stopping the walk - deliberately, so a sparse
+ * directory parses as empty blocks instead of returning whatever is on disk. That
+ * makes i_size, a number out of the image, the only thing deciding how long the
+ * walk runs: a directory claiming a few exabytes never finishes, and every listing
+ * and every path lookup goes through that loop (#147, found by fuzz.sh).
+ *
+ * Without the large_dir feature - an INCOMPAT bit outside EXT4_SUPPORTED_INCOMPAT,
+ * so a volume carrying it is refused at open - a directory's size lives in the
+ * 32-bit i_size_lo alone. Anything above this is a directory whose high half is
+ * set, which is not a thing this driver will read.
+ */
+#define EXT4_MAX_DIR_SIZE (1ull << 32)
+
 /* Reads one filesystem block into buf. Returns EXT4_OK or EXT4_ERR_IO. */
 typedef int (*ext4_read_block_fn)(void *ctx, uint64_t block, void *buf);
 

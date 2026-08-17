@@ -235,8 +235,22 @@ static int fs_finish_open(ext4_wfs *fs) {
      * a whole number of bytes puts the last few blocks of every group past the end
      * of that buffer - a read on the allocation path and a write on the rebuild
      * one. It is not a real geometry either: mke2fs refuses a -g that is not a
-     * multiple of 8. */
-    if (!fs->blocks_per_group || (fs->blocks_per_group & 7) || !fs->desc_size) goto fail;
+     * multiple of 8.
+     *
+     * Both counts are also capped at eight per byte of a block, because each bitmap
+     * is exactly one block - that is what decides how much a group holds, and every
+     * image mke2fs makes sits at or under it. Uncapped, these are lengths the image
+     * chooses for a malloc, a read and a crc32c: blocks_per_group drives fs->bitmap
+     * and inodes_per_group the buffer in ext4_free_inode, so a superblock naming a
+     * few hundred million turns one file operation into hundreds of megabytes of
+     * work. Nothing overflows - the sizes agree with each other - it simply never
+     * comes back, which on a phone is an OOM kill at mount time on a container
+     * somebody else supplied. fuzz.sh found it in under two minutes (#147). */
+    if (!fs->blocks_per_group || (fs->blocks_per_group & 7) ||
+        fs->blocks_per_group > 8 * fs->block_size ||
+        !fs->inodes_per_group || (fs->inodes_per_group & 7) ||
+        fs->inodes_per_group > 8 * fs->block_size ||
+        !fs->desc_size) goto fail;
 
     /*
      * Refuse a filesystem whose journal still has work in it.
