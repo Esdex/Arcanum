@@ -164,14 +164,16 @@ try "new sibling leaf not marked empty" \
 try "parent not told it gained a child" \
     's@            wr16(pn + EH_ENTRIES_OFF, (uint16_t)(pe + 1));@@'
 
+# Was marked untestable on the grounds that an append grows the tree one level at a
+# time, so the anchor is always the root, which the caller writes rather than
+# flush_level - leaving this loop with nothing to carry outside fullcheck.py's
+# ground. #119 ended that: grow_right_edge now hangs a whole chain of empty nodes
+# off the lowest ancestor with a free slot, so the loop flushes real interior nodes
+# on this corpus and the mutant is caught here. The note outlived the rewrite by
+# three days and the suite reported UNEXPECTED CATCH the whole time, which is what
+# that report is for.
 try "parent left unwritten after gaining a child" \
-    's@            rc = flush_level(fs, p, level, inode_seed);@            rc = EXTW_OK;@' \
-    "An append grows the tree one level at a time, so the anchor is the node the new
-              leaf hangs from - and while the tree is shallow that node is the root, which
-              lives inside the inode and is written by the caller rather than by flush_level.
-              The loop only carries anything once a chain of several levels is built at once,
-              which is fullcheck.py's ground: mutants-full.sh runs this as \"the levels below
-              the anchor are never flushed\", and catches it."
+    's@            rc = flush_level(fs, p, level, inode_seed);@            rc = EXTW_OK;@'
 
 # The chain built for a new right edge is one node per level from the anchor down,
 # and only the last of them is a leaf.
