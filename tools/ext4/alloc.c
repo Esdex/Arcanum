@@ -42,10 +42,11 @@
 
 static int usage(const char *me) {
     fprintf(stderr, "usage: %s <image> alloc <count>\n"
+                    "       %s <image> goal <block> <count>\n"
                     "       %s <image> fill\n"
                     "       %s <image> free <block>... | -\n"
                     "       %s <image> ialloc <count>\n"
-                    "       %s <image> ifree <inode>...\n", me, me, me, me, me);
+                    "       %s <image> ifree <inode>...\n", me, me, me, me, me, me);
     return 2;
 }
 
@@ -62,6 +63,40 @@ static int do_alloc(ext4_wfs *fs, long count) {
             free(taken);
             return 1;
         }
+    }
+    if (ext4_fs_flush(fs)) { perror("flush"); free(taken); return 1; }
+    for (long i = 0; i < n; i++) printf("%lld\n", (long long)taken[i]);
+    free(taken);
+    return 0;
+}
+
+/*
+ * Allocates starting the search at `goal` rather than at the front.
+ *
+ * `alloc` always hands out the lowest free block, so on any image the harness
+ * builds every allocation lands in the first group or two. That leaves the
+ * arithmetic for a *high* block - bitmap and descriptor for a far group, and the
+ * byte offset of both - completely unexercised, which stopped mattering the moment
+ * bigcheck.py started building filesystems past 4 GB. The library has always taken
+ * a goal (the extent writer passes one to keep a growing file contiguous); this
+ * only exposes it.
+ */
+static int do_goal(ext4_wfs *fs, uint64_t goal, long count) {
+    int64_t *taken = calloc((size_t)count, sizeof(*taken));
+    if (!taken) return 2;
+
+    long n = 0;
+    for (; n < count; n++) {
+        taken[n] = ext4_alloc_block_goal(fs, goal);
+        if (taken[n] < 0) {
+            fprintf(stderr, "allocation failed after %ld of %ld blocks\n", n, count);
+            for (long i = 0; i < n; i++) ext4_free_block(fs, (uint64_t)taken[i]);
+            free(taken);
+            return 1;
+        }
+        /* Walk the goal along, so a run of blocks comes out contiguous the way the
+         * extent writer's would rather than all colliding on the same hint. */
+        goal = (uint64_t)taken[n] + 1;
     }
     if (ext4_fs_flush(fs)) { perror("flush"); free(taken); return 1; }
     for (long i = 0; i < n; i++) printf("%lld\n", (long long)taken[i]);
@@ -211,6 +246,13 @@ int main(int argc, char **argv) {
         long count = strtol(argv[3], &end, 10);
         if (*end || count < 0) { ext4_fs_close(&fs); return usage(argv[0]); }
         rc = do_alloc(&fs, count);
+    } else if (!strcmp(argv[2], "goal")) {
+        if (argc != 5) { ext4_fs_close(&fs); return usage(argv[0]); }
+        char *ge, *ce;
+        unsigned long long goal = strtoull(argv[3], &ge, 10);
+        long count = strtol(argv[4], &ce, 10);
+        if (*ge || *ce || count < 0) { ext4_fs_close(&fs); return usage(argv[0]); }
+        rc = do_goal(&fs, (uint64_t)goal, count);
     } else if (!strcmp(argv[2], "fill")) {
         if (argc != 3) { ext4_fs_close(&fs); return usage(argv[0]); }
         rc = do_fill(&fs);
