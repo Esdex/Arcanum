@@ -44,6 +44,7 @@ Neither is required for a filesystem to be ext4, and this test is what says so
 out loud rather than in a comment.
 """
 
+import argparse
 import os
 import shutil
 import subprocess
@@ -102,9 +103,14 @@ def unmount_fuse(mnt, proc=None):
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    bench = os.path.join(here, "bench")
-    dirwrite = os.path.join(here, "dirwrite")
-    fsmeta = os.path.join(here, "fsmeta")
+    # Overridable so mutants-interop.sh can point this at binaries built from
+    # staged sources; defaults are the ones build.sh produces.
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--bench", default=os.path.join(here, "bench"))
+    ap.add_argument("--dirwrite", default=os.path.join(here, "dirwrite"))
+    ap.add_argument("--fsmeta", default=os.path.join(here, "fsmeta"))
+    args = ap.parse_args()
+    bench, dirwrite, fsmeta = args.bench, args.dirwrite, args.fsmeta
     for t in (bench, dirwrite, fsmeta):
         if not os.path.exists(t):
             sys.exit(f"{t} not found - build it first")

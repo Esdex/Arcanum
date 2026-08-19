@@ -317,12 +317,20 @@ def indexed_image(tmp, name, files, megs, inodes):
 
 
 def main():
+    global FAULTOP, MKFS, DIRWRITE, EXTWRITE
     ap = argparse.ArgumentParser()
     ap.add_argument("--report", action="store_true",
                     help="also list, per operation, every distinct residual a "
                          "fault left - evidence, not a check")
     ap.add_argument("--only", help="run one sweep by label prefix")
+    # So mutants-fault.sh can point this at binaries built from staged sources.
+    ap.add_argument("--faultop", default=FAULTOP)
+    ap.add_argument("--mkfs", default=MKFS)
+    ap.add_argument("--dirwrite", default=DIRWRITE)
+    ap.add_argument("--extwrite", default=EXTWRITE)
     args = ap.parse_args()
+    FAULTOP, MKFS = args.faultop, args.mkfs
+    DIRWRITE, EXTWRITE = args.dirwrite, args.extwrite
 
     for t in (MKFS, DIRWRITE, EXTWRITE, FAULTOP):
         if not os.path.exists(t):
