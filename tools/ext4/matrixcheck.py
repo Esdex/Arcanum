@@ -289,9 +289,17 @@ def _check_row(label, args, writable, tree, tmp, problems):
 
 
 def main():
+    global BENCH, DIRWRITE, FSMETA, CHUNKWRITE
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", help="run just the rows whose label contains this")
+    # So mutants-matrix.sh can point this at binaries built from staged sources.
+    ap.add_argument("--bench", default=BENCH)
+    ap.add_argument("--dirwrite", default=DIRWRITE)
+    ap.add_argument("--fsmeta", default=FSMETA)
+    ap.add_argument("--chunkwrite", default=CHUNKWRITE)
     args = ap.parse_args()
+    BENCH, DIRWRITE = args.bench, args.dirwrite
+    FSMETA, CHUNKWRITE = args.fsmeta, args.chunkwrite
 
     for t in (BENCH, DIRWRITE, FSMETA, CHUNKWRITE):
         if not os.path.exists(t):
