@@ -116,13 +116,18 @@ try "blocks with no tail counted as verified" \
               against a filesystem made without the feature, which the generator does not
               currently produce."
 
-try "a rec_len of zero accepted" \
-    's@        if (rec_len < DIRENT_HEADER || (rec_len \& 3) != 0) return EXT4_ERR_FORMAT;@@' \
-    "Every directory in the corpus was built by mke2fs and contains no malformed
-              rec_len, so the guard is never the thing that stops a walk. It exists for a
-              directory an attacker supplies, where a zero would spin here forever and an
-              unaligned one would step outside the block. Reachable only with a corpus of
-              deliberately corrupt images, which this is not."
+# The rec_len guard used to be tried here, and recorded as untestable: every
+# directory in this corpus was built by mke2fs and holds no malformed rec_len, so
+# the guard is never what stops a walk. That was true when written, and stopped
+# being true the day fuzz.sh gained a case whose directory runs off the end of its
+# real content into blocks of zeroes - a block of zeroes being a rec_len of zero.
+# Nothing announced the change. It was found by going through every untestable note
+# and re-deriving it, which is the only way this kind of rot is ever found (#147).
+#
+# The mutant now lives in mutants-fuzz.sh, where it is caught. Left here as a
+# pointer, because the next person to wonder why a corpus of well-formed images
+# does not cover a malformed-input guard deserves the answer rather than the
+# question a second time.
 
 echo
 if [ "$fail" -ne 0 ]; then

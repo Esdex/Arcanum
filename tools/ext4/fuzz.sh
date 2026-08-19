@@ -120,12 +120,20 @@ def case(name, off, value, width=4):
         f.seek(1024 + off)
         f.write(struct.pack("<I" if width == 4 else "<H", value))
 
-# #147, found by a two-minute campaign. A group's inode bitmap is one block, so
-# with 1 KiB blocks 8192 is the ceiling; this says 956366847, which made every
+# #147, the value a two-minute campaign produced. A group's inode bitmap is one
+# block, so with 1 KiB blocks 8192 is the ceiling; the campaign's image made every
 # ext4_free_inode allocate, read and checksum 114 MB and never come back.
+#
+# It guards the bound as a budget rather than as a hang: with every
+# inodes_per_group clause removed from both opens this case takes about 36 seconds
+# against the 20 allowed below, so it fails - measured. Checking it by hand with a
+# longer timeout reports "completes", which is how it briefly got written off as
+# proving nothing. The value is also odd, so the multiple-of-eight clause turns it
+# away even before the ceiling does.
 case("inodes_per_group_huge.img", 0x28, 956366847)
 # The same shape through the other bitmap: blocks_per_group drives fs->bitmap,
-# which is allocated once per open and checksummed on every allocation.
+# which is allocated once per open and checksummed on every allocation. This one is
+# the proven half of the pair: with the bound removed it hangs the replay.
 case("blocks_per_group_huge.img", 0x20, 0xFFFFFFF8)
 PY
 

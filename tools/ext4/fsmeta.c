@@ -17,6 +17,33 @@
  * This is the last read-only rehearsal before allocation. Each of these has to be
  * recomputed when a block is taken, and predicting the values e2fsprogs already
  * wrote proves the recipe before anything depends on it.
+ *
+ * ## What this is and is not independent of
+ *
+ * Several stands call this "the independent checksum oracle". That is half true,
+ * and the half that is not cost real time (#147), so it is written down here.
+ *
+ * Independent: *which* bytes are checksummed and where they are found. This file
+ * parses the superblock and walks the descriptors on its own, so an error in how
+ * the driver locates a bitmap or sizes a descriptor shows up as a disagreement.
+ *
+ * NOT independent: the checksum primitive. It links ext4_csum.c - the same code
+ * the driver uses - so if crc32c itself were wrong, both would be wrong together
+ * and this would report a clean image. That gap is covered elsewhere, by
+ * mkfscheck.py comparing our formatter's output byte for byte against mke2fs.
+ *
+ * NOT independent by accident, once: the checksum *seed*. This file derived it the
+ * same wrong way the writer did - reading s_checksum_seed whether or not the
+ * metadata_csum_seed feature says it is maintained - so on such a volume it
+ * declared mke2fs's own checksums bad and could not have judged the driver either
+ * way. That is exactly how the writer's bug survived. Fixed in both; the lesson is
+ * that a field derived here must be derived from the format, never from what the
+ * driver happens to do.
+ *
+ * Deliberate remaining divergence: desc_size. The driver additionally requires
+ * s_desc_size >= 64 before believing it; this does not. Both agree on every
+ * well-formed volume, and the driver being the stricter of the two is the right
+ * way round for a divergence to run.
  */
 #define _POSIX_C_SOURCE 200809L
 #define _FILE_OFFSET_BITS 64
