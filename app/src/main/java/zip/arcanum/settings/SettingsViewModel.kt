@@ -27,6 +27,7 @@ import zip.arcanum.core.security.DisguiseManager
 import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.security.PinResult
+import zip.arcanum.core.security.SessionState
 import zip.arcanum.core.theme.ThemeMode
 import javax.inject.Inject
 
@@ -38,6 +39,7 @@ class SettingsViewModel @Inject constructor(
     private val disguiseManager: DisguiseManager,
     private val billingManager: BillingManagerInterface,
     private val idleMonitor: IdleMonitor,
+    private val sessionState: SessionState,
     private val shareIntake: ShareIntake,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
@@ -67,6 +69,12 @@ class SettingsViewModel @Inject constructor(
 
     /** Reset the inactivity timer, e.g. when the authenticated area is (re)entered. */
     fun recordInteraction() = idleMonitor.recordInteraction()
+
+    /** True once the PIN has been accepted in this process - see [SessionState]. */
+    fun wasUnlockedInThisProcess(): Boolean = sessionState.unlockedInThisProcess
+
+    /** Record that the user authenticated, so a restored back stack can be trusted. */
+    fun markUnlocked() = sessionState.markUnlocked()
 
     val autoLockEnabled = prefs.autoLockEnabled.stateIn(
         scope        = viewModelScope,
