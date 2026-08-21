@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import zip.arcanum.R
+import zip.arcanum.core.components.rememberMediaLocationGate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,6 +53,13 @@ fun ShareTargetScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // A shared photo is read here, so it loses its location to the same redaction the import
+    // path had (#149). Same gate, same one-shot explanation, same flag.
+    val withMediaLocation = rememberMediaLocationGate(
+        promptShown       = viewModel.mediaLocationPromptShown.collectAsStateWithLifecycle().value,
+        onMarkPromptShown = viewModel::markMediaLocationPromptShown
+    )
 
     BackHandler { onCancel() }
 
@@ -91,7 +99,7 @@ fun ShareTargetScreen(
                         state          = state,
                         onEnter        = viewModel::enterDirectory,
                         onUp           = viewModel::navigateUp,
-                        onSave         = viewModel::saveHere,
+                        onSave         = { withMediaLocation { viewModel.saveHere() } },
                         onSwitchVault  = viewModel::clearVault,
                         canSwitchVault = state.vaults.size > 1
                     )

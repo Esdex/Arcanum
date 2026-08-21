@@ -9,11 +9,14 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.core.database.dao.ContainerDao
 import zip.arcanum.crypto.VeraCryptEngine
@@ -26,8 +29,20 @@ class ShareTargetViewModel @Inject constructor(
     private val repo: ContainerRepository,
     private val dao: ContainerDao,
     private val engine: VeraCryptEngine,
-    @ApplicationContext private val appContext: Context
+    @ApplicationContext private val appContext: Context,
+    private val appPrefs: AppPreferences
 ) : ViewModel() {
+
+    /** Has the explanation before the photo-location request already been shown once (#149). */
+    val mediaLocationPromptShown: StateFlow<Boolean> = appPrefs.mediaLocationPromptShown.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = true
+    )
+
+    fun markMediaLocationPromptShown() {
+        viewModelScope.launch { appPrefs.setMediaLocationPromptShown(true) }
+    }
 
     data class VaultOption(val id: String, val name: String)
 
