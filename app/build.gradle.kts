@@ -33,6 +33,13 @@ android {
         }
     }
 
+    // Pinned so this machine, a fresh clone and the F-Droid builder all link against the same
+    // toolchain. r28 is also what aligns the .so files to 16 KB pages by default, which Google
+    // Play has required since November 2025 - an older NDK silently produces a 4 KB-aligned
+    // APK that Play rejects, and nothing in the build would catch it. Treat a bump like a
+    // version bump: it changes the binary that ships.
+    ndkVersion = "28.2.13676358"
+
     defaultConfig {
         applicationId = "zip.arcanum"
         minSdk = 29
