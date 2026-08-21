@@ -16,6 +16,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asFlow
@@ -42,6 +43,7 @@ import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.notifications.ImportFailureReason
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.security.AppPreferences
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import zip.arcanum.crypto.VeraCryptEngine
@@ -60,8 +62,20 @@ class FileManagerViewModel @Inject constructor(
     private val audioQueue: AudioPlayerQueue,
     private val thumbnailManager: ThumbnailManager,
     private val mediaScanner: MediaScanner,
-    private val mediaFileDao: MediaFileDao
+    private val mediaFileDao: MediaFileDao,
+    private val appPrefs: AppPreferences
 ) : ViewModel() {
+
+    /** Has the explanation before the photo-location request already been shown once (#149). */
+    val mediaLocationPromptShown: StateFlow<Boolean> = appPrefs.mediaLocationPromptShown.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = true
+    )
+
+    fun markMediaLocationPromptShown() {
+        viewModelScope.launch { appPrefs.setMediaLocationPromptShown(true) }
+    }
 
     enum class ViewMode { LIST, GRID }
     enum class SortBy { NAME, DATE, SIZE, TYPE }

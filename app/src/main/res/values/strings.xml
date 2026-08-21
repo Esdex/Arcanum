@@ -272,6 +272,8 @@
     <string name="files_action_import_files">Import files</string>
     <string name="files_action_import_folder">Import folder</string>
     <string name="files_action_new_folder">New folder</string>
+    <string name="files_media_location_title">Keep photo locations</string>
+    <string name="files_media_location_body">Android is about to ask for access to photos and videos. Arcanum needs it for one thing: a photo carries the place it was taken inside it, and without this Android erases that before Arcanum ever sees the file. Arcanum still only opens the files you pick. Declining is fine - the import works either way, only the location is lost.</string>
     <string name="files_import_delete_source">Delete source files after import</string>
     <string name="files_import_delete_source_desc">Permanently removes files from their original location after a successful import</string>
     <string name="files_action_copy">Copy</string>

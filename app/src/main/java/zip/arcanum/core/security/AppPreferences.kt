@@ -33,6 +33,7 @@ class AppPreferences @Inject constructor(
         val DYNAMIC_COLOR         = booleanPreferencesKey("dynamic_color")
         val SCREEN_CAPTURE_PROT   = booleanPreferencesKey("screen_capture_protection")
         val DISGUISE_PROMPT_SHOWN = booleanPreferencesKey("disguise_prompt_shown")
+        val MEDIA_LOC_PROMPT_SHOWN = booleanPreferencesKey("media_location_prompt_shown")
         /**
          * A key that did not exist before is absent for everyone who updates, so they see
          * the hint once for the same reason a fresh install does - which is exactly who
@@ -112,6 +113,18 @@ class AppPreferences @Inject constructor(
 
     suspend fun setDisguisePromptShown(shown: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.DISGUISE_PROMPT_SHOWN] = shown }
+    }
+
+    /**
+     * Whether the explanation shown before the ACCESS_MEDIA_LOCATION request has been
+     * through once. A denial sets USER_FIXED on the permission, so the system dialog never
+     * appears again - explaining a dialog that will not come would only be confusing (#149).
+     */
+    val mediaLocationPromptShown: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.MEDIA_LOC_PROMPT_SHOWN] ?: false }
+
+    suspend fun setMediaLocationPromptShown(shown: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.MEDIA_LOC_PROMPT_SHOWN] = shown }
     }
 
     val mountHintShown: Flow<Boolean> = context.appPrefsDataStore.data

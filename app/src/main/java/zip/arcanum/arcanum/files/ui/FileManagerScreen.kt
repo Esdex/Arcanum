@@ -238,6 +238,8 @@ fun FileManagerScreen(
     // and for good if "delete after import" was on (#149). Ask at the first import rather than
     // up front, and open the picker either way: a denial costs the location, not the import.
     var pendingImport by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var showMediaLocationInfo by remember { mutableStateOf(false) }
+    val mediaLocationPromptShown by viewModel.mediaLocationPromptShown.collectAsState()
 
     val mediaLocationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -247,13 +249,19 @@ fun FileManagerScreen(
         val holdsIt = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED
-        if (holdsIt) {
-            startImport()
-        } else {
-            // Once permanently denied this returns without showing anything, so it does not
-            // become a dialog on every import.
-            pendingImport = startImport
-            mediaLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+        pendingImport = startImport
+        when {
+            holdsIt -> { pendingImport = null; startImport() }
+
+            // The system asks about "photos and videos", which reads far broader than what it
+            // grants here, so say first what is about to be asked and why. Only once: a denial
+            // sets USER_FIXED and the system dialog never returns, and explaining a dialog that
+            // will not appear is worse than saying nothing.
+            !mediaLocationPromptShown -> showMediaLocationInfo = true
+
+            // Already explained. If it was granted this branch is unreachable; if it was denied
+            // the launch returns silently and the import goes ahead without the location.
+            else -> mediaLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
         }
     }
 
@@ -604,6 +612,21 @@ fun FileManagerScreen(
             onCreate  = { name ->
                 viewModel.createFolder(name)
                 showNewFolderDialog = false
+            }
+        )
+    }
+
+    if (showMediaLocationInfo) {
+        AppDialog(
+            onDismissRequest = { showMediaLocationInfo = false; pendingImport = null },
+            title  = { Text(stringResource(R.string.files_media_location_title)) },
+            text   = { Text(stringResource(R.string.files_media_location_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showMediaLocationInfo = false
+                    viewModel.markMediaLocationPromptShown()
+                    mediaLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+                }) { Text(stringResource(R.string.common_continue)) }
             }
         )
     }
