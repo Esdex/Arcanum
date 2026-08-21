@@ -1,9 +1,12 @@
 # Header restore: what still needs a device
 
 The refusal added in #147 - a header restore is turned away while that volume is
-mounted - is verified by review and by both ABIs compiling, and by nothing else.
-Its positive case needs a mounted volume, which no host stand can produce. These
-are the steps that close it.
+mounted - has no host stand behind it: its positive case needs a mounted volume,
+which nothing on the desktop can produce. These are the steps that close it.
+
+Run on device 2026-08-21: scenarios 1 and 2 pass, and no `restore refused` line
+appeared in a 1.1M-line logcat, so the guard does not misfire. Scenario 3 is still
+open - see the note there about why it cannot be done by hand.
 
 ## Why it matters enough to test by hand
 
@@ -59,20 +62,27 @@ other than the file itself.
 
 ## Scenario 3 - the same vault is mounted (the guard firing)
 
-Reaching the native guard needs the UI check out of the way, because
-`RestoreHeaderViewModel.startRestore` refuses first with "Unmount the vault before
-restoring its header". That message appearing is itself worth confirming (step 1),
-but it is the first layer, not the one under test.
+There are three layers here, not two, and the outermost stops you before the others
+get a turn. Vault details disables both header operations while the vault is mounted:
+the row is greyed out and its subtitle changes to say to unmount first
+(`VaultConfigScreen.kt`, `enabled = !isMounted`). The restore screen cannot be reached
+at all, so by hand neither the ViewModel's refusal nor the native guard can be
+observed. Confirmed on device 2026-08-21: the button is simply inactive.
 
-1. Mount vault A, then try to restore its header. Expected: the screen refuses with
-   the message above, and there is no `restore refused` line - the request never
-   reached native.
-2. To exercise the second layer, build a debug APK with the ViewModel check
-   commented out:
+1. Mount vault A, then open Vault details. Expected: "Restore header" is disabled and
+   its subtitle asks you to unmount first. No `restore refused` line, because nothing
+   was ever requested.
+2. To reach the layers underneath, build a debug APK with **both** outer checks out of
+   the way:
+
+       enabled = true,   // was !isMounted, on the restore row in VaultConfigScreen
 
        // if (repo.getContainerHandle(containerId) != null) { ... return }
+                         // in RestoreHeaderViewModel.startRestore
 
-   in `RestoreHeaderViewModel.startRestore`.
+   Removing only the ViewModel check is not enough - the button stays inactive and
+   nothing happens. An earlier version of this document said only that, and it sent
+   the first person to follow it into a dead end.
 3. With that build: mount A, restore A's header.
 4. Expected: the restore fails, the log carries `restore refused: that volume is
    mounted right now`, and the screen shows `BUSY` - that screen renders the error
@@ -85,5 +95,5 @@ but it is the first layer, not the one under test.
 ## Not covered by any of this
 
 A USB-hosted volume arrives as a transport with no descriptor to compare, so the
-native guard cannot run for it and the ViewModel remains the only layer. Scenario 3
+native guard cannot run for it and the two Kotlin layers are all there is. Scenario 3
 step 1 is the whole of the check there.
