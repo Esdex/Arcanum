@@ -1,7 +1,11 @@
 package zip.arcanum.arcanum.files.ui
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.provider.DocumentsContract
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -228,6 +232,30 @@ fun FileManagerScreen(
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri -> uri?.let { viewModel.exportSelected(context, it) } }
+
+    // Without ACCESS_MEDIA_LOCATION Android hands the app a copy of every photo with the Exif
+    // GPS tags zeroed, so a vaulted photo loses coordinates the original still has - silently,
+    // and for good if "delete after import" was on (#149). Ask at the first import rather than
+    // up front, and open the picker either way: a denial costs the location, not the import.
+    var pendingImport by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val mediaLocationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { pendingImport?.invoke(); pendingImport = null }
+
+    fun withMediaLocation(startImport: () -> Unit) {
+        val holdsIt = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        if (holdsIt) {
+            startImport()
+        } else {
+            // Once permanently denied this returns without showing anything, so it does not
+            // become a dialog on every import.
+            pendingImport = startImport
+            mediaLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+        }
+    }
 
     // Dialog/sheet visibility
     var showNewFolderDialog    by rememberSaveable { mutableStateOf(false) }
@@ -664,7 +692,7 @@ fun FileManagerScreen(
                 trailingContent = { Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                 modifier        = Modifier.clickable {
                     showImportSheet = false
-                    importLauncher.launch(arrayOf("*/*"))
+                    withMediaLocation { importLauncher.launch(arrayOf("*/*")) }
                 }
             )
             ListItem(
@@ -674,7 +702,7 @@ fun FileManagerScreen(
                 trailingContent = { Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                 modifier        = Modifier.clickable {
                     showImportSheet = false
-                    importFolderLauncher.launch(null)
+                    withMediaLocation { importFolderLauncher.launch(null) }
                 }
             )
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
