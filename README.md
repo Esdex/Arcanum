@@ -120,7 +120,7 @@ cd Arcanum
 
 **Requirements:**
 - No JDK setup — `gradle/gradle-daemon-jvm.properties` is tracked and pins the Gradle daemon to toolchain 21, so Gradle provisions Eclipse Adoptium 21 itself whatever the machine has. Do not set `org.gradle.java.home`: the project file is tracked, and a machine-specific path there breaks every clone and the F-Droid reproducible build.
-- Android NDK r28+ — nothing in the build pins it, and 16 KB page alignment relies on the r28 default
+- Android NDK 28.2.13676358 — pinned by `ndkVersion` in `app/build.gradle.kts`; the SDK manager fetches it if it is missing. r28 is what aligns the native libraries to 16 KB pages.
 - CMake 3.22.1+
 - Min SDK 29 / Target SDK 36
 
