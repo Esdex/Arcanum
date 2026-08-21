@@ -1,11 +1,7 @@
 package zip.arcanum.arcanum.files.ui
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
 import android.provider.DocumentsContract
-import androidx.core.content.ContextCompat
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -154,6 +150,7 @@ import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.arcanum.files.ui.FileManagerViewModel.SortBy
 import zip.arcanum.arcanum.files.ui.FileManagerViewModel.ViewMode
 import zip.arcanum.core.components.AppDialog
+import zip.arcanum.core.components.rememberMediaLocationGate
 import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.EmptyStateView
 import zip.arcanum.core.components.LocalHazeState
@@ -233,37 +230,10 @@ fun FileManagerScreen(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri -> uri?.let { viewModel.exportSelected(context, it) } }
 
-    // Without ACCESS_MEDIA_LOCATION Android hands the app a copy of every photo with the Exif
-    // GPS tags zeroed, so a vaulted photo loses coordinates the original still has - silently,
-    // and for good if "delete after import" was on (#149). Ask at the first import rather than
-    // up front, and open the picker either way: a denial costs the location, not the import.
-    var pendingImport by remember { mutableStateOf<(() -> Unit)?>(null) }
-    var showMediaLocationInfo by remember { mutableStateOf(false) }
-    val mediaLocationPromptShown by viewModel.mediaLocationPromptShown.collectAsState()
-
-    val mediaLocationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { pendingImport?.invoke(); pendingImport = null }
-
-    fun withMediaLocation(startImport: () -> Unit) {
-        val holdsIt = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) ==
-                PackageManager.PERMISSION_GRANTED
-        pendingImport = startImport
-        when {
-            holdsIt -> { pendingImport = null; startImport() }
-
-            // The system asks about "photos and videos", which reads far broader than what it
-            // grants here, so say first what is about to be asked and why. Only once: a denial
-            // sets USER_FIXED and the system dialog never returns, and explaining a dialog that
-            // will not appear is worse than saying nothing.
-            !mediaLocationPromptShown -> showMediaLocationInfo = true
-
-            // Already explained. If it was granted this branch is unreachable; if it was denied
-            // the launch returns silently and the import goes ahead without the location.
-            else -> mediaLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
-        }
-    }
+    val withMediaLocation = rememberMediaLocationGate(
+        promptShown       = viewModel.mediaLocationPromptShown.collectAsState().value,
+        onMarkPromptShown = viewModel::markMediaLocationPromptShown
+    )
 
     // Dialog/sheet visibility
     var showNewFolderDialog    by rememberSaveable { mutableStateOf(false) }
@@ -612,21 +582,6 @@ fun FileManagerScreen(
             onCreate  = { name ->
                 viewModel.createFolder(name)
                 showNewFolderDialog = false
-            }
-        )
-    }
-
-    if (showMediaLocationInfo) {
-        AppDialog(
-            onDismissRequest = { showMediaLocationInfo = false; pendingImport = null },
-            title  = { Text(stringResource(R.string.files_media_location_title)) },
-            text   = { Text(stringResource(R.string.files_media_location_body)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showMediaLocationInfo = false
-                    viewModel.markMediaLocationPromptShown()
-                    mediaLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
-                }) { Text(stringResource(R.string.common_continue)) }
             }
         )
     }
