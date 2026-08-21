@@ -9,13 +9,12 @@
 </p>
 
 <p align="center">
+  <a href="https://f-droid.org/en/packages/zip.arcanum/"><img src="https://img.shields.io/f-droid/v/zip.arcanum?style=for-the-badge&logo=fdroid&logoColor=white&label=F-Droid" alt="F-Droid version"></a>
   <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=for-the-badge" alt="License"></a>
   <img src="https://img.shields.io/badge/platform-Android-green?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/min%20SDK-29%20(Android%2010)-brightgreen?style=for-the-badge" alt="Min SDK">
   <img src="https://img.shields.io/badge/language-Kotlin-7F52FF?style=for-the-badge" alt="Kotlin">
 </p>
-
-<!-- TODO: add F-Droid badge once published -->
 
 <p align="center">
   <a href="https://arcanum.zip">Website</a> ·
@@ -32,7 +31,13 @@
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/03-hidden-volumes.png" width="18%" alt="Hidden volumes">
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/04-calculator-disguise.png" width="18%" alt="Calculator disguise">
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/05-panic-mode.png" width="18%" alt="Panic mode">
+</p>
+
+<p align="center">
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/06-encrypted-gallery.png" width="18%" alt="Encrypted gallery">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/07-audio-player.png" width="18%" alt="Audio player">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/08-file-manager.png" width="18%" alt="File manager">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/09-amoled-theme.png" width="18%" alt="AMOLED theme">
 </p>
 
 ---
@@ -43,28 +48,47 @@
 - 🔐 Full VeraCrypt container compatibility — open containers created on desktop (Windows, macOS, Linux)
 - 🔒 15 cipher configurations: AES, Serpent, Twofish, Camellia, Kuznyechik and all cascade combinations
 - #️⃣ 5 PRF algorithms: SHA-512, SHA-256, Whirlpool, Streebog, BLAKE2s-256
-- 🗝️ Keyfile support with pool-based derivation matching VeraCrypt's implementation
+- 🗝️ Keyfile support with pool-based derivation matching VeraCrypt's implementation, plus an in-app keyfile generator
 - 🔢 PIM (Personal Iterations Multiplier) support
+- 💽 FAT32, exFAT or ext4 inside the container — the ext4 driver is clean-room, no third-party filesystem code ships
+
+**Volume management**
+- 💾 Back up and restore the volume header
+- 🔑 Change the password, PIM and keyfiles of an existing volume
+- 👓 Read-only mount
+- 🛡️ Hidden-volume protection while writing to the outer volume
+- 📦 Move a vault between app storage and external storage
+- 📊 Storage usage breakdown per vault
+- 🔌 Vaults on USB flash drives over OTG — *ships in the next release*
 
 **Privacy**
 - 🫥 Hidden volumes for plausible deniability
-- 🧮 Calculator disguise — app appears as a plain calculator on the home screen
-- 🚨 Panic PIN — instantly triggers configurable wipe (containers, files, app data)
-- 🔏 Auto-lock with configurable delay
-- 🌐 No network permission — 100% offline, zero telemetry
+- 🧮 Calculator disguise — an optional second launcher entry, under its own name and icon, that opens a working calculator
+- 🚨 Panic PIN — instantly triggers a configurable wipe: each vault deleted, forgotten or kept, plus settings, history and biometric registrations
+- 📵 Screenshots and screen recording blocked at the OS level; switching that off asks for the PIN
+- 🔏 Auto-lock with configurable delay, unmounting every vault when it fires
+- ⏳ PIN lockout timed against a monotonic clock, so moving the system clock does not shorten it
+- 🌐 No network permission — `INTERNET` is never declared and `ACCESS_NETWORK_STATE` is stripped from the merged manifest
 
 **Vault access**
-- 👆 Biometric unlock per vault (hardware-backed key binding)
+- 👆 Biometric unlock per vault (hardware-backed, CryptoObject-bound)
+- 🔓 Biometric unlock for the app itself, bound the same way
 - ⏱️ Per-vault auto-unmount on screen lock or background
 
 **In-vault browsing**
-- 🖼️ Encrypted gallery with image and video viewer
-- 🎵 Audio player with waveform and dominant-color theming
-- 📂 Full file manager (create, rename, delete, move files and directories)
+- 🖼️ Encrypted gallery with image and video viewer, fullscreen playback included
+- ✂️ Photo editor — crop, filters, adjustments and markup, written straight back into the vault
+- 🎵 Audio player with waveform and dominant-color theming, background playback with album art
+- 📂 Full file manager — create, rename, delete, copy, move, import files and whole folders, export back out
+- 🚪 Open a vault file in another app without decrypting it to storage
+- 📥 Send files into a vault straight from the Android share sheet
+- 🗂️ Vaults you opt in appear read-only in other apps' file pickers while mounted
 
 **UI**
 - 🎨 AMOLED Glass theme — frosted-glass system bars and dialogs on pure black
 - 🌙 Dynamic Color (Material You) support
+- 🌍 14 languages, switchable inside the app
+- 🧭 Pick the tab a vault opens on
 - 📱 Edge-to-edge, Android 10+
 
 ---
@@ -95,8 +119,8 @@ cd Arcanum
 ```
 
 **Requirements:**
-- Android Studio (with JBR — set `org.gradle.java.home` in `~/.gradle/gradle.properties`)
-- Android NDK r28+
+- No JDK setup — `gradle/gradle-daemon-jvm.properties` is tracked and pins the Gradle daemon to toolchain 21, so Gradle provisions Eclipse Adoptium 21 itself whatever the machine has. Do not set `org.gradle.java.home`: the project file is tracked, and a machine-specific path there breaks every clone and the F-Droid reproducible build.
+- Android NDK r28+ — nothing in the build pins it, and 16 KB page alignment relies on the r28 default
 - CMake 3.22.1+
 - Min SDK 29 / Target SDK 36
 
@@ -112,12 +136,12 @@ The `fdroid` flavor builds with all features unlocked and no billing dependency.
 | Navigation | Navigation Compose, single-Activity |
 | Crypto core | C++/NDK — VeraCrypt's cipher sources via JNI bridge |
 | File system | FatFs (FAT32/exFAT) + a clean-room ext4 driver, inside containers |
-| Local storage | Room (container metadata), EncryptedSharedPreferences (PIN hashes) |
+| Local storage | Room over SQLCipher (vault metadata), EncryptedSharedPreferences (Argon2id PIN hashes) |
 | DI | Hilt |
 | Media | ExoPlayer / Media3 |
-| Network | None — `INTERNET` permission is not declared |
+| Network | None — `INTERNET` is not declared, and `ACCESS_NETWORK_STATE` is stripped from the merged manifest |
 
-The app presents itself as a calculator. Entering the correct PIN navigates to the authenticated vault home. A panic PIN triggers `PanicManager`, which executes a background wipe before navigation completes, equalizing the response time between both paths.
+With the disguise on, the launcher entry is a working calculator. Entering the correct PIN navigates to the authenticated vault home. A panic PIN triggers `PanicManager`, which executes a background wipe before navigation completes, equalizing the response time between both paths.
 
 For a deeper dive, see the [architecture section in the docs](https://arcanum.zip/docs).
 
@@ -135,7 +159,9 @@ The codebase has been reviewed using AI-assisted security analysis across multip
 
 Contributions are welcome for bug fixes and non-cryptographic improvements (UI, translations, documentation, gallery/file manager features). For changes touching the crypto layer, JNI bridge, PIN/panic logic, or any other security-critical path, please open an issue first to discuss the approach.
 
-- Run `./gradlew lint` before submitting
+- Run `./gradlew test` and `./gradlew lint` before submitting
+- Changes to the ext4 driver must pass `tools/ext4/checkall.sh`, which runs every native test stand and its mutation suite
+- Changes to the JNI error contract must keep `ErrorCodeSyncTest` green — it is what stops the Kotlin and C error codes drifting apart
 - Native code changes must build cleanly for both `arm64-v8a` and `armeabi-v7a`
 - The `fdroid` flavor must remain free of any Google Play Services dependency
 
@@ -213,7 +239,7 @@ You may obtain a copy of the License at
     https://www.apache.org/licenses/LICENSE-2.0
 ```
 
-The cryptographic core (`app/src/main/cpp/veracrypt/`) incorporates source code from [VeraCrypt](https://veracrypt.fr), also licensed under Apache 2.0.
+The cryptographic core (`app/src/main/cpp/veracrypt/`) incorporates source code from [VeraCrypt](https://veracrypt.fr), which is licensed under Apache 2.0. Nine of those files (`Common/Xts.c`, `Xts.h`, `Pkcs5.c`, `Pkcs5.h`, `Crc.c`, `Crc.h`, `Tcdefs.h`, `Password.h`, `Endian.h`) derive from TrueCrypt 7.1a and carry VeraCrypt's dual header: the derived portions are governed by the TrueCrypt License 3.0, the modifications and additions by Apache 2.0.
 
 ---
 
@@ -224,4 +250,9 @@ The cryptographic core (`app/src/main/cpp/veracrypt/`) incorporates source code 
 - **[ExoPlayer / Media3](https://developer.android.com/media/media3)** — media playback inside encrypted containers
 - **[Haze](https://github.com/chrisbanes/haze)** — frosted-glass UI effects
 - **[BouncyCastle](https://www.bouncycastle.org)** — Argon2id PIN key derivation
+- **[SQLCipher](https://www.zetetic.net/sqlcipher/)** — encryption of the app's own database
+- **[Aire](https://github.com/awxkee/aire)** — image processing behind the photo editor
+- **[Coil](https://coil-kt.github.io/coil/)** — thumbnail and image loading
+- **[metadata-extractor](https://drewnoakes.com/code/exif/)** — EXIF and media metadata
+- **[Lottie](https://github.com/airbnb/lottie-android)** — animations
 - **[AboutLibraries](https://github.com/mikepenz/AboutLibraries)** — open-source license screen

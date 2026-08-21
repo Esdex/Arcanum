@@ -22,7 +22,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"
         tools:node="remove" />
 
-    <!-- USB host (for USB container support — future) -->
+    <!-- USB host — vaults living on a plugged-in USB flash drive -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <application
