@@ -133,6 +133,21 @@ fun AppNavigation(pinManager: PinManager) {
         }
     }
 
+    // A background kill takes the mount map, the JNI handles and the idle clock with it, but
+    // Android still restores the saved back stack - so without this the app comes back sitting
+    // on an authenticated screen with nobody having entered the PIN, and the idle check cannot
+    // notice because IdleMonitor is rebuilt with "now" as the last interaction (#150). The
+    // process, not the screen, is what holds the unlock, so a restored stack this process never
+    // authenticated is not trusted. A configuration change does not restart the process, which
+    // is what keeps rotation from asking again.
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != null && currentRoute !in lockedRoutes &&
+            !settingsViewModel.wasUnlockedInThisProcess()
+        ) {
+            lockNow()
+        }
+    }
+
     // Index 0 ("Immediately") keeps the original background-only behavior: lock shortly after
     // the app leaves the foreground. Indices >= 1 are handled by the idle loop below instead,
     // so this observer only arms for index 0.
@@ -248,6 +263,7 @@ fun AppNavigation(pinManager: PinManager) {
         ) {
             CalculatorScreen(
                 onAuthenticated = {
+                    settingsViewModel.markUnlocked()
                     settingsViewModel.setFirstLoginDone()
                     navController.navigate(Screen.VaultScreen.route) {
                         popUpTo(Screen.Calculator.route) { inclusive = true }
@@ -263,6 +279,7 @@ fun AppNavigation(pinManager: PinManager) {
         ) {
             PinEntryScreen(
                 onAuthenticated = {
+                    settingsViewModel.markUnlocked()
                     settingsViewModel.setFirstLoginDone()
                     navController.navigate(Screen.VaultScreen.route) {
                         popUpTo(Screen.PinEntry.route) { inclusive = true }
