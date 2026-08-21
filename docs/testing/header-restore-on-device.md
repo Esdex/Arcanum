@@ -1,12 +1,18 @@
-# Header restore: what still needs a device
+# Header restore: checking the refusal on a device
 
 The refusal added in #147 - a header restore is turned away while that volume is
 mounted - has no host stand behind it: its positive case needs a mounted volume,
 which nothing on the desktop can produce. These are the steps that close it.
 
-Run on device 2026-08-21: scenarios 1 and 2 pass, and no `restore refused` line
-appeared in a 1.1M-line logcat, so the guard does not misfire. Scenario 3 is still
-open - see the note there about why it cannot be done by hand.
+Run on device 2026-08-21: **all three pass**. Scenarios 1 and 2 produced no
+`restore refused` line in a 1.1M-line logcat, so the guard does not misfire. Scenario 3,
+on a build with both outer checks removed, produced exactly one:
+
+    E/ArcanumNative: restore refused: that volume is mounted right now
+
+with `BUSY` on screen, and the volume mounted and read normally afterwards - the refusal
+happens before anything is written. The steps below stay here because the guard is worth
+re-testing whenever this code is touched, not because anything is outstanding.
 
 ## Why it matters enough to test by hand
 
