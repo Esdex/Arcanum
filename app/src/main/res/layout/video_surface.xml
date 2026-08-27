@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The player surface, inflated rather than constructed, for one reason: surface_type is an
+  XML attribute with no setter. The default is a SurfaceView, whose content the system
+  composites outside the view hierarchy, so a Compose graphicsLayer transform moves an empty
+  frame and leaves the video where it was. A TextureView draws in the hierarchy and follows
+  the transform, which is what makes pinch-to-zoom possible (#151).
+-->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    app:surface_type="texture_view"
+    app:use_controller="false"
+    app:resize_mode="fit" />

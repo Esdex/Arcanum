@@ -24,7 +24,6 @@ import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaMetadata
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import zip.arcanum.arcanum.gallery.ServiceEncryptedDataSource
 import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
@@ -147,6 +146,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.view.LayoutInflater
 import android.view.WindowManager
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -445,6 +445,7 @@ fun MediaViewerScreen(
     }
 
     var isImageZoomed by remember { mutableStateOf(false) }
+    var isVideoZoomed by remember { mutableStateOf(false) }
 
     var showDeleteDialog   by remember { mutableStateOf(false) }
     var showInfoSheet      by remember { mutableStateOf(false) }
@@ -471,7 +472,7 @@ fun MediaViewerScreen(
             // ── Pager ────────────────────────────────────────────────────
             HorizontalPager(
                 state             = pagerState,
-                userScrollEnabled = !isImageZoomed,
+                userScrollEnabled = !isImageZoomed && !isVideoZoomed,
                 modifier          = Modifier.fillMaxSize()
             ) { page ->
                 val isCurrent = page == pagerState.currentPage
@@ -486,6 +487,8 @@ fun MediaViewerScreen(
                     )
                     MediaFileType.VIDEO -> VideoSurfacePage(
                         exoPlayer       = if (isCurrent) mc else null,
+                        videoAspect     = videoAspect,
+                        onZoomChanged   = { isVideoZoomed = it > 1.05f },
                         onTap           = { userInteracted = true; showBars = !showBars },
                         // A double tap is a seek, not a request for the controls: if they
                         // are hidden they stay hidden and only the +/-10s marker shows. If
@@ -571,22 +574,11 @@ fun MediaViewerScreen(
                         exit     = fadeOut(),
                         modifier = Modifier.align(Alignment.BottomEnd)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                // A white glyph alone can land on a pale frame and vanish;
-                                // the scrim keeps it readable over any video.
-                                .background(Color.Black.copy(alpha = 0.45f))
-                                .clickable { isFullscreen = true; showBars = true; barsPokeToken++ },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector        = Icons.Outlined.Fullscreen,
+                        Box(modifier = Modifier.padding(8.dp)) {
+                            VideoGlyphButton(
+                                icon               = Icons.Outlined.Fullscreen,
                                 contentDescription = stringResource(R.string.video_enter_fullscreen),
-                                tint               = Color.White,
-                                modifier           = Modifier.size(20.dp)
+                                onClick = { isFullscreen = true; showBars = true; barsPokeToken++ }
                             )
                         }
                     }
@@ -880,52 +872,124 @@ fun MediaViewerScreen(
 @Composable
 private fun VideoSurfacePage(
     exoPlayer: Player?,
+    videoAspect: Float,
     onTap: () -> Unit,
     onDoubleTapLeft: () -> Unit,
-    onDoubleTapRight: () -> Unit
+    onDoubleTapRight: () -> Unit,
+    onZoomChanged: (Float) -> Unit
 ) {
-    var width by remember { mutableStateOf(0) }
+    var width         by remember { mutableStateOf(0) }
+    var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    val scale         = remember { Animatable(1f) }
+    val panX          = remember { Animatable(0f) }
+    val panY          = remember { Animatable(0f) }
+    val scope         = rememberCoroutineScope()
+    val decaySpec     = rememberSplineBasedDecay<Float>()
+
+    // Where the picture actually is inside the window: fitted, so letterboxed unless its
+    // shape matches the screen. This is what bounds the panning - pan is limited to the
+    // picture, not to the black around it.
+    val renderedSize = remember(videoAspect, containerSize) {
+        if (containerSize == IntSize.Zero || videoAspect <= 0f) containerSize
+        else {
+            val cw = containerSize.width.toFloat()
+            val ch = containerSize.height.toFloat()
+            if (cw / ch > videoAspect) IntSize((ch * videoAspect).toInt(), ch.toInt())
+            else IntSize(cw.toInt(), (cw / videoAspect).toInt())
+        }
+    }
+
+    // Swiping away resets the zoom: a magnified corner of one clip means nothing on the next.
+    LaunchedEffect(exoPlayer) {
+        if (exoPlayer == null) {
+            scale.snapTo(1f); panX.snapTo(0f); panY.snapTo(0f)
+            onZoomChanged(1f)
+        }
+    }
+
+    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+        val newScale = (scale.value * zoomChange).coerceIn(1f, 5f)
+        val maxX = maxOf(0f, (renderedSize.width  * newScale - containerSize.width)  / 2f)
+        val maxY = maxOf(0f, (renderedSize.height * newScale - containerSize.height) / 2f)
+        val newX = if (newScale > 1f) (panX.value + panChange.x).coerceIn(-maxX, maxX) else 0f
+        val newY = if (newScale > 1f) (panY.value + panChange.y).coerceIn(-maxY, maxY) else 0f
+        scope.launch {
+            scale.snapTo(newScale)
+            panX.snapTo(newX)
+            panY.snapTo(newY)
+        }
+        onZoomChanged(newScale)
+    }
 
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .fillMaxSize()
-            .onSizeChanged { width = it.width }
+            .onSizeChanged { width = it.width; containerSize = it }
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap       = { onTap() },
+                    onTap = { onTap() },
+                    // No double-tap zoom here, unlike a photo: on a video that gesture is a
+                    // seek, and one of the two has to give way.
                     onDoubleTap = { offset ->
                         if (offset.x < width / 2f) onDoubleTapLeft() else onDoubleTapRight()
                     }
                 )
             }
+            .transformable(state = transformState, canPan = { scale.value > 1.05f })
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val vt = VelocityTracker()
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    vt.addPointerInputChange(down)
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val pressed = event.changes.filter { it.pressed }
+                        if (pressed.size == 1) vt.addPointerInputChange(pressed[0])
+                        else if (pressed.size > 1) vt.resetTracking()
+                        if (pressed.isEmpty()) break
+                    }
+                    if (scale.value > 1.05f) {
+                        val vel = vt.calculateVelocity()
+                        val vx  = vel.x.coerceIn(-5000f, 5000f)
+                        val vy  = vel.y.coerceIn(-5000f, 5000f)
+                        scope.launch {
+                            val maxX = maxOf(0f, (renderedSize.width  * scale.value - containerSize.width)  / 2f)
+                            val maxY = maxOf(0f, (renderedSize.height * scale.value - containerSize.height) / 2f)
+                            launch {
+                                panX.animateDecay(vx, decaySpec)
+                                panX.snapTo(panX.value.coerceIn(-maxX, maxX))
+                            }
+                            launch {
+                                panY.animateDecay(vy, decaySpec)
+                                panY.snapTo(panY.value.coerceIn(-maxY, maxY))
+                            }
+                        }
+                    }
+                }
+            }
+            .graphicsLayer {
+                val sc = scale.value
+                val mX = maxOf(0f, (renderedSize.width  * sc - containerSize.width)  / 2f)
+                val mY = maxOf(0f, (renderedSize.height * sc - containerSize.height) / 2f)
+                scaleX       = sc
+                scaleY       = sc
+                translationX = panX.value.coerceIn(-mX, mX)
+                translationY = panY.value.coerceIn(-mY, mY)
+            }
     ) {
         if (exoPlayer != null) {
             AndroidView(
                 factory  = { ctx ->
-                    PlayerView(ctx).apply {
-                        useController = false
-                        resizeMode    = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        setBackgroundColor(android.graphics.Color.BLACK)
-                    }
+                    (LayoutInflater.from(ctx).inflate(R.layout.video_surface, null) as PlayerView)
+                        .apply { useController = false }
                 },
                 update   = { view -> view.player = exoPlayer },
                 modifier = Modifier.fillMaxSize()
             )
         } else {
-            Box(
-                modifier         = Modifier.fillMaxSize().background(Color.Black),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector        = Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    tint               = Color.White.copy(alpha = 0.35f),
-                    modifier           = Modifier.size(72.dp)
-                )
-            }
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black))
         }
-
     }
 }
 
@@ -1587,3 +1651,31 @@ private fun extractVideoThumb(
     } catch (_: Exception) { null }
 }
 
+
+
+/**
+ * One of the small round glyphs that sit over the picture. The scrim is not decoration: a
+ * white glyph alone lands on a pale frame and disappears.
+ */
+@Composable
+private fun VideoGlyphButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.45f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector        = icon,
+            contentDescription = contentDescription,
+            tint               = Color.White,
+            modifier           = Modifier.size(20.dp)
+        )
+    }
+}
