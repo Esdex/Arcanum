@@ -38,6 +38,21 @@ object FileUtils {
             } ?: 0L
         }.getOrDefault(0L)
 
+    /*
+     * There is deliberately no counterpart to uriLastModified for the export side.
+     *
+     * A file leaving a vault gets the date it was exported, and it cannot get its own:
+     * SAF has no API for setting a document's timestamp, the external-storage providers
+     * refuse an update() carrying COLUMN_LAST_MODIFIED, MediaStore recomputes
+     * DATE_MODIFIED from the file itself, and futimens on the document's descriptor is
+     * refused outright - measured, EACCES, because the SAF grant covers a document's
+     * contents and not its attributes. The only thing that would lift that is a broad
+     * storage permission, which is exactly what this app does not ask for.
+     *
+     * Import is the direction that matters and it is handled; do not spend another
+     * evening on the other one without new platform behaviour to point at (#154).
+     */
+
     /**
      * Reads a SAF URI into a ByteArray without writing anything to disk.
      * Returns (bytes, displayName) or null on failure.
