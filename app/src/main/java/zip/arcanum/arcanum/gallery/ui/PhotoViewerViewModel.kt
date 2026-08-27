@@ -34,6 +34,7 @@ import zip.arcanum.core.navigation.Screen
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.crypto.VeraCryptEngine
+import kotlin.random.Random
 import javax.inject.Inject
 
 @HiltViewModel
@@ -119,6 +120,13 @@ class PhotoViewerViewModel @Inject constructor(
         if (media.size < 2) return media
         val by  = runCatching { prefs.gallerySortBy.first() }.getOrNull() ?: return media
         val asc = runCatching { prefs.gallerySortAscending.first() }.getOrDefault(false)
+        if (by == "RANDOM") {
+            // The same seed the grid used, so the swipe walks the arrangement on screen
+            // rather than a second, unrelated shuffle (#122). Sorted by id first for the same
+            // reason it is there: the shuffle has to start from a fixed order.
+            val seed = runCatching { prefs.galleryRandomSeed.first() }.getOrDefault(1L)
+            return media.sortedBy { it.id }.shuffled(Random(seed))
+        }
         val comparator: Comparator<MediaFileEntity> = when (by) {
             "NAME" -> compareBy { it.fileName.lowercase() }
             "SIZE" -> compareBy { it.size }

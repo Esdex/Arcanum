@@ -36,6 +36,7 @@ class AppPreferences @Inject constructor(
         val MEDIA_LOC_PROMPT_SHOWN = booleanPreferencesKey("media_location_prompt_shown")
         val GALLERY_SORT_BY   = stringPreferencesKey("gallery_sort_by")
         val GALLERY_SORT_ASC  = booleanPreferencesKey("gallery_sort_asc")
+        val GALLERY_RANDOM_SEED = longPreferencesKey("gallery_random_seed")
         /**
          * A key that did not exist before is absent for everyone who updates, so they see
          * the hint once for the same reason a fresh install does - which is exactly who
@@ -146,6 +147,18 @@ class AppPreferences @Inject constructor(
             it[Keys.GALLERY_SORT_BY]  = sortBy
             it[Keys.GALLERY_SORT_ASC] = ascending
         }
+    }
+
+    /**
+     * The seed behind the random order. Stored rather than held in memory because two screens
+     * shuffle the same media and have to land on the same arrangement: the grid, and the
+     * swipe between files opened from it (#122).
+     */
+    val galleryRandomSeed: Flow<Long> = context.appPrefsDataStore.data
+        .map { it[Keys.GALLERY_RANDOM_SEED] ?: 1L }
+
+    suspend fun setGalleryRandomSeed(seed: Long) {
+        context.appPrefsDataStore.edit { it[Keys.GALLERY_RANDOM_SEED] = seed }
     }
 
     val mountHintShown: Flow<Boolean> = context.appPrefsDataStore.data

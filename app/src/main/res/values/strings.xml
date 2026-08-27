@@ -311,6 +311,7 @@
     <string name="files_sort_date">Date</string>
     <string name="files_sort_size">Size</string>
     <string name="files_sort_type">Type</string>
+    <string name="gallery_sort_random">Random</string>
     <string name="files_sort_cd_ascending">Ascending</string>
     <string name="files_sort_cd_descending">Descending</string>
     <string name="files_sort_folders_first">Folders first</string>

@@ -156,6 +156,11 @@ fun ContainerScreen(
         if (selectedTab != BottomNavItem.ContainerGallery.route) {
             galleryScrollBehavior.state.heightOffset = 0f
             galleryScrollBehavior.state.contentOffset = 0f
+        } else {
+            // Entering the tab reshuffles, but only when the random order is the one chosen.
+            // All four tabs stay composed here, so arriving at one is not a lifecycle event
+            // the Gallery could notice on its own (#122).
+            galleryViewModel.onGalleryShown()
         }
     }
 

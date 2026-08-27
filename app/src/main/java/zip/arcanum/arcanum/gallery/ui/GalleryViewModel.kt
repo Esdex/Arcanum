@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import java.time.Instant
 import java.time.LocalDate
+import kotlin.random.Random
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -54,7 +55,7 @@ class GalleryViewModel @Inject constructor(
      * and carry the select-all checkboxes, which mean nothing once the list is ordered by
      * name or size (#122, #151).
      */
-    enum class SortBy { NAME, DATE, SIZE, TYPE }
+    enum class SortBy { NAME, DATE, SIZE, TYPE, RANDOM }
 
     data class DayGroup(
         val date: LocalDate,
@@ -77,6 +78,7 @@ class GalleryViewModel @Inject constructor(
         val selectedFilter: MediaFilter = MediaFilter.ALL,
         val sortBy: SortBy = SortBy.DATE,
         val sortAscending: Boolean = false,
+        val randomSeed: Long = 1L,
         val showOptionsSheet: Boolean = false,
         val searchQuery: String = "",
         val isSearchActive: Boolean = false,
@@ -120,8 +122,9 @@ class GalleryViewModel @Inject constructor(
         // process and the app; it is one setting for the whole app rather than one per vault.
         viewModelScope.launch {
             val by  = runCatching { SortBy.valueOf(prefs.gallerySortBy.first()) }.getOrDefault(SortBy.DATE)
-            val asc = prefs.gallerySortAscending.first()
-            _uiState.update { it.copy(sortBy = by, sortAscending = asc) }
+            val asc  = prefs.gallerySortAscending.first()
+            val seed = prefs.galleryRandomSeed.first()
+            _uiState.update { it.copy(sortBy = by, sortAscending = asc, randomSeed = seed) }
             // Rebuild only if there is already something to rebuild. This used to push the
             // result unconditionally, and since the media list is empty this early, it raced
             // the container load and blanked a grid that had just been filled.
@@ -216,11 +219,30 @@ class GalleryViewModel @Inject constructor(
      * not own its top bar inside a vault - NavGraph draws that one - and both bars have to be
      * able to open the same sheet.
      */
+    /**
+     * Called when the Gallery tab comes to the front. A random order that never changes is
+     * just an arbitrary order; the point of it is that the same collection greets you
+     * differently each time you come back to it (#122). Reshuffles only when the random sort
+     * is the one selected, so it costs nothing otherwise.
+     */
+    fun onGalleryShown() {
+        if (_uiState.value.sortBy != SortBy.RANDOM) return
+        val seed = System.nanoTime()
+        _uiState.update { it.copy(randomSeed = seed) }
+        viewModelScope.launch { prefs.setGalleryRandomSeed(seed) }
+        viewModelScope.launch(Dispatchers.Default) {
+            val groups = visible(_allFiles.value)
+            _uiState.update { it.copy(monthGroups = groups) }
+        }
+    }
+
     fun setOptionsSheet(open: Boolean) = _uiState.update { it.copy(showOptionsSheet = open) }
 
     fun setSortBy(sortBy: SortBy) {
         if (sortBy == _uiState.value.sortBy) return
-        _uiState.update { it.copy(sortBy = sortBy) }
+        val seed = if (sortBy == SortBy.RANDOM) System.nanoTime() else _uiState.value.randomSeed
+        _uiState.update { it.copy(sortBy = sortBy, randomSeed = seed) }
+        if (sortBy == SortBy.RANDOM) viewModelScope.launch { prefs.setGalleryRandomSeed(seed) }
         persistSortAndRebuild()
     }
 
@@ -416,6 +438,16 @@ class GalleryViewModel @Inject constructor(
     ): List<MonthGroup> {
         var result = applyFilter(files, filter)
         if (query.isNotBlank()) result = result.filter { it.fileName.contains(query, ignoreCase = true) }
+
+        if (sortBy == SortBy.RANDOM) {
+            // Seeded, so the same seed always gives the same arrangement - which is what lets
+            // the swipe in the viewer walk the grid's order instead of one of its own. The
+            // list is sorted by id first so the shuffle starts from a fixed arrangement:
+            // shuffling an already-varying order would vary with it.
+            val shuffled = result.sortedBy { it.id }.shuffled(Random(_uiState.value.randomSeed))
+            return if (shuffled.isEmpty()) emptyList()
+                   else listOf(MonthGroup("", listOf(DayGroup(LocalDate.MIN, "", shuffled))))
+        }
         if (sortBy == SortBy.DATE && !ascending) return groupByMonthAndDay(result)
 
         val comparator: Comparator<MediaFileEntity> = when (sortBy) {
@@ -423,6 +455,7 @@ class GalleryViewModel @Inject constructor(
             SortBy.SIZE -> compareBy { it.size }
             SortBy.TYPE -> compareBy { it.fileName.substringAfterLast('.', "").lowercase() }
             SortBy.DATE -> compareBy { it.dateCreated }
+            SortBy.RANDOM -> compareBy { it.id }      // unreachable, handled above
         }
         val ordered = if (ascending) result.sortedWith(comparator) else result.sortedWith(comparator.reversed())
         if (sortBy == SortBy.DATE) return groupByMonthAndDay(ordered, alreadyOrdered = true)

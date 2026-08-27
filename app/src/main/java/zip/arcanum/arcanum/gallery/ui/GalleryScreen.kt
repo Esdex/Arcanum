@@ -886,7 +886,8 @@ private fun GalleryOptionsSheet(
             GalleryViewModel.SortBy.NAME to stringResource(R.string.files_sort_name),
             GalleryViewModel.SortBy.DATE to stringResource(R.string.files_sort_date),
             GalleryViewModel.SortBy.SIZE to stringResource(R.string.files_sort_size),
-            GalleryViewModel.SortBy.TYPE to stringResource(R.string.files_sort_type)
+            GalleryViewModel.SortBy.TYPE to stringResource(R.string.files_sort_type),
+            GalleryViewModel.SortBy.RANDOM to stringResource(R.string.gallery_sort_random)
         )
         options.forEach { (option, label) ->
             Row(
@@ -898,7 +899,8 @@ private fun GalleryOptionsSheet(
             ) {
                 RadioButton(selected = sortBy == option, onClick = { onSortBy(option) })
                 Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                if (sortBy == option) {
+                // No direction for a shuffle: a random order reversed is another random order.
+                if (sortBy == option && option != GalleryViewModel.SortBy.RANDOM) {
                     IconButton(onClick = onToggleDir) {
                         Icon(
                             if (ascending) Icons.Outlined.KeyboardArrowUp
