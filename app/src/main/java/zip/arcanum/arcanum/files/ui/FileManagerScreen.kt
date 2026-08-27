@@ -21,6 +21,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -1543,15 +1544,18 @@ private fun SortSheetContent(
     onToggleDir: () -> Unit,
     onToggleFoldersFirst: () -> Unit
 ) {
+    // Laid out like zip.arcanum.core.components.PickerSheet, which is what every other
+    // picker in the app looks like: title at 16/8, rows at 16/4, no dividers.
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
             .padding(bottom = 32.dp)
+            .verticalScroll(rememberScrollState())
     ) {
-        Text(stringResource(R.string.files_sort_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-             modifier = Modifier.padding(vertical = 8.dp))
-        HorizontalDivider()
+        Text(
+            text     = stringResource(R.string.files_sort_title),
+            style    = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
         val sortOptions = listOf(
             SortBy.NAME to stringResource(R.string.files_sort_name),
             SortBy.DATE to stringResource(R.string.files_sort_date),
@@ -1560,30 +1564,42 @@ private fun SortSheetContent(
         )
         sortOptions.forEach { (option, label) ->
             Row(
-                modifier = Modifier
+                modifier          = Modifier
                     .fillMaxWidth()
                     .clickable { onSortBy(option) }
-                    .padding(vertical = 4.dp),
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RadioButton(selected = sortBy == option, onClick = { onSortBy(option) })
-                Text(label, modifier = Modifier.weight(1f))
+                Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                 if (sortBy == option) {
                     IconButton(onClick = onToggleDir) {
                         Icon(
-                            if (ascending) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
-                            contentDescription = if (ascending) stringResource(R.string.files_sort_cd_ascending) else stringResource(R.string.files_sort_cd_descending)
+                            if (ascending) Icons.Outlined.KeyboardArrowUp
+                            else Icons.Outlined.KeyboardArrowDown,
+                            contentDescription = if (ascending)
+                                stringResource(R.string.files_sort_cd_ascending)
+                            else
+                                stringResource(R.string.files_sort_cd_descending)
                         )
                     }
                 }
             }
         }
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        // A switch, not a sort option: it reorders whatever the sort produced. It gets a
+        // little more space above it instead of a heading, which would only repeat its label.
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            modifier          = Modifier
+                .fillMaxWidth()
+                .clickable { onToggleFoldersFirst() }
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(stringResource(R.string.files_sort_folders_first), modifier = Modifier.weight(1f))
+            Text(
+                stringResource(R.string.files_sort_folders_first),
+                style    = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f)
+            )
             Switch(checked = foldersFirst, onCheckedChange = { onToggleFoldersFirst() })
         }
     }
