@@ -30,6 +30,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.domain.Container
+import zip.arcanum.arcanum.files.data.FileBrowserPrefs
+import zip.arcanum.arcanum.files.data.fileManagerPrefs
 import zip.arcanum.arcanum.files.domain.ClipboardItem
 import zip.arcanum.arcanum.files.domain.FileClipboard
 import zip.arcanum.arcanum.gallery.AudioPlayerQueue
@@ -51,8 +53,6 @@ import zip.arcanum.crypto.VeraCryptEngine
 import zip.arcanum.crypto.NativeFileInfo
 import java.io.File
 import javax.inject.Inject
-
-private val Context.fileManagerPrefs: DataStore<Preferences> by preferencesDataStore("file_manager_prefs")
 
 @HiltViewModel
 class FileManagerViewModel @Inject constructor(
@@ -139,11 +139,6 @@ class FileManagerViewModel @Inject constructor(
     private val prefs = context.fileManagerPrefs
 
     companion object {
-        private val SORT_BY_KEY      = stringPreferencesKey("sort_by")
-        private val SORT_ASC_KEY     = booleanPreferencesKey("sort_asc")
-        private val SHOW_HIDDEN_KEY  = booleanPreferencesKey("show_hidden")
-        private val FOLDERS_FIRST_KEY = booleanPreferencesKey("folders_first")
-        private val VIEW_MODE_KEY    = stringPreferencesKey("view_mode")
         private const val MAX_FM_THUMBNAILS = 80
     }
 
@@ -193,11 +188,11 @@ class FileManagerViewModel @Inject constructor(
             runCatching {
                 val p = prefs.data.first()
                 _state.update { it.copy(
-                    sortBy       = runCatching { SortBy.valueOf(p[SORT_BY_KEY] ?: "DATE") }.getOrDefault(SortBy.DATE),
-                    sortAscending = p[SORT_ASC_KEY] ?: false,
-                    showHidden   = p[SHOW_HIDDEN_KEY] ?: false,
-                    foldersFirst = p[FOLDERS_FIRST_KEY] ?: true,
-                    viewMode     = runCatching { ViewMode.valueOf(p[VIEW_MODE_KEY] ?: "LIST") }.getOrDefault(ViewMode.LIST)
+                    sortBy       = runCatching { SortBy.valueOf(p[FileBrowserPrefs.SORT_BY_KEY] ?: "DATE") }.getOrDefault(SortBy.DATE),
+                    sortAscending = p[FileBrowserPrefs.SORT_ASC_KEY] ?: false,
+                    showHidden   = p[FileBrowserPrefs.SHOW_HIDDEN_KEY] ?: false,
+                    foldersFirst = p[FileBrowserPrefs.FOLDERS_FIRST_KEY] ?: true,
+                    viewMode     = runCatching { ViewMode.valueOf(p[FileBrowserPrefs.VIEW_MODE_KEY] ?: "LIST") }.getOrDefault(ViewMode.LIST)
                 ) }
             }
             loadDirectory("/")
@@ -1492,11 +1487,11 @@ class FileManagerViewModel @Inject constructor(
         viewModelScope.launch {
             val s = _state.value
             prefs.edit { p ->
-                p[SORT_BY_KEY]       = s.sortBy.name
-                p[SORT_ASC_KEY]      = s.sortAscending
-                p[SHOW_HIDDEN_KEY]   = s.showHidden
-                p[FOLDERS_FIRST_KEY] = s.foldersFirst
-                p[VIEW_MODE_KEY]     = s.viewMode.name
+                p[FileBrowserPrefs.SORT_BY_KEY]       = s.sortBy.name
+                p[FileBrowserPrefs.SORT_ASC_KEY]      = s.sortAscending
+                p[FileBrowserPrefs.SHOW_HIDDEN_KEY]   = s.showHidden
+                p[FileBrowserPrefs.FOLDERS_FIRST_KEY] = s.foldersFirst
+                p[FileBrowserPrefs.VIEW_MODE_KEY]     = s.viewMode.name
             }
         }
     }

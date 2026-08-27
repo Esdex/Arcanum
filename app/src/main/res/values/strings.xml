@@ -190,6 +190,8 @@
     <string name="gallery_scan_found">%1$d found</string>
     <string name="gallery_preload_preparing">Preparing thumbnails…</string>
     <string name="gallery_preload_progress">%1$d / %2$d</string>
+    <string name="gallery_show_title">Show</string>
+    <string name="gallery_options">View options</string>
     <string name="gallery_filter_all">All</string>
     <string name="gallery_filter_photos">Photos</string>
     <string name="gallery_filter_videos">Videos</string>

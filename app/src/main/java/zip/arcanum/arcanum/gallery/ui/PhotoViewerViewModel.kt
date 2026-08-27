@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
@@ -17,6 +18,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import zip.arcanum.core.security.AppPreferences
+import zip.arcanum.crypto.NativeFileInfo
+import zip.arcanum.arcanum.files.data.FileBrowserPrefs
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.gallery.ExifJpegPatcher
 import zip.arcanum.arcanum.gallery.ExifReader
@@ -41,7 +45,8 @@ class PhotoViewerViewModel @Inject constructor(
     val engine: VeraCryptEngine,
     private val exifReader: ExifReader,
     private val thumbnailManager: ThumbnailManager,
-    private val idleMonitor: IdleMonitor
+    private val idleMonitor: IdleMonitor,
+    private val prefs: AppPreferences
 ) : ViewModel() {
 
     private val fileId: String = savedStateHandle[Screen.PhotoViewer.ARG] ?: ""
@@ -98,10 +103,72 @@ class PhotoViewerViewModel @Inject constructor(
     // All visual media in the container, narrowed to [file]'s folder when folderScope is on.
     private suspend fun loadSiblings(file: MediaFileEntity): List<MediaFileEntity> {
         val all = mediaFileDao.getVisualMediaOnce(file.containerId)
-        return if (folderScope) {
-            val dir = parentDir(file.relativePath)
-            all.filter { parentDir(it.relativePath) == dir }
-        } else all
+        // Opened from the Gallery: follow the Gallery's order, which is its own setting.
+        if (!folderScope) return orderLikeGallery(all)
+        val dir = parentDir(file.relativePath)
+        return orderLikeBrowser(file.containerId, dir, all.filter { parentDir(it.relativePath) == dir })
+    }
+
+    /**
+     * Puts the vault's media in the order the Gallery is showing it. Its sort is a separate
+     * setting from the browser's, so a swipe follows whichever list it was opened from
+     * (#151). Dates come from the index here, not from the vault listing: the Gallery is a
+     * timeline of when photos were taken, which is exactly what the index stores.
+     */
+    private suspend fun orderLikeGallery(media: List<MediaFileEntity>): List<MediaFileEntity> {
+        if (media.size < 2) return media
+        val by  = runCatching { prefs.gallerySortBy.first() }.getOrNull() ?: return media
+        val asc = runCatching { prefs.gallerySortAscending.first() }.getOrDefault(false)
+        val comparator: Comparator<MediaFileEntity> = when (by) {
+            "NAME" -> compareBy { it.fileName.lowercase() }
+            "SIZE" -> compareBy { it.size }
+            "TYPE" -> compareBy { it.fileName.substringAfterLast('.', "").lowercase() }
+            else   -> compareBy { it.dateCreated }       // DATE, and anything unrecognised
+        }
+        return if (asc) media.sortedWith(comparator) else media.sortedWith(comparator.reversed())
+    }
+
+    /**
+     * Puts a folder's media in the order the Files browser is showing it, so a swipe goes
+     * where the list said it would. It used to follow the media index instead, which is
+     * ordered by date taken and knew nothing of the sort the user had picked (#151).
+     *
+     * The order is computed from the vault's own listing rather than from the index,
+     * because the two hold different dates: the index stores the date a photo was taken
+     * when EXIF carries one, while the browser sorts on the file's modification time.
+     * Sorting the same values the browser sorts is the only way the two can agree.
+     *
+     * Falls back to the index order whenever anything is missing - an unmounted vault, a
+     * listing that fails - because a swipe in some order beats a viewer that opens empty.
+     */
+    private suspend fun orderLikeBrowser(
+        containerId: String,
+        dir: String,
+        media: List<MediaFileEntity>
+    ): List<MediaFileEntity> {
+        if (media.size < 2) return media
+        val handle  = repo.getContainerHandle(containerId) ?: return media
+        val listing = runCatching { engine.listFilesOrNull(handle, dir.ifEmpty { "/" }) }
+            .getOrNull() ?: return media
+        val sort    = runCatching { FileBrowserPrefs.sortOnce(context) }.getOrNull() ?: return media
+
+        // Mirrors FileManagerViewModel.applyFiltersAndSort; foldersFirst does not apply
+        // here because a folder is never one of the swipe siblings.
+        val comparator: Comparator<NativeFileInfo> = when (sort.by) {
+            "NAME" -> compareBy { it.name.lowercase() }
+            "SIZE" -> compareBy { it.size }
+            "TYPE" -> compareBy { it.name.substringAfterLast('.', "").lowercase() }
+            else   -> compareBy { it.lastModified }      // DATE, and anything unrecognised
+        }
+        val ordered = if (sort.ascending) listing.sortedWith(comparator)
+                      else listing.sortedWith(comparator.reversed())
+
+        val byName = media.associateBy { it.fileName }
+        val result = ordered.mapNotNull { byName[it.name] }
+        // Whatever the listing did not mention keeps its place at the end rather than
+        // dropping out of the swipe entirely.
+        val seen = result.mapTo(HashSet()) { it.id }
+        return result + media.filter { it.id !in seen }
     }
 
     // Loads the bitmap for a single image file. Returns null on error. Must be called on IO dispatcher.

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Eject
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -195,7 +196,8 @@ fun ContainerScreen(
                         onSearchClose    = { galleryViewModel.setSearchActive(false) },
                         onRescan         = { galleryViewModel.scanContainer(viewModel.containerId) },
                         onClearSelection = { galleryViewModel.clearSelection() },
-                        onDeleteSelected = { galleryViewModel.requestDeleteSelected() }
+                        onDeleteSelected = { galleryViewModel.requestDeleteSelected() },
+                        onOptionsClick   = { galleryViewModel.setOptionsSheet(true) }
                     )
                     BottomNavItem.ContainerFiles.route -> {} // FileManagerScreen owns its top bar
                     else -> TopAppBar(
@@ -362,7 +364,8 @@ private fun GalleryTopBar(
     onSearchClose: () -> Unit,
     onRescan: () -> Unit,
     onClearSelection: () -> Unit,
-    onDeleteSelected: () -> Unit
+    onDeleteSelected: () -> Unit,
+    onOptionsClick: () -> Unit
 ) {
     val isAmoled  = LocalAmoledMode.current
     val hazeState = LocalHazeState.current
@@ -467,6 +470,9 @@ private fun GalleryTopBar(
                                 IconButton(onClick = onRescan) {
                                     Icon(Icons.Outlined.Refresh, contentDescription = stringResource(R.string.nav_gallery_cd_rescan))
                                 }
+                            }
+                            IconButton(onClick = onOptionsClick) {
+                                Icon(Icons.Outlined.Tune, contentDescription = stringResource(R.string.gallery_options))
                             }
                             IconButton(onClick = onSearchToggle) {
                                 Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.nav_gallery_cd_search))

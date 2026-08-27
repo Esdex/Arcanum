@@ -48,6 +48,14 @@ class GalleryViewModel @Inject constructor(
 
     enum class MediaFilter { ALL, PHOTOS, VIDEOS }
 
+    /**
+     * The Gallery's own sort. DATE is the timeline it has always shown - grouped by month
+     * and day - and it is the only one of these that groups: the headers say "March 2026"
+     * and carry the select-all checkboxes, which mean nothing once the list is ordered by
+     * name or size (#122, #151).
+     */
+    enum class SortBy { NAME, DATE, SIZE, TYPE }
+
     data class DayGroup(
         val date: LocalDate,
         val displayDate: String,
@@ -67,6 +75,9 @@ class GalleryViewModel @Inject constructor(
         val monthGroups: List<MonthGroup> = emptyList(),
         val allMedia: List<MediaFileEntity> = emptyList(),
         val selectedFilter: MediaFilter = MediaFilter.ALL,
+        val sortBy: SortBy = SortBy.DATE,
+        val sortAscending: Boolean = false,
+        val showOptionsSheet: Boolean = false,
         val searchQuery: String = "",
         val isSearchActive: Boolean = false,
         val isEmpty: Boolean = false,
@@ -105,6 +116,20 @@ class GalleryViewModel @Inject constructor(
     private val _allFiles = MutableStateFlow<List<MediaFileEntity>>(emptyList())
 
     init {
+        // The stored sort, applied before anything is shown. It outlives unmounting, the
+        // process and the app; it is one setting for the whole app rather than one per vault.
+        viewModelScope.launch {
+            val by  = runCatching { SortBy.valueOf(prefs.gallerySortBy.first()) }.getOrDefault(SortBy.DATE)
+            val asc = prefs.gallerySortAscending.first()
+            _uiState.update { it.copy(sortBy = by, sortAscending = asc) }
+            // Rebuild only if there is already something to rebuild. This used to push the
+            // result unconditionally, and since the media list is empty this early, it raced
+            // the container load and blanked a grid that had just been filled.
+            if (_allFiles.value.isNotEmpty()) {
+                val groups = withContext(Dispatchers.Default) { visible(_allFiles.value) }
+                _uiState.update { it.copy(monthGroups = groups) }
+            }
+        }
         viewModelScope.launch {
             thumbnailManager.invalidatedIds.collect { fileId -> evictThumbnail(fileId) }
         }
@@ -123,8 +148,7 @@ class GalleryViewModel @Inject constructor(
     private suspend fun refreshMedia(containerId: String) {
         val files = mediaFileDao.getAllForContainerOnce(containerId)
         _allFiles.value = files
-        val filtered = applyFilter(files, _filter.value)
-        val groups = groupByMonthAndDay(filtered)
+        val groups = visible(files)
         _uiState.update {
             it.copy(allMedia = files, monthGroups = groups, isEmpty = files.isEmpty() && !it.isScanning)
         }
@@ -150,8 +174,7 @@ class GalleryViewModel @Inject constructor(
                 _filter
             ) { files, filter -> Pair(files, filter) }.collect { (files, filter) ->
                 _allFiles.value = files
-                val filtered = applyFilter(files, filter)
-                val groups = groupByMonthAndDay(filtered)
+                val groups = visible(files, filter = filter)
                 _uiState.update {
                     it.copy(
                         allMedia    = files,
@@ -188,12 +211,38 @@ class GalleryViewModel @Inject constructor(
         }
     }
 
+    /**
+     * The view options live in the state rather than in the screen because the Gallery does
+     * not own its top bar inside a vault - NavGraph draws that one - and both bars have to be
+     * able to open the same sheet.
+     */
+    fun setOptionsSheet(open: Boolean) = _uiState.update { it.copy(showOptionsSheet = open) }
+
+    fun setSortBy(sortBy: SortBy) {
+        if (sortBy == _uiState.value.sortBy) return
+        _uiState.update { it.copy(sortBy = sortBy) }
+        persistSortAndRebuild()
+    }
+
+    fun toggleSortDirection() {
+        _uiState.update { it.copy(sortAscending = !it.sortAscending) }
+        persistSortAndRebuild()
+    }
+
+    private fun persistSortAndRebuild() {
+        val s = _uiState.value
+        viewModelScope.launch { prefs.setGallerySort(s.sortBy.name, s.sortAscending) }
+        viewModelScope.launch(Dispatchers.Default) {
+            val groups = visible(_allFiles.value)
+            _uiState.update { it.copy(monthGroups = groups) }
+        }
+    }
+
     fun setFilter(filter: MediaFilter) {
         _filter.value = filter
         _uiState.update { it.copy(selectedFilter = filter) }
         viewModelScope.launch(Dispatchers.Default) {
-            val filtered = applyFilter(_allFiles.value, filter)
-            val groups = groupByMonthAndDay(filtered)
+            val groups = visible(_allFiles.value, filter = filter)
             _uiState.update { it.copy(monthGroups = groups) }
         }
     }
@@ -201,10 +250,7 @@ class GalleryViewModel @Inject constructor(
     fun setSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
         viewModelScope.launch(Dispatchers.Default) {
-            val files = if (query.isBlank()) _allFiles.value
-                        else _allFiles.value.filter { it.fileName.contains(query, ignoreCase = true) }
-            val filtered = applyFilter(files, _filter.value)
-            val groups = groupByMonthAndDay(filtered)
+            val groups = visible(_allFiles.value, query = query)
             _uiState.update { it.copy(monthGroups = groups) }
         }
     }
@@ -356,14 +402,49 @@ class GalleryViewModel @Inject constructor(
         MediaFilter.VIDEOS -> files.filter { it.fileType == MediaFileType.VIDEO }
     }
 
-    private fun groupByMonthAndDay(files: List<MediaFileEntity>): List<MonthGroup> {
+    /**
+     * Everything the grid shows, in one place: the media filter, the search box and the sort.
+     * The four callers used to each do their own subset, which is how changing the filter
+     * quietly dropped an active search query.
+     */
+    private fun visible(
+        files: List<MediaFileEntity>,
+        filter: MediaFilter = _filter.value,
+        query: String = _uiState.value.searchQuery,
+        sortBy: SortBy = _uiState.value.sortBy,
+        ascending: Boolean = _uiState.value.sortAscending
+    ): List<MonthGroup> {
+        var result = applyFilter(files, filter)
+        if (query.isNotBlank()) result = result.filter { it.fileName.contains(query, ignoreCase = true) }
+        if (sortBy == SortBy.DATE && !ascending) return groupByMonthAndDay(result)
+
+        val comparator: Comparator<MediaFileEntity> = when (sortBy) {
+            SortBy.NAME -> compareBy { it.fileName.lowercase() }
+            SortBy.SIZE -> compareBy { it.size }
+            SortBy.TYPE -> compareBy { it.fileName.substringAfterLast('.', "").lowercase() }
+            SortBy.DATE -> compareBy { it.dateCreated }
+        }
+        val ordered = if (ascending) result.sortedWith(comparator) else result.sortedWith(comparator.reversed())
+        if (sortBy == SortBy.DATE) return groupByMonthAndDay(ordered, alreadyOrdered = true)
+
+        // One unnamed group so the grid keeps its existing shape - rows of three, selection,
+        // thumbnail loading - while the screen leaves the headers out for a flat order.
+        if (ordered.isEmpty()) return emptyList()
+        return listOf(
+            MonthGroup(
+                month = "",
+                days  = listOf(DayGroup(date = LocalDate.MIN, displayDate = "", photos = ordered))
+            )
+        )
+    }
+
+    private fun groupByMonthAndDay(files: List<MediaFileEntity>, alreadyOrdered: Boolean = false): List<MonthGroup> {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
         val yesterday = today.minusDays(1)
         val dayFmt = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())
 
-        return files
-            .sortedByDescending { it.dateCreated }
+        return (if (alreadyOrdered) files else files.sortedByDescending { it.dateCreated })
             .groupBy { file ->
                 val zdt = Instant.ofEpochMilli(file.dateCreated).atZone(zone)
                 "${zdt.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${zdt.year}"

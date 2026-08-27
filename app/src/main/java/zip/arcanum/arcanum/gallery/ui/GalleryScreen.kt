@@ -10,6 +10,17 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.runtime.remember
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import zip.arcanum.core.components.AppSheet
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
@@ -49,7 +60,6 @@ import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -101,11 +111,30 @@ fun GalleryScreen(
         if (containerId != null) viewModel.loadForContainer(containerId)
     }
 
+    val sortSheetState    = rememberModalBottomSheetState()
+
     val uiState           by viewModel.uiState.collectAsState()
     val thumbnails        by viewModel.thumbnails.collectAsState()
     val selectedIds       by viewModel.selectedIds.collectAsState()
     val preloadState      by viewModel.preloadState.collectAsState()
     val showResyncButton  by viewModel.showResyncButton.collectAsState()
+
+    if (uiState.showOptionsSheet) {
+        AppSheet(
+            onDismissRequest = { viewModel.setOptionsSheet(false) },
+            sheetState       = sortSheetState
+        ) {
+            GalleryOptionsSheet(
+                filter      = uiState.selectedFilter,
+                sortBy      = uiState.sortBy,
+                ascending   = uiState.sortAscending,
+                onFilter    = { viewModel.setFilter(it) },
+                onSortBy    = { viewModel.setSortBy(it) },
+                onToggleDir = viewModel::toggleSortDirection
+            )
+        }
+    }
+
     val selectionMode = selectedIds.isNotEmpty()
 
     // Intercept back press in selection mode instead of navigating away
@@ -161,7 +190,8 @@ fun GalleryScreen(
                     onSearchClose    = { viewModel.setSearchActive(false) },
                     onResync         = { containerId?.let { viewModel.scanContainer(it) } },
                     onClearSelection = { viewModel.clearSelection() },
-                    onDeleteSelected = { viewModel.requestDeleteSelected() }
+                    onDeleteSelected = { viewModel.requestDeleteSelected() },
+                    onSortClick      = { viewModel.setOptionsSheet(true) }
                 )
             }
         ) { innerPadding ->
@@ -177,7 +207,6 @@ fun GalleryScreen(
                 preloadTotal       = preloadState.total,
                 onMediaClick       = onMediaClick,
                 onThumbnailRequest = { viewModel.requestThumbnail(it) },
-                onFilterSelect     = { viewModel.setFilter(it) },
                 onPhotoSelect      = { viewModel.togglePhotoSelection(it) },
                 onDaySelect        = { viewModel.toggleDaySelection(it) },
                 onMonthSelect      = { viewModel.toggleMonthSelection(it) }
@@ -196,7 +225,6 @@ fun GalleryScreen(
             preloadTotal       = preloadState.total,
             onMediaClick       = onMediaClick,
             onThumbnailRequest = { viewModel.requestThumbnail(it) },
-            onFilterSelect     = { viewModel.setFilter(it) },
             onPhotoSelect      = { viewModel.togglePhotoSelection(it) },
             onDaySelect        = { viewModel.toggleDaySelection(it) },
             onMonthSelect      = { viewModel.toggleMonthSelection(it) }
@@ -220,7 +248,8 @@ private fun GalleryTopBar(
     onSearchClose: () -> Unit,
     onResync: () -> Unit,
     onClearSelection: () -> Unit,
-    onDeleteSelected: () -> Unit
+    onDeleteSelected: () -> Unit,
+    onSortClick: () -> Unit
 ) {
     if (selectionMode) {
         TopAppBar(
@@ -297,6 +326,11 @@ private fun GalleryTopBar(
                         Icon(Icons.Outlined.Sync, stringResource(R.string.gallery_scan))
                     }
                 }
+                if (!isSearchActive) {
+                    IconButton(onClick = onSortClick) {
+                        Icon(Icons.Outlined.SwapVert, stringResource(R.string.files_sort_title))
+                    }
+                }
                 IconButton(onClick = if (isSearchActive) onSearchClose else onSearchToggle) {
                     Icon(
                         if (isSearchActive) Icons.Outlined.Close else Icons.Outlined.Search,
@@ -327,7 +361,6 @@ private fun GalleryContent(
     preloadTotal: Int,
     onMediaClick: (MediaFileEntity) -> Unit,
     onThumbnailRequest: (MediaFileEntity) -> Unit,
-    onFilterSelect: (GalleryViewModel.MediaFilter) -> Unit,
     onPhotoSelect: (MediaFileEntity) -> Unit,
     onDaySelect: (GalleryViewModel.DayGroup) -> Unit,
     onMonthSelect: (GalleryViewModel.MonthGroup) -> Unit
@@ -371,12 +404,13 @@ private fun GalleryContent(
             }
         }
 
-        item(key = "filter_chips") {
-            FilterChipsRow(selected = uiState.selectedFilter, onSelect = onFilterSelect)
-        }
+        // Headers only for the date sort. "March 2026" and its select-all checkbox describe a
+        // timeline; ordered by name or size the same headers would be one meaningless band
+        // across the whole grid (#122).
+        val grouped = uiState.sortBy == GalleryViewModel.SortBy.DATE
 
         uiState.monthGroups.forEach { monthGroup ->
-            item(key = "month_${monthGroup.month}") {
+            if (grouped) item(key = "month_${monthGroup.month}") {
                 // Compute tri-state inside item{} so it only runs for visible month headers.
                 val monthAllIds = remember(monthGroup) { monthGroup.days.flatMap { it.photos }.map { it.id }.toSet() }
                 val monthSelectedCount = monthAllIds.count { it in selectedIds }
@@ -393,7 +427,7 @@ private fun GalleryContent(
             }
 
             monthGroup.days.forEach { dayGroup ->
-                item(key = "day_${monthGroup.month}_${dayGroup.date}") {
+                if (grouped) item(key = "day_${monthGroup.month}_${dayGroup.date}") {
                     val dayAllIds = remember(dayGroup) { dayGroup.photos.map { it.id }.toSet() }
                     val daySelectedCount = dayAllIds.count { it in selectedIds }
                     val daySelState = when {
@@ -762,34 +796,6 @@ private fun PreloadProgressBar(done: Int, total: Int) {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FilterChipsRow(
-    selected: GalleryViewModel.MediaFilter,
-    onSelect: (GalleryViewModel.MediaFilter) -> Unit
-) {
-    Row(
-        modifier              = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        GalleryViewModel.MediaFilter.entries.forEach { filter ->
-            FilterChip(
-                selected = selected == filter,
-                onClick  = { onSelect(filter) },
-                label    = {
-                    Text(
-                        when (filter) {
-                            GalleryViewModel.MediaFilter.ALL    -> stringResource(R.string.gallery_filter_all)
-                            GalleryViewModel.MediaFilter.PHOTOS -> stringResource(R.string.gallery_filter_photos)
-                            GalleryViewModel.MediaFilter.VIDEOS -> stringResource(R.string.gallery_filter_videos)
-                        }
-                    )
-                }
-            )
-        }
-    }
-}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -822,4 +828,89 @@ private fun formatDuration(ms: Long): String {
     val mins    = minutes % 60
     return if (hours > 0) "%d:%02d:%02d".format(hours, mins, secs)
     else "%d:%02d".format(mins, secs)
+}
+
+
+/**
+ * What the Gallery shows and in what order.
+ *
+ * Laid out like [zip.arcanum.core.components.PickerSheet] - title at 16/8, radio rows at
+ * 16/4, no dividers, 32dp of breathing room at the bottom - so it reads as the same kind of
+ * sheet as every other picker in the app rather than as its own thing.
+ */
+@Composable
+private fun GalleryOptionsSheet(
+    filter: GalleryViewModel.MediaFilter,
+    sortBy: GalleryViewModel.SortBy,
+    ascending: Boolean,
+    onFilter: (GalleryViewModel.MediaFilter) -> Unit,
+    onSortBy: (GalleryViewModel.SortBy) -> Unit,
+    onToggleDir: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .padding(bottom = 32.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        Text(
+            text     = stringResource(R.string.gallery_show_title),
+            style    = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        GalleryViewModel.MediaFilter.entries.forEach { option ->
+            Row(
+                modifier          = Modifier
+                    .fillMaxWidth()
+                    .clickable { onFilter(option) }
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(selected = filter == option, onClick = { onFilter(option) })
+                Text(
+                    when (option) {
+                        GalleryViewModel.MediaFilter.ALL    -> stringResource(R.string.gallery_filter_all)
+                        GalleryViewModel.MediaFilter.PHOTOS -> stringResource(R.string.gallery_filter_photos)
+                        GalleryViewModel.MediaFilter.VIDEOS -> stringResource(R.string.gallery_filter_videos)
+                    },
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+        }
+
+        Text(
+            text     = stringResource(R.string.files_sort_title),
+            style    = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)
+        )
+        val options = listOf(
+            GalleryViewModel.SortBy.NAME to stringResource(R.string.files_sort_name),
+            GalleryViewModel.SortBy.DATE to stringResource(R.string.files_sort_date),
+            GalleryViewModel.SortBy.SIZE to stringResource(R.string.files_sort_size),
+            GalleryViewModel.SortBy.TYPE to stringResource(R.string.files_sort_type)
+        )
+        options.forEach { (option, label) ->
+            Row(
+                modifier          = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSortBy(option) }
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(selected = sortBy == option, onClick = { onSortBy(option) })
+                Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                if (sortBy == option) {
+                    IconButton(onClick = onToggleDir) {
+                        Icon(
+                            if (ascending) Icons.Outlined.KeyboardArrowUp
+                            else Icons.Outlined.KeyboardArrowDown,
+                            contentDescription = if (ascending)
+                                stringResource(R.string.files_sort_cd_ascending)
+                            else
+                                stringResource(R.string.files_sort_cd_descending)
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

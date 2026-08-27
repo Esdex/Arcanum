@@ -34,6 +34,8 @@ class AppPreferences @Inject constructor(
         val SCREEN_CAPTURE_PROT   = booleanPreferencesKey("screen_capture_protection")
         val DISGUISE_PROMPT_SHOWN = booleanPreferencesKey("disguise_prompt_shown")
         val MEDIA_LOC_PROMPT_SHOWN = booleanPreferencesKey("media_location_prompt_shown")
+        val GALLERY_SORT_BY   = stringPreferencesKey("gallery_sort_by")
+        val GALLERY_SORT_ASC  = booleanPreferencesKey("gallery_sort_asc")
         /**
          * A key that did not exist before is absent for everyone who updates, so they see
          * the hint once for the same reason a fresh install does - which is exactly who
@@ -125,6 +127,25 @@ class AppPreferences @Inject constructor(
 
     suspend fun setMediaLocationPromptShown(shown: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.MEDIA_LOC_PROMPT_SHOWN] = shown }
+    }
+
+    /**
+     * How the Gallery is sorted. Kept apart from the Files browser's own setting: the two
+     * are different lists with different natural orders, and the swipe in the viewer follows
+     * whichever list the file was opened from (#151, #122). Date descending is the default,
+     * which is the timeline the Gallery has always shown.
+     */
+    val gallerySortBy: Flow<String> = context.appPrefsDataStore.data
+        .map { it[Keys.GALLERY_SORT_BY] ?: "DATE" }
+
+    val gallerySortAscending: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.GALLERY_SORT_ASC] ?: false }
+
+    suspend fun setGallerySort(sortBy: String, ascending: Boolean) {
+        context.appPrefsDataStore.edit {
+            it[Keys.GALLERY_SORT_BY]  = sortBy
+            it[Keys.GALLERY_SORT_ASC] = ascending
+        }
     }
 
     val mountHintShown: Flow<Boolean> = context.appPrefsDataStore.data
