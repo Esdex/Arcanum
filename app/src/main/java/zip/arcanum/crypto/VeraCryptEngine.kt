@@ -481,6 +481,19 @@ class VeraCryptEngine @Inject constructor() {
     fun writeAt(handle: Long, filePath: String, data: ByteArray, offset: Long): Int =
         nativeWriteAt(handle, filePath, data, offset)
 
+    /**
+     * Stamps a file with a modification time of the caller's choosing, in epoch
+     * milliseconds. Meant for the date a file already had before it was imported: writing
+     * the content moves the timestamp to now on both filesystems, so the original has to
+     * be put back afterwards (#154).
+     *
+     * Returns [ERR_UNSUPPORTED] for an instant the filesystem cannot hold - before 1980 or
+     * past 2107 on FAT, outside the 32-bit second range on ext4 - which leaves the file
+     * with the time the write gave it rather than a wrong one.
+     */
+    fun setFileTime(handle: Long, filePath: String, epochMs: Long): Int =
+        nativeSetFileTime(handle, filePath, epochMs)
+
     fun deleteFile(handle: Long, filePath: String): Int =
         nativeDeleteFile(handle, filePath)
 
@@ -805,6 +818,12 @@ class VeraCryptEngine @Inject constructor() {
         filePath: String,
         data: ByteArray,
         offset: Long
+    ): Int
+
+    private external fun nativeSetFileTime(
+        handle: Long,
+        filePath: String,
+        epochMs: Long
     ): Int
 
     private external fun nativeDeleteFile(handle: Long, filePath: String): Int

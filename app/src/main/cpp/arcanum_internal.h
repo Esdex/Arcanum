@@ -548,6 +548,8 @@ jint         ext4jni_create_directory(JNIEnv *env, jlong handle, jstring jDirPat
 jint         ext4jni_delete_file(JNIEnv *env, jlong handle, jstring jFilePath);
 jint         ext4jni_delete_directory(JNIEnv *env, jlong handle, jstring jDirPath);
 jint         ext4jni_rename(JNIEnv *env, jlong handle, jstring jOld, jstring jNew);
+jint         ext4jni_set_file_time(JNIEnv *env, jlong handle, jstring jPath,
+                                   jlong epochMs);
 jlongArray   ext4jni_fs_usage(JNIEnv *env, jlong handle);
 
 /* Drops the streaming read cache (jni_files.cpp) if it holds an open handle on

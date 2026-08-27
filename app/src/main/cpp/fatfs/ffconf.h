@@ -9,7 +9,7 @@
 #define FF_USE_MKFS     1
 #define FF_USE_FASTSEEK 1
 #define FF_USE_EXPAND   0
-#define FF_USE_CHMOD    0
+#define FF_USE_CHMOD    1   /* brings in f_utime, used to keep a file's own date (#154) */
 #define FF_USE_LABEL    1
 #define FF_USE_FORWARD  0
 #define FF_USE_STRFUNC  0
@@ -38,7 +38,11 @@
 
 #define FF_FS_TINY      0
 #define FF_FS_EXFAT     1
-#define FF_FS_NORTC     1
+/* With FF_FS_NORTC every file written was stamped with the constant below - one fixed
+/  date for every file ever imported (#154). get_fattime() in diskio.cpp reads the clock
+/  instead. The FF_NORTC_* values are left here because they still bound a build that
+/  turns the clock back off, not because they are used. */
+#define FF_FS_NORTC     0
 #define FF_NORTC_MON    1
 #define FF_NORTC_MDAY   1
 #define FF_NORTC_YEAR   2025

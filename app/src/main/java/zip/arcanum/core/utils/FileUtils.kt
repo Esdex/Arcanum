@@ -18,6 +18,27 @@ object FileUtils {
     const val KEYFILE_MAX_BYTES = 1 * 1024 * 1024
 
     /**
+     * When the provider says a document was last modified, in epoch milliseconds, or 0
+     * when it will not say - a provider may omit the column, return null, or refuse the
+     * query outright, and none of that should cost an import.
+     *
+     * A vault should keep the date a file arrived with rather than the moment it was
+     * copied, and writing the content moves the timestamp to now on both filesystems, so
+     * this is what gets stamped back afterwards (#154).
+     */
+    fun uriLastModified(context: Context, uri: Uri): Long =
+        runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(DocumentsContract.Document.COLUMN_LAST_MODIFIED),
+                null, null, null
+            )?.use { c ->
+                val idx = c.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                if (c.moveToFirst() && idx >= 0 && !c.isNull(idx)) c.getLong(idx) else 0L
+            } ?: 0L
+        }.getOrDefault(0L)
+
+    /**
      * Reads a SAF URI into a ByteArray without writing anything to disk.
      * Returns (bytes, displayName) or null on failure.
      * Caller should zero the array when done: bytes.fill(0).

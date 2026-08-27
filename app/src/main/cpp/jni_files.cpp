@@ -22,9 +22,18 @@
  * happens under g_fatfs_mutex. */
 std::unordered_map<int, ContainerCtx*> g_ctxMap;
 
-/* Converts a FatFs packed date/time to Unix epoch milliseconds (UTC).
- * fdate: bits 15-9 = year-1980, bits 8-5 = month, bits 4-0 = day
- * ftime: bits 15-11 = hour, bits 10-5 = minute, bits 4-0 = second/2 */
+/* FAT date/time, both directions.
+ *
+ *   fdate: bits 15-9 = year-1980, bits 8-5 = month, bits 4-0 = day
+ *   ftime: bits 15-11 = hour, bits 10-5 = minute, bits 4-0 = second/2
+ *
+ * The format records no time zone, and every other implementation - Windows,
+ * Linux, desktop VeraCrypt - reads these fields as local time. So local is what
+ * goes in and what comes out. This used to read them as UTC (timegm), which was
+ * self-consistent but showed a vault's dates shifted by the zone offset anywhere
+ * else; it went unnoticed because nothing wrote a real date to compare against
+ * (#154). Seconds are even by construction: the format has no room for the odd one.
+ */
 static jlong fatfs_to_epoch_ms(WORD fdate, WORD ftime) {
     if (fdate == 0) return 0LL;
     struct tm t = {};
@@ -34,10 +43,36 @@ static jlong fatfs_to_epoch_ms(WORD fdate, WORD ftime) {
     t.tm_hour  = (ftime >> 11) & 0x1F;
     t.tm_min   = (ftime >>  5) & 0x3F;
     t.tm_sec   = (ftime & 0x1F) * 2;
-    t.tm_isdst = 0;
-    time_t epoch = timegm(&t);
+    t.tm_isdst = -1;                       /* let the library decide, dates span DST */
+    time_t epoch = mktime(&t);
     if (epoch == (time_t)-1) return 0LL;
     return (jlong)epoch * 1000LL;
+}
+
+/* The reverse. Returns false - and touches nothing - for an instant FAT cannot
+ * hold, which is anything before 1980 or after 2107. A file whose date does not
+ * fit keeps whatever the write already gave it rather than getting a wrong one. */
+bool epoch_ms_to_fatfs(long long ms, WORD *fdate, WORD *ftime) {
+    time_t when = (time_t)(ms / 1000LL);
+    struct tm t = {};
+    if (!localtime_r(&when, &t)) return false;
+    int year = t.tm_year + 1900;
+    if (year < 1980 || year > 2107) return false;
+    *fdate = (WORD)(((year - 1980) << 9) | ((t.tm_mon + 1) << 5) | t.tm_mday);
+    *ftime = (WORD)((t.tm_hour << 11) | (t.tm_min << 5) | (t.tm_sec / 2));
+    return true;
+}
+
+/* FatFs stamps whatever this returns into every file it creates or writes.
+ *
+ * Until #154 it was not called at all: FF_FS_NORTC had FatFs substitute a compile-time
+ * constant, so every file in every FAT or exFAT vault ever written carried the same
+ * date - 1 January 2025, 00:00. */
+extern "C" DWORD get_fattime(void) {
+    WORD fdate, ftime;
+    if (!epoch_ms_to_fatfs((long long)time(nullptr) * 1000LL, &fdate, &ftime))
+        return ((DWORD)(2025 - 1980) << 25) | ((DWORD)1 << 21) | ((DWORD)1 << 16);
+    return ((DWORD)fdate << 16) | (DWORD)ftime;
 }
 
 /* ─── JNI: nativeListFiles ───────────────────────────────────────────── */
@@ -439,6 +474,43 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteAt(
     env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
     f_close(&fil);
     return write_result_code(fr, bw, len, pdrv);
+}
+
+/* ─── JNI: nativeSetFileTime ─────────────────────────────────────────── */
+/*
+ * Stamps a file with the date it had before it was imported. Called after the content
+ * is written, because writing moves the timestamp to now on both filesystems (#154).
+ */
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeSetFileTime(
+        JNIEnv *env, jobject /*thiz*/,
+        jlong handle, jstring jFilePath, jlong epochMs)
+{
+    if (ext4jni_is_container(handle))
+        return ext4jni_set_file_time(env, handle, jFilePath, epochMs);
+
+    std::string path = jstring_to_string(env, jFilePath);
+
+    WORD fdate = 0, ftime = 0;
+    if (!epoch_ms_to_fatfs((long long)epochMs, &fdate, &ftime)) return ERR_UNSUPPORTED;
+
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    int pdrv = decode_handle(handle);
+    if (pdrv < 0) return ERR_NO_SLOT;
+    { auto it = g_ctxMap.find(pdrv); if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY; }
+    /* A directory entry is about to change. It moves no clusters, so the cached FIL would
+     * survive it - but the invariant this cache is kept under is that every drive mutation
+     * drops it, and being right about that is cheaper than being right about FatFs. */
+    invalidate_read_cache_for_pdrv(pdrv);
+
+    char fullPath[512];
+    int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+    if (n < 0 || n >= (int)sizeof(fullPath)) return ERR_FILE;
+
+    FILINFO fno = {};
+    fno.fdate = fdate;
+    fno.ftime = ftime;
+    return (f_utime(fullPath, &fno) == FR_OK) ? ERR_OK : ERR_FS;
 }
 
 /* ─── JNI: nativeGetAlgorithmId ─────────────────────────────────────── */

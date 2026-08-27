@@ -38,6 +38,7 @@ import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.arcanum.saf.VaultDocumentsProvider
 import zip.arcanum.R
 import kotlinx.coroutines.coroutineScope
+import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.core.utils.MediaExtensions
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileType
@@ -958,6 +959,11 @@ class FileManagerViewModel @Inject constructor(
                     }
                     if (!hiddenProtected && failureCode == null) {
                         count++
+                        if (fileOk) {
+                            val srcTime = FileUtils.uriLastModified(context, uri)
+                            if (srcTime > 0L)
+                                runCatching { engine.setFileTime(handle, destPath, srcTime) }
+                        }
                         val ext = name.substringAfterLast('.', "").lowercase()
                         if (ext in MediaExtensions.IMAGE || ext in MediaExtensions.VIDEO) {
                             importedMedia.add(Pair(destPath, fileSize))
@@ -1069,8 +1075,10 @@ class FileManagerViewModel @Inject constructor(
             DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             DocumentsContract.Document.COLUMN_MIME_TYPE,
             // Asked for here rather than queried per file: the listing already costs one
-            // cursor, and the size is what lets the bar show a position.
-            DocumentsContract.Document.COLUMN_SIZE
+            // cursor, the size is what lets the bar show a position, and the modification
+            // time is the date the copy has to be stamped back to (#154).
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED
         )
         var count           = 0
         var hiddenProtected = false
@@ -1083,6 +1091,7 @@ class FileManagerViewModel @Inject constructor(
             val nameCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
             val mimeCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
             val sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+            val timeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
 
             while (cursor.moveToNext() && !hiddenProtected && failureCode == null) {
                 val childDocId  = cursor.getString(idCol) ?: continue
@@ -1106,6 +1115,8 @@ class FileManagerViewModel @Inject constructor(
                         val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
                         val childSize = if (sizeCol >= 0 && !cursor.isNull(sizeCol))
                             cursor.getLong(sizeCol) else 0L
+                        val childMtime = if (timeCol >= 0 && !cursor.isNull(timeCol))
+                            cursor.getLong(timeCol) else 0L
                         // total 0: a folder import discovers its files as it walks, so there
                         // is no count to show - the name and the current file's bar are what
                         // it can honestly report.
@@ -1150,6 +1161,8 @@ class FileManagerViewModel @Inject constructor(
                         }
                         if (!hiddenProtected && failureCode == null) {
                             count++
+                            if (childMtime > 0L)
+                                runCatching { engine.setFileTime(handle, childDest, childMtime) }
                             val ext = childName.substringAfterLast('.', "").lowercase()
                             if (ext in MediaExtensions.IMAGE || ext in MediaExtensions.VIDEO) {
                                 importedMedia.add(Pair(childDest, childFileSize))

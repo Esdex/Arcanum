@@ -782,6 +782,42 @@ jint ext4jni_delete_file(JNIEnv *env, jlong handle, jstring jFilePath) {
     return write_error(pdrv, ERR_FS);
 }
 
+/* ─── ext4jni_set_file_time ──────────────────────────────────────────── */
+/*
+ * Puts back the date a file arrived with. The write path cannot do it: every write
+ * moves i_mtime to now, so the file's own date has to be stamped once the content is
+ * in (#154). Only the caller knows that date - it comes from the source document.
+ */
+jint ext4jni_set_file_time(JNIEnv *env, jlong handle, jstring jPath, jlong epochMs) {
+    std::string path = jstring_to_string(env, jPath);
+
+    /* The inode's base time fields are 32-bit seconds, which is all ext4_set_mtime
+     * writes. Refuse what does not fit rather than wrapping it into a wrong date. */
+    long long secs = epochMs / 1000LL;
+    if (secs <= 0 || secs > 0x7FFFFFFFLL) return ERR_UNSUPPORTED;
+
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    int pdrv = ext4_pdrv(handle);
+    if (pdrv < 0) return ERR_NO_SLOT;
+    if (is_read_only(pdrv)) return ERR_READ_ONLY;
+
+    Reader r;
+    if (!open_reader(pdrv, &r)) return ERR_FS;
+
+    uint32_t ino = 0;
+    int is_dir = 0;
+    int rrc = ext4_resolve_path(&r.fs, path.c_str(), &ino, &is_dir);
+    if (rrc != EXT4_PATH_OK) return path_error(rrc);
+
+    WriteSession s(pdrv);
+    if (!s.ok()) return ERR_FS;
+    if (ext4_set_mtime(s.fs(), ino, (uint32_t)secs) != EXTW_OK) {
+        s.tear();
+        return write_error(pdrv, ERR_FS);
+    }
+    return ERR_OK;
+}
+
 /* ─── ext4jni_delete_directory (recursive) ───────────────────────────── */
 /*
  * ext4_rmdir refuses a non-empty directory - a populated one removed strands every

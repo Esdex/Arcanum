@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.core.security.AppPreferences
+import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.core.database.dao.ContainerDao
 import zip.arcanum.crypto.VeraCryptEngine
@@ -131,7 +132,13 @@ class ShareTargetViewModel @Inject constructor(
                 existing += name
                 val destPath = if (s.currentPath == "/") "/$name" else "${s.currentPath}/$name"
                 val ok = writeUriToVault(handle, uri, destPath)
-                if (ok) saved++ else runCatching { engine.deleteFile(handle, destPath) }
+                if (ok) {
+                    saved++
+                    // Keep the date the file already had; the write just moved it to now (#154).
+                    val srcTime = FileUtils.uriLastModified(appContext, uri)
+                    if (srcTime > 0L)
+                        runCatching { engine.setFileTime(handle, destPath, srcTime) }
+                } else runCatching { engine.deleteFile(handle, destPath) }
             }
             shareIntake.clear()
             _state.update { it.copy(isSaving = false, savedCount = saved) }
