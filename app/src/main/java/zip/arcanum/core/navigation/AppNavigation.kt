@@ -30,7 +30,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import android.os.SystemClock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -161,6 +160,12 @@ fun AppNavigation(pinManager: PinManager) {
                         if (current !in lockedRoutes) {
                             lockJob = autoLockScope.launch {
                                 delay(autoLockDelayMillis(0))
+                                // Leaving the app in the middle of a long operation must not
+                                // tear it down: lockNow() unmounts when "unmount on auto-lock"
+                                // is on, and unmounting a volume that is still being mounted
+                                // is how half-built state is made. Wait the work out, then
+                                // lock - the screen behind is already gone either way.
+                                while (settingsViewModel.isBusy()) delay(1_000L)
                                 lockNow()
                             }
                         }
@@ -175,8 +180,7 @@ fun AppNavigation(pinManager: PinManager) {
                     if (autoLockEnabled && autoLockDelayIndex >= 1) {
                         val current = navController.currentDestination?.route
                         if (current != null && current !in lockedRoutes) {
-                            val idleMs = SystemClock.elapsedRealtime() - settingsViewModel.lastInteractionAtMs()
-                            if (idleMs >= autoLockDelayMillis(autoLockDelayIndex)) lockNow()
+                            if (settingsViewModel.idleMillis() >= autoLockDelayMillis(autoLockDelayIndex)) lockNow()
                         }
                     }
                 }
@@ -190,19 +194,22 @@ fun AppNavigation(pinManager: PinManager) {
         }
     }
 
-    // Idle auto-lock (index >= 1): lock once the time since the last user interaction reaches
-    // the configured window. Interaction time is monotonic and untouched by backgrounding, so a
-    // vault left mounted ages out whether the app is in the foreground or the background. Idle is
-    // measured from the last *real* interaction (never reset on ON_START), so a long background
-    // can't be "forgiven" by returning to the app.
+    // Idle auto-lock (index >= 1): lock once the app has had nothing to do for the configured
+    // window. "Nothing to do" means neither a user interaction nor work being done for them -
+    // see IdleMonitor. The clock is monotonic and untouched by backgrounding, so a vault left
+    // mounted ages out whether the app is in the foreground or the background, and it is never
+    // reset on ON_START, so a long background can't be "forgiven" by returning to the app.
     LaunchedEffect(autoLockEnabled, autoLockDelayIndex, isUnlockedArea) {
         if (!autoLockEnabled || autoLockDelayIndex == 0 || !isUnlockedArea) return@LaunchedEffect
         // Fresh baseline for the unlock we just entered.
         settingsViewModel.recordInteraction()
         val windowMs = autoLockDelayMillis(autoLockDelayIndex)
         while (isActive) {
-            val idleMs = SystemClock.elapsedRealtime() - settingsViewModel.lastInteractionAtMs()
-            val remaining = windowMs - idleMs
+            // idleMillis() is zero while the app is working for the user, so a mount, a
+            // create, a header restore or a long import holds the window open instead of
+            // being mistaken for a phone on a table. The clock starts again when the work
+            // stops, not from the last touch before it.
+            val remaining = windowMs - settingsViewModel.idleMillis()
             if (remaining <= 0L) {
                 lockNow()
                 break

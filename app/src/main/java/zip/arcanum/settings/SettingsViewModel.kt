@@ -67,6 +67,16 @@ class SettingsViewModel @Inject constructor(
     /** Monotonic timestamp (elapsedRealtime) of the last user interaction - drives idle auto-lock. */
     fun lastInteractionAtMs(): Long = idleMonitor.lastInteractionAtMs
 
+    /**
+     * How long the app has had nothing to do, in milliseconds. Unlike [lastInteractionAtMs]
+     * this also counts work the app is doing for the user, so a long mount or import is not
+     * mistaken for an idle phone. Zero while an operation is running.
+     */
+    fun idleMillis(): Long = idleMonitor.idleMillis()
+
+    /** True while a long operation is in flight - locking now would cut it in half. */
+    fun isBusy(): Boolean = idleMonitor.isBusy
+
     /** Reset the inactivity timer, e.g. when the authenticated area is (re)entered. */
     fun recordInteraction() = idleMonitor.recordInteraction()
 

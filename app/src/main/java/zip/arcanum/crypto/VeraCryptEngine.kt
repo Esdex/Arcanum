@@ -1,12 +1,36 @@
 package zip.arcanum.crypto
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import zip.arcanum.core.security.IdleMonitor
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class VeraCryptEngine @Inject constructor() {
+class VeraCryptEngine @Inject constructor(
+    private val idleMonitor: IdleMonitor
+) {
+
+    // ── Idle auto-lock, kept honest about work ─────────────────────────
+    // Watching a progress bar is not a touch, so before this the idle clock could not tell
+    // a five-minute mount from a phone left on a table, and locked mid-operation. Every
+    // long call is bracketed here, in the one place they all pass through, rather than in
+    // each screen that starts one. See IdleMonitor.
+
+    private suspend fun <T> onIo(block: suspend CoroutineScope.() -> T): T =
+        withContext(Dispatchers.IO) {
+            idleMonitor.operationStarted()
+            try {
+                block()
+            } finally {
+                idleMonitor.operationFinished()
+            }
+        }
+
+    /* For the short calls: too brief to bracket, but an import is thousands of them in a
+     * row and the gaps between them must not read as idleness. Stamped on completion. */
+    private inline fun <T> marked(block: () -> T): T = block().also { idleMonitor.recordOperation() }
 
     // ── Progress callback interfaces ───────────────────────────────────
 
@@ -79,7 +103,7 @@ class VeraCryptEngine @Inject constructor() {
         keyfileData: List<ByteArray> = emptyList(),
         progressListener: CreationProgressListener? = null,
         pim: Int = 0
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         val rc = usePasswordBytes(password) { passwordBytes ->
             nativeCreateContainer(
                 path, sizeBytes, passwordBytes,
@@ -103,7 +127,7 @@ class VeraCryptEngine @Inject constructor() {
         protectHiddenPim: Int = 0,
         mountProgressListener: MountProgressListener? = null,
         readOnly: Boolean = false
-    ): CryptoResult<Long> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Long> = onIo {
         val handle = usePasswordBytes(password) { passwordBytes ->
             usePasswordBytesOrNull(protectHiddenPassword) { hiddenBytes ->
                 nativeOpenContainer(
@@ -134,7 +158,7 @@ class VeraCryptEngine @Inject constructor() {
         keyfileData: List<ByteArray> = emptyList(),
         progressListener: CreationProgressListener? = null,
         pim: Int = 0
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         val rc = usePasswordBytes(password) { passwordBytes ->
             nativeCreateContainerFd(
                 fd, sizeBytes, passwordBytes,
@@ -170,7 +194,7 @@ class VeraCryptEngine @Inject constructor() {
         protectHiddenPim: Int = 0,
         mountProgressListener: MountProgressListener? = null,
         readOnly: Boolean = false
-    ): CryptoResult<Long> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Long> = onIo {
         val handle = usePasswordBytes(password) { passwordBytes ->
             usePasswordBytesOrNull(protectHiddenPassword) { hiddenBytes ->
                 nativeOpenContainerUsb(
@@ -201,7 +225,7 @@ class VeraCryptEngine @Inject constructor() {
         protectHiddenPim: Int = 0,
         mountProgressListener: MountProgressListener? = null,
         readOnly: Boolean = false
-    ): CryptoResult<Long> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Long> = onIo {
         val handle = usePasswordBytes(password) { passwordBytes ->
             usePasswordBytesOrNull(protectHiddenPassword) { hiddenBytes ->
                 nativeOpenContainerFd(
@@ -234,7 +258,7 @@ class VeraCryptEngine @Inject constructor() {
         quickFormat: Boolean = true,
         entropyBytes: ByteArray = ByteArray(0),
         progressListener: CreationProgressListener? = null
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         val rc = usePasswordBytes(outerPassword, hiddenPassword) { outerBytes, hiddenBytes ->
             nativeCreateHiddenVolumeFd(
                 fd, hiddenSizeBytes,
@@ -248,7 +272,7 @@ class VeraCryptEngine @Inject constructor() {
     }
 
     suspend fun unmountContainer(handle: Long): CryptoResult<Unit> =
-        withContext(Dispatchers.IO) {
+        onIo {
             nativeCloseContainer(handle).toResult()
         }
 
@@ -266,7 +290,7 @@ class VeraCryptEngine @Inject constructor() {
         quickFormat: Boolean = true,
         entropyBytes: ByteArray = ByteArray(0),
         progressListener: CreationProgressListener? = null
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         val rc = usePasswordBytes(outerPassword, hiddenPassword) { outerBytes, hiddenBytes ->
             nativeCreateHiddenVolume(
                 path, hiddenSizeBytes,
@@ -290,7 +314,7 @@ class VeraCryptEngine @Inject constructor() {
         newPim: Int = 0,
         wipePassCount: Int = 3,
         extraEntropy: ByteArray = ByteArray(0)
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(oldPassword, newPassword) { oldBytes, newBytes ->
             nativeChangePassword(
                 path, oldBytes,
@@ -313,7 +337,7 @@ class VeraCryptEngine @Inject constructor() {
         newPim: Int = 0,
         wipePassCount: Int = 3,
         extraEntropy: ByteArray = ByteArray(0)
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(oldPassword, newPassword) { oldBytes, newBytes ->
             nativeChangePasswordFd(
                 fd, oldBytes,
@@ -333,7 +357,7 @@ class VeraCryptEngine @Inject constructor() {
         newKeyfileData: List<ByteArray> = emptyList(),
         newHashAlgorithm: Int = HASH_AUTO,
         extraEntropy: ByteArray = ByteArray(0)
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeChangeKeyfile(
                 path, passwordBytes,
@@ -352,7 +376,7 @@ class VeraCryptEngine @Inject constructor() {
         newKeyfileData: List<ByteArray> = emptyList(),
         newHashAlgorithm: Int = HASH_AUTO,
         extraEntropy: ByteArray = ByteArray(0)
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeChangeKeyfileFd(
                 fd, passwordBytes,
@@ -369,7 +393,7 @@ class VeraCryptEngine @Inject constructor() {
         keyfileData: List<ByteArray> = emptyList(),
         pim: Int = 0,
         outputPath: String
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeBackupVolumeHeader(
                 path, passwordBytes,
@@ -385,7 +409,7 @@ class VeraCryptEngine @Inject constructor() {
         keyfileData: List<ByteArray> = emptyList(),
         pim: Int = 0,
         outputFd: Int
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeBackupVolumeHeaderFd(
                 volumeFd, passwordBytes,
@@ -414,7 +438,7 @@ class VeraCryptEngine @Inject constructor() {
         outputFd: Int,
         sizeBytes: Int = KEYFILE_DEFAULT_SIZE,
         entropyBytes: ByteArray = ByteArray(0)
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         nativeGenerateKeyfileFd(outputFd, sizeBytes, entropyBytes).toResult()
     }
 
@@ -425,7 +449,7 @@ class VeraCryptEngine @Inject constructor() {
         pim: Int = 0,
         fromExternal: Boolean,
         backupPath: String = ""
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeRestoreVolumeHeader(
                 path, passwordBytes,
@@ -442,7 +466,7 @@ class VeraCryptEngine @Inject constructor() {
         pim: Int = 0,
         fromExternal: Boolean,
         backupFd: Int = -1
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeRestoreVolumeHeaderFd(
                 volumeFd, passwordBytes,
@@ -465,21 +489,21 @@ class VeraCryptEngine @Inject constructor() {
     /** Returns null on native read error (mid-listing disk failure), empty array for a genuinely
      *  empty directory.  Callers that need to distinguish the two should use this overload. */
     fun listFilesOrNull(handle: Long, dirPath: String): Array<NativeFileInfo>? =
-        nativeListFiles(handle, dirPath)
+        marked { nativeListFiles(handle, dirPath) }
 
     fun listFiles(handle: Long, dirPath: String): Array<NativeFileInfo> =
-        nativeListFiles(handle, dirPath) ?: emptyArray()
+        marked { nativeListFiles(handle, dirPath) } ?: emptyArray()
 
     fun readFile(handle: Long, filePath: String, offset: Long, length: Int): ByteArray? =
-        nativeReadFile(handle, filePath, offset, length)
+        marked { nativeReadFile(handle, filePath, offset, length) }
 
     fun writeFile(handle: Long, filePath: String, data: ByteArray, offset: Long): Int =
-        nativeWriteFile(handle, filePath, data, offset)
+        marked { nativeWriteFile(handle, filePath, data, offset) }
 
     /** Non-truncating positional write (creates the file if absent). Safe for random-access
      *  writes from the SAF provider - a write at offset 0 does not discard the rest of the file. */
     fun writeAt(handle: Long, filePath: String, data: ByteArray, offset: Long): Int =
-        nativeWriteAt(handle, filePath, data, offset)
+        marked { nativeWriteAt(handle, filePath, data, offset) }
 
     /**
      * Stamps a file with a modification time of the caller's choosing, in epoch
@@ -492,19 +516,19 @@ class VeraCryptEngine @Inject constructor() {
      * with the time the write gave it rather than a wrong one.
      */
     fun setFileTime(handle: Long, filePath: String, epochMs: Long): Int =
-        nativeSetFileTime(handle, filePath, epochMs)
+        marked { nativeSetFileTime(handle, filePath, epochMs) }
 
     fun deleteFile(handle: Long, filePath: String): Int =
-        nativeDeleteFile(handle, filePath)
+        marked { nativeDeleteFile(handle, filePath) }
 
     fun deleteDirectory(handle: Long, dirPath: String): Int =
-        nativeDeleteDirectory(handle, dirPath)
+        marked { nativeDeleteDirectory(handle, dirPath) }
 
     fun createDirectory(handle: Long, dirPath: String): Int =
-        nativeCreateDirectory(handle, dirPath)
+        marked { nativeCreateDirectory(handle, dirPath) }
 
     fun renameFile(handle: Long, oldPath: String, newPath: String): Int =
-        nativeRenameFile(handle, oldPath, newPath)
+        marked { nativeRenameFile(handle, oldPath, newPath) }
 
     /** Non-suspend close, for call sites that can't use the suspend [unmountContainer]
      *  (e.g. MainActivity.onDestroy, which isn't a coroutine). */
@@ -613,7 +637,7 @@ class VeraCryptEngine @Inject constructor() {
         newPim: Int = 0,
         wipePassCount: Int = 3,
         extraEntropy: ByteArray = ByteArray(0)
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(oldPassword, newPassword) { oldBytes, newBytes ->
             nativeChangePasswordUsb(
                 transport, deviceSize, oldBytes,
@@ -633,7 +657,7 @@ class VeraCryptEngine @Inject constructor() {
         newKeyfileData: List<ByteArray> = emptyList(),
         newHashAlgorithm: Int = HASH_AUTO,
         extraEntropy: ByteArray = ByteArray(0)
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeChangeKeyfileUsb(
                 transport, deviceSize, passwordBytes,
@@ -651,7 +675,7 @@ class VeraCryptEngine @Inject constructor() {
         keyfileData: List<ByteArray> = emptyList(),
         pim: Int = 0,
         outputFd: Int
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeBackupVolumeHeaderUsb(
                 transport, deviceSize, passwordBytes,
@@ -669,7 +693,7 @@ class VeraCryptEngine @Inject constructor() {
         pim: Int = 0,
         fromExternal: Boolean,
         backupFd: Int = -1
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeRestoreVolumeHeaderUsb(
                 transport, deviceSize, passwordBytes,
@@ -701,7 +725,7 @@ class VeraCryptEngine @Inject constructor() {
         keyfileData: List<ByteArray> = emptyList(),
         progressListener: CreationProgressListener? = null,
         pim: Int = 0
-    ): CryptoResult<Unit> = withContext(Dispatchers.IO) {
+    ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeCreateContainerUsb(
                 transport, deviceSize, sizeBytes, passwordBytes,
@@ -738,7 +762,7 @@ class VeraCryptEngine @Inject constructor() {
      * mounted. Cheap, and worth doing whenever the app might be killed without warning.
      */
     suspend fun flushContainer(handle: Long): Int =
-        withContext(Dispatchers.IO) { nativeFlushContainer(handle) }
+        onIo { nativeFlushContainer(handle) }
 
     /**
      * Formats a bare partition as FAT32 - the ordinary partition of a partitioned USB
@@ -748,7 +772,7 @@ class VeraCryptEngine @Inject constructor() {
      * first sector. Everything in it is destroyed.
      */
     suspend fun formatFatPartition(transport: Any, sizeBytes: Long): CryptoResult<Unit> =
-        withContext(Dispatchers.IO) { nativeFormatFatPartition(transport, sizeBytes).toResult() }
+        onIo { nativeFormatFatPartition(transport, sizeBytes).toResult() }
 
     private external fun nativeFlushContainer(handle: Long): Int
 
