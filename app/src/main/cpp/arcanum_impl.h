@@ -80,6 +80,12 @@ typedef struct {
                                                    to encrypt. A volume must never reach this state, so
                                                    the absence of a key is the trigger rather than a
                                                    flag someone could set alongside one. */
+    struct ext4_blockcache *ext4Cache;          /* #155: the same metadata blocks were read and decrypted on
+                                                   every operation. Allocated by ext4_device.cpp on the first
+                                                   block read of an ext4 volume, null for FAT and exFAT, and
+                                                   released by free_drive BEFORE its memset - it holds
+                                                   plaintext, and after the memset there is no way to reach
+                                                   it. Nothing outside ext4_device.cpp touches it. */
     uint32_t             generation;            /* bumped on every alloc_drive() of this slot; part of the
                                                     jlong handle so a stale handle from a freed+reused slot
                                                     is rejected instead of silently operating on the wrong

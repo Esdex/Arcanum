@@ -33,11 +33,37 @@
  *                 the FatFs path does
  */
 #include "ext4_device.h"
+#include "ext4_blockcache.h"
 #include "ext4_log.h"
 
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+
+/*
+ * The block cache (#155) is a module of its own - ext4_blockcache.c - because the
+ * host harness can build a C file and cannot build this one, and a cache whose
+ * invalidation is wrong corrupts a user's files without saying so. Everything that
+ * needs judgement lives there, where a stand drives it: what to do when the block
+ * size changes, when a smaller read arrives, when a smaller write does. This file
+ * only says what happened - a read completed, a write completed, a write failed -
+ * and the module decides what that means.
+ *
+ * It sits at the point where ciphertext becomes plaintext, so a hit saves the
+ * backend read AND the XTS decrypt, for a file-hosted vault and a USB one alike.
+ * The chunk cache in usb_backend.cpp was already absorbing this traffic for USB
+ * volumes; a file-hosted vault had nothing in front of it at all.
+ */
+static ext4_blockcache *cache_for(DriveContext *ctx) {
+    if (!ctx->ext4Cache) ctx->ext4Cache = ext4_blockcache_new();  /* null is fine: we go to the device */
+    return ctx->ext4Cache;
+}
+
+void ext4_device_cache_release(DriveContext *drive) {
+    if (!drive) return;
+    ext4_blockcache_free(drive->ext4Cache);
+    drive->ext4Cache = nullptr;
+}
 
 /*
  * One block, in either direction. block_size is a whole number of 512-byte
@@ -63,7 +89,16 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
     uint64_t firstSector = block * (uint64_t)nsec;
     uint64_t byteOff    = ctx->dataOffset + firstSector * (uint64_t)VC_SECTOR_SIZE;
 
+    ext4_blockcache *cache = cache_for(ctx);
+
     if (!writing) {
+        if (cache) {
+            const void *hit = ext4_blockcache_get(cache, byteOff, block_size);
+            if (hit) {
+                memcpy(buf, hit, block_size);
+                return 0;
+            }
+        }
         if (!ctx->backend.read(ctx->backend.self, buf, block_size, byteOff)) {
             EXT4_LOGE("read block %llu (%u sectors at offset %llu) failed",
                       (unsigned long long)block, nsec, (unsigned long long)byteOff);
@@ -75,6 +110,9 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
             for (uint32_t i = 0; i < nsec; i++)
                 vc_crypt_sector(ctx->cipherCtx, p + (size_t)i * VC_SECTOR_SIZE,
                                 baseSector + firstSector + i, /*encrypt=*/false);
+        if (cache) ext4_blockcache_read(cache, byteOff, block_size, buf);
+        /* Only misses reach here, so this line now counts device traffic rather than
+         * requests - which is what a measurement of #155 wants to see. */
         EXT4_LOGD("read block %llu (%u sectors)", (unsigned long long)block, nsec);
         return 0;
     }
@@ -116,10 +154,14 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
     bool ok = ctx->backend.write(ctx->backend.self, enc, block_size, byteOff);
     free(enc);
     if (!ok) {
+        /* What is on the device is now unknown, so holding a copy that claims to know
+         * would be worse than holding nothing. */
+        if (cache) ext4_blockcache_drop(cache, byteOff, block_size);
         EXT4_LOGE("write block %llu (%u sectors at offset %llu) failed",
                   (unsigned long long)block, nsec, (unsigned long long)byteOff);
         return -1;
     }
+    if (cache) ext4_blockcache_wrote(cache, byteOff, block_size, buf);
     EXT4_LOGD("wrote block %llu (%u sectors)", (unsigned long long)block, nsec);
     return 0;
 }

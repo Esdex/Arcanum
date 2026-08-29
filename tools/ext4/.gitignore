@@ -14,3 +14,4 @@ rename
 writeat
 fullwrite
 faultop
+cachetest

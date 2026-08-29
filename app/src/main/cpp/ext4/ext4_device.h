@@ -64,6 +64,14 @@ typedef struct {
 
 void ext4_device_reader_init(ext4_device_reader *rd, DriveContext *drive);
 
+/*
+ * Releases this drive's block cache (#155), wiping it first - it holds plaintext
+ * metadata. Called from free_drive before its memset, which is the last moment the
+ * pointer is reachable. Safe on a drive that never held an ext4 volume, and safe to
+ * call twice.
+ */
+void ext4_device_cache_release(DriveContext *drive);
+
 /* An ext4_read_block_fn over an ext4_device_reader. Decrypts through the same
  * sector path as ext4_device_io's read half. Returns EXT4_OK / EXT4_ERR_IO. */
 int ext4_device_read_block(void *ctx, uint64_t block, void *buf);

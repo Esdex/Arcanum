@@ -10,6 +10,7 @@
  */
 
 #include "arcanum_internal.h"
+#include "ext4/ext4_device.h"
 
 #include <cerrno>
 #include <cstring>
@@ -375,6 +376,10 @@ void free_drive(int pdrv) {
         munlock(g_drives[pdrv].cipherCtx, sizeof(GenCipherCtx));
         free(g_drives[pdrv].cipherCtx);
     }
+    /* Plaintext metadata blocks (#155). Wiped and released here for the same reason as
+     * the backing store below: after the memset there is no way left to reach it. */
+    ext4_device_cache_release(&g_drives[pdrv]);
+
     /* Hand the backing store back before the memset erases the way to reach it. The
      * file backend has nothing to release; a backend holding a claimed USB interface
      * does, and this is its only chance. Guarded because g_drives[] is zero-filled,

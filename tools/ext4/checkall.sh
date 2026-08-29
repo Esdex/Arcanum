@@ -100,6 +100,7 @@ run bigcheck.py      ./bigcheck.py --keep "$WORK/bigimgs"
 run matrixcheck.py   ./matrixcheck.py
 run objectcheck.py   ./objectcheck.py
 run allocfailcheck.py ./allocfailcheck.py
+run cachecheck.py    ./cachecheck.py
 run asancheck.sh     ./asancheck.sh
 run fuzz.sh          ./fuzz.sh
 

@@ -163,10 +163,19 @@ else
     fi
 fi
 
+# The block cache (#155) has no image and no geometry - it is a buffer manager, and
+# that is exactly what a sanitizer is for: an entry copied short, a slot read after
+# it was freed, a buffer reused under a different entry size. cachecheck.py is the
+# workload; here it drives a sanitized build of the same module.
+echo
+echo "the block cache under the sanitizers:"
+$CC $FLAGS -o "$WORK/cachetest" "$HERE/cachetest.c" $(L ext4_blockcache.c)
+run "block cache: the whole stand" "$HERE/cachecheck.py" --cachetest "$WORK/cachetest"
+
 echo
 if [ "$fail" -ne 0 ]; then
     echo "RESULT: a sanitizer fired, or a run could not be made - see above"
     exit 1
 fi
-echo "RESULT: $ran driver runs across 4 geometries and an indexed directory, no"
-echo "        ASan or UBSan report, every image e2fsck-clean afterwards"
+echo "RESULT: $ran driver runs across 4 geometries, an indexed directory and the"
+echo "        block cache, no ASan or UBSan report, every image e2fsck-clean"

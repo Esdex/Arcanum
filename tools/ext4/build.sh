@@ -21,6 +21,9 @@ L() { for f in "$@"; do echo "$EXT4_DIR/$f"; done; }
 
 $CC $FLAGS -o "$HERE/bench"    "$HERE/bench.c"    $(L ext4_extents.c ext4_dir.c ext4_csum.c)
 $CC $FLAGS -o "$HERE/fsmeta"   "$HERE/fsmeta.c"   $(L ext4_csum.c)
+# The block cache (#155) is its own module precisely so it can be built here: its
+# caller in the app is C++ bound to a DriveContext and cannot come to the host.
+$CC $FLAGS -o "$HERE/cachetest" "$HERE/cachetest.c" $(L ext4_blockcache.c)
 $CC $FLAGS -o "$HERE/alloc"    "$HERE/alloc.c"    $(L ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
 $CC $FLAGS -o "$HERE/extwrite" "$HERE/extwrite.c" $(L ext4_extwrite.c ext4_extents.c ext4_alloc.c ext4_io.c ext4_csum.c)
 $CC $FLAGS -o "$HERE/dirwrite" "$HERE/dirwrite.c" \
@@ -42,4 +45,4 @@ $CC $FLAGS -o "$HERE/fullwrite" "$HERE/fullwrite.c" \
 $CC $FLAGS -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc \
     -o "$HERE/faultop"  "$HERE/faultop.c" \
     $(L ext4_path.c ext4_create.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
-echo "built: bench fsmeta alloc extwrite dirwrite mkfs pathresolve chunkwrite rename writeat fullwrite faultop"
+echo "built: bench fsmeta cachetest alloc extwrite dirwrite mkfs pathresolve chunkwrite rename writeat fullwrite faultop"
