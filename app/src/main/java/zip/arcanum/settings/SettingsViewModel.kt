@@ -86,6 +86,9 @@ class SettingsViewModel @Inject constructor(
     /** Record that the user authenticated, so a restored back stack can be trusted. */
     fun markUnlocked() = sessionState.markUnlocked()
 
+    /** Record that the app has put the lock screen up, so work arriving from outside can tell. */
+    fun markLocked() = sessionState.markLocked()
+
     val autoLockEnabled = prefs.autoLockEnabled.stateIn(
         scope        = viewModelScope,
         started      = SharingStarted.Eagerly,

@@ -45,6 +45,7 @@ import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.core.utils.MediaExtensions
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.security.IdleMonitor
+import zip.arcanum.core.security.SessionState
 import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.notifications.ImportFailureReason
 import zip.arcanum.core.notifications.InAppNotification
@@ -67,8 +68,24 @@ class FileManagerViewModel @Inject constructor(
     private val mediaScanner: MediaScanner,
     private val mediaFileDao: MediaFileDao,
     private val appPrefs: AppPreferences,
-    private val idleMonitor: IdleMonitor
+    private val idleMonitor: IdleMonitor,
+    private val sessionState: SessionState
 ) : ViewModel() {
+
+    /*
+     * A file picker is another app's activity, and its result arrives through a callback
+     * on a ViewModel that outlives the navigation to the lock screen. So if the session
+     * locked while the user was choosing, the work would start anyway and write into a
+     * vault the interface has just declared closed - observed on 2026-08-29. The timer no
+     * longer fires while a picker is open, which makes this rare rather than routine; it
+     * is here because "rare" is not the same as "cannot happen", and the thing it prevents
+     * is writing to a vault behind the user's back.
+     */
+    private fun refuseIfLocked(): Boolean {
+        if (!sessionState.isLocked) return false
+        _state.update { it.copy(pendingNotification = InAppNotification.OperationRefusedLocked) }
+        return true
+    }
 
     /*
      * A batch operation - import, export, paste, move, delete - is work the app is doing
@@ -932,6 +949,7 @@ class FileManagerViewModel @Inject constructor(
     }
 
     fun importFiles(context: Context, uris: List<android.net.Uri>, deleteAfterImport: Boolean = false) {
+        if (refuseIfLocked()) return
         val s = _state.value
         if (s.isReadOnly) {
             _state.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
@@ -1031,6 +1049,7 @@ class FileManagerViewModel @Inject constructor(
     }
 
     fun importFolder(context: Context, treeUri: android.net.Uri, deleteAfterImport: Boolean = false) {
+        if (refuseIfLocked()) return
         val s = _state.value
         if (s.isReadOnly) {
             _state.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
@@ -1215,6 +1234,7 @@ class FileManagerViewModel @Inject constructor(
     }
 
     fun exportSelected(context: Context, treeUri: android.net.Uri) {
+        if (refuseIfLocked()) return
         val s = _state.value
         val handle = repo.getContainerHandle(s.containerId) ?: return
         val toExport = s.selectedItems.mapNotNull { path -> s.files.find { it.path == path } }

@@ -125,6 +125,7 @@ fun AppNavigation(pinManager: PinManager) {
     val autoLockScope = rememberCoroutineScope()
 
     fun lockNow() {
+        settingsViewModel.markLocked()
         if (unmountOnAutoLock) mountCoordinator.unmountAll()
         navController.navigate(lockScreenRoute) {
             popUpTo(0) { inclusive = true }

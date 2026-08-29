@@ -108,6 +108,34 @@ class MainActivity : AppCompatActivity() {
         idleMonitor.recordInteraction()
     }
 
+    /*
+     * Every ActivityResultLauncher in the app - the file pickers, the folder pickers, the
+     * keyfile choosers, more than fifty of them - reaches the system through this one call.
+     * Marking it here is what keeps the minutes a user spends choosing a folder from
+     * counting as inactivity: they are doing our work, in another app, with our process in
+     * the background and no touch reaching us. Bracketing the launchers themselves would
+     * mean fifty edits and a fifty-first that forgets.
+     */
+    override fun startActivityForResult(intent: Intent, requestCode: Int, options: Bundle?) {
+        idleMonitor.externalActivityLaunched()
+        super.startActivityForResult(intent, requestCode, options)
+    }
+
+    /* A system permission dialog is the same thing by another road, but `requestPermissions`
+     * is final in Activity and cannot be hooked here. It is also answered in seconds rather
+     * than minutes, so it is left alone. */
+
+    /*
+     * Cleared on the way back rather than in a result callback, so that a launch which
+     * never produces one - the user swiping the picker away, a contract that reports
+     * nothing - cannot leave the flag raised and auto-lock disabled for the life of the
+     * process.
+     */
+    override fun onResume() {
+        super.onResume()
+        idleMonitor.externalActivityReturned()
+    }
+
     // A share can arrive while the activity is already running (warm start).
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

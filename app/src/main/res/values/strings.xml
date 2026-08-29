@@ -59,6 +59,8 @@
     <string name="notif_clipboard_subtitle">Open the menu at the top to paste them</string>
     <string name="notif_already_here">Nothing to move</string>
     <string name="notif_already_here_subtitle">Those items are already in this folder</string>
+    <string name="notif_locked_refused">Nothing was imported</string>
+    <string name="notif_locked_refused_body">Arcanum locked while you were choosing, so it did not write anything into the vault. Try again.</string>
     <string name="notif_details_need_mount">Error</string>
     <string name="notif_details_need_mount_body">Mount the vault first to see its details</string>
     <string name="notif_mount_try_again">Try again</string>

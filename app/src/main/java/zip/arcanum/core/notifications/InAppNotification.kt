@@ -108,6 +108,15 @@ sealed class InAppNotification {
         override val priority = 2
     }
 
+    /**
+     * A file picker came back after the app had locked itself, so the import or export it
+     * was going to start was refused. Shown when the user unlocks and returns, since that
+     * is the first moment they can see anything at all.
+     */
+    data object OperationRefusedLocked : InAppNotification() {
+        override val priority = 2
+    }
+
     data class VaultError(
         val vaultId: String,
         val message: String

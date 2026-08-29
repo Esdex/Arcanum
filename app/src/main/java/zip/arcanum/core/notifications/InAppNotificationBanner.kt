@@ -198,6 +198,12 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         title           = ctx.getString(R.string.notif_details_need_mount),
         subtitle        = ctx.getString(R.string.notif_details_need_mount_body)
     )
+    InAppNotification.OperationRefusedLocked -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFFDC2626),
+        icon            = Icons.Outlined.Warning,
+        title           = ctx.getString(R.string.notif_locked_refused),
+        subtitle        = ctx.getString(R.string.notif_locked_refused_body)
+    )
     InAppNotification.MountNeedsCredentials -> NotificationDisplayConfig(
         backgroundColor = Color(0xFFDC2626),
         icon            = Icons.Outlined.Warning,
