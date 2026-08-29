@@ -60,6 +60,7 @@
 #define INODE_GENERATION_OFF  0x64
 #define INODE_SIZE_HI_OFF     0x6C
 #define INODE_EXTRA_ISIZE_OFF 0x80
+#define INODE_CRTIME_OFF      0x90
 
 #define EXT4_INODE_FLAG_EXTENTS 0x00080000u
 #define EXT4_EXTENT_MAGIC       0xF30A
@@ -147,9 +148,18 @@ static void init_inode(uint8_t *inode, uint32_t inode_size,
     wr16(root + 6, 0);
 
     /* Decides whether i_checksum_hi exists, so it has to be set before the
-     * checksum is computed rather than after. */
-    if (inode_size > 128)
+     * checksum is computed rather than after.
+     *
+     * i_crtime lives in the same extra area, and declaring the area present while
+     * leaving the field zero is worse than not declaring it at all: a desktop reads it
+     * as a real answer and says every file in the vault was created on 1 January 1970.
+     * Found on 2026-08-29 by looking at an imported folder on a Linux machine. It is the
+     * time the inode came into being, which is now - not the date the imported file
+     * carried, which is its modification time and is put back separately (#154). */
+    if (inode_size > 128) {
         wr16(inode + INODE_EXTRA_ISIZE_OFF, EXT4_GOOD_EXTRA_ISIZE);
+        wr32(inode + INODE_CRTIME_OFF, when);
+    }
 }
 
 int ext4_create_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,

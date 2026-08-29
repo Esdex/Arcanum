@@ -40,15 +40,11 @@ from dircheck import our_listing, dir_csum_ok, find_directories   # noqa: E402
 WHEN = 1784639915
 
 
-def inode_extra_isize(img, ino):
-    """i_extra_isize of one inode, and the minimum the superblock demands.
+def read_inode(img, ino):
+    """One inode's bytes, its size, and the extra size the superblock demands.
 
-    Checked here because nothing else does. e2fsck accepts an inode whose
-    i_extra_isize is zero - the inode is then simply a classic 128-byte one with
-    a 16-bit checksum, which is self-consistent and which our own reader agrees
-    with. But the superblock declares s_min_extra_isize, and writing less than it
-    breaks a promise the filesystem makes about every inode in it. Without this
-    the mutant that zeroes the field passes every other check.
+    Split out because two checks want it: i_extra_isize below, and i_crtime, which
+    lives in the extra area the first one is about.
     """
     with open(img, "rb") as f:
         f.seek(1024)
@@ -64,10 +60,37 @@ def inode_extra_isize(img, ino):
         d = f.read(dsz)
         itable = u32(d, 8) | (u32(d, 40) << 32 if dsz >= 64 else 0)
         f.seek(itable * bs + idx * isize)
-        inode = f.read(isize)
+        return f.read(isize), isize, min_extra
+
+
+def inode_extra_isize(img, ino):
+    """i_extra_isize of one inode, and the minimum the superblock demands.
+
+    Checked here because nothing else does. e2fsck accepts an inode whose
+    i_extra_isize is zero - the inode is then simply a classic 128-byte one with
+    a 16-bit checksum, which is self-consistent and which our own reader agrees
+    with. But the superblock declares s_min_extra_isize, and writing less than it
+    breaks a promise the filesystem makes about every inode in it. Without this
+    the mutant that zeroes the field passes every other check.
+    """
+    inode, isize, min_extra = read_inode(img, ino)
     if isize <= 128:
         return None, min_extra
-    return u16(inode, 0x80), min_extra
+    return struct.unpack_from("<H", inode, 0x80)[0], min_extra
+
+
+def inode_crtime(img, ino):
+    """i_crtime, or None on an inode too small to hold one.
+
+    Nothing else looks at it, and nothing else can: e2fsck does not mind a zero
+    creation time, and an image comparison sees a field that is consistently zero
+    in both. It took someone opening a vault on a Linux desktop and noticing that
+    every file in it claimed to have been created on 1 January 1970.
+    """
+    inode, isize, _ = read_inode(img, ino)
+    if isize <= 0x90 + 4:
+        return None
+    return struct.unpack_from("<I", inode, 0x90)[0]
 
 
 def run(tool, *args):
@@ -109,6 +132,16 @@ def check_dir(img, dir_ino, tools, count):
         return problems or ["nothing was created"]
 
     fsck_same(base_rc, base_lines, img, problems, "after creating")
+
+    # The creation time. It is the one timestamp no other check here can see: e2fsck is
+    # content with a zero, and the inode is self-consistent either way.
+    for name, ino in made:
+        crtime = inode_crtime(img, ino)
+        if crtime is None:
+            break                       # 128-byte inodes have nowhere to put one
+        if crtime != int(WHEN):
+            problems.append(f"{name} was created at {crtime}, expected {WHEN}")
+            break
 
     after = our_listing(bench, img, dir_ino)
     if after is not None:

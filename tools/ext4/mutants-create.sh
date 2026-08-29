@@ -85,6 +85,12 @@ try "extent root claims an entry it does not have" \
 try "i_extra_isize left zero, so the checksum covers the wrong half" \
     's@EXT4_GOOD_EXTRA_ISIZE);@0);@'
 
+# The creation time. Declaring the extra area present and leaving this zero is worse
+# than not declaring it: a desktop reads the zero as an answer and dates every file in
+# the vault to 1 January 1970. Found that way on a real volume, not here.
+try "new inode left without a creation time" \
+    's@    wr32(inode + INODE_CRTIME_OFF, when);@@'
+
 # Deleting. The half that is easy to forget.
 
 try "freed inode left without a deletion time" \
