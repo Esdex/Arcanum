@@ -163,6 +163,15 @@ class ContainerRepository @Inject constructor(
     suspend fun updateUnmountOnBackground(id: String, value: Boolean) =
         dao.updateUnmountOnBackground(id, value)
 
+    /** What the last successful mount used, so the next one does not have to be told (#148). */
+    suspend fun updateMountOptions(
+        id: String,
+        hashId: Int,
+        algorithmId: Int,
+        readOnly: Boolean,
+        protectHidden: Boolean
+    ) = dao.updateMountOptions(id, hashId, algorithmId, readOnly, protectHidden)
+
     suspend fun isExternalAccessEnabled(id: String): Boolean =
         dao.getContainerById(id)?.externalAccessEnabled == true
 

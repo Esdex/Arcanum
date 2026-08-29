@@ -230,11 +230,21 @@ private fun MountScreenContent(
     }
     var showPassword   by remember { mutableStateOf(false) }
     var showHashSheet  by remember { mutableStateOf(false) }
-    var showAdvanced  by remember { mutableStateOf(false) }
+    /* Opened when something is remembered, so a read-only mount or a chosen PRF is visible
+     * rather than being applied from behind a collapsed section. */
+    var showAdvanced  by rememberSaveable(mountId) {
+        mutableStateOf(container.mountReadOnly || container.mountProtectHidden ||
+                       container.mountHashId != VeraCryptEngine.HASH_AUTO)
+    }
     var pimValue      by remember { mutableStateOf("") }
     var showPim       by remember { mutableStateOf(false) }
-    var readOnly           by remember { mutableStateOf(false) }
-    var protectHidden      by remember { mutableStateOf(false) }
+    /*
+     * Seeded from what this vault was last opened with (#148), and saveable so a rotation
+     * does not quietly drop the choice either - both were plain `remember` before, which is
+     * why read-only did not survive so much as turning the phone.
+     */
+    var readOnly           by rememberSaveable(mountId) { mutableStateOf(container.mountReadOnly) }
+    var protectHidden      by rememberSaveable(mountId) { mutableStateOf(container.mountProtectHidden) }
     var hiddenPassword     by hiddenPasswordState
     var showHiddenPassword by remember { mutableStateOf(false) }
     var hiddenPimValue     by remember { mutableStateOf("") }
@@ -242,7 +252,9 @@ private fun MountScreenContent(
     var shakeKey      by remember { mutableIntStateOf(0) }
     val shakeAnim     = remember { Animatable(0f) }
 
-    var selectedHash by rememberSaveable { mutableIntStateOf(VeraCryptEngine.HASH_AUTO) }
+    /* The PRF the volume turned out to be last time, not a guess: mounting with it named
+     * skips the auto-detect that costs seconds on every unlock. */
+    var selectedHash by rememberSaveable(mountId) { mutableIntStateOf(container.mountHashId) }
     val hashes = remember { listOf(-1 to "Auto") + (0..4).map { it to VeraCryptEngine.hashIdToString(it) } }
 
     // ── Biometric state ───────────────────────────────────────────────────

@@ -20,7 +20,7 @@ import zip.arcanum.core.database.entities.MountPointEntity
         CalculationEntity::class,
         MountPointEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -112,6 +112,20 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_12_13 = object : Migration(12, 13) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE containers ADD COLUMN usbStartByte INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /**
+         * What the last successful mount used (#148). The two -1 defaults mean auto-detect,
+         * which is what every existing vault already did, so no data fix is needed and no
+         * vault changes behaviour until it is mounted once with something chosen.
+         */
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE containers ADD COLUMN mountHashId INTEGER NOT NULL DEFAULT -1")
+                db.execSQL("ALTER TABLE containers ADD COLUMN mountAlgorithmId INTEGER NOT NULL DEFAULT -1")
+                db.execSQL("ALTER TABLE containers ADD COLUMN mountReadOnly INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE containers ADD COLUMN mountProtectHidden INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

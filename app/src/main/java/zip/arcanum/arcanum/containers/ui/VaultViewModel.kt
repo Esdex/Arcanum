@@ -482,6 +482,24 @@ class VaultViewModel @Inject constructor(
                         if (fsType     >= 0) repo.updateFilesystem(container.id, VeraCryptEngine.filesystemIdToString(fsType))
                         if (keySize    >  0) repo.updateKeySize(container.id, keySize)
                         if (iterations >  0) repo.updatePkcs5Iterations(container.id, iterations)
+                        /*
+                         * What the next mount of this vault should use (#148). Taken from the
+                         * volume that just opened rather than from what the user typed: the
+                         * header knows which cipher and PRF it really is, so this works even
+                         * for someone who never chose anything, and it cannot record a wrong
+                         * guess - only a mount that succeeded gets here. Auto-detect is what
+                         * costs eight seconds instead of one.
+                         *
+                         * read-only and hidden-volume protection are the user's choices and
+                         * have no equivalent in the header, so those are recorded as used.
+                         */
+                        repo.updateMountOptions(
+                            id            = container.id,
+                            hashId        = hashId,
+                            algorithmId   = algId,
+                            readOnly      = readOnly,
+                            protectHidden = hasHidden
+                        )
                         mountLogger.log("Mount successful.")
                         // Only logged here; the banner is raised by
                         // ContainerScreenViewModel, on the screen this navigates to.
@@ -851,14 +869,23 @@ class VaultViewModel @Inject constructor(
                 return@launch
             }
             withContext(Dispatchers.Main) {
+                /*
+                 * A fingerprint unlock shows no options screen, so what this vault was last
+                 * opened with is all there is to go on. Before #148 these three were left at
+                 * their defaults, which meant a vault opened read-only by hand came back
+                 * writable, and every fingerprint mount paid for auto-detect again.
+                 */
                 mountContainer(
                     container                 = container,
                     password                  = creds.first,
                     keyfileData               = keyfileData.filterNotNull(),
                     pim                       = creds.second,
+                    algorithm                 = container.mountAlgorithmId,
+                    hashAlgorithm             = container.mountHashId,
                     protectHiddenPassword     = null,
                     protectHiddenKeyfileData  = emptyList(),
                     protectHiddenPim          = 0,
+                    readOnly                  = container.mountReadOnly,
                     onSuccess                 = onSuccess
                 )
             }

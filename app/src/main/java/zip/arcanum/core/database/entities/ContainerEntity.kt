@@ -21,6 +21,20 @@ data class ContainerEntity(
     @ColumnInfo(defaultValue = "0") val unmountOnLock: Boolean = false,
     @ColumnInfo(defaultValue = "0") val unmountOnBackground: Boolean = false,
     @ColumnInfo(defaultValue = "0") val externalAccessEnabled: Boolean = false,
+    /*
+     * What the last successful mount of this vault used (#148). Remembered so the next
+     * mount does not have to be told again - and so a fingerprint unlock, which shows no
+     * options screen at all, mounts the vault the same way the user set it up rather than
+     * falling back to the defaults. -1 in either algorithm means auto-detect, which is what
+     * every vault that predates this did, so the defaults leave them unchanged.
+     *
+     * Only preferences live here. The password, the PIM, the keyfiles and the hidden
+     * volume's password are secrets and stay in the biometric store.
+     */
+    @ColumnInfo(defaultValue = "-1") val mountHashId: Int = -1,
+    @ColumnInfo(defaultValue = "-1") val mountAlgorithmId: Int = -1,
+    @ColumnInfo(defaultValue = "0")  val mountReadOnly: Boolean = false,
+    @ColumnInfo(defaultValue = "0")  val mountProtectHidden: Boolean = false,
     @ColumnInfo(defaultValue = "") val safUri: String = "",
     @ColumnInfo(defaultValue = "0") val keySize: Int = 0,
     @ColumnInfo(defaultValue = "XTS") val encryptionMode: String = "XTS",

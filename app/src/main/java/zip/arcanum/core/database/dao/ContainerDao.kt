@@ -65,6 +65,19 @@ interface ContainerDao {
     @Query("UPDATE containers SET externalAccessEnabled = :value WHERE id = :id")
     suspend fun updateExternalAccessEnabled(id: String, value: Boolean)
 
+    /* Written after a mount succeeds, never when the options are merely typed: a wrong
+     * hash that failed must not become the one this vault is opened with from now on (#148). */
+    @Query(""" UPDATE containers SET mountHashId = :hashId, mountAlgorithmId = :algorithmId,
+                                   mountReadOnly = :readOnly, mountProtectHidden = :protectHidden
+              WHERE id = :id """)
+    suspend fun updateMountOptions(
+        id: String,
+        hashId: Int,
+        algorithmId: Int,
+        readOnly: Boolean,
+        protectHidden: Boolean
+    )
+
     @Query("SELECT * FROM containers")
     suspend fun getAllContainersOnce(): List<ContainerEntity>
 
