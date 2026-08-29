@@ -100,6 +100,11 @@ bool open_reader(int pdrv, Reader *out, bool quiet = false) {
     return true;
 }
 
+/* The wall clock, in whole seconds. Every timestamp this file writes comes from here:
+ * the library itself never reads a clock, so that the same inputs give the same image
+ * for the host stands. */
+uint32_t now_seconds() { return (uint32_t)time(nullptr); }
+
 /* Caller holds g_fatfs_mutex. Opens the writable handle over the same drive.
  * ext4_fs_close releases it. */
 bool open_writer(int pdrv, ext4_wfs *w) {
@@ -107,6 +112,10 @@ bool open_writer(int pdrv, ext4_wfs *w) {
         LOGE("ext4: could not open drive %d for writing", pdrv);
         return false;
     }
+    /* The clock the superblock's last-write time is stamped from (#156). The library
+     * never reads a clock itself - see the field's comment - so this is where the app,
+     * which has one, hands it over. */
+    w->now = now_seconds();
     return true;
 }
 
@@ -196,8 +205,6 @@ jint path_error(int rc) {
     default:               return ERR_FS;
     }
 }
-
-uint32_t now_seconds() { return (uint32_t)time(nullptr); }
 
 } // namespace
 

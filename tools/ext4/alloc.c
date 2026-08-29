@@ -46,7 +46,8 @@ static int usage(const char *me) {
                     "       %s <image> fill\n"
                     "       %s <image> free <block>... | -\n"
                     "       %s <image> ialloc <count>\n"
-                    "       %s <image> ifree <inode>...\n", me, me, me, me, me, me);
+                    "       %s <image> ifree <inode>...\n"
+                    "       %s <image> wtime <seconds>\n", me, me, me, me, me, me, me);
     return 2;
 }
 
@@ -240,7 +241,20 @@ int main(int argc, char **argv) {
     }
 
     int rc;
-    if (!strcmp(argv[2], "alloc")) {
+    if (!strcmp(argv[2], "wtime")) {
+        /*
+         * Writes the superblock with a last-write time of the caller's choosing (#156).
+         * The library never reads a clock, so a stand can name the second it expects and
+         * then ask dumpe2fs whether that is what landed - which is the only way to check
+         * a field no image comparison would ever notice.
+         */
+        char *end;
+        if (argc != 4) { ext4_fs_close(&fs); return usage(argv[0]); }
+        unsigned long when = strtoul(argv[3], &end, 10);
+        if (*end) { ext4_fs_close(&fs); return usage(argv[0]); }
+        fs.now = (uint32_t)when;
+        rc = ext4_fs_flush(&fs) ? 2 : 0;
+    } else if (!strcmp(argv[2], "alloc")) {
         if (argc != 4) { ext4_fs_close(&fs); return usage(argv[0]); }
         char *end;
         long count = strtol(argv[3], &end, 10);

@@ -354,6 +354,23 @@ int ext4_fs_open_io(ext4_wfs *fs, ext4_io io) {
 /* The superblock and nothing else, checksum restamped so the two cannot be
  * written apart. */
 static int write_superblock(ext4_wfs *fs) {
+    /*
+     * s_wtime, the last time anything wrote this filesystem (#156). It used to be set by
+     * mkfs and never again, so a vault written to yesterday still claimed it was last
+     * touched when it was created - harmless to e2fsck, which never reads it, and wrong
+     * to anything that does. A Linux driver moves it on every superblock write, which is
+     * exactly here.
+     *
+     * `now` is 0 unless a caller supplied one, and then this is skipped: the host stands
+     * compare images byte for byte, and a clock in the middle of them would make every
+     * run differ from the last. See the field's comment in ext4_alloc.h.
+     *
+     * Deliberately NOT s_mtime beside it. That field means "when this filesystem was last
+     * mounted", and nothing here ever mounts one in the kernel's sense - there is no
+     * mount count to keep either, and s_max_mnt_count is left at "never check". Writing a
+     * mount time we do not have would be inventing a fact rather than recording one.
+     */
+    if (fs->now) wr32(fs->sb + EXT4_SB_WTIME_OFF, fs->now);
     wr32(fs->sb + EXT4_SB_CSUM_OFF, ext4_superblock_csum(fs->sb));
     return ext4_io_pwrite(&fs->io, EXT4_SB_OFFSET, fs->sb, sizeof(fs->sb)) ? -1 : 0;
 }

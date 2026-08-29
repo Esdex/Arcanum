@@ -32,6 +32,8 @@ extern "C" {
 #define EXT4_SB_FIRST_DATA_BLK_OFF  0x14
 #define EXT4_SB_LOG_BLOCK_SIZE_OFF  0x18
 #define EXT4_SB_BLOCKS_PER_GRP_OFF  0x20
+/* s_wtime, the last time anything wrote this filesystem. See write_superblock. */
+#define EXT4_SB_WTIME_OFF           0x30
 /* s_state. Bit 0 is what every ext4 driver means by "this volume was put down
  * tidily"; a driver clears it while it has writes outstanding and sets it again
  * when they are all on disk, so finding it clear on open means the last session
@@ -116,6 +118,14 @@ typedef struct {
     uint32_t inode_size;
     uint32_t inodes_per_group;
     uint64_t blocks_count;
+    /*
+     * What to stamp the superblock's last-write time with, or 0 to leave that field
+     * exactly as it was found (#156). Passed in rather than read from the clock, for the
+     * same reason ext4_create_file takes its `when`: the same inputs must give the same
+     * image, or no test can compare one byte for byte. Every opener zeroes the struct, so
+     * a caller that does not care about the field does not have to know it exists.
+     */
+    uint32_t now;
 } ext4_wfs;
 
 /* Opens `path` for writing, backing the block callbacks with that file. This is
