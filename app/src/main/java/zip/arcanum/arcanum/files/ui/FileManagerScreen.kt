@@ -605,6 +605,39 @@ fun FileManagerScreen(
         )
     }
 
+    /*
+     * A name already taken in the destination (#157). Asked once per import, at the first
+     * collision, and the answer covers the rest - which the body text says out loud, since
+     * a dialog that quietly decides for a hundred more files would be worse than no dialog.
+     *
+     * Three choices need three buttons, so they are stacked rather than laid in a row where
+     * the third would be squeezed off a narrow screen. Dismissing counts as Skip: leaving it
+     * unanswered would strand the import waiting for an answer that is never coming.
+     */
+    state.conflictPrompt?.let { prompt ->
+        AppDialog(
+            onDismissRequest = { viewModel.answerConflict(FileManagerViewModel.ConflictChoice.SKIP) },
+            title = { Text(stringResource(R.string.import_conflict_title)) },
+            text  = { Text(stringResource(R.string.import_conflict_body, prompt.fileName)) },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = {
+                        viewModel.answerConflict(FileManagerViewModel.ConflictChoice.KEEP_BOTH)
+                    }) { Text(stringResource(R.string.import_conflict_keep_both)) }
+                    TextButton(onClick = {
+                        viewModel.answerConflict(FileManagerViewModel.ConflictChoice.SKIP)
+                    }) { Text(stringResource(R.string.import_conflict_skip)) }
+                    TextButton(onClick = {
+                        viewModel.answerConflict(FileManagerViewModel.ConflictChoice.REPLACE)
+                    }) {
+                        Text(stringResource(R.string.import_conflict_replace),
+                             color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        )
+    }
+
     renameTarget?.let { file ->
         RenameDialog(
             currentName = file.name,

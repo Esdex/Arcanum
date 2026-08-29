@@ -310,7 +310,11 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         backgroundColor = Color(0xFF16A34A),
         icon            = Icons.Outlined.CheckCircle,
         title           = ctx.resources.getQuantityString(R.plurals.notif_files_imported, this.count, this.count),
-        subtitle        = ctx.getString(R.string.notif_files_imported_subtitle)
+        /* When names were left alone, say how many rather than reporting only what landed:
+         * a count of 40 out of 112 is otherwise indistinguishable from a failure. */
+        subtitle        = if (this.skipped > 0)
+            ctx.resources.getQuantityString(R.plurals.notif_files_skipped, this.skipped, this.skipped)
+        else ctx.getString(R.string.notif_files_imported_subtitle)
     )
     is InAppNotification.FilesExported -> NotificationDisplayConfig(
         backgroundColor = Color(0xFF16A34A),

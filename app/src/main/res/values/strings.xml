@@ -59,6 +59,15 @@
     <string name="notif_clipboard_subtitle">Open the menu at the top to paste them</string>
     <string name="notif_already_here">Nothing to move</string>
     <string name="notif_already_here_subtitle">Those items are already in this folder</string>
+    <plurals name="notif_files_skipped">
+        <item quantity="one">%d file was already there and was left alone</item>
+        <item quantity="other">%d files were already there and were left alone</item>
+    </plurals>
+    <string name="import_conflict_title">This name is already taken</string>
+    <string name="import_conflict_body">A file called \"%1$s\" is already in this folder. Your answer applies to the rest of this import.</string>
+    <string name="import_conflict_skip">Skip</string>
+    <string name="import_conflict_replace">Replace</string>
+    <string name="import_conflict_keep_both">Keep both</string>
     <string name="notif_locked_refused">Nothing was imported</string>
     <string name="notif_locked_refused_body">Arcanum locked while you were choosing, so it did not write anything into the vault. Try again.</string>
     <string name="notif_details_need_mount">Error</string>

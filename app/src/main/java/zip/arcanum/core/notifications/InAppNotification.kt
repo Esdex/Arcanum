@@ -184,7 +184,8 @@ sealed class InAppNotification {
         override val priority = 1
     }
 
-    data class FilesImported(val count: Int) : InAppNotification() {
+    /** [skipped] counts names that were already taken and left alone at the user's word (#157). */
+    data class FilesImported(val count: Int, val skipped: Int = 0) : InAppNotification() {
         override val priority = 1
     }
 

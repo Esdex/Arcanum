@@ -14,6 +14,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -81,6 +82,77 @@ class FileManagerViewModel @Inject constructor(
      * is here because "rare" is not the same as "cannot happen", and the thing it prevents
      * is writing to a vault behind the user's back.
      */
+    /*
+     * Name conflicts during an import (#157).
+     *
+     * The question is asked once per operation, at the first collision, and the answer
+     * covers the rest of the batch. Asking per file would mean a thousand taps on a
+     * thousand-file folder, which is a feature nobody would use; being able to answer
+     * differently for different files inside one import is deliberately not offered, and
+     * the dialog says so.
+     *
+     * The check happens at the first collision rather than by scanning ahead: a flat list
+     * of files could be checked up front with one listing, but a folder import discovers
+     * its tree as it walks, and one mechanism that works for both beats two that each
+     * work for one.
+     *
+     * Directories are not asked about. An imported folder whose name already exists merges
+     * into it, which is what every file manager does and what makes the file-level question
+     * the meaningful one.
+     */
+    private var conflictAnswer: CompletableDeferred<ConflictChoice>? = null
+    private var conflictPolicy: ConflictChoice? = null
+
+    /* Names already in each destination directory, read once per directory per operation
+     * and kept up to date as files land, so a second file cannot collide with the first. */
+    private val destinationNames = mutableMapOf<String, MutableSet<String>>()
+
+    private fun beginConflictTracking() {
+        conflictPolicy = null
+        destinationNames.clear()
+    }
+
+    private fun namesIn(handle: Long, dir: String): MutableSet<String> =
+        destinationNames.getOrPut(dir) {
+            (engine.listFilesOrNull(handle, dir) ?: emptyArray())
+                .map { it.name }
+                .toMutableSet()
+        }
+
+    /**
+     * The name to write `name` under in `dir`, or null when the user chose to skip it.
+     * Suspends on the first collision of an operation while the answer is given.
+     */
+    private suspend fun nameToWrite(handle: Long, dir: String, name: String): String? {
+        val taken = namesIn(handle, dir)
+        if (name !in taken) {
+            taken.add(name)
+            return name
+        }
+        val choice = conflictPolicy ?: askAboutConflict(name)
+        return when (choice) {
+            ConflictChoice.SKIP      -> null
+            ConflictChoice.REPLACE   -> name          /* the write truncates what is there */
+            ConflictChoice.KEEP_BOTH -> freeName(name, taken).also { taken.add(it) }
+        }
+    }
+
+    private suspend fun askAboutConflict(name: String): ConflictChoice {
+        val answer = CompletableDeferred<ConflictChoice>()
+        conflictAnswer = answer
+        _state.update { it.copy(conflictPrompt = ConflictPrompt(name)) }
+        val choice = answer.await()
+        conflictAnswer = null
+        conflictPolicy = choice
+        _state.update { it.copy(conflictPrompt = null) }
+        return choice
+    }
+
+    /** Called from the dialog. The answer applies to the whole of the current operation. */
+    fun answerConflict(choice: ConflictChoice) {
+        conflictAnswer?.complete(choice)
+    }
+
     private fun refuseIfLocked(): Boolean {
         if (!sessionState.isLocked) return false
         _state.update { it.copy(pendingNotification = InAppNotification.OperationRefusedLocked) }
@@ -112,7 +184,9 @@ class FileManagerViewModel @Inject constructor(
 
     override fun onCleared() {
         /* The screen can go while a batch is still running. Leaving the counter raised
-         * would keep the vault unlocked for the life of the process. */
+         * would keep the vault unlocked for the life of the process, and an import left
+         * waiting on a dialog nobody can answer any more would do the same. */
+        conflictAnswer?.complete(ConflictChoice.SKIP)
         mirrorOperationState(false)
         super.onCleared()
     }
@@ -154,6 +228,8 @@ class FileManagerViewModel @Inject constructor(
         val pendingNotification: InAppNotification? = null,
         val isOperationInProgress: Boolean = false,
         val operationMessage: String? = null,
+        /* Non-null while an import is stopped waiting for an answer about a name (#157). */
+        val conflictPrompt: ConflictPrompt? = null,
         val importProgress: ImportProgress? = null,
         val isReadOnly: Boolean = false,
         val thumbnails: Map<String, android.graphics.Bitmap> = emptyMap()
@@ -169,6 +245,18 @@ class FileManagerViewModel @Inject constructor(
      * [fraction] is null when the provider does not report a size, and the bar then falls
      * back to running without a position rather than inventing one.
      */
+    /**
+     * What to do about a name that is already taken in the destination (#157).
+     *
+     * Importing used to write straight over whatever was there, silently and with nothing
+     * to undo it - while copying inside the vault made a numbered duplicate. One app, two
+     * answers, and the quiet one destroyed data.
+     */
+    enum class ConflictChoice { SKIP, REPLACE, KEEP_BOTH }
+
+    /** The name that collided, while the operation waits for an answer about it. */
+    data class ConflictPrompt(val fileName: String)
+
     data class ImportProgress(
         val fileName: String,
         val index: Int,
@@ -959,7 +1047,9 @@ class FileManagerViewModel @Inject constructor(
 
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isOperationInProgress = true) }
+            beginConflictTracking()
             var count = 0
+            var skipped = 0
             var hiddenProtected = false
             /* Null while everything is fine; set to the first failing native
                code so the banner can say what actually went wrong (#114). */
@@ -970,7 +1060,10 @@ class FileManagerViewModel @Inject constructor(
                 if (hiddenProtected || failureCode != null) break
                 try {
                     val rawName = getFileNameFromUri(context, uri) ?: continue
-                    val name = File(rawName).name.ifEmpty { continue }
+                    val original = File(rawName).name.ifEmpty { continue }
+                    /* May wait here for an answer about a name already taken (#157). */
+                    val name = nameToWrite(handle, s.currentPath, original)
+                    if (name == null) { skipped++; continue }
                     val destPath = buildDestinationPath(s.currentPath, name)
                     val declaredSize = uriSize(context, uri)
                     val progress = ImportProgress(
@@ -1038,7 +1131,8 @@ class FileManagerViewModel @Inject constructor(
                 pendingNotification   = when {
                     hiddenProtected      -> InAppNotification.HiddenVolumeWriteProtection
                     failureCode != null  -> InAppNotification.ImportFailed(importFailureReason(failureCode))
-                    count > 0            -> InAppNotification.FilesImported(count)
+                    count > 0            -> InAppNotification.FilesImported(count, skipped)
+                    skipped > 0          -> InAppNotification.FilesImported(0, skipped)
                     else                 -> null
                 }
             ) }
@@ -1059,6 +1153,7 @@ class FileManagerViewModel @Inject constructor(
 
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isOperationInProgress = true) }
+            beginConflictTracking()
 
             val rootDocId  = DocumentsContract.getTreeDocumentId(treeUri)
             val rootDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootDocId)
@@ -1073,7 +1168,7 @@ class FileManagerViewModel @Inject constructor(
             runCatching { engine.createDirectory(handle, destPath) }
 
             val importedMedia = mutableListOf<Pair<String, Long>>()
-            val (count, hiddenProtected, failureCode) =
+            val (count, skipped, hiddenProtected, failureCode) =
                 importFolderRecursive(context, handle, treeUri, rootDocId, destPath, importedMedia)
 
             if (deleteAfterImport && !hiddenProtected && failureCode == null && count > 0)
@@ -1087,7 +1182,8 @@ class FileManagerViewModel @Inject constructor(
                 pendingNotification   = when {
                     hiddenProtected      -> InAppNotification.HiddenVolumeWriteProtection
                     failureCode != null  -> InAppNotification.ImportFailed(importFailureReason(failureCode))
-                    count > 0            -> InAppNotification.FilesImported(count)
+                    count > 0            -> InAppNotification.FilesImported(count, skipped)
+                    skipped > 0          -> InAppNotification.FilesImported(0, skipped)
                     else                 -> null
                 }
             ) }
@@ -1119,6 +1215,14 @@ class FileManagerViewModel @Inject constructor(
     private fun sanitizeEntryName(name: String): String? =
         File(name).name.takeUnless { it.isEmpty() || it == "." || it == ".." }
 
+    /* Four things come back from a walk now, which is one more than a Triple should carry. */
+    private data class FolderImport(
+        val count: Int,
+        val skipped: Int,
+        val hiddenProtected: Boolean,
+        val failureCode: Int?
+    )
+
     private suspend fun importFolderRecursive(
         context: Context,
         handle: Long,
@@ -1126,7 +1230,7 @@ class FileManagerViewModel @Inject constructor(
         docId: String,
         destPath: String,
         importedMedia: MutableList<Pair<String, Long>> = mutableListOf()
-    ): Triple<Int, Boolean, Int?> {
+    ): FolderImport {
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
         val projection  = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -1139,6 +1243,7 @@ class FileManagerViewModel @Inject constructor(
             DocumentsContract.Document.COLUMN_LAST_MODIFIED
         )
         var count           = 0
+        var skipped         = 0
         var hiddenProtected = false
         /* First failing native code, or null while everything succeeded. */
         var failureCode: Int? = null
@@ -1159,17 +1264,23 @@ class FileManagerViewModel @Inject constructor(
                 // COLUMN_DISPLAY_NAME before using it as an in-vault path (defense-in-depth;
                 // the single-file import path sanitizes the same way).
                 val safeName    = sanitizeEntryName(childName) ?: continue
-                val childDest   = buildDestinationPath(destPath, safeName)
 
                 try {
                     if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                        /* A folder that is already there is merged into, not asked about. */
+                        val childDest = buildDestinationPath(destPath, safeName)
                         runCatching { engine.createDirectory(handle, childDest) }
-                        val (sub, subProtected, subFailure) =
+                        val sub =
                             importFolderRecursive(context, handle, treeUri, childDocId, childDest, importedMedia)
-                        count += sub
-                        if (subProtected) hiddenProtected = true
-                        if (subFailure != null) failureCode = subFailure
+                        count += sub.count
+                        skipped += sub.skipped
+                        if (sub.hiddenProtected) hiddenProtected = true
+                        if (sub.failureCode != null) failureCode = sub.failureCode
                     } else {
+                        /* May wait here for an answer about a name already taken (#157). */
+                        val writeName = nameToWrite(handle, destPath, safeName)
+                        if (writeName == null) { skipped++; continue }
+                        val childDest = buildDestinationPath(destPath, writeName)
                         val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
                         val childSize = if (sizeCol >= 0 && !cursor.isNull(sizeCol))
                             cursor.getLong(sizeCol) else 0L
@@ -1230,7 +1341,7 @@ class FileManagerViewModel @Inject constructor(
                 } catch (_: Exception) { failureCode = VeraCryptEngine.ERR_FS }
             }
         }
-        return Triple(count, hiddenProtected, failureCode)
+        return FolderImport(count, skipped, hiddenProtected, failureCode)
     }
 
     fun exportSelected(context: Context, treeUri: android.net.Uri) {
