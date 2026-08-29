@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
@@ -43,6 +44,7 @@ import kotlinx.coroutines.coroutineScope
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.core.utils.MediaExtensions
 import zip.arcanum.core.database.dao.MediaFileDao
+import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.notifications.ImportFailureReason
 import zip.arcanum.core.notifications.InAppNotification
@@ -64,8 +66,40 @@ class FileManagerViewModel @Inject constructor(
     private val thumbnailManager: ThumbnailManager,
     private val mediaScanner: MediaScanner,
     private val mediaFileDao: MediaFileDao,
-    private val appPrefs: AppPreferences
+    private val appPrefs: AppPreferences,
+    private val idleMonitor: IdleMonitor
 ) : ViewModel() {
+
+    /*
+     * A batch operation - import, export, paste, move, delete - is work the app is doing
+     * for the user, and it has to be visible as such outside this screen: the idle clock
+     * must not age out during one, and nothing may unmount the volume underneath it. See
+     * IdleMonitor.
+     *
+     * It is learned from `isOperationInProgress` rather than by bracketing each operation
+     * by hand, because that flag is already load-bearing for the progress overlay - every
+     * operation must set it to be visible at all - so a new operation cannot be added and
+     * forget this. Bracketing seven call sites by hand could.
+     */
+    private var markedBusy = false
+
+    private fun mirrorOperationState(busy: Boolean) {
+        if (busy && !markedBusy) {
+            idleMonitor.operationStarted()
+            markedBusy = true
+        } else if (!busy && markedBusy) {
+            idleMonitor.operationFinished()
+            markedBusy = false
+        }
+    }
+
+    override fun onCleared() {
+        /* The screen can go while a batch is still running. Leaving the counter raised
+         * would keep the vault unlocked for the life of the process. */
+        mirrorOperationState(false)
+        super.onCleared()
+    }
+
 
     /** Has the explanation before the photo-location request already been shown once (#149). */
     val mediaLocationPromptShown: StateFlow<Boolean> = appPrefs.mediaLocationPromptShown.stateIn(
@@ -127,6 +161,16 @@ class FileManagerViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(FileManagerState())
     val state = _state.asStateFlow()
+
+    /* Below _state on purpose: an init block runs in declaration order, and reading the
+     * flow from above it collects a field that is still null. */
+    init {
+        viewModelScope.launch {
+            _state.map { it.isOperationInProgress }
+                .distinctUntilChanged()
+                .collect { mirrorOperationState(it) }
+        }
+    }
 
     val mountedContainers: kotlinx.coroutines.flow.StateFlow<List<Container>> = repo.getAllContainers()
         .map { list -> list.filter { it.isMounted } }

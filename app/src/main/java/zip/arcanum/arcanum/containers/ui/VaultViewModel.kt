@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
@@ -44,6 +45,7 @@ import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.BiometricCryptoManager
+import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.crypto.CryptoError
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
@@ -65,6 +67,7 @@ class VaultViewModel @Inject constructor(
     private val mountLogger: MountLogger,
     private val prefs: AppPreferences,
     private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
+    private val idleMonitor: IdleMonitor,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -157,10 +160,14 @@ class VaultViewModel @Inject constructor(
     }
 
 
-    private val screenOffReceiver = object : BroadcastReceiver() {
+    /* SCREEN_ON matters as much as SCREEN_OFF: a screen-off unmount now waits for any
+     * operation to finish, and if the screen comes back before it does, the reason for
+     * unmounting is gone. */
+    private val screenStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
-            if (intent.action == Intent.ACTION_SCREEN_OFF) {
-                unmountContainersOnStop(isLocked = true)
+            when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> unmountContainersOnStop(isLocked = true)
+                Intent.ACTION_SCREEN_ON  -> pendingUnmountJob?.cancel()
             }
         }
     }
@@ -169,10 +176,23 @@ class VaultViewModel @Inject constructor(
         override fun onStop(owner: LifecycleOwner) {
             unmountContainersOnStop(isLocked = false)
         }
+
+        /* Back in the foreground: whatever the background unmount was waiting to do, it
+         * is no longer what the user asked for. */
+        override fun onStart(owner: LifecycleOwner) {
+            pendingUnmountJob?.cancel()
+        }
     }
 
+    /* An auto-unmount that has been put off until the work in flight is done. Only one is
+     * ever pending: a newer trigger replaces an older one. */
+    private var pendingUnmountJob: Job? = null
+
     init {
-        context.registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
+        context.registerReceiver(
+            screenStateReceiver,
+            IntentFilter(Intent.ACTION_SCREEN_OFF).apply { addAction(Intent.ACTION_SCREEN_ON) }
+        )
         ProcessLifecycleOwner.get().lifecycle.addObserver(appBackgroundObserver)
         viewModelScope.launch {
             val prefs = context.vaultDisplayDataStore.data.first()
@@ -194,7 +214,7 @@ class VaultViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         ProcessLifecycleOwner.get().lifecycle.removeObserver(appBackgroundObserver)
-        context.unregisterReceiver(screenOffReceiver)
+        context.unregisterReceiver(screenStateReceiver)
     }
 
     private fun persistSortState(state: SortState) {
@@ -741,13 +761,26 @@ class VaultViewModel @Inject constructor(
         // can fire during the mount animation or navigation transition, causing the freshly-mounted
         // container to be unmounted immediately. Screen-off (isLocked=true) is not affected.
         if (!isLocked && System.currentTimeMillis() - lastMountTimeMillis < 3_000L) return
-        viewModelScope.launch {
+        pendingUnmountJob?.cancel()
+        pendingUnmountJob = viewModelScope.launch {
+            // Flush first, before any waiting and regardless of the settings below. The USB
+            // backend holds writes back to merge them, and Android kills backgrounded apps
+            // without warning - those bytes exist nowhere else. Whether the vault should also
+            // be closed is a choice; whether it should lose data is not.
             repo.getAllContainersRaw().first().filter { it.isMounted }.forEach { c ->
-                // Flush first, and regardless of the settings below. The USB backend holds
-                // writes back to merge them, and Android kills backgrounded apps without
-                // warning - those bytes exist nowhere else. Whether the vault should also
-                // be closed is a choice; whether it should lose data is not.
                 repo.getContainerHandle(c.id)?.let { cryptoEngine.flushContainer(it) }
+            }
+
+            // Only an explicit Unmount or a panic PIN may cut an operation short. Backgrounding
+            // and screen-off must not: an import, a paste, a delete or a move would be torn off
+            // mid-write, and opening the system file picker is itself a trip to the background.
+            // So the unmount waits the work out. If the user comes back, or the screen does,
+            // this job is cancelled and the vault stays as it was. See IdleMonitor.
+            while (idleMonitor.isBusy) delay(1_000L)
+
+            // Re-read rather than reusing the list from before the wait: what is mounted, and
+            // what each vault asks for, may have changed while we waited.
+            repo.getAllContainersRaw().first().filter { it.isMounted }.forEach { c ->
                 if (c.unmountOnBackground || (isLocked && c.unmountOnLock)) {
                     val handle = repo.getContainerHandle(c.id)
                     if (handle != null) closeByHandle(handle)
