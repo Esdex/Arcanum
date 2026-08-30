@@ -69,6 +69,8 @@
 #include "ext4_path.h"
 #include "ext4_session.h"
 
+#include <sys/types.h>
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -156,6 +158,8 @@ static ext4_io make_io(img *m) {
 typedef struct {
     img          m;
     int          hold;
+    int          verify_desc;
+    int          desc_mismatch;
     ext4_session *s;        /* hold mode only */
 
     ext4_fs      r_local;   /* reopen mode only */
@@ -206,6 +210,31 @@ static int get_writer(app *a, uint32_t now, ext4_wfs **out) {
 }
 
 /*
+ * The descriptor table as the disk holds it, against the one the handle holds in memory
+ * (#160).
+ *
+ * A flush now writes only the blocks of the table that changed since the last one, so
+ * the failure to fear is a change that is never written: the counters on disk drift from
+ * the ones the driver is working with, and nothing says so until e2fsck is run - or
+ * until an allocator hands out a block it thinks is free. This reads the table back
+ * through the plain file, not through the ext4_io the writer uses, so the check does not
+ * share a path with the thing it is checking.
+ *
+ * Only meaningful after a flush. A torn operation is supposed to leave the two apart.
+ */
+static int desc_matches_disk(app *a, const ext4_wfs *w) {
+    size_t   len = (size_t)w->groups * w->desc_size;
+    uint64_t at  = (uint64_t)(w->first_data_block + 1) * w->block_size;
+    uint8_t *on_disk = malloc(len);
+    if (!on_disk) return -1;
+    int same = 0;
+    if (!fseeko(a->m.fp, (off_t)at, SEEK_SET) && fread(on_disk, 1, len, a->m.fp) == len)
+        same = memcmp(on_disk, w->desc, len) == 0;
+    free(on_disk);
+    return same ? 0 : -1;
+}
+
+/*
  * The end of an operation. `ok` false is the torn case: the volume keeps its
  * needs-a-check mark, and - the point of this stand - nothing is told to forget
  * anything. In `reopen` the handles go because that mode has no others; in `hold`
@@ -215,7 +244,14 @@ static void end_op(app *a, int ok, int used_writer) {
     /* The handle this operation used, never asked for again: asking is what opens
      * a fresh one after a poisoning, and a mark_clean on a fresh handle would put
      * "everything is down" on a volume that has a residual. */
-    if (used_writer && ok && a->w_cur) ext4_fs_mark_clean(a->w_cur);
+    if (used_writer && ok && a->w_cur) {
+        ext4_fs_mark_clean(a->w_cur);
+        if (a->verify_desc && desc_matches_disk(a, a->w_cur)) {
+            fprintf(stderr, "  the descriptor table on disk does not match the one in "
+                            "memory - a change was never flushed\n");
+            a->desc_mismatch++;
+        }
+    }
     a->w_cur = NULL;
     if (!a->hold) {
         if (a->w_local_open) { ext4_fs_close(&a->w_local); a->w_local_open = 0; }
@@ -443,13 +479,16 @@ static int run_line(app *a, char *line, int index, int *failures) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 4 || (strcmp(argv[2], "hold") && strcmp(argv[2], "reopen"))) {
-        fprintf(stderr, "usage: %s <image> hold|reopen <script>\n", argv[0]);
+    int verify = 0;
+    if (argc == 5 && !strcmp(argv[4], "--verify-desc")) verify = 1;
+    if ((argc != 4 && !verify) || (strcmp(argv[2], "hold") && strcmp(argv[2], "reopen"))) {
+        fprintf(stderr, "usage: %s <image> hold|reopen <script> [--verify-desc]\n", argv[0]);
         return 2;
     }
     app a;
     memset(&a, 0, sizeof(a));
-    a.hold = !strcmp(argv[2], "hold");
+    a.hold        = !strcmp(argv[2], "hold");
+    a.verify_desc = verify;
     a.m.rd_block_size = 1024;
     a.m.fp = fopen(argv[1], "r+b");
     if (!a.m.fp) { perror("open image"); return 2; }
@@ -479,7 +518,8 @@ int main(int argc, char **argv) {
     else if (a.w_local_open) ext4_fs_close(&a.w_local);
     fclose(a.m.fp);
 
-    printf("mode=%s ops=%d failed=%d reader_opens=%u writer_opens=%u reads=%ld writes=%ld\n",
-           argv[2], index, failures, ro, wo, a.m.reads, a.m.writes);
-    return bad ? 1 : 0;
+    printf("mode=%s ops=%d failed=%d reader_opens=%u writer_opens=%u reads=%ld writes=%ld "
+           "desc_mismatch=%d\n",
+           argv[2], index, failures, ro, wo, a.m.reads, a.m.writes, a.desc_mismatch);
+    return bad || a.desc_mismatch ? 1 : 0;
 }

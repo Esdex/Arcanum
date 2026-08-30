@@ -187,11 +187,20 @@ $CC $FLAGS -o "$WORK/mkfs" "$HERE/mkfs.c" $(L ext4_mkfs.c ext4_io.c ext4_csum.c)
 run "held handles: the whole stand" "$HERE/sessioncheck.py" \
     --mkfs "$WORK/mkfs" --session "$WORK/session"
 
+# The descriptor flush (#160) reads and writes runs of a heap buffer whose length comes
+# from the image's own geometry, and compares it against a second buffer of the same
+# size. A run computed one block too long is a read past the end of both - which the
+# functional stand can miss, because the bytes past a malloc are usually still there.
+echo
+echo "the descriptor flush under the sanitizers:"
+run "descriptor flush: the whole stand" "$HERE/desccheck.py" \
+    --mkfs "$WORK/mkfs" --session "$WORK/session"
+
 echo
 if [ "$fail" -ne 0 ]; then
     echo "RESULT: a sanitizer fired, or a run could not be made - see above"
     exit 1
 fi
 echo "RESULT: $ran driver runs across 4 geometries, an indexed directory, the block"
-echo "        cache and a mount's held handles, no ASan or UBSan report, every image"
-echo "        e2fsck-clean"
+echo "        cache, a mount's held handles and the descriptor flush, no ASan or UBSan"
+echo "        report, every image e2fsck-clean"

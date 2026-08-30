@@ -106,6 +106,18 @@ typedef struct {
     FILE    *host_fp;
     uint8_t  sb[1024];
     uint8_t *desc;             /* the whole descriptor table, held in memory */
+    /*
+     * What the descriptor table looked like on disk after the last successful flush.
+     *
+     * A flush writes only the blocks of `desc` that differ from this and then brings it
+     * up to date, which is what stops one changed counter from rewriting the whole table
+     * (#160). It is a shadow copy rather than a set of dirty flags on purpose: six places
+     * in two files take a mutable pointer into `desc`, and any new one would have to
+     * remember to raise a flag. Nothing has to remember a memcmp. The cost is one more
+     * copy of the table - 32 KB on a 64 GB volume - against writing it in full on every
+     * operation.
+     */
+    uint8_t *desc_shadow;
     uint8_t *bitmap;           /* the block bitmap of group `bitmap_group` */
     int64_t  bitmap_group;     /* which group `bitmap` holds, or -1 for none */
     uint32_t block_size;

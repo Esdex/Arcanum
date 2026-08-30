@@ -103,6 +103,7 @@ run allocfailcheck.py ./allocfailcheck.py
 run cachecheck.py    ./cachecheck.py
 run wtimecheck.py    ./wtimecheck.py
 run sessioncheck.py  ./sessioncheck.py
+run desccheck.py     ./desccheck.py
 run asancheck.sh     ./asancheck.sh
 run fuzz.sh          ./fuzz.sh
 

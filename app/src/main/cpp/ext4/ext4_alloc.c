@@ -311,14 +311,18 @@ static int fs_finish_open(ext4_wfs *fs) {
                              fs->blocks_per_group - 1) / fs->blocks_per_group);
     fs->bitmap_bytes = fs->blocks_per_group / 8;
 
-    fs->desc   = malloc((size_t)fs->groups * fs->desc_size);
-    fs->bitmap = malloc(fs->bitmap_bytes);
-    if (!fs->desc || !fs->bitmap) goto fail;
+    fs->desc        = malloc((size_t)fs->groups * fs->desc_size);
+    fs->desc_shadow = malloc((size_t)fs->groups * fs->desc_size);
+    fs->bitmap      = malloc(fs->bitmap_bytes);
+    if (!fs->desc || !fs->desc_shadow || !fs->bitmap) goto fail;
     fs->bitmap_group = -1;   /* nothing loaded yet; group 0 is a valid value */
 
     uint64_t desc_at = (fs->first_data_block + 1) * (uint64_t)fs->block_size;
     size_t desc_len = (size_t)fs->groups * fs->desc_size;
     if (ext4_io_pread(&fs->io, desc_at, fs->desc, desc_len)) goto fail;
+    /* The shadow is what the disk holds, and this is the moment the two are known to
+     * agree. See the field's comment in ext4_alloc.h. */
+    memcpy(fs->desc_shadow, fs->desc, desc_len);
 
     EXT4_LOGI("opened: block_size=%u blocks=%llu groups=%u inodes/group=%u "
               "desc_size=%u", fs->block_size, (unsigned long long)fs->blocks_count,
@@ -375,11 +379,52 @@ static int write_superblock(ext4_wfs *fs) {
     return ext4_io_pwrite(&fs->io, EXT4_SB_OFFSET, fs->sb, sizeof(fs->sb)) ? -1 : 0;
 }
 
-int ext4_fs_flush(ext4_wfs *fs) {
-    uint64_t desc_at = (fs->first_data_block + 1) * (uint64_t)fs->block_size;
-    size_t desc_len = (size_t)fs->groups * fs->desc_size;
-    if (ext4_io_pwrite(&fs->io, desc_at, fs->desc, desc_len)) return -1;
+/*
+ * The descriptor table, but only the blocks of it that changed (#160).
+ *
+ * It used to write the table whole, every time, and it is written at the end of every
+ * high-level operation and again by mark_clean - so renaming a file cost 16 KB of
+ * descriptors on a 64 GB volume, twice, for a change to one 64-byte entry. The cost
+ * followed the size of the volume rather than the size of the change: 23 block writes to
+ * create an empty file at 64 GB against 9 at 256 MB.
+ *
+ * The table starts on a block boundary (it is the block after the superblock's), so the
+ * chunks below are whole blocks, apart from a possibly partial last one that
+ * ext4_io_pwrite read-modify-writes. Neighbouring changed blocks are coalesced into one
+ * call, because two adjacent descriptors usually change together and one write of two
+ * blocks beats two of one.
+ *
+ * The shadow is advanced only over a run that was actually written. A failed write
+ * therefore leaves those bytes marked as still owed, and the next flush tries them
+ * again - which matters because the caller may be about to abandon the operation, and
+ * an over-optimistic shadow would silently drop the change instead.
+ */
+static int flush_descriptors(ext4_wfs *fs) {
+    uint64_t desc_at  = (fs->first_data_block + 1) * (uint64_t)fs->block_size;
+    size_t   desc_len = (size_t)fs->groups * fs->desc_size;
+    size_t   bs       = fs->block_size;
+    size_t   i        = 0;
 
+    while (i < desc_len) {
+        size_t span = desc_len - i < bs ? desc_len - i : bs;
+        if (memcmp(fs->desc + i, fs->desc_shadow + i, span) == 0) {
+            i += span;
+            continue;
+        }
+        size_t run = i;
+        while (i < desc_len) {
+            span = desc_len - i < bs ? desc_len - i : bs;
+            if (memcmp(fs->desc + i, fs->desc_shadow + i, span) != 0) i += span;
+            else break;
+        }
+        if (ext4_io_pwrite(&fs->io, desc_at + run, fs->desc + run, i - run)) return -1;
+        memcpy(fs->desc_shadow + run, fs->desc + run, i - run);
+    }
+    return 0;
+}
+
+int ext4_fs_flush(ext4_wfs *fs) {
+    if (flush_descriptors(fs)) return -1;
     if (write_superblock(fs)) return -1;
     return ext4_io_flush(&fs->io);
 }
@@ -409,6 +454,7 @@ int ext4_fs_mark_clean(ext4_wfs *fs) {
 void ext4_fs_close(ext4_wfs *fs) {
     if (fs->host_fp) fclose(fs->host_fp);
     free(fs->desc);
+    free(fs->desc_shadow);
     free(fs->bitmap);
     memset(fs, 0, sizeof(*fs));
 }
