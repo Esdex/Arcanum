@@ -196,11 +196,20 @@ echo "the descriptor flush under the sanitizers:"
 run "descriptor flush: the whole stand" "$HERE/desccheck.py" \
     --mkfs "$WORK/mkfs" --session "$WORK/session"
 
+# The run allocator (#161) sets and clears bit ranges computed from an image's own
+# geometry, in a buffer sized from it. A run extended one bit past the group, or a
+# release addressing the wrong group's bitmap, is a write past the end of that
+# buffer - and the functional stand can pass right over it.
+echo
+echo "the run allocator under the sanitizers:"
+run "run allocator: the whole stand" "$HERE/runcheck.py" \
+    --mkfs "$WORK/mkfs" --session "$WORK/session"
+
 echo
 if [ "$fail" -ne 0 ]; then
     echo "RESULT: a sanitizer fired, or a run could not be made - see above"
     exit 1
 fi
 echo "RESULT: $ran driver runs across 4 geometries, an indexed directory, the block"
-echo "        cache, a mount's held handles and the descriptor flush, no ASan or UBSan"
-echo "        report, every image e2fsck-clean"
+echo "        cache, a mount's held handles, the descriptor flush and the run allocator,"
+echo "        no ASan or UBSan report, every image e2fsck-clean"

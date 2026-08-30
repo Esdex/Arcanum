@@ -423,7 +423,12 @@ static int flush_descriptors(ext4_wfs *fs) {
     return 0;
 }
 
+/* Defined with the allocator, where the reservation it gives back is taken (#161). */
+static int release_reservation(ext4_wfs *fs);
+
 int ext4_fs_flush(ext4_wfs *fs) {
+    /* First, so the counters and the bitmap written below already account for it. */
+    if (release_reservation(fs)) return -1;
     if (flush_descriptors(fs)) return -1;
     if (write_superblock(fs)) return -1;
     return ext4_io_flush(&fs->io);
@@ -600,47 +605,158 @@ static int init_block_group(ext4_wfs *fs, uint32_t g, uint8_t *d) {
  * Starting part way in, as a goal search does, can legitimately find nothing while
  * free blocks sit behind the starting point.
  */
-static int64_t alloc_in_group(ext4_wfs *fs, uint32_t g, uint32_t start_bit) {
+static int64_t alloc_in_group(ext4_wfs *fs, uint32_t g, uint32_t start_bit,
+                              uint32_t want, uint32_t *got) {
     uint8_t *d = group_desc(fs, g);
-    if (group_free_blocks(fs, d) == 0) return ALLOC_NONE;
+    uint32_t avail = group_free_blocks(fs, d);
+    if (avail == 0) return ALLOC_NONE;
     if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_BLOCK_UNINIT) {
         /* No bitmap on disk yet. Build one; a group that cannot be modelled is
          * skipped rather than guessed at, so this stays ALLOC_NONE. */
         if (init_block_group(fs, g, d)) return ALLOC_NONE;
+        avail = group_free_blocks(fs, d);
     } else if (load_bitmap(fs, g, d)) {
         return ALLOC_CORRUPT;
     }
+    /* Never take more than the descriptor says is here. On a volume whose free
+     * count disagrees with its bitmap this is what keeps the subtraction below
+     * from wrapping; taking one block at a time used to hide the question. */
+    if (want > avail) want = avail;
+    if (want == 0) return ALLOC_NONE;
 
     uint32_t limit = group_block_count(fs, g);
     for (uint32_t bit = start_bit; bit < limit; bit++) {
         if (fs->bitmap[bit >> 3] & (1u << (bit & 7))) continue;
 
-        fs->bitmap[bit >> 3] |= (uint8_t)(1u << (bit & 7));   /* 1 */
+        /* How far the free run reaches from here, capped by what was asked for and
+         * by the end of the group. A run is contiguous by construction, which is
+         * what lets the caller hand it out without touching the bitmap again. */
+        uint32_t n = 0;
+        while (n < want && bit + n < limit &&
+               !(fs->bitmap[(bit + n) >> 3] & (1u << ((bit + n) & 7))))
+            n++;
+
+        for (uint32_t k = 0; k < n; k++)                      /* 1 */
+            fs->bitmap[(bit + k) >> 3] |= (uint8_t)(1u << ((bit + k) & 7));
         if (write_bitmap(fs, d)) return ALLOC_CORRUPT;
         store_bitmap_csum(fs, d);                             /* 2 */
-        group_set_free_blocks(fs, d, group_free_blocks(fs, d) - 1);  /* 3 */
+        group_set_free_blocks(fs, d, group_free_blocks(fs, d) - n);  /* 3 */
         store_desc_csum(fs, g, d);                            /* 4 */
-        sb_set_free_blocks(fs, ext4_sb_free_blocks(fs) - 1);   /* 5 */
+        sb_set_free_blocks(fs, ext4_sb_free_blocks(fs) - n);   /* 5 */
 
+        if (got) *got = n;
         return (int64_t)((uint64_t)fs->first_data_block +
                          (uint64_t)g * fs->blocks_per_group + bit);
     }
     return start_bit == 0 ? ALLOC_CORRUPT : ALLOC_NONE;
 }
 
+/*
+ * Gives back the part of a reserved run that nobody took.
+ *
+ * Called before every flush, so a run never outlives the operation that opened it,
+ * and before a new run is started, so two can never be outstanding at once. A
+ * handle closed without a flush - which only happens to one already being thrown
+ * away - leaves the tail marked, and that is a leak of the kind e2fsck repairs
+ * without cost, the same one a pulled cable has always left behind.
+ */
+static int release_reservation(ext4_wfs *fs) {
+    if (fs->resv_left == 0) return 0;
+
+    uint32_t g = fs->resv_group;
+    uint8_t *d = group_desc(fs, g);
+    if (load_bitmap(fs, g, d)) return -1;
+
+    uint64_t gstart = group_first_block(fs, g);
+    uint32_t left   = fs->resv_left;
+    for (uint32_t k = 0; k < left; k++) {
+        uint32_t bit = (uint32_t)(fs->resv_next + k - gstart);
+        fs->bitmap[bit >> 3] &= (uint8_t)~(1u << (bit & 7));
+    }
+    if (write_bitmap(fs, d)) return -1;
+    store_bitmap_csum(fs, d);
+    group_set_free_blocks(fs, d, group_free_blocks(fs, d) + left);
+    store_desc_csum(fs, g, d);
+    sb_set_free_blocks(fs, ext4_sb_free_blocks(fs) + left);
+
+    fs->resv_left = 0;
+    return 0;
+}
+
+/*
+ * Hands out the first block of a freshly taken run and keeps the rest, which are
+ * already marked on disk, for the allocations that follow.
+ */
+static int64_t take_run(ext4_wfs *fs, uint32_t g, int64_t first, uint32_t got) {
+    fs->last_alloc = (uint64_t)first;
+    if (got > 1) {
+        fs->resv_next  = (uint64_t)first + 1;
+        fs->resv_left  = got - 1;
+        fs->resv_group = g;
+    }
+    return first;
+}
+
+/*
+ * How many blocks a run reserves ahead. 256 is one 1 MiB import chunk at a 4 KiB
+ * block size, which is the shape almost all of this filesystem's allocation has.
+ */
+#define EXT4_ALLOC_RUN 256
+
+/*
+ * One block, and the reason the bitmap is not written for each of them (#161).
+ *
+ * Every allocation used to write the whole 4 KiB bitmap block: appending a 1 MiB
+ * chunk was 256 allocations and 256 writes of the same block, and measured on a
+ * device 63% of everything written in a session went into two bitmap blocks. So a
+ * run is taken from the bitmap in one write and handed out from memory.
+ *
+ * **The ordering this must not break.** The bitmap has to reach the disk before
+ * anything references the block. Not for tidiness: a volume mounts even when it
+ * knows a check is owed (see #142), so after a cut-short write the allocator reads
+ * the bitmap the disk holds. If a block were referenced by an inode while the disk
+ * still called it free, the next session would hand that same block to a second
+ * file - two files sharing bytes, which is the one kind of damage e2fsck cannot
+ * repair without taking something away. The other direction is only ever a leak.
+ *
+ * Reserving ahead keeps that ordering intact and does not merely preserve it - it
+ * strengthens it, because the whole run is marked before ANY of it is handed out.
+ * What it costs is that a run cut short leaves its unused tail marked, which is a
+ * leak, which is the harmless direction. release_reservation gives the tail back at
+ * the flush, so an operation that finishes leaves nothing behind.
+ *
+ * A run is only started once a run is evidently happening - a goal that continues
+ * the block handed out last. A one-off allocation, which is what every directory
+ * block and extent-tree block is, behaves exactly as it did before.
+ */
 int64_t ext4_alloc_block_goal(ext4_wfs *fs, uint64_t goal) {
+    if (fs->resv_left > 0 && fs->resv_next == goal) {
+        /* Already marked on disk by the write that reserved it. */
+        fs->resv_left--;
+        fs->last_alloc = fs->resv_next;
+        return (int64_t)fs->resv_next++;
+    }
+
+    /* Two runs must never be outstanding at once, or the older one's tail has
+     * nothing left that knows to give it back. */
+    if (release_reservation(fs)) return -1;
+
+    uint32_t want = (goal != 0 && goal == fs->last_alloc + 1) ? EXT4_ALLOC_RUN : 1;
+    uint32_t got  = 1;
+
     if (goal >= fs->first_data_block && goal < fs->blocks_count) {
         uint64_t rel = goal - fs->first_data_block;
         uint32_t g   = (uint32_t)(rel / fs->blocks_per_group);
         if (g < fs->groups) {
-            int64_t b = alloc_in_group(fs, g, (uint32_t)(rel % fs->blocks_per_group));
-            if (b >= 0) return b;
+            int64_t b = alloc_in_group(fs, g, (uint32_t)(rel % fs->blocks_per_group),
+                                       want, &got);
+            if (b >= 0) return take_run(fs, g, b, got);
             if (b == ALLOC_CORRUPT) return -1;
         }
     }
     for (uint32_t g = 0; g < fs->groups; g++) {
-        int64_t b = alloc_in_group(fs, g, 0);
-        if (b >= 0) return b;
+        int64_t b = alloc_in_group(fs, g, 0, want, &got);
+        if (b >= 0) return take_run(fs, g, b, got);
         if (b == ALLOC_CORRUPT) return -1;
     }
     return -1;

@@ -120,6 +120,17 @@ typedef struct {
     uint8_t *desc_shadow;
     uint8_t *bitmap;           /* the block bitmap of group `bitmap_group` */
     int64_t  bitmap_group;     /* which group `bitmap` holds, or -1 for none */
+    /*
+     * A run of blocks taken from the bitmap ahead of being needed (#161). See the
+     * long note above ext4_alloc_block_goal in the .c for why this exists and, more
+     * importantly, for the ordering it must not break. `resv_left` blocks starting
+     * at `resv_next` are marked in use ON DISK and belong to nobody yet; the flush
+     * gives back whatever was not handed out.
+     */
+    uint64_t resv_next;
+    uint32_t resv_left;
+    uint32_t resv_group;
+    uint64_t last_alloc;       /* the last block handed out, to spot a run forming */
     uint32_t block_size;
     uint32_t blocks_per_group;
     uint32_t first_data_block;
