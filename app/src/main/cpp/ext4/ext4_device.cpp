@@ -34,6 +34,7 @@
  */
 #include "ext4_device.h"
 #include "ext4_blockcache.h"
+#include "ext4_session.h"
 #include "ext4_log.h"
 
 #include <cstdint>
@@ -92,9 +93,11 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
     ext4_blockcache *cache = cache_for(ctx);
 
     if (!writing) {
+        ctx->ext4Reads++;
         if (cache) {
             const void *hit = ext4_blockcache_get(cache, byteOff, block_size);
             if (hit) {
+                ctx->ext4ReadHits++;
                 memcpy(buf, hit, block_size);
                 return 0;
             }
@@ -161,6 +164,7 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
                   (unsigned long long)block, nsec, (unsigned long long)byteOff);
         return -1;
     }
+    ctx->ext4Writes++;
     if (cache) ext4_blockcache_wrote(cache, byteOff, block_size, buf);
     EXT4_LOGD("wrote block %llu (%u sectors)", (unsigned long long)block, nsec);
     return 0;
@@ -189,6 +193,100 @@ ext4_io ext4_device_io(DriveContext *drive) {
 void ext4_device_reader_init(ext4_device_reader *rd, DriveContext *drive) {
     rd->drive      = drive;
     rd->block_size = 1024;      /* the provisional view the superblock is read at */
+}
+
+/* ─── the handles a mount holds (#155, second half) ───────────────────── */
+/*
+ * ext4_session.c holds the rules; everything here is the binding to a drive.
+ *
+ * The one thing that has to live on this side is the reader's context. The
+ * read-only callback carries its block size in the context rather than in its
+ * arguments, so that context has to stay put for as long as the handle built on it
+ * does - which used to be one operation, on a caller's stack, and is now the whole
+ * mount. So it is allocated with the session and freed with it.
+ */
+struct ext4_drive_session {
+    ext4_device_reader rd;
+    ext4_session      *s;
+};
+
+static void reader_set_block_size(void *ctx, uint32_t block_size) {
+    static_cast<ext4_device_reader *>(ctx)->block_size = block_size;
+}
+
+/* The session for this drive, made on first use. Null only when memory ran out,
+ * which the callers turn into a failed operation rather than opening a handle
+ * around the session - see the note on ext4_session_new. */
+static ext4_drive_session *session_for(DriveContext *drive) {
+    if (drive->ext4Session) return drive->ext4Session;
+
+    auto *ds = static_cast<ext4_drive_session *>(calloc(1, sizeof(ext4_drive_session)));
+    if (!ds) return nullptr;
+    ext4_device_reader_init(&ds->rd, drive);
+    ds->s = ext4_session_new(ext4_device_read_block, &ds->rd,
+                             reader_set_block_size, ext4_device_io(drive));
+    if (!ds->s) { free(ds); return nullptr; }
+    drive->ext4Session = ds;
+    return ds;
+}
+
+int ext4_device_session_reader(DriveContext *drive, ext4_fs **out) {
+    ext4_drive_session *ds = session_for(drive);
+    if (!ds) return -1;
+    return ext4_session_reader(ds->s, out);
+}
+
+int ext4_device_session_writer(DriveContext *drive, uint32_t now, ext4_wfs **out) {
+    ext4_drive_session *ds = session_for(drive);
+    if (!ds) return -1;
+    return ext4_session_writer(ds->s, now, out);
+}
+
+void ext4_device_session_drop(DriveContext *drive) {
+    if (!drive || !drive->ext4Session) return;
+    ext4_session_drop(drive->ext4Session->s);
+}
+
+void ext4_device_session_release(DriveContext *drive) {
+    if (!drive || !drive->ext4Session) return;
+    ext4_session_free(drive->ext4Session->s);
+    free(drive->ext4Session);
+    drive->ext4Session = nullptr;
+}
+
+/*
+ * What this mount cost, in the two numbers #155 is about.
+ *
+ * Called from free_drive before anything is released, so it can still see both the
+ * counters and the session. It says nothing for a drive that never held an ext4
+ * volume, which is every FAT one.
+ */
+void ext4_device_report(const DriveContext *drive) {
+    /*
+     * The session, not the read counter, is what says this drive held an ext4
+     * volume. The mount-time probe reads the superblock of EVERY volume to find
+     * out what it is, so a FAT one arrives here having done exactly one read - and
+     * the first version of this printed a census for it, reporting a filesystem
+     * opened zero times on a filesystem that was never there.
+     */
+    if (!drive || !drive->ext4Session) return;
+    unsigned ro = 0, wo = 0;
+    ext4_device_session_opens(drive, &ro, &wo);
+    uint64_t missed = drive->ext4Reads - drive->ext4ReadHits;
+    EXT4_LOGI("ext4: %llu block reads, %llu reached the device (%llu%% served from "
+              "the cache), %llu writes; the filesystem was opened %u times to read "
+              "and %u to write",
+              (unsigned long long)drive->ext4Reads, (unsigned long long)missed,
+              (unsigned long long)(drive->ext4Reads
+                  ? drive->ext4ReadHits * 100ull / drive->ext4Reads : 0),
+              (unsigned long long)drive->ext4Writes, ro, wo);
+}
+
+void ext4_device_session_opens(const DriveContext *drive, unsigned *reader, unsigned *writer) {
+    if (reader) *reader = 0;
+    if (writer) *writer = 0;
+    if (!drive || !drive->ext4Session) return;
+    ext4_session_opens(drive->ext4Session->s, reader, writer);
 }
 
 int ext4_device_read_block(void *ctx, uint64_t block, void *buf) {

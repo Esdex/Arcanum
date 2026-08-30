@@ -172,10 +172,26 @@ echo "the block cache under the sanitizers:"
 $CC $FLAGS -o "$WORK/cachetest" "$HERE/cachetest.c" $(L ext4_blockcache.c)
 run "block cache: the whole stand" "$HERE/cachecheck.py" --cachetest "$WORK/cachetest"
 
+# The handles a mount holds (#155, second half) are the one thing here whose
+# lifetime spans operations: a writable handle owns its descriptor table and a
+# bitmap, and closing it after a failed write is the moment a stale pointer would
+# be left behind. A sanitizer is the only thing that sees that - the images come
+# out identical either way, because the freed memory is usually still readable.
+echo
+echo "the mount's held handles under the sanitizers:"
+$CC $FLAGS -o "$WORK/session" "$HERE/session.c" \
+    $(L ext4_session.c ext4_path.c ext4_create.c ext4_dirwrite.c ext4_dir.c \
+        ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c \
+        ext4_csum.c ext4_mkfs.c)
+$CC $FLAGS -o "$WORK/mkfs" "$HERE/mkfs.c" $(L ext4_mkfs.c ext4_io.c ext4_csum.c)
+run "held handles: the whole stand" "$HERE/sessioncheck.py" \
+    --mkfs "$WORK/mkfs" --session "$WORK/session"
+
 echo
 if [ "$fail" -ne 0 ]; then
     echo "RESULT: a sanitizer fired, or a run could not be made - see above"
     exit 1
 fi
-echo "RESULT: $ran driver runs across 4 geometries, an indexed directory and the"
-echo "        block cache, no ASan or UBSan report, every image e2fsck-clean"
+echo "RESULT: $ran driver runs across 4 geometries, an indexed directory, the block"
+echo "        cache and a mount's held handles, no ASan or UBSan report, every image"
+echo "        e2fsck-clean"

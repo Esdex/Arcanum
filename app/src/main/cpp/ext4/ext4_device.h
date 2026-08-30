@@ -24,7 +24,9 @@
 #define ARCANUM_EXT4_DEVICE_H
 
 #include "ext4_io.h"
+#include "ext4_alloc.h"
 #include "ext4_extents.h"
+#include "ext4_session.h"
 #include "arcanum_impl.h"
 
 #include <stdint.h>
@@ -71,6 +73,49 @@ void ext4_device_reader_init(ext4_device_reader *rd, DriveContext *drive);
  * call twice.
  */
 void ext4_device_cache_release(DriveContext *drive);
+
+/*
+ * The filesystem handles this mount holds (#155, second half). ext4_session.c has
+ * the rules and the reasons; this is the binding to a DriveContext, which is what
+ * owns the read context the reader needs to outlive every operation.
+ *
+ * Both return 0 and set *out, or -1 with nothing held. The handles are borrowed:
+ * never close or free one, and treat it as invalid across a drop or the next ask.
+ * The caller holds g_fatfs_mutex, as it does for every other entry here.
+ */
+int ext4_device_session_reader(DriveContext *drive, ext4_fs **out);
+int ext4_device_session_writer(DriveContext *drive, uint32_t now, ext4_wfs **out);
+
+/*
+ * Forget what is held, because memory may now be ahead of the disk with no write
+ * having reported a failure: an operation abandoned part way (WriteSession::tear),
+ * or a volume rewritten underneath by a format. A write that simply failed needs
+ * no call - the session sees those itself.
+ */
+void ext4_device_session_drop(DriveContext *drive);
+
+/*
+ * Closes and frees the session. Called from free_drive next to the cache release
+ * and for the same reason: after the memset the pointer cannot be reached. Safe on
+ * a drive that never held an ext4 volume, and safe to call twice.
+ */
+void ext4_device_session_release(DriveContext *drive);
+
+/*
+ * Logs what this mount cost: block reads asked for against reads that reached the
+ * device, writes, and how many times the filesystem had to be opened. Call it from
+ * free_drive BEFORE the releases below, while both halves are still reachable.
+ *
+ * Silent for a drive that never carried out an ext4 operation, which includes
+ * every FAT volume - those reach the block layer too, for the one superblock read
+ * the mount-time probe makes to find out what they are.
+ */
+void ext4_device_report(const DriveContext *drive);
+
+/* Reader and writer opens over the life of this drive's session, for the debug
+ * census only - #155 is a claim about how often the filesystem is opened, and this
+ * is what makes it checkable on a device rather than argued from the code. */
+void ext4_device_session_opens(const DriveContext *drive, unsigned *reader, unsigned *writer);
 
 /* An ext4_read_block_fn over an ext4_device_reader. Decrypts through the same
  * sector path as ext4_device_io's read half. Returns EXT4_OK / EXT4_ERR_IO. */

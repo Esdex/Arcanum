@@ -29,6 +29,11 @@ $CC $FLAGS -o "$HERE/extwrite" "$HERE/extwrite.c" $(L ext4_extwrite.c ext4_exten
 $CC $FLAGS -o "$HERE/dirwrite" "$HERE/dirwrite.c" \
     $(L ext4_create.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
 $CC $FLAGS -o "$HERE/mkfs"     "$HERE/mkfs.c"     $(L ext4_mkfs.c ext4_io.c ext4_csum.c)
+# The handles a mount holds (#155, second half). Same reason as the block cache: the
+# rules live in a C module so a stand can drive them, because the caller that would
+# otherwise hold them is C++ bound to a DriveContext and cannot come to the host.
+$CC $FLAGS -o "$HERE/session"  "$HERE/session.c" \
+    $(L ext4_session.c ext4_path.c ext4_create.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c ext4_mkfs.c)
 $CC $FLAGS -o "$HERE/pathresolve" "$HERE/pathresolve.c" \
     $(L ext4_path.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
 $CC $FLAGS -o "$HERE/chunkwrite" "$HERE/chunkwrite.c" \
@@ -45,4 +50,4 @@ $CC $FLAGS -o "$HERE/fullwrite" "$HERE/fullwrite.c" \
 $CC $FLAGS -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc \
     -o "$HERE/faultop"  "$HERE/faultop.c" \
     $(L ext4_path.c ext4_create.c ext4_dirwrite.c ext4_dir.c ext4_extents.c ext4_extwrite.c ext4_alloc.c ext4_ialloc.c ext4_io.c ext4_csum.c)
-echo "built: bench fsmeta cachetest alloc extwrite dirwrite mkfs pathresolve chunkwrite rename writeat fullwrite faultop"
+echo "built: bench fsmeta cachetest alloc extwrite dirwrite mkfs session pathresolve chunkwrite rename writeat fullwrite faultop"

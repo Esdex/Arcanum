@@ -80,6 +80,23 @@ typedef struct {
                                                    to encrypt. A volume must never reach this state, so
                                                    the absence of a key is the trigger rather than a
                                                    flag someone could set alongside one. */
+    /* What the ext4 block layer actually did on this drive, reported once at
+     * unmount (#155). Two numbers settle both halves of that issue without a
+     * logcat window and without a backend of its own: how many block reads the
+     * driver asked for against how many reached the device, and how many times the
+     * filesystem had to be opened. Three counters and three increments per block -
+     * always on, because a measurement nobody can take is how #155 stayed
+     * invisible under FatFs for a year. */
+    uint64_t             ext4Reads;             /* block reads asked for */
+    uint64_t             ext4ReadHits;          /* of those, served without touching the device */
+    uint64_t             ext4Writes;            /* block writes reaching the device */
+    struct ext4_drive_session *ext4Session;      /* #155 second half: the reader and writable handle this mount
+                                                   holds, instead of opening the filesystem again for every
+                                                   operation. Created by ext4_device.cpp on the first ext4
+                                                   operation, null for FAT and exFAT, and released by
+                                                   free_drive BEFORE its memset, next to the cache and for
+                                                   the same reason. Nothing outside ext4_device.cpp touches
+                                                   it; jni_ext4.cpp goes through ext4_device_session_*. */
     struct ext4_blockcache *ext4Cache;          /* #155: the same metadata blocks were read and decrypted on
                                                    every operation. Allocated by ext4_device.cpp on the first
                                                    block read of an ext4 volume, null for FAT and exFAT, and

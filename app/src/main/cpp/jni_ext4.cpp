@@ -19,11 +19,18 @@
  * exercises it. Here there is only marshaling, locking and path lookup.
  *
  * Locking mirrors jni_files.cpp exactly: every entry takes g_fatfs_mutex, and the
- * dispatch check in jni_files.cpp must not already hold it. The reader (ext4_fs)
- * and writable handle (ext4_wfs) are opened fresh inside each operation and closed
- * at its end - the same open/do/flush/close shape the host drivers use and that
- * the mutation suites cover, rather than a long-lived handle whose cached
- * descriptor table could drift from disk across a failed operation.
+ * dispatch check in jni_files.cpp must not already hold it.
+ *
+ * The reader (ext4_fs) and the writable handle (ext4_wfs) are borrowed from the
+ * drive for the length of an operation and belong to the mount, not to the call
+ * (#155). They used to be opened fresh inside each operation and closed at its
+ * end, which cost a superblock read and a re-read of the whole descriptor table
+ * every time - the reason the same few blocks came back thousands of times in one
+ * session. What that shape bought was self-healing: an operation that failed
+ * halfway left its wreckage in memory, and the next one re-read everything. That
+ * property is now a rule held by ext4_session.c, which poisons the writable handle
+ * when a write through it fails and reopens on the next ask, and it is checked by
+ * sessioncheck.py against the open-per-operation shape the host drivers still use.
  */
 
 #include "arcanum_internal.h"
@@ -74,29 +81,19 @@ static uint32_t rd32(const uint8_t *p) {
 
 namespace {
 
-/* The reader and its device context, kept together because the context carries
- * the block size the callback reads by and must outlive the ext4_fs. */
-struct Reader {
-    ext4_device_reader rd;
-    ext4_fs            fs;
-};
-
-/* Caller holds g_fatfs_mutex. Opens the read-only view over g_drives[pdrv]. */
 /*
- * `quiet` is for the mount-time probe, which asks every volume whether it is ext4 and
- * is SUPPOSED to be told no on a FAT one. Logging that at error level put a red line
- * in the log on every single mount, and it cost real time during the #95 hunt - it
- * reads like a fault when it is the expected answer. Real operations keep the message.
+ * Caller holds g_fatfs_mutex. The read-only view over g_drives[pdrv].
+ *
+ * Borrowed from the drive's session (#155), not opened here: it is opened once for
+ * the mount and handed to every operation after that, rather than re-read and
+ * re-parsed from the superblock on each one. Nothing here closes it - see
+ * ext4_session.h for what that costs and the rules that make it safe.
  */
-bool open_reader(int pdrv, Reader *out, bool quiet = false) {
-    ext4_device_reader_init(&out->rd, &g_drives[pdrv]);
-    if (ext4_open(&out->fs, ext4_device_read_block, &out->rd) != EXT4_OK) {
-        if (!quiet) LOGE("ext4: could not read the superblock on drive %d", pdrv);
+bool open_reader(int pdrv, ext4_fs **out) {
+    if (ext4_device_session_reader(&g_drives[pdrv], out) != 0) {
+        LOGE("ext4: could not read the superblock on drive %d", pdrv);
         return false;
     }
-    /* Reads after the superblock use the real block size; the bootstrap 1 KiB is
-     * only for the superblock itself, exactly as the host img ctx does. */
-    out->rd.block_size = out->fs.block_size;
     return true;
 }
 
@@ -105,17 +102,20 @@ bool open_reader(int pdrv, Reader *out, bool quiet = false) {
  * for the host stands. */
 uint32_t now_seconds() { return (uint32_t)time(nullptr); }
 
-/* Caller holds g_fatfs_mutex. Opens the writable handle over the same drive.
- * ext4_fs_close releases it. */
-bool open_writer(int pdrv, ext4_wfs *w) {
-    if (ext4_fs_open_io(w, ext4_device_io(&g_drives[pdrv])) != 0) {
+/*
+ * Caller holds g_fatfs_mutex. The writable handle over the same drive.
+ *
+ * Borrowed from the drive's session like the reader (#155), so the group
+ * descriptor table is read into memory once for the mount rather than on every
+ * operation. The clock is passed on each ask, not once at open: the superblock's
+ * last-write time (#156) has to record the operation happening, not the one that
+ * opened the mount.
+ */
+bool open_writer(int pdrv, ext4_wfs **w) {
+    if (ext4_device_session_writer(&g_drives[pdrv], now_seconds(), w) != 0) {
         LOGE("ext4: could not open drive %d for writing", pdrv);
         return false;
     }
-    /* The clock the superblock's last-write time is stamped from (#156). The library
-     * never reads a clock itself - see the field's comment - so this is where the app,
-     * which has one, hands it over. */
-    w->now = now_seconds();
     return true;
 }
 
@@ -142,33 +142,47 @@ bool open_writer(int pdrv, ext4_wfs *w) {
  *
  * The bracket also removes the six hand-written ext4_fs_close calls per exit path
  * that used to be here, one of which is how a session leaked on an error return.
+ *
+ * Since #155 the handle itself outlives this object - it belongs to the drive, not
+ * to the operation - so what is bracketed is the mark, not the open. Tearing is
+ * therefore two things now rather than one: the volume keeps its needs-a-check
+ * mark, AND the drive forgets the handle, because an operation abandoned part way
+ * leaves allocations in memory that never reached the disk. That second half used
+ * to happen by itself, in the close at the end of every operation.
  */
 class WriteSession {
 public:
-    explicit WriteSession(int pdrv) {
+    explicit WriteSession(int pdrv) : pdrv_(pdrv) {
         open_ = open_writer(pdrv, &w_);
-        if (open_ && ext4_fs_mark_dirty(&w_) != 0) {
+        if (open_ && ext4_fs_mark_dirty(w_) != 0) {
             LOGE("ext4: could not mark drive %d as being written to", pdrv);
-            ext4_fs_close(&w_);
+            ext4_device_session_drop(&g_drives[pdrv]);
             open_ = false;
         }
     }
     ~WriteSession() {
         if (!open_) return;
-        if (!torn_) ext4_fs_mark_clean(&w_);
-        ext4_fs_close(&w_);
+        if (torn_) {
+            ext4_device_session_drop(&g_drives[pdrv_]);
+            return;
+        }
+        /* A mark_clean that fails has already poisoned the session through the
+         * write that failed inside it, so the next operation opens afresh; there
+         * is nothing further to do here. */
+        ext4_fs_mark_clean(w_);
     }
     WriteSession(const WriteSession &) = delete;
     WriteSession &operator=(const WriteSession &) = delete;
 
     bool ok() const { return open_; }
-    ext4_wfs *fs() { return &w_; }
+    ext4_wfs *fs() { return w_; }
 
-    /* Leaves the volume marked as needing a check. */
+    /* Leaves the volume marked as needing a check, and the drive without a handle. */
     void tear() { torn_ = true; }
 
 private:
-    ext4_wfs w_{};
+    int pdrv_;
+    ext4_wfs *w_ = nullptr;
     bool open_ = false;
     bool torn_ = false;
 };
@@ -223,20 +237,30 @@ bool ext4jni_is_container(jlong handle) {
  * allocates nothing that outlives it.
  */
 bool ext4jni_probe(int pdrv, bool *needs_check_out) {
-    Reader r;
-    if (!open_reader(pdrv, &r, /*quiet=*/true)) return false;
+    /*
+     * Deliberately NOT the drive's session (#155). Two reasons, and both matter.
+     * This runs before the volume is known to be ext4 at all - it is what decides
+     * that - so a FAT drive would be left holding a session it will never use. And
+     * it is the one place `is_clean` is read, which is the single field in a
+     * reader that moves while a volume is mounted; a held handle answers with what
+     * s_state said when it was opened. See the note in ext4_session.h.
+     */
+    ext4_device_reader rd;
+    ext4_device_reader_init(&rd, &g_drives[pdrv]);
+    ext4_fs fs;
+    if (ext4_open(&fs, ext4_device_read_block, &rd) != EXT4_OK) return false;
     /* ext4_open already verified the 0xEF53 magic and parsed the geometry; its
      * success is the probe. */
     LOGI("ext4: drive %d is ext4 (block size %u, %llu blocks)", pdrv,
-         r.fs.block_size, (unsigned long long)r.fs.blocks_count);
+         fs.block_size, (unsigned long long)fs.blocks_count);
 
     /* Read here and reported, never acted on. The volume mounts either way: what a
      * cut-short write leaves is always something a check repairs without cost
      * (faultcheck.py sweeps every write of every operation to establish that), so
      * refusing to open would take the user's data away over something that is not
      * a threat to it. See #142. */
-    if (needs_check_out) *needs_check_out = !r.fs.is_clean;
-    if (!r.fs.is_clean)
+    if (needs_check_out) *needs_check_out = !fs.is_clean;
+    if (!fs.is_clean)
         LOGI("ext4: drive %d was left mid-write - a check is owed", pdrv);
     return true;
 }
@@ -279,6 +303,11 @@ bool ext4jni_format(int pdrv, uint64_t dataSize) {
              (unsigned long long)dataSize);
         return false;
     }
+    /* Every handle that could be held describes the filesystem that was just
+     * written over - a different geometry, a different checksum seed. mkfs writes
+     * through the drive's io directly, so no failed write reported anything and
+     * nothing else would notice (#155). */
+    ext4_device_session_drop(&g_drives[pdrv]);
     LOGI("ext4 format: %llu blocks of %u, %u groups, %u inodes",
          (unsigned long long)r.blocks_count, r.block_size, r.groups, r.inodes_count);
     return true;
@@ -342,22 +371,22 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
         int pdrv = ext4_pdrv(handle);
         if (pdrv < 0) return env->NewObjectArray(0, infoCls, nullptr);
 
-        Reader r;
+        ext4_fs *r = nullptr;
         if (!open_reader(pdrv, &r)) return env->NewObjectArray(0, infoCls, nullptr);
 
         uint32_t dir_ino = 0;
         int is_dir = 0;
-        if (ext4_resolve_path(&r.fs, dirPath.c_str(), &dir_ino, &is_dir) != EXT4_PATH_OK
+        if (ext4_resolve_path(r, dirPath.c_str(), &dir_ino, &is_dir) != EXT4_PATH_OK
                 || !is_dir)
             return env->NewObjectArray(0, infoCls, nullptr);
 
         uint8_t dir[EXT4_MAX_INODE_SIZE];
         memset(dir, 0, sizeof(dir));
-        if (ext4_read_inode_raw(&r.fs, dir_ino, dir, sizeof(dir)) != EXT4_OK)
+        if (ext4_read_inode_raw(r, dir_ino, dir, sizeof(dir)) != EXT4_OK)
             return nullptr;
 
         std::vector<DirEnt> raw;
-        if (ext4_dir_iterate(&r.fs, dir, collect_cb, &raw) != EXT4_OK) {
+        if (ext4_dir_iterate(r, dir, collect_cb, &raw) != EXT4_OK) {
             LOGE("ext4: listing '%s' failed", dirPath.c_str());
             return nullptr;
         }
@@ -367,7 +396,7 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
             jlong    mtime = 0;
             uint8_t inode[EXT4_MAX_INODE_SIZE];
             memset(inode, 0, sizeof(inode));
-            if (ext4_read_inode_raw(&r.fs, d.ino, inode, sizeof(inode)) == EXT4_OK) {
+            if (ext4_read_inode_raw(r, d.ino, inode, sizeof(inode)) == EXT4_OK) {
                 size  = ext4_inode_size(inode);
                 mtime = (jlong)rd32(inode + INODE_MTIME_OFF) * 1000LL;
             }
@@ -420,12 +449,12 @@ jbyteArray ext4jni_read_file(JNIEnv *env, jlong handle, jstring jFilePath,
         int pdrv = ext4_pdrv(handle);
         if (pdrv < 0) { free(nativeBuf); return env->NewByteArray(0); }
 
-        Reader r;
+        ext4_fs *r = nullptr;
         if (!open_reader(pdrv, &r)) { free(nativeBuf); return env->NewByteArray(0); }
 
         uint32_t ino = 0;
         int is_dir = 0;
-        if (ext4_resolve_path(&r.fs, path.c_str(), &ino, &is_dir) != EXT4_PATH_OK
+        if (ext4_resolve_path(r, path.c_str(), &ino, &is_dir) != EXT4_PATH_OK
                 || is_dir) {
             free(nativeBuf);
             return env->NewByteArray(0);
@@ -433,12 +462,12 @@ jbyteArray ext4jni_read_file(JNIEnv *env, jlong handle, jstring jFilePath,
 
         uint8_t inode[EXT4_MAX_INODE_SIZE];
         memset(inode, 0, sizeof(inode));
-        if (ext4_read_inode_raw(&r.fs, ino, inode, sizeof(inode)) != EXT4_OK) {
+        if (ext4_read_inode_raw(r, ino, inode, sizeof(inode)) != EXT4_OK) {
             free(nativeBuf);
             return nullptr;
         }
 
-        produced = ext4_read_file(&r.fs, inode, (uint64_t)offset,
+        produced = ext4_read_file(r, inode, (uint64_t)offset,
                                   nativeBuf, (uint64_t)length);
         if (produced < 0) {
             LOGE("ext4: reading '%s' failed (%ld)", path.c_str(), produced);
@@ -605,20 +634,20 @@ jint ext4jni_write_file(JNIEnv *env, jlong handle, jstring jFilePath,
     if (pdrv < 0) return ERR_NO_SLOT;
     if (is_read_only(pdrv)) return ERR_READ_ONLY;
 
-    Reader r;
+    ext4_fs *r = nullptr;
     if (!open_reader(pdrv, &r)) return ERR_FS;
 
     uint32_t dir_ino = 0;
     char name[256];
-    int prc = ext4_resolve_parent(&r.fs, path.c_str(), &dir_ino, name, sizeof(name));
+    int prc = ext4_resolve_parent(r, path.c_str(), &dir_ino, name, sizeof(name));
     if (prc != EXT4_PATH_OK) return path_error(prc);
 
     WriteSession s(pdrv);
     if (!s.ok()) return ERR_FS;
 
     jint result = (offset == 0)
-        ? write_from_zero(env, pdrv, s.fs(), &r.fs, dir_ino, name, jData, len)
-        : append_at_eof(env, pdrv, s.fs(), &r.fs, dir_ino, name, jData, len, (uint64_t)offset);
+        ? write_from_zero(env, pdrv, s.fs(), r, dir_ino, name, jData, len)
+        : append_at_eof(env, pdrv, s.fs(), r, dir_ino, name, jData, len, (uint64_t)offset);
 
     /* The two helpers reach write_error() inside themselves, so the decision has
      * to be made on what came back. Everything left over from ERR_OK, a full
@@ -657,12 +686,12 @@ jint ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
     if (pdrv < 0) return ERR_NO_SLOT;
     if (is_read_only(pdrv)) return ERR_READ_ONLY;
 
-    Reader r;
+    ext4_fs *r = nullptr;
     if (!open_reader(pdrv, &r)) return ERR_FS;
 
     uint32_t dir_ino = 0;
     char name[256];
-    int prc = ext4_resolve_parent(&r.fs, path.c_str(), &dir_ino, name, sizeof(name));
+    int prc = ext4_resolve_parent(r, path.c_str(), &dir_ino, name, sizeof(name));
     if (prc != EXT4_PATH_OK) return path_error(prc);
 
     WriteSession s(pdrv);
@@ -671,9 +700,9 @@ jint ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
     /* Opened, not recreated: create only when the name is not there, and never
      * write over a directory of that name. */
     uint32_t ino = 0;
-    int lrc = ext4_dir_lookup(&r.fs, dir_ino, name, &ino);
+    int lrc = ext4_dir_lookup(r, dir_ino, name, &ino);
     if (lrc == EXT4_DIRW_ERR_ABSENT) {
-        int crc = ext4_create_file(s.fs(), &r.fs, dir_ino, name, 0644, now_seconds(), &ino);
+        int crc = ext4_create_file(s.fs(), r, dir_ino, name, 0644, now_seconds(), &ino);
         if (crc != EXT4_DIRW_OK) {
             if (crc == EXT4_CREATE_ERR_NOINODE) return ERR_NO_SPACE;
             s.tear();
@@ -685,7 +714,7 @@ jint ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
     } else {
         uint8_t inode[EXT4_MAX_INODE_SIZE];
         memset(inode, 0, sizeof(inode));
-        if (ext4_read_inode_raw(&r.fs, ino, inode, sizeof(inode)) != EXT4_OK) {
+        if (ext4_read_inode_raw(r, ino, inode, sizeof(inode)) != EXT4_OK) {
             s.tear();                   /* nor would the inode */
             return ERR_FS;
         }
@@ -699,7 +728,7 @@ jint ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
     if (len > 0) {
         jbyte *data = env->GetByteArrayElements(jData, nullptr);
         if (!data) return ERR_FS;
-        int wrc = ext4_write_at(s.fs(), &r.fs, ino, (uint64_t)offset,
+        int wrc = ext4_write_at(s.fs(), r, ino, (uint64_t)offset,
                                 (const uint8_t *)data, (uint32_t)len);
         env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
         /* Split apart for the reason write_chunk() gives at length: a refusal on a
@@ -735,19 +764,19 @@ jint ext4jni_create_directory(JNIEnv *env, jlong handle, jstring jDirPath) {
     if (pdrv < 0) return ERR_NO_SLOT;
     if (is_read_only(pdrv)) return ERR_READ_ONLY;
 
-    Reader r;
+    ext4_fs *r = nullptr;
     if (!open_reader(pdrv, &r)) return ERR_FS;
 
     uint32_t dir_ino = 0;
     char name[256];
-    int prc = ext4_resolve_parent(&r.fs, path.c_str(), &dir_ino, name, sizeof(name));
+    int prc = ext4_resolve_parent(r, path.c_str(), &dir_ino, name, sizeof(name));
     if (prc != EXT4_PATH_OK) return path_error(prc);
 
     WriteSession s(pdrv);
     if (!s.ok()) return ERR_FS;
 
     uint32_t ino = 0;
-    int rc = ext4_mkdir(s.fs(), &r.fs, dir_ino, name, 0755, now_seconds(), &ino);
+    int rc = ext4_mkdir(s.fs(), r, dir_ino, name, 0755, now_seconds(), &ino);
 
     if (rc == EXT4_DIRW_OK) return ERR_OK;
     if (rc == EXT4_CREATE_ERR_NOINODE || rc == EXT4_DIRW_ERR_NOROOM) return ERR_NO_SPACE;
@@ -765,25 +794,25 @@ jint ext4jni_delete_file(JNIEnv *env, jlong handle, jstring jFilePath) {
     if (pdrv < 0) return ERR_NO_SLOT;
     if (is_read_only(pdrv)) return ERR_READ_ONLY;
 
-    Reader r;
+    ext4_fs *r = nullptr;
     if (!open_reader(pdrv, &r)) return ERR_FS;
 
     /* Refuse a directory here: removing one is nativeDeleteDirectory, which is
      * recursive and moves the counters a directory needs. */
     uint32_t ino = 0;
     int is_dir = 0;
-    int rrc = ext4_resolve_path(&r.fs, path.c_str(), &ino, &is_dir);
+    int rrc = ext4_resolve_path(r, path.c_str(), &ino, &is_dir);
     if (rrc != EXT4_PATH_OK) return path_error(rrc);
     if (is_dir) return ERR_FS;
 
     uint32_t dir_ino = 0;
     char name[256];
-    int prc = ext4_resolve_parent(&r.fs, path.c_str(), &dir_ino, name, sizeof(name));
+    int prc = ext4_resolve_parent(r, path.c_str(), &dir_ino, name, sizeof(name));
     if (prc != EXT4_PATH_OK) return path_error(prc);
 
     WriteSession s(pdrv);
     if (!s.ok()) return ERR_FS;
-    int rc = ext4_unlink_file(s.fs(), &r.fs, dir_ino, name, now_seconds());
+    int rc = ext4_unlink_file(s.fs(), r, dir_ino, name, now_seconds());
     if (rc == EXT4_DIRW_OK) return ERR_OK;
     s.tear();
     return write_error(pdrv, ERR_FS);
@@ -808,12 +837,12 @@ jint ext4jni_set_file_time(JNIEnv *env, jlong handle, jstring jPath, jlong epoch
     if (pdrv < 0) return ERR_NO_SLOT;
     if (is_read_only(pdrv)) return ERR_READ_ONLY;
 
-    Reader r;
+    ext4_fs *r = nullptr;
     if (!open_reader(pdrv, &r)) return ERR_FS;
 
     uint32_t ino = 0;
     int is_dir = 0;
-    int rrc = ext4_resolve_path(&r.fs, path.c_str(), &ino, &is_dir);
+    int rrc = ext4_resolve_path(r, path.c_str(), &ino, &is_dir);
     if (rrc != EXT4_PATH_OK) return path_error(rrc);
 
     WriteSession s(pdrv);
@@ -869,26 +898,26 @@ jint ext4jni_delete_directory(JNIEnv *env, jlong handle, jstring jDirPath) {
     if (pdrv < 0) return ERR_NO_SLOT;
     if (is_read_only(pdrv)) return ERR_READ_ONLY;
 
-    Reader r;
+    ext4_fs *r = nullptr;
     if (!open_reader(pdrv, &r)) return ERR_FS;
 
     uint32_t ino = 0;
     int is_dir = 0;
-    int rrc = ext4_resolve_path(&r.fs, path.c_str(), &ino, &is_dir);
+    int rrc = ext4_resolve_path(r, path.c_str(), &ino, &is_dir);
     if (rrc != EXT4_PATH_OK) return path_error(rrc);
     if (!is_dir) return ERR_FS;
 
     uint32_t parent_ino = 0;
     char name[256];
-    int prc = ext4_resolve_parent(&r.fs, path.c_str(), &parent_ino, name, sizeof(name));
+    int prc = ext4_resolve_parent(r, path.c_str(), &parent_ino, name, sizeof(name));
     if (prc != EXT4_PATH_OK) return path_error(prc);   /* EINVAL for the root */
 
     WriteSession s(pdrv);
     if (!s.ok()) return ERR_FS;
 
     uint32_t when = now_seconds();
-    int rc = empty_directory(s.fs(), &r.fs, ino, when, 0);
-    if (rc == ERR_OK && ext4_rmdir(s.fs(), &r.fs, parent_ino, name, when) != EXT4_DIRW_OK)
+    int rc = empty_directory(s.fs(), r, ino, when, 0);
+    if (rc == ERR_OK && ext4_rmdir(s.fs(), r, parent_ino, name, when) != EXT4_DIRW_OK)
         rc = ERR_FS;
 
     if (rc == ERR_OK) return ERR_OK;
@@ -910,7 +939,7 @@ jint ext4jni_rename(JNIEnv *env, jlong handle, jstring jOld, jstring jNew) {
     if (pdrv < 0) return ERR_NO_SLOT;
     if (is_read_only(pdrv)) return ERR_READ_ONLY;
 
-    Reader r;
+    ext4_fs *r = nullptr;
     if (!open_reader(pdrv, &r)) return ERR_FS;
 
     /* Both ends are resolved to a parent inode and a final name, the shape
@@ -919,15 +948,15 @@ jint ext4jni_rename(JNIEnv *env, jlong handle, jstring jOld, jstring jNew) {
      * names may not exist yet - the destination must not, the source must. */
     uint32_t src_parent = 0, dst_parent = 0;
     char src_name[256], dst_name[256];
-    int prc = ext4_resolve_parent(&r.fs, oldp.c_str(), &src_parent, src_name, sizeof(src_name));
+    int prc = ext4_resolve_parent(r, oldp.c_str(), &src_parent, src_name, sizeof(src_name));
     if (prc != EXT4_PATH_OK) return path_error(prc);
-    prc = ext4_resolve_parent(&r.fs, newp.c_str(), &dst_parent, dst_name, sizeof(dst_name));
+    prc = ext4_resolve_parent(r, newp.c_str(), &dst_parent, dst_name, sizeof(dst_name));
     if (prc != EXT4_PATH_OK) return path_error(prc);
 
     WriteSession s(pdrv);
     if (!s.ok()) return ERR_FS;
 
-    int rc = ext4_rename(s.fs(), &r.fs, src_parent, src_name, dst_parent, dst_name);
+    int rc = ext4_rename(s.fs(), r, src_parent, src_name, dst_parent, dst_name);
 
     /* A destination that already exists is the one outcome worth telling apart, so
      * the UI can say "name already exists" rather than a generic failure; the FatFs

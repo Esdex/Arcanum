@@ -47,6 +47,7 @@ set(EXT4_SOURCES
     ext4/ext4_mkfs.c
     ext4/ext4_path.c
     ext4/ext4_blockcache.c
+    ext4/ext4_session.c
     ext4/ext4_device.cpp
 )
 

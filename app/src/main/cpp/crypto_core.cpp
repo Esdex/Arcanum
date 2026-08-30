@@ -376,6 +376,16 @@ void free_drive(int pdrv) {
         munlock(g_drives[pdrv].cipherCtx, sizeof(GenCipherCtx));
         free(g_drives[pdrv].cipherCtx);
     }
+    /* What the ext4 layer did on this drive, while both the counters and the
+     * session can still be reached (#155). Silent for a FAT volume. */
+    ext4_device_report(&g_drives[pdrv]);
+
+    /* The filesystem handles this mount held (#155). Closed before the cache, since
+     * they are the layer above it, and before the memset for the same reason as the
+     * backing store below: afterwards there is no way left to reach them. Neither
+     * flushes anything - every operation already put its own work down. */
+    ext4_device_session_release(&g_drives[pdrv]);
+
     /* Plaintext metadata blocks (#155). Wiped and released here for the same reason as
      * the backing store below: after the memset there is no way left to reach it. */
     ext4_device_cache_release(&g_drives[pdrv]);
