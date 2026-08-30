@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.Color
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
+import zip.arcanum.core.components.hazeOrSolid
 import zip.arcanum.core.theme.ArcanumHazeStyle
 import zip.arcanum.arcanum.containers.ui.ContainerScreenViewModel
 import zip.arcanum.arcanum.containers.ui.VaultStorageScreen
@@ -374,7 +375,7 @@ private fun GalleryTopBar(
 ) {
     val isAmoled  = LocalAmoledMode.current
     val hazeState = LocalHazeState.current
-    val modifier  = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier
+    val modifier  = if (isAmoled) Modifier.hazeOrSolid(hazeState, ArcanumHazeStyle.topBar, Color.Black) else Modifier
     val colors    = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                     else TopAppBarDefaults.topAppBarColors()
 

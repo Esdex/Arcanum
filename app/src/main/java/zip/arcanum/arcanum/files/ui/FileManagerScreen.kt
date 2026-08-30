@@ -146,6 +146,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import zip.arcanum.R
+import zip.arcanum.core.components.hazeOrSolid
 import zip.arcanum.core.utils.MediaExtensions
 import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.arcanum.files.ui.FileManagerViewModel.SortBy
@@ -835,7 +836,7 @@ private fun FileManagerTopBar(
     val hazeState = LocalHazeState.current
 
     TopAppBar(
-        modifier     = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier,
+        modifier     = if (isAmoled) Modifier.hazeOrSolid(hazeState, ArcanumHazeStyle.topBar, Color.Black) else Modifier,
         colors       = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                        else TopAppBarDefaults.topAppBarColors(),
         navigationIcon = {
@@ -946,7 +947,7 @@ private fun SelectionTopBar(
     var showMenu by remember { mutableStateOf(false) }
 
     TopAppBar(
-        modifier       = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier,
+        modifier       = if (isAmoled) Modifier.hazeOrSolid(hazeState, ArcanumHazeStyle.topBar, Color.Black) else Modifier,
         colors         = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                          else TopAppBarDefaults.topAppBarColors(),
         navigationIcon = {
@@ -1012,7 +1013,7 @@ private fun BreadcrumbRow(
         modifier = Modifier
             .fillMaxWidth()
             .then(
-                if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar)
+                if (isAmoled) Modifier.hazeOrSolid(hazeState, ArcanumHazeStyle.topBar, Color.Black)
                 // Off AMOLED there is no glass to sit on, and with nothing of its own the
                 // path had the file list scrolling visibly through it. Takes the top bar's
                 // own colour rather than choosing one, so the header stays one surface.

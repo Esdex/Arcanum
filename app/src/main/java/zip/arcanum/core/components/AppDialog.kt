@@ -30,7 +30,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
 import zip.arcanum.core.theme.LocalAmoledMode
 
 @Composable
@@ -46,6 +45,26 @@ fun AppDialog(
     if (isAmoled) {
         val hazeState   = LocalHazeState.current
         val dialogShape = RoundedCornerShape(28.dp)
+
+        /*
+         * A screen that provides no HazeState has nothing behind this dialog to blur,
+         * and blurring nothing draws nothing: the dialog comes out fully transparent,
+         * in AMOLED only. That is how the mount screen shipped a see-through dialog.
+         * See LocalHazeState for why the default is null rather than an empty state.
+         *
+         * surfaceVariant is what AppTheme lifts to 0xFF1A1A1A in AMOLED, so the panel
+         * reads as a raised surface against the pure-black background instead of
+         * disappearing into it, and the hairline border below still draws its edge.
+         */
+        val panelBackground = Modifier.hazeOrSolid(
+            state = hazeState,
+            style = HazeStyle(
+                blurRadius      = 24.dp,
+                backgroundColor = Color.Black,
+                tints           = listOf(HazeTint(Color.Black.copy(alpha = 0.75f)))
+            ),
+            solid = MaterialTheme.colorScheme.surfaceVariant
+        )
 
         // Use a full-screen Dialog window so hazeEffect's local coords match screen coords.
         // BasicAlertDialog creates a window sized to content — Haze can't map those coords
@@ -72,14 +91,7 @@ fun AppDialog(
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
                     .clip(dialogShape)
-                    .hazeEffect(
-                        state = hazeState,
-                        style = HazeStyle(
-                            blurRadius      = 24.dp,
-                            backgroundColor = Color.Black,
-                            tints           = listOf(HazeTint(Color.Black.copy(alpha = 0.75f)))
-                        )
-                    )
+                    .then(panelBackground)
                     .border(0.5.dp, Color.White.copy(alpha = 0.12f), dialogShape)
                     .padding(24.dp)
             ) {

@@ -158,6 +158,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import zip.arcanum.core.components.SettingsRow
 import zip.arcanum.core.components.SettingsSwitch
 import zip.arcanum.core.components.UpgradeOverlay
+import zip.arcanum.core.components.hazeOrSolid
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.security.VaultPanicAction
 import zip.arcanum.core.theme.ArcanumHazeStyle
@@ -2674,7 +2675,7 @@ private fun DebugWarningDialog(
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
                     .clip(dialogShape)
-                    .hazeEffect(state = hazeState, style = ArcanumHazeStyle.dialog)
+                    .hazeOrSolid(hazeState, ArcanumHazeStyle.dialog, MaterialTheme.colorScheme.surfaceVariant)
                     .border(0.5.dp, Color.White.copy(alpha = 0.12f), dialogShape)
                     .padding(24.dp)
             } else {

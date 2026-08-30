@@ -35,7 +35,36 @@ import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import zip.arcanum.core.theme.LocalAmoledMode
 
-val LocalHazeState = compositionLocalOf { HazeState() }
+/*
+ * The HazeState a screen puts up for the frosted-glass overlays inside it, or null when
+ * it has none.
+ *
+ * Null, and NOT an empty HazeState, deliberately. The default used to be `HazeState()`:
+ * a screen that forgot to provide one still got a perfectly valid object, with nothing
+ * registered as a source. AppDialog and AppSheet then blurred that nothing, in AMOLED
+ * only, and came out completely transparent - which is how the mount screen shipped a
+ * see-through dialog nobody noticed until it was used on a device. A null says outright
+ * that there is nothing behind this to blur, and both consumers paint a solid surface
+ * instead. A screen that wants the glass provides a state and puts hazeSource on its
+ * content, as VaultConfigScreen does.
+ */
+val LocalHazeState = compositionLocalOf<HazeState?> { null }
+
+/**
+ * Frosted glass over what is behind, or a solid fill when there is nothing behind to
+ * blur.
+ *
+ * Every overlay that wants the AMOLED glass goes through this rather than calling
+ * hazeEffect with [LocalHazeState] directly. hazeEffect over a state with no source
+ * draws nothing at all, so a screen that forgot to provide one gets a transparent top
+ * bar, sheet or dialog - visible only in AMOLED, and only to someone using it. Making
+ * the state nullable turned that into a compile error at every call site; this is what
+ * those sites use to answer it, so the answer is one decision in one place instead of
+ * eleven.
+ */
+fun Modifier.hazeOrSolid(state: HazeState?, style: HazeStyle, solid: Color): Modifier =
+    if (state != null) this.hazeEffect(state = state, style = style)
+    else this.background(solid)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,13 +78,17 @@ fun AppSheet(
     val surfaceColor = MaterialTheme.colorScheme.surface
 
     val sheetColor = if (isAmoled) Color.Black else surfaceColor
-    val bgModifier = if (isAmoled) Modifier.hazeEffect(
+    /* surfaceVariant is what AppTheme lifts to 0xFF1A1A1A in AMOLED, so a sheet with
+     * nothing to blur still reads as a raised surface against the pure-black
+     * background rather than vanishing into it. */
+    val bgModifier = if (isAmoled) Modifier.hazeOrSolid(
         state = hazeState,
         style = HazeStyle(
             blurRadius      = 24.dp,
             backgroundColor = sheetColor,
             tints           = listOf(HazeTint(sheetColor.copy(alpha = 0.75f)))
-        )
+        ),
+        solid = MaterialTheme.colorScheme.surfaceVariant
     ) else Modifier.background(sheetColor)
 
     val scrimColor = if (isAmoled) Color.Black.copy(alpha = 0.72f)
