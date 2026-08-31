@@ -254,11 +254,15 @@ static void path_touch(rightmost_path *p, int level) {
 /*
  * Writes back every level that has changed, deepest first.
  *
- * The order is the point. A parent names its children, so a parent that reaches
- * the disk before the child it names leaves an index pointing at a block still
- * holding whatever was there before - e2fsck reads that as an invalid extent node
- * and clearing it costs the whole file. Deepest first can only leave a node that
- * nothing points at yet, which is a leak, and a check gives leaks back.
+ * The order is the point, and the price of getting it wrong was measured rather
+ * than assumed. A parent names its children, so a parent that reaches the disk
+ * before the child it names leaves an index pointing at a block still holding
+ * whatever was there before, and e2fsck calls that an invalid extent node.
+ * Clearing it costs only what the interrupted append was adding - what the file
+ * held before survives either way - but it is not a repair a check makes on its
+ * own: `e2fsck -p`, the unattended mode, refuses such a volume and exits asking
+ * for a person. Deepest first can only leave a node that nothing points at yet,
+ * which preen reclaims without being asked.
  */
 static int path_flush(ext4_wfs *fs, rightmost_path *p, uint32_t seed) {
     for (int level = p->depth; level >= 1; level--) {
@@ -495,6 +499,11 @@ int ext4_append_blocks(ext4_wfs *fs, uint32_t ino, uint32_t count,
     uint32_t generation = rd32(inode + INODE_GENERATION_OFF);
     uint32_t inode_seed = ext4_inode_csum_seed(fs->csum_seed, ino, generation);
 
+    /* The root as the disk has it. The size has to be committed over this rather
+     * than over the root the loop ends up with - see the tail for why. */
+    uint8_t root_before[INODE_IBLOCK_SIZE];
+    memcpy(root_before, root, INODE_IBLOCK_SIZE);
+
     rightmost_path p = { 0 };
     rc = find_rightmost_path(fs, root, storage, &p);
     if (rc != EXTW_OK) goto out;
@@ -597,26 +606,58 @@ int ext4_append_blocks(ext4_wfs *fs, uint32_t ino, uint32_t count,
     int append_rc = rc;
 
     /*
-     * The tree goes down before the inode naming its root, and if it will not go
-     * down the inode is left exactly as it was. Committing it over a tree that is
-     * half written is the one outcome worth refusing: the root may by now name a
-     * chain node this flush did not write, and an index pointing at a block
-     * holding anything at all is what e2fsck clears a file for. Leaving the inode
-     * alone makes the blocks the loop took referenced by nothing - a leak, and a
-     * check gives leaks back.
+     * Committing takes three writes, in an order two opposite rules force (#164).
+     *
+     * The tree must reach the disk BEFORE the root naming it, or an interrupted
+     * append leaves an index pointing at a block holding whatever was there
+     * before, which e2fsck clears the file for.
+     *
+     * The size must reach the disk BEFORE a tree that outruns it. An append
+     * lengthens the file's last extent in place, and that extent covers blocks the
+     * file already had; a leaf saying logical 419-423 under an i_size that still
+     * ends at 420 is an extent past the end of the file, and e2fsck's repair for
+     * that is to clear the WHOLE extent - taking block 419, which was there before
+     * this operation began. The file keeps its length and quietly holds a hole.
+     * Losing the interrupted tail is expected; losing what was already there is
+     * not.
+     *
+     * Both rules are about the same inode, so one write cannot satisfy them. Hence
+     * the size first over the root exactly as the disk has it, then the tree, then
+     * the root. The state in between is an i_size ahead of the extents, which a
+     * check settles by shrinking i_size and takes nothing else with it.
      */
-    rc = path_flush(fs, &p, inode_seed);
-    if (rc != EXTW_OK) {
-        if (appended) *appended = 0;
-        goto out;
-    }
+    uint8_t root_after[INODE_IBLOCK_SIZE];
+    memcpy(root_after, root, INODE_IBLOCK_SIZE);
+    int root_moved = memcmp(root_after, root_before, INODE_IBLOCK_SIZE) != 0;
 
     inode_size_set(inode, (uint64_t)next_logical * fs->block_size);
     /* i_blocks counts the tree's own blocks too, not just the file's data. */
     inode_blocks_set(inode, inode_blocks_get(inode) +
                      (data_blocks + meta_blocks) * (fs->block_size / 512));
 
+    memcpy(root, root_before, INODE_IBLOCK_SIZE);
     rc = write_inode(fs, ino, inode);
+    if (rc != EXTW_OK) {
+        if (appended) *appended = 0;
+        goto out;
+    }
+
+    /* If the tree will not go down, the inode keeps the root it always had, so
+     * nothing on disk names a node this flush missed. What the loop took is
+     * referenced by nothing - a leak, and a check gives leaks back. */
+    rc = path_flush(fs, &p, inode_seed);
+    if (rc != EXTW_OK) {
+        if (appended) *appended = 0;
+        goto out;
+    }
+
+    /* Only when the tree changed shape. A run of appends that merely lengthened an
+     * extent leaves the root untouched, and the write above was already its final
+     * state. */
+    if (root_moved) {
+        memcpy(root, root_after, INODE_IBLOCK_SIZE);
+        rc = write_inode(fs, ino, inode);
+    }
     if (rc == EXTW_OK) rc = ext4_fs_flush(fs) ? EXTW_ERR_IO : EXTW_OK;
     if (append_rc != EXTW_OK) rc = append_rc;
     if (appended) *appended = (uint32_t)data_blocks;

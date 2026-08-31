@@ -159,17 +159,19 @@ try "a level is marked as it is linked, before the new chain is whole" \
     's|            wr16(pn + EH_ENTRIES_OFF, (uint16_t)(pe + 1));|&\n            path_touch(p, level - 1);|'
 
 # ── Writing in the wrong order: only a failed write can show it ─────────────
-try_fault "a parent reaches the disk before the child it names" \
-    --untestable "the sweep sees the residual is repairable, which it is, and the file
-              being appended to is one every case here already allows to be lost - so
-              the bar as it stands cannot separate a safe order from an unsafe one.
-              What separates them is the price of the repair, and the stand that
-              measures that is written and does not pass yet: it turned up #164, a
-              defect older than this change, where an interrupted append leaves the tree
-              ahead of the inode and e2fsck clears an extent covering a block the file
-              had BEFORE the append. Until #164 is fixed a torn-write sweep cannot be
-              green, so this mutant has no oracle. It gets one the day that lands." \
+try "a parent reaches the disk before the child it names" \
     's|    for (int level = p->depth; level >= 1; level--) {|    for (int level = 1; level <= p->depth; level++) {|'
+
+# ── The commit order the size and the root are caught between (#164) ───────
+try "the size is committed after the tree instead of before it" \
+    's|^    int root_moved = memcmp(root_after, root_before, INODE_IBLOCK_SIZE) != 0;|    int root_moved = 1;|' \
+    '/^    memcpy(root, root_before, INODE_IBLOCK_SIZE);$/,+5d'
+
+try "the new root goes down with the size, ahead of the tree it names" \
+    's|^    memcpy(root, root_before, INODE_IBLOCK_SIZE);|    /* mutant: whatever the loop left in the root */|'
+
+try "the root is never committed once the tree has changed shape" \
+    's|^    if (root_moved) {|    if (0) {|'
 
 try_fault "the inode is committed even though the tree could not be written" \
     's|^    rc = path_flush(fs, &p, inode_seed);|    rc = path_flush(fs, \&p, inode_seed); rc = EXTW_OK;|'
