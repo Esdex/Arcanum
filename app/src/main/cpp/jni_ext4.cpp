@@ -871,10 +871,16 @@ jint ext4jni_delete_file(JNIEnv *env, jlong handle, jstring jFilePath) {
     if (!open_reader(pdrv, &r)) return ERR_FS;
 
     /* Refuse a directory here: removing one is nativeDeleteDirectory, which is
-     * recursive and moves the counters a directory needs. */
+     * recursive and moves the counters a directory needs.
+     *
+     * Resolved WITHOUT following, because what is being removed is the name. A
+     * symlink is not a directory however tempting the thing it points at looks, so
+     * following here would refuse to delete a link to a folder - and it would be
+     * asking about the wrong object to begin with. Removing a link has never
+     * touched what it names, and must not start. */
     uint32_t ino = 0;
     int is_dir = 0;
-    int rrc = ext4_resolve_path(r, path.c_str(), &ino, &is_dir);
+    int rrc = ext4_resolve_path_nofollow(r, path.c_str(), &ino, &is_dir);
     if (rrc != EXT4_PATH_OK) return path_error(rrc);
     if (is_dir) return ERR_FS;
 
@@ -974,9 +980,18 @@ jint ext4jni_delete_directory(JNIEnv *env, jlong handle, jstring jDirPath) {
     ext4_fs *r = nullptr;
     if (!open_reader(pdrv, &r)) return ERR_FS;
 
+    /*
+     * WITHOUT following, and this is the one place where the difference is
+     * measured in somebody's files. `ino` is what gets emptied recursively, so
+     * following a symlink here would hand this the directory the link POINTS AT
+     * and empty that instead - the user removes a shortcut and the folder it named
+     * loses everything in it. A link is removed by nativeDeleteFile, which takes
+     * the name and leaves what it names alone; resolved without following, a link
+     * is not a directory and lands there.
+     */
     uint32_t ino = 0;
     int is_dir = 0;
-    int rrc = ext4_resolve_path(r, path.c_str(), &ino, &is_dir);
+    int rrc = ext4_resolve_path_nofollow(r, path.c_str(), &ino, &is_dir);
     if (rrc != EXT4_PATH_OK) return path_error(rrc);
     if (!is_dir) return ERR_FS;
 
