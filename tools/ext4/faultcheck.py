@@ -60,6 +60,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from genimages import parse_extents, debugfs           # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 MKFS = os.path.join(HERE, "mkfs")
 DIRWRITE = os.path.join(HERE, "dirwrite")
@@ -286,6 +289,45 @@ def make_file(img, parent, name, blocks):
     return ino
 
 
+def block_size_of(img):
+    """The filesystem's block size, read straight out of the superblock."""
+    with open(img, "rb") as fh:
+        fh.seek(1024 + 24)
+        return 1024 << int.from_bytes(fh.read(4), "little")
+
+
+def filled_leaf_file(img, name, block_size, pads=1, want_level=2, limit=600):
+    """-> the inode of a file whose rightmost extent node is full, under a node of
+    its own.
+
+    One block to each padding file and then one to the target, round after round, so
+    no two of the target's blocks are adjacent and their extents cannot merge. Four
+    separate extents fill the four slots inside the inode and the fifth pushes the
+    root down; four full nodes below that fill the root again and push it down once
+    more. The target is the moment a node two levels below the root is exactly full,
+    because the very next block appended has to hang a new node off its parent - and
+    the parent is then a node with a block of its own, not the root.
+
+    That distinction is the whole point of the setup. When the parent is the root it
+    rides in the inode and goes to disk last whatever happens, so only one node is
+    ever written and there is no order to get wrong. Two levels down, the new node
+    and the parent naming it are both written by the same operation, and the sweep
+    can ask which of them reaches the disk first. Stopping a level short gives a case
+    that runs and asks nothing.
+    """
+    capacity = (block_size - 12 - 4) // 12
+    pad_inos = [make_file(img, 2, f"pad{i}.txt", 0) for i in range(pads)]
+    ino = make_file(img, 2, name, 0)
+    for _ in range(limit):
+        rows = parse_extents(debugfs(img, f"dump_extents <{ino}>\n"))
+        if rows and rows[-1]["level"] >= want_level and rows[-1]["entries"] == capacity:
+            return ino if fsck_clean(img) else None
+        for pi in pad_inos:
+            sh(EXTWRITE, img, str(pi), "append", "1")
+        sh(EXTWRITE, img, str(ino), "append", "1")
+    return None
+
+
 def indexed_image(tmp, name, files, megs, inodes):
     """A volume mke2fs made, with one directory e2fsck has since indexed.
 
@@ -380,6 +422,21 @@ def main():
         apimg = fresh(tmp, "append.img")
         ai = make_file(apimg, 2, "grow.txt", 4)
         go(apimg, "append 8 blocks", ("append", str(ai), "8"), {"grow.txt"})
+
+        # The same writer over a tree that has a leaf of its own. The case above
+        # never leaves the inode - four contiguous blocks are one extent in the
+        # root - so no fault in it can fall between a node and the parent that
+        # names it. Since the node is now written once at the end of a run rather
+        # than after every block (#162), where that single write falls in the
+        # order is the whole question, and this is the only case that asks it.
+        dpimg = fresh(tmp, "deeptree.img")
+        di = filled_leaf_file(dpimg, "deep.txt", block_size_of(dpimg))
+        if di is None:
+            problems.append("could not set up a file whose extent node is exactly "
+                            "full, so the growing append was never swept")
+        else:
+            go(dpimg, "append 4 blocks onto a full extent node",
+               ("append", str(di), "4"), {"deep.txt"})
 
         tr = fresh(tmp, "truncate.img")
         ti = make_file(tr, 2, "cut.txt", 24)

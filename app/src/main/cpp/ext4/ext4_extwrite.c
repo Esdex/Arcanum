@@ -229,15 +229,45 @@ typedef struct {
     int      depth;                       /* buf[depth] is the leaf */
     uint64_t block[EXT4_MAX_DEPTH + 1];   /* 0 at level 0 - the root has no block */
     uint8_t *buf[EXT4_MAX_DEPTH + 1];
+    /* Levels changed since they were last on disk. Level 0 is never marked: the
+     * root lives in the inode and goes out with it. */
+    int      dirty[EXT4_MAX_DEPTH + 1];
 } rightmost_path;
 
 static uint16_t node_entries(const uint8_t *n)  { return rd16(n + EH_ENTRIES_OFF); }
 static uint16_t node_capacity(const uint8_t *n) { return rd16(n + EH_MAX_OFF); }
 
-/* Writes one level back. Level 0 lives in the inode and goes out with it. */
-static int flush_level(ext4_wfs *fs, rightmost_path *p, int level, uint32_t seed) {
-    if (level == 0) return EXTW_OK;
-    return write_extent_block(fs, p->block[level], p->buf[level], seed);
+/*
+ * A node is changed in its buffer and written back later rather than after every
+ * change (#162). Appending used to put the leaf down once per block, so importing
+ * a 168 MB file wrote one block 38647 times - 23% of everything a device session
+ * wrote, and it grows with the file rather than with the tree.
+ *
+ * What the deferral can reach is bounded on purpose: these buffers do not outlive
+ * one ext4_append_blocks call, so nothing outside this file can be handed a tree
+ * that is only half on disk.
+ */
+static void path_touch(rightmost_path *p, int level) {
+    if (level > 0) p->dirty[level] = 1;
+}
+
+/*
+ * Writes back every level that has changed, deepest first.
+ *
+ * The order is the point. A parent names its children, so a parent that reaches
+ * the disk before the child it names leaves an index pointing at a block still
+ * holding whatever was there before - e2fsck reads that as an invalid extent node
+ * and clearing it costs the whole file. Deepest first can only leave a node that
+ * nothing points at yet, which is a leak, and a check gives leaks back.
+ */
+static int path_flush(ext4_wfs *fs, rightmost_path *p, uint32_t seed) {
+    for (int level = p->depth; level >= 1; level--) {
+        if (!p->dirty[level]) continue;
+        int rc = write_extent_block(fs, p->block[level], p->buf[level], seed);
+        if (rc != EXTW_OK) return rc;
+        p->dirty[level] = 0;
+    }
+    return EXTW_OK;
 }
 
 /* Descends the rightmost edge, giving each level a buffer of its own. */
@@ -245,6 +275,13 @@ static int find_rightmost_path(ext4_wfs *fs, uint8_t *root, uint8_t *storage,
                                rightmost_path *p) {
     uint16_t depth = rd16(root + EH_DEPTH_OFF);
     if (depth > EXT4_MAX_DEPTH) return EXTW_ERR_DEPTH;
+
+    /* Re-reading a level whose buffer holds changes would drop them without a
+     * sound. Every caller that modifies the tree flushes before it gets here;
+     * this says so out loud instead of trusting it. The path must be zeroed
+     * before its first use for the check to mean anything. */
+    for (int level = 1; level <= EXT4_MAX_DEPTH; level++)
+        if (p->dirty[level]) return EXTW_ERR_FORMAT;
 
     p->depth    = depth;
     p->block[0] = 0;
@@ -345,7 +382,12 @@ static int grow_right_edge(ext4_wfs *fs, uint8_t *root, uint8_t *storage,
         uint8_t *leaf = p->buf[p->depth];
         if (node_entries(leaf) < node_capacity(leaf)) return EXTW_OK;
 
-        int rc;
+        /* Past this point buffers are re-read or reused, so whatever they hold
+         * has to be on disk first. This is the only place that invalidates them,
+         * which is why it is the only place that flushes. */
+        int rc = path_flush(fs, p, inode_seed);
+        if (rc != EXTW_OK) return rc;
+
         /* The leaf is the root itself: pushing the root down is the whole fix. */
         if (p->depth == 0) {
             rc = split_root(fs, root, storage, inode_seed, 0, meta_blocks);
@@ -414,11 +456,12 @@ static int grow_right_edge(ext4_wfs *fs, uint8_t *root, uint8_t *storage,
         }
 
         /* Everything from the anchor down, except the new leaf: that one is left
-         * for the caller to write once it holds its extent, as it always was. */
-        for (int level = anchor; level < p->depth; level++) {
-            rc = flush_level(fs, p, level, inode_seed);
-            if (rc != EXTW_OK) return rc;
-        }
+         * for the caller to fill in, as it always was. Marked rather than written,
+         * and marked only now that the chain is whole - marking as each level was
+         * linked would let the rollback above leave a level on the list still
+         * naming blocks it had just given back. */
+        for (int level = anchor; level < p->depth; level++)
+            path_touch(p, level);
         *meta_blocks += (uint64_t)made_n;
         return EXTW_OK;
     }
@@ -452,7 +495,7 @@ int ext4_append_blocks(ext4_wfs *fs, uint32_t ino, uint32_t count,
     uint32_t generation = rd32(inode + INODE_GENERATION_OFF);
     uint32_t inode_seed = ext4_inode_csum_seed(fs->csum_seed, ino, generation);
 
-    rightmost_path p;
+    rightmost_path p = { 0 };
     rc = find_rightmost_path(fs, root, storage, &p);
     if (rc != EXTW_OK) goto out;
 
@@ -481,10 +524,10 @@ int ext4_append_blocks(ext4_wfs *fs, uint32_t ino, uint32_t count,
     uint64_t data_blocks = 0, meta_blocks = 0;
     if (appended) *appended = 0;
     for (uint32_t i = 0; i < count; i++) {
-        /* Re-found every iteration, because growing the tree moves it. */
-        rc = find_rightmost_path(fs, root, storage, &p);
-        if (rc != EXTW_OK) goto out;
-
+        /* Carried across iterations rather than re-found. Nothing between two
+         * appends can move it, and re-finding meant re-reading the leaf, which
+         * meant writing it back every time round (#162). Growing the tree does
+         * move it, and grow_right_edge leaves the path where it moved to. */
         uint8_t *leaf     = p.buf[p.depth];
         ent               = node_entries(leaf);
         uint8_t *last     = ent ? leaf + 12 + (size_t)(ent - 1) * 12 : NULL;
@@ -533,10 +576,9 @@ int ext4_append_blocks(ext4_wfs *fs, uint32_t ino, uint32_t count,
             wr16(leaf + EH_ENTRIES_OFF, (uint16_t)(ent + 1));
         }
 
-        /* A leaf with a block of its own goes back with its checksum restamped.
+        /* Changed in its buffer; the whole path goes down once the run is over.
          * The root rides along in the inode, written once at the end. */
-        rc = flush_level(fs, &p, p.depth, inode_seed);
-        if (rc != EXTW_OK) break;
+        path_touch(&p, p.depth);
 
         next_logical++;
         data_blocks++;
@@ -553,6 +595,21 @@ int ext4_append_blocks(ext4_wfs *fs, uint32_t ino, uint32_t count,
      * not one that needs repairing.
      */
     int append_rc = rc;
+
+    /*
+     * The tree goes down before the inode naming its root, and if it will not go
+     * down the inode is left exactly as it was. Committing it over a tree that is
+     * half written is the one outcome worth refusing: the root may by now name a
+     * chain node this flush did not write, and an index pointing at a block
+     * holding anything at all is what e2fsck clears a file for. Leaving the inode
+     * alone makes the blocks the loop took referenced by nothing - a leak, and a
+     * check gives leaks back.
+     */
+    rc = path_flush(fs, &p, inode_seed);
+    if (rc != EXTW_OK) {
+        if (appended) *appended = 0;
+        goto out;
+    }
 
     inode_size_set(inode, (uint64_t)next_logical * fs->block_size);
     /* i_blocks counts the tree's own blocks too, not just the file's data. */
@@ -809,7 +866,7 @@ out:
  */
 static int file_logical_end(ext4_wfs *fs, uint8_t *root, uint8_t *storage,
                             uint32_t *end_out) {
-    rightmost_path p;
+    rightmost_path p = { 0 };
     int rc = find_rightmost_path(fs, root, storage, &p);
     if (rc != EXTW_OK) return rc;
 
