@@ -28,11 +28,29 @@
 #include "ext4_dirwrite.h"   /* ext4_dir_lookup */
 #include "ext4_log.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #define INODE_MODE_OFF 0x00
 #define EXT4_S_IFMT    0xF000
 #define EXT4_S_IFDIR   0x4000
+#define EXT4_S_IFLNK   0xA000
+
+/*
+ * How far a symlink may be followed (#163).
+ *
+ * Both numbers are copied from Linux rather than invented, and that is the reason
+ * for them: a volume written on a desktop was built under those rules, so anything
+ * they allow has to work here, and anything they refuse is already known not to
+ * work anywhere. 40 bounds the whole resolution, which is what stops a ring of
+ * links from spinning forever. 8 bounds how deeply one expansion may sit inside
+ * another, which is what bounds this file's stack, since every level holds an
+ * inode buffer and a component buffer of its own.
+ */
+#define EXT4_FOLLOW_TOTAL 40
+#define EXT4_FOLLOW_DEPTH  8
+
+typedef struct { int total; int depth; } follow_state;
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
 
@@ -89,8 +107,60 @@ static int lookup_rc_to_path_rc(int rc) {
  * the caller can deal with whatever remains: nothing (resolve_path consumed it all)
  * or the final component (resolve_parent left it).
  */
-static int walk(const ext4_fs *r, const char *path, int stop_short,
-                uint32_t *ino_out, const char **tail_out) {
+static int walk_from(const ext4_fs *r, uint32_t start, const char *path,
+                     int stop_short, int follow_final, follow_state *fs_state,
+                     uint32_t *ino_out, const char **tail_out);
+
+/*
+ * Replaces a symlink with whatever it names, again and again until it names
+ * something that is not one.
+ *
+ * `dir` is the directory the link was found in, because a target that does not
+ * begin with a slash is relative to that and not to where the resolution started.
+ * An absolute target starts again at the root - and the root of the volume, which
+ * is the whole reason a link written on a desktop as "/home/user/x" is dead here
+ * rather than dangerous: there is no way for it to name anything outside.
+ */
+static int follow_links(const ext4_fs *r, uint32_t dir, uint32_t *ino,
+                        follow_state *fs_state) {
+    for (;;) {
+        uint8_t inode[EXT4_MAX_INODE_SIZE];
+        memset(inode, 0, sizeof(inode));
+        if (ext4_read_inode_raw(r, *ino, inode, sizeof(inode)) != EXT4_OK)
+            return EXT4_PATH_EIO;
+        if ((rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) != EXT4_S_IFLNK)
+            return EXT4_PATH_OK;
+
+        if (fs_state->total <= 0 || fs_state->depth <= 0) return EXT4_PATH_ELOOP;
+        fs_state->total--;
+
+        uint64_t len = ext4_inode_size(inode);
+        if (len == 0 || len > EXT4_PATH_MAX) return EXT4_PATH_ENAMETOOLONG;
+        char *target = (char *)malloc((size_t)len + 1);
+        if (!target) return EXT4_PATH_EIO;
+        if (ext4_readlink(r, inode, target, (size_t)len + 1) < 0) {
+            free(target);
+            return EXT4_PATH_EIO;
+        }
+
+        uint32_t base = (target[0] == '/') ? EXT4_ROOT_INO : dir;
+        uint32_t resolved = 0;
+        const char *tail = NULL;
+        /* The target's own last component is left unfollowed on purpose: the loop
+         * above takes it, so a chain of links is spent out of one budget rather
+         * than each expansion starting a fresh one. */
+        fs_state->depth--;
+        int rc = walk_from(r, base, target, 0, 0, fs_state, &resolved, &tail);
+        fs_state->depth++;
+        free(target);
+        if (rc != EXT4_PATH_OK) return rc;
+        *ino = resolved;
+    }
+}
+
+static int walk_from(const ext4_fs *r, uint32_t start, const char *path,
+                     int stop_short, int follow_final, follow_state *fs_state,
+                     uint32_t *ino_out, const char **tail_out) {
     /* First count the components, so "resolve all but the last" knows where the
      * last one is without a second parser that could disagree with the first. */
     uint32_t total = 0;
@@ -105,7 +175,7 @@ static int walk(const ext4_fs *r, const char *path, int stop_short,
 
     uint32_t resolve = (total >= (uint32_t)stop_short) ? total - (uint32_t)stop_short : 0;
 
-    uint32_t ino = EXT4_ROOT_INO;
+    uint32_t ino = start;
     const char *cursor = path;
     for (uint32_t i = 0; i < resolve; i++) {
         int rc = next_component(&cursor, comp, sizeof(comp));
@@ -121,6 +191,17 @@ static int walk(const ext4_fs *r, const char *path, int stop_short,
         uint32_t child = 0;
         int lrc = ext4_dir_lookup(r, ino, comp, &child);
         if (lrc != EXT4_DIRW_OK) return lookup_rc_to_path_rc(lrc);
+
+        /* Every component a path goes THROUGH is followed, whatever the caller
+         * asked for: "/link/file.txt" has to reach into the directory the link
+         * names, or a link to a directory is a directory nothing can be done with.
+         * Only the component the path ENDS on is the caller's choice, and only
+         * when this walk is the one that resolves it. */
+        int last = (i + 1 == resolve) && stop_short == 0;
+        if (!last || follow_final) {
+            int drc = follow_links(r, ino, &child, fs_state);
+            if (drc != EXT4_PATH_OK) return drc;
+        }
         ino = child;
     }
 
@@ -129,15 +210,28 @@ static int walk(const ext4_fs *r, const char *path, int stop_short,
     return EXT4_PATH_OK;
 }
 
-int ext4_resolve_path(const ext4_fs *r, const char *path,
-                      uint32_t *ino_out, int *is_dir_out) {
+static int resolve_with(const ext4_fs *r, const char *path, int follow_final,
+                        uint32_t *ino_out, int *is_dir_out) {
     if (!path) return EXT4_PATH_EINVAL;
 
+    follow_state fs_state = { EXT4_FOLLOW_TOTAL, EXT4_FOLLOW_DEPTH };
     uint32_t ino = 0;
     const char *tail = NULL;
-    int rc = walk(r, path, 0, &ino, &tail);
+    int rc = walk_from(r, EXT4_ROOT_INO, path, 0, follow_final, &fs_state,
+                       &ino, &tail);
     if (rc != EXT4_PATH_OK) {
-        EXT4_LOGE("resolve '%s': failed (%d)", path, rc);
+        /*
+         * Only an unreadable volume is an error here. The rest are answers: a
+         * name that is not there, a name used as a directory, a ring of links.
+         * Since a listing now resolves every symlink it meets (#163), a folder
+         * holding four dead links from a desktop wrote sixty-four error lines in
+         * one browsing session - and these logs are what a crash report carries,
+         * so filling them with expected outcomes is how a real fault gets lost.
+         */
+        if (rc == EXT4_PATH_EIO)
+            EXT4_LOGE("resolve '%s': the volume could not be read", path);
+        else
+            EXT4_LOGD("resolve '%s': no (%d)", path, rc);
         return rc;
     }
 
@@ -151,13 +245,24 @@ int ext4_resolve_path(const ext4_fs *r, const char *path,
     return EXT4_PATH_OK;
 }
 
+int ext4_resolve_path(const ext4_fs *r, const char *path,
+                      uint32_t *ino_out, int *is_dir_out) {
+    return resolve_with(r, path, 1, ino_out, is_dir_out);
+}
+
+int ext4_resolve_path_nofollow(const ext4_fs *r, const char *path,
+                               uint32_t *ino_out, int *is_dir_out) {
+    return resolve_with(r, path, 0, ino_out, is_dir_out);
+}
+
 int ext4_resolve_parent(const ext4_fs *r, const char *path,
                         uint32_t *parent_out, char *name_out, size_t name_cap) {
     if (!path || !name_out || name_cap == 0) return EXT4_PATH_EINVAL;
 
+    follow_state fs_state = { EXT4_FOLLOW_TOTAL, EXT4_FOLLOW_DEPTH };
     uint32_t parent = 0;
     const char *tail = NULL;
-    int rc = walk(r, path, 1, &parent, &tail);
+    int rc = walk_from(r, EXT4_ROOT_INO, path, 1, 0, &fs_state, &parent, &tail);
     if (rc != EXT4_PATH_OK) return rc;
 
     /* Whatever the walk stopped short of is the final component. There may be none

@@ -458,7 +458,11 @@ struct JniCache {
      * reaches Java through this. Set in JNI_OnLoad, valid for the process. */
     JavaVM   *vm           = nullptr;
     jclass    fileInfoCls  = nullptr;
-    jmethodID fileInfoCtor = nullptr;   /* NativeFileInfo(String,String,J,Z,J) */
+    jmethodID fileInfoCtor = nullptr;
+    /* NativeFileInfo(String,String,J,Z,J,I,String,Z,Z) - name, path, size,
+     * isDirectory, mtime, kind, linkTarget, linkTargetIsDirectory,
+     * linkBroken. Both listing paths build it, and the ProGuard rule keeps
+     * the constructor: R8 cannot see a call that only exists in C++. */
     jclass    stringCls    = nullptr;
     jmethodID stringCtor   = nullptr;   /* String(byte[], String) */
     jstring   utf8Name     = nullptr;   /* "UTF-8", interned as a GlobalRef */

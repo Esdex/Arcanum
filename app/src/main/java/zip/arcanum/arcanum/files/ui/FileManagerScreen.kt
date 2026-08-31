@@ -1,5 +1,7 @@
 package zip.arcanum.arcanum.files.ui
 
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
+import androidx.compose.material.icons.rounded.Add
 import android.content.Context
 import android.provider.DocumentsContract
 import androidx.activity.compose.BackHandler
@@ -57,7 +59,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Check
@@ -69,7 +70,7 @@ import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.DriveFolderUpload
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.FileUpload
@@ -80,11 +81,12 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.LinkOff
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.SettingsEthernet
 import androidx.compose.material.icons.outlined.TableChart
-import androidx.compose.material.icons.outlined.DriveFolderUpload
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material3.Card
@@ -246,6 +248,10 @@ fun FileManagerScreen(
     var showMoreMenu           by remember { mutableStateOf(false) }
     var renameTarget           by remember { mutableStateOf<NativeFileInfo?>(null) }
     var propertiesTarget       by remember { mutableStateOf<NativeFileInfo?>(null) }
+    /* Tapping something that cannot be opened has to say why. A dead link and a
+     * device node both look like ordinary rows, so silence reads as the app being
+     * broken rather than as the vault holding something odd (#163). */
+    var explainTarget          by remember { mutableStateOf<NativeFileInfo?>(null) }
     // Set when Open with is blocked on the vault's External app access being off
     var enableAccessTarget     by remember { mutableStateOf<NativeFileInfo?>(null) }
 
@@ -346,7 +352,8 @@ fun FileManagerScreen(
                                 onThumbnailRequest   = viewModel::requestThumbnail,
                                 onFileClick          = { file ->
                                     if (state.isSelectionMode) viewModel.toggleSelection(file.path)
-                                    else if (file.isDirectory) viewModel.navigateTo(file.path)
+                                    else if (file.isSpecial || file.linkBroken) explainTarget = file
+                                    else if (file.opensAsDirectory) viewModel.navigateTo(file.path)
                                     else if (onAudioFileClick != null &&
                                              file.name.substringAfterLast('.', "").lowercase() in MediaExtensions.AUDIO) {
                                         viewModel.setAudioQueue(file)
@@ -382,7 +389,8 @@ fun FileManagerScreen(
                             onThumbnailRequest = viewModel::requestThumbnail,
                             onFileClick     = { file ->
                                 if (state.isSelectionMode) viewModel.toggleSelection(file.path)
-                                else if (file.isDirectory) viewModel.navigateTo(file.path)
+                                else if (file.isSpecial || file.linkBroken) explainTarget = file
+                                else if (file.opensAsDirectory) viewModel.navigateTo(file.path)
                                 else if (onAudioFileClick != null &&
                                          file.name.substringAfterLast('.', "").lowercase() in MediaExtensions.AUDIO) {
                                     viewModel.setAudioQueue(file)
@@ -584,6 +592,25 @@ fun FileManagerScreen(
             onCreate  = { name ->
                 viewModel.createFolder(name)
                 showNewFolderDialog = false
+            }
+        )
+    }
+
+    explainTarget?.let { file ->
+        AppDialog(
+            onDismissRequest = { explainTarget = null },
+            title = { Text(file.name) },
+            text  = {
+                Text(
+                    if (file.isSpecial) stringResource(R.string.files_special_message)
+                    else stringResource(R.string.files_link_broken_message,
+                                        file.linkTarget ?: "")
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { explainTarget = null }) {
+                    Text(stringResource(R.string.common_ok))
+                }
             }
         )
     }
@@ -1156,7 +1183,7 @@ private fun FileListItem(
     formatSize: (Long) -> String
 ) {
     val isHidden = file.name.startsWith(".")
-    val (icon, iconColor) = fileTypeIconAndColor(file.name, file.isDirectory)
+    val (icon, iconColor) = fileTypeIconAndColor(file)
     LaunchedEffect(file.path) { if (thumbnail == null && !file.isDirectory) onThumbnailRequest() }
     val bgColor by animateColorAsState(
         targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
@@ -1232,8 +1259,17 @@ private fun FileListItem(
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text  = if (file.isDirectory) stringResource(R.string.files_type_folder)
-                        else "${formatSize(file.size)} · ${formatDate(file.lastModified)}",
+                text  = when {
+                    file.isDirectory  -> stringResource(R.string.files_type_folder)
+                    file.linkBroken   -> stringResource(R.string.files_type_link_broken)
+                    file.isSpecial    -> stringResource(R.string.files_type_special)
+                    /* A link says where it goes rather than how big it is: the size
+                     * shown is the target's, and two rows with the same size are
+                     * easier to tell apart by their destination. */
+                    file.isSymlink    -> stringResource(R.string.files_link_points_to,
+                                                        file.linkTarget ?: "")
+                    else -> "${formatSize(file.size)} · ${formatDate(file.lastModified)}"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1309,7 +1345,7 @@ private fun FileGridContent(
         // Folders span 2 columns (using 1 column here since we can't span in LazyVerticalGrid without custom)
         items(folders + nonFolders, key = { it.path }) { file ->
             val isSelected = file.path in selectedItems
-            val (icon, iconColor) = fileTypeIconAndColor(file.name, file.isDirectory)
+            val (icon, iconColor) = fileTypeIconAndColor(file)
             val thumbnail = thumbnails[file.path]
             LaunchedEffect(file.path) { if (thumbnail == null && !file.isDirectory) onThumbnailRequest(file) }
             val bgColor by animateColorAsState(
@@ -1524,7 +1560,7 @@ private fun RenameDialog(
 @Composable
 private fun FilePropertiesContent(file: NativeFileInfo, formatSize: (Long) -> String) {
     val context = LocalContext.current
-    val (icon, iconColor) = fileTypeIconAndColor(file.name, file.isDirectory)
+    val (icon, iconColor) = fileTypeIconAndColor(file)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1547,8 +1583,23 @@ private fun FilePropertiesContent(file: NativeFileInfo, formatSize: (Long) -> St
         }
         HorizontalDivider()
         PropertiesRow(stringResource(R.string.files_props_name),     file.name)
-        PropertiesRow(stringResource(R.string.files_props_type),     if (file.isDirectory) stringResource(R.string.files_props_type_folder) else fileTypeCategory(context, file.name))
-        PropertiesRow(stringResource(R.string.files_props_size),     if (file.isDirectory) "—" else formatSize(file.size))
+        PropertiesRow(
+            stringResource(R.string.files_props_type),
+            when {
+                file.isDirectory -> stringResource(R.string.files_props_type_folder)
+                file.isSymlink   -> stringResource(R.string.files_props_type_link)
+                file.isSpecial   -> stringResource(R.string.files_type_special)
+                else             -> fileTypeCategory(context, file.name)
+            }
+        )
+        /* Where a link goes belongs next to what it is, and above its size - the
+         * size is the target's, which only makes sense once the target is named. */
+        file.linkTarget?.let {
+            PropertiesRow(stringResource(R.string.files_props_target), it)
+        }
+        PropertiesRow(stringResource(R.string.files_props_size),
+                      if (file.isDirectory || file.linkBroken || file.isSpecial) "—"
+                      else formatSize(file.size))
         PropertiesRow(stringResource(R.string.files_props_location), file.path.substringBeforeLast("/").ifEmpty { "/" })
         PropertiesRow(stringResource(R.string.files_props_modified), formatDate(file.lastModified))
     }
@@ -1829,6 +1880,22 @@ private fun DestinationPickerSheetContent(
 }
 
 // ── Helper utilities ──────────────────────────────────────────────────────────
+
+/**
+ * The icon a row gets.
+ *
+ * A link takes its icon from what it points at, not from its own name, so a link
+ * to a photo looks like a photo — following on open is the behaviour, and the icon
+ * should not promise something else. What a link does NOT take from its target is
+ * the ordinary look of a working file when it is broken: a dead one gets an icon
+ * of its own, because there is nothing behind it to stand for (#163).
+ */
+private fun fileTypeIconAndColor(file: NativeFileInfo): Pair<ImageVector, Color> {
+    if (file.linkBroken) return Icons.Outlined.LinkOff to Color(0xFFEF4444)
+    if (file.isSpecial)  return Icons.Outlined.SettingsEthernet to Color(0xFF94A3B8)
+    if (file.opensAsDirectory) return Icons.Outlined.Folder to Color(0xFFF59E0B)
+    return fileTypeIconAndColor(file.name, false)
+}
 
 private fun fileTypeIconAndColor(name: String, isDirectory: Boolean): Pair<ImageVector, Color> {
     if (isDirectory) return Icons.Outlined.Folder to Color(0xFFF59E0B)

@@ -271,6 +271,12 @@
     <string name="files_empty_folder_subtitle">Tap + to import files or create a folder</string>
     <string name="files_error_cannot_browse">Cannot browse files</string>
     <string name="files_type_folder">Folder</string>
+    <string name="files_type_link">Link</string>
+    <string name="files_type_link_broken">Link points to nothing</string>
+    <string name="files_type_special">System file, no contents</string>
+    <string name="files_link_points_to">Points to %1$s</string>
+    <string name="files_link_broken_message">This link points to \"%1$s\", and there is nothing by that name in this vault. Links made on a computer often point outside it.</string>
+    <string name="files_special_message">This is a system file — a pipe, socket or device — and holds no contents. It came from another computer and there is nothing here to open.</string>
     <string name="files_action_rename">Rename</string>
     <string name="files_action_properties">Properties</string>
     <string name="files_action_open_with">Open with…</string>
@@ -306,6 +312,8 @@
     <string name="files_props_location">Location</string>
     <string name="files_props_modified">Modified</string>
     <string name="files_props_type_folder">Folder</string>
+    <string name="files_props_type_link">Link</string>
+    <string name="files_props_target">Points to</string>
     <string name="files_type_image">Image</string>
     <string name="files_type_video">Video</string>
     <string name="files_type_audio">Audio</string>

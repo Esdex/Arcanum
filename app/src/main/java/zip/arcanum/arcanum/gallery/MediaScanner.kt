@@ -58,6 +58,16 @@ class MediaScanner @Inject constructor(
                 return
             }
             for (entry in entries.filterNotNull()) {
+                /*
+                 * Links and special files are passed over rather than indexed (#163).
+                 *
+                 * A link to a photo would put the same picture in the gallery twice
+                 * under two names, and following one while walking a tree is how a
+                 * ring of links turns a scan into a loop. A FIFO or a device node
+                 * named ".jpg" has nothing to decode. Neither is something the
+                 * gallery is for, and both only ever arrive from another computer.
+                 */
+                if (entry.isSymlink || entry.isSpecial) continue
                 if (entry.isDirectory) {
                     emit(ScanProgress(scanned, found.size, entry.path, false, found.toList()))
                     scanDir(entry.path)

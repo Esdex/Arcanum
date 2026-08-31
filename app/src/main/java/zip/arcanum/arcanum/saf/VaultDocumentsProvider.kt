@@ -108,7 +108,16 @@ class VaultDocumentsProvider : DocumentsProvider() {
         val handle = requireExposedAndMounted(cid)
         val cursor = MatrixCursor(projection ?: DEFAULT_DOCUMENT_PROJECTION)
         engine.listFiles(handle, dirPath).forEach { info ->
-            addFileRow(cursor, cid, info.path, info.name, info.size, info.isDirectory, info.lastModified)
+            /*
+             * A dead link and a device node are left out of what other apps are
+             * shown (#163). SAF has no way to say "this is a name with nothing
+             * behind it", so anything offered here is offered as openable, and the
+             * app that takes us up on it gets an empty file and no reason why. A
+             * link that does resolve is offered normally - reading it follows.
+             */
+            if (info.isSpecial || info.linkBroken) return@forEach
+            addFileRow(cursor, cid, info.path, info.name, info.size,
+                       info.opensAsDirectory, info.lastModified)
         }
         return cursor
     }

@@ -9,6 +9,7 @@
  * Licensed under Apache License 2.0
  */
 
+#include "arcanum_file_kind.h"
 #include "arcanum_internal.h"
 
 #include <cstdio>
@@ -94,7 +95,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
         infoCls = env->FindClass("zip/arcanum/crypto/NativeFileInfo");
         if (!infoCls) return nullptr;
         ctor = env->GetMethodID(infoCls, "<init>",
-                                "(Ljava/lang/String;Ljava/lang/String;JZJ)V");
+                                "(Ljava/lang/String;Ljava/lang/String;JZJILjava/lang/String;ZZ)V");
         if (!ctor) return env->NewObjectArray(0, infoCls, nullptr);
     }
 
@@ -166,11 +167,18 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
         const Entry &e = entries[i];
         jstring jName = utf8_to_jstring(env, e.name.c_str());
         jstring jPath = utf8_to_jstring(env, e.path.c_str());
+        /* FAT and exFAT hold files and folders and nothing else, so the kind is
+         * decided entirely by isDir and there is never a link to describe. */
         jobject fi    = env->NewObject(infoCls, ctor,
                                        jName, jPath,
                                        (jlong)e.size,
                                        (jboolean)(e.isDir ? 1 : 0),
-                                       e.mtime);
+                                       e.mtime,
+                                       (jint)(e.isDir ? ARC_KIND_DIRECTORY
+                                                      : ARC_KIND_REGULAR),
+                                       (jstring)nullptr,
+                                       (jboolean)0,
+                                       (jboolean)0);
         env->SetObjectArrayElement(result, (jsize)i, fi);
         if (jName) env->DeleteLocalRef(jName);
         if (jPath) env->DeleteLocalRef(jPath);

@@ -13,8 +13,11 @@
 /*
  * Driver for path resolution, so pathcheck.py has something to run.
  *
- *   pathresolve <image> resolve <path>   -> "<inode> <dir|file>"
- *   pathresolve <image> parent  <path>   -> "<parent-inode> <name>"
+ *   pathresolve <image> resolve  <path>  -> "<inode> <dir|file>"
+ *   pathresolve <image> lresolve <path>  -> the same, without following a final
+ *                                           symlink - stat against lstat
+ *   pathresolve <image> readlink <path>  -> "<target>"
+ *   pathresolve <image> parent   <path>  -> "<parent-inode> <name>"
  *
  * Read-only: it opens the image through the reader's block callback and walks the
  * directory tree, changing nothing. On failure it prints the error name to stderr
@@ -46,6 +49,7 @@ static const char *strerr(int rc) {
     switch (rc) {
     case EXT4_PATH_ENOENT:        return "ENOENT";
     case EXT4_PATH_ENOTDIR:       return "ENOTDIR";
+    case EXT4_PATH_ELOOP:         return "ELOOP";
     case EXT4_PATH_ENAMETOOLONG:  return "ENAMETOOLONG";
     case EXT4_PATH_EINVAL:        return "EINVAL";
     case EXT4_PATH_EIO:           return "EIO";
@@ -55,9 +59,11 @@ static const char *strerr(int rc) {
 
 int main(int argc, char **argv) {
     int resolving = (argc == 4 && !strcmp(argv[2], "resolve"));
+    int lresolving = (argc == 4 && !strcmp(argv[2], "lresolve"));
+    int reading   = (argc == 4 && !strcmp(argv[2], "readlink"));
     int parenting = (argc == 4 && !strcmp(argv[2], "parent"));
-    if (!resolving && !parenting) {
-        fprintf(stderr, "usage: %s <image> resolve <path>\n"
+    if (!resolving && !lresolving && !reading && !parenting) {
+        fprintf(stderr, "usage: %s <image> resolve|lresolve|readlink <path>\n"
                         "       %s <image> parent <path>\n", argv[0], argv[0]);
         return 2;
     }
@@ -74,11 +80,31 @@ int main(int argc, char **argv) {
     ctx.block_size = r.block_size;
 
     int rc;
-    if (resolving) {
+    if (resolving || lresolving) {
         uint32_t ino = 0;
         int is_dir = 0;
-        rc = ext4_resolve_path(&r, argv[3], &ino, &is_dir);
+        rc = lresolving ? ext4_resolve_path_nofollow(&r, argv[3], &ino, &is_dir)
+                        : ext4_resolve_path(&r, argv[3], &ino, &is_dir);
         if (rc == EXT4_PATH_OK) printf("%u %s\n", ino, is_dir ? "dir" : "file");
+    } else if (reading) {
+        uint32_t ino = 0;
+        /* The link itself, never what it names - readlink on the target would
+         * either fail or hand back the wrong object's contents. */
+        rc = ext4_resolve_path_nofollow(&r, argv[3], &ino, NULL);
+        if (rc == EXT4_PATH_OK) {
+            uint8_t inode[EXT4_MAX_INODE_SIZE];
+            memset(inode, 0, sizeof(inode));
+            char target[EXT4_PATH_MAX + 1];
+            if (ext4_read_inode_raw(&r, ino, inode, sizeof(inode)) != EXT4_OK) {
+                rc = EXT4_PATH_EIO;
+            } else if (ext4_readlink(&r, inode, target, sizeof(target)) < 0) {
+                fprintf(stderr, "NOTLINK\n");
+                fclose(ctx.fp);
+                return 1;
+            } else {
+                printf("%s\n", target);
+            }
+        }
     } else {
         uint32_t parent = 0;
         char name[256];

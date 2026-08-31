@@ -42,9 +42,12 @@
 #define EXT4_MAX_DEPTH        5
 /* EXT4_MAX_BLOCK_SIZE now lives in ext4_extents.h, shared with the writer. */
 
+#define INODE_MODE_OFF        0x00
 #define INODE_FLAGS_OFF       0x20
 #define INODE_IBLOCK_OFF      0x28
 #define INODE_IBLOCK_SIZE     60
+#define EXT4_S_IFMT           0xF000
+#define EXT4_S_IFLNK          0xA000
 
 static uint16_t rd16(const uint8_t *p) {
     return (uint16_t)(p[0] | ((uint16_t)p[1] << 8));
@@ -428,4 +431,47 @@ int ext4_read_inode_raw(const ext4_fs *fs, uint32_t ino, uint8_t *inode_out, siz
     if (off + want > fs->block_size) return EXT4_ERR_FORMAT;
     memcpy(inode_out, buf + off, want);
     return EXT4_OK;
+}
+
+/*
+ * Copies a symlink's target out of its inode (#163).
+ *
+ * Where the target lives depends on how long it is, and the two cases look nothing
+ * alike. Up to 60 bytes it sits inside i_block, in the space an extent root would
+ * otherwise occupy, and the inode owns no data blocks at all - which is why reading
+ * such a symlink through ext4_read_file comes back EXT4_ERR_NOT_EXTENT rather than
+ * with its target. Anything longer is an ordinary file whose blocks hold the path.
+ * Neither form is terminated on disk; i_size is the length.
+ *
+ * The two are told apart by the extents flag, the same test owns_data_blocks makes
+ * when deciding whether a symlink has blocks to free, so the reader and the writer
+ * cannot disagree about what a given inode is.
+ *
+ * Returns the length written, or a negative EXT4_ERR_*. What is written is always
+ * NUL-terminated, so `cap` has to be one more than the longest target accepted.
+ */
+long ext4_readlink(const ext4_fs *fs, const uint8_t *inode, char *out, size_t cap) {
+    if (!fs || !inode || !out || cap == 0) return EXT4_ERR_FORMAT;
+    if ((rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) != EXT4_S_IFLNK)
+        return EXT4_ERR_FORMAT;
+
+    uint64_t len = ext4_inode_size(inode);
+    if (len == 0) return EXT4_ERR_FORMAT;      /* a link to nowhere at all */
+    if (len >= cap) return EXT4_ERR_RANGE;
+
+    if (!(rd32(inode + INODE_FLAGS_OFF) & EXT4_INODE_FLAG_EXTENTS)) {
+        if (len > INODE_IBLOCK_SIZE) return EXT4_ERR_FORMAT;
+        memcpy(out, inode + INODE_IBLOCK_OFF, (size_t)len);
+    } else {
+        long got = ext4_read_file(fs, inode, 0, (uint8_t *)out, len);
+        if (got < 0) return got;
+        if ((uint64_t)got != len) return EXT4_ERR_FORMAT;
+    }
+    out[len] = '\0';
+
+    /* A NUL inside the target means the rest of it would be invisible to every
+     * caller, which is a different path from the one on disk. Refuse rather than
+     * silently follow a truncation. */
+    if (strlen(out) != (size_t)len) return EXT4_ERR_FORMAT;
+    return (long)len;
 }

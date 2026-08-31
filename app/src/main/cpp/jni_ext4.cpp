@@ -33,6 +33,7 @@
  * sessioncheck.py against the open-per-operation shape the host drivers still use.
  */
 
+#include "arcanum_file_kind.h"
 #include "arcanum_internal.h"
 
 extern "C" {
@@ -60,6 +61,11 @@ extern "C" {
 
 #define INODE_MODE_OFF  0x00
 #define INODE_MTIME_OFF 0x10
+#define INODE_MODE_OFF  0x00
+#define EXT4_S_IFMT     0xF000
+#define EXT4_S_IFDIR    0x4000
+#define EXT4_S_IFREG    0x8000
+#define EXT4_S_IFLNK    0xA000
 #define EXT4_S_IFMT     0xF000
 #define EXT4_S_IFDIR    0x4000
 
@@ -353,7 +359,7 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
         infoCls = env->FindClass("zip/arcanum/crypto/NativeFileInfo");
         if (!infoCls) return nullptr;
         ctor = env->GetMethodID(infoCls, "<init>",
-                                "(Ljava/lang/String;Ljava/lang/String;JZJ)V");
+                                "(Ljava/lang/String;Ljava/lang/String;JZJILjava/lang/String;ZZ)V");
         if (!ctor) return env->NewObjectArray(0, infoCls, nullptr);
     }
 
@@ -364,6 +370,10 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
         uint64_t    size;
         bool        isDir;
         jlong       mtime;
+        jint        kind;
+        std::string linkTarget;   /* empty unless kind is a symlink */
+        bool        targetIsDir;
+        bool        broken;
     };
     std::vector<Entry> entries;
     {
@@ -391,14 +401,71 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
             return nullptr;
         }
 
+        /* One buffer for the whole listing rather than one per entry: a symlink
+         * target may be as long as a path, and a directory can hold thousands. */
+        std::string target;
+        target.resize(EXT4_PATH_MAX + 1);
+
         for (const DirEnt &d : raw) {
             uint64_t size = 0;
             jlong    mtime = 0;
+            jint     kind = d.ftype == EXT4_FT_DIR ? ARC_KIND_DIRECTORY
+                                                   : ARC_KIND_REGULAR;
+            bool     isDir = d.ftype == EXT4_FT_DIR;
+            std::string linkTarget;
+            bool     targetIsDir = false, broken = false;
+
             uint8_t inode[EXT4_MAX_INODE_SIZE];
             memset(inode, 0, sizeof(inode));
             if (ext4_read_inode_raw(r, d.ino, inode, sizeof(inode)) == EXT4_OK) {
                 size  = ext4_inode_size(inode);
                 mtime = (jlong)rd32(inode + INODE_MTIME_OFF) * 1000LL;
+
+                /*
+                 * The kind comes from the inode's mode rather than the directory
+                 * entry's type byte. Both are meant to agree and on our own volumes
+                 * they do (#147), but the entry's byte is only there at all when the
+                 * volume carries the filetype feature - a volume made without it
+                 * says 0 for everything - while the mode is always right.
+                 */
+                uint16_t fmt = rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT;
+                switch (fmt) {
+                case EXT4_S_IFDIR: kind = ARC_KIND_DIRECTORY; isDir = true;  break;
+                case EXT4_S_IFREG: kind = ARC_KIND_REGULAR;   isDir = false; break;
+                case EXT4_S_IFLNK: kind = ARC_KIND_SYMLINK;   isDir = false; break;
+                default:           kind = ARC_KIND_SPECIAL;   isDir = false; break;
+                }
+
+                if (kind == ARC_KIND_SYMLINK) {
+                    /*
+                     * Three things about a link a listing has to carry, and none of
+                     * them are what the inode says on its own.
+                     *
+                     * Its target, because a dead link that cannot say what it was
+                     * looking for is indistinguishable from a broken app. Whether
+                     * following it lands on a directory, so opening it can go
+                     * somewhere. And its SIZE, which is the target's rather than the
+                     * link's: i_size on a symlink is the length of the path string,
+                     * which is how a link to a film used to list as eleven bytes.
+                     */
+                    long tlen = ext4_readlink(r, inode, &target[0], target.size());
+                    if (tlen >= 0) linkTarget.assign(target.c_str(), (size_t)tlen);
+
+                    std::string full = child_path(dirPath, d.name.c_str());
+                    uint32_t tino = 0;
+                    int tdir = 0;
+                    if (linkTarget.empty() ||
+                        ext4_resolve_path(r, full.c_str(), &tino, &tdir) != EXT4_PATH_OK) {
+                        broken = true;
+                        size   = 0;
+                    } else {
+                        targetIsDir = tdir != 0;
+                        uint8_t tnode[EXT4_MAX_INODE_SIZE];
+                        memset(tnode, 0, sizeof(tnode));
+                        size = ext4_read_inode_raw(r, tino, tnode, sizeof(tnode)) == EXT4_OK
+                                   ? ext4_inode_size(tnode) : 0;
+                    }
+                }
             }
             /* Non-UTF-8 names cannot cross into a Java String cleanly; skip them
              * rather than leave a null hole in an array Kotlin declares non-null,
@@ -409,7 +476,7 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
             }
             entries.push_back(Entry{
                 d.name, child_path(dirPath, d.name.c_str()),
-                size, d.ftype == EXT4_FT_DIR, mtime });
+                size, isDir, mtime, kind, linkTarget, targetIsDir, broken });
         }
     }
 
@@ -420,13 +487,19 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
         const Entry &e = entries[i];
         jstring jName = utf8_to_jstring(env, e.name.c_str());
         jstring jPath = utf8_to_jstring(env, e.path.c_str());
+        jstring jTarget = e.linkTarget.empty()
+                              ? nullptr
+                              : utf8_to_jstring(env, e.linkTarget.c_str());
         jobject fi    = env->NewObject(infoCls, ctor, jName, jPath,
                                        (jlong)e.size, (jboolean)(e.isDir ? 1 : 0),
-                                       e.mtime);
+                                       e.mtime, e.kind, jTarget,
+                                       (jboolean)(e.targetIsDir ? 1 : 0),
+                                       (jboolean)(e.broken ? 1 : 0));
         env->SetObjectArrayElement(result, (jsize)i, fi);
-        if (jName) env->DeleteLocalRef(jName);
-        if (jPath) env->DeleteLocalRef(jPath);
-        if (fi)    env->DeleteLocalRef(fi);
+        if (jName)   env->DeleteLocalRef(jName);
+        if (jPath)   env->DeleteLocalRef(jPath);
+        if (jTarget) env->DeleteLocalRef(jTarget);
+        if (fi)      env->DeleteLocalRef(fi);
     }
     return result;
 }

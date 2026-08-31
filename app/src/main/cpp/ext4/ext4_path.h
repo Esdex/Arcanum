@@ -41,6 +41,11 @@ extern "C" {
 #define EXT4_PATH_ENAMETOOLONG -3   /* a component is longer than a name may be */
 #define EXT4_PATH_EINVAL       -4   /* the path has no final component (it is the root) */
 #define EXT4_PATH_EIO          -5   /* the filesystem could not be read */
+#define EXT4_PATH_ELOOP        -6   /* symlinks led round in a circle, or too deep */
+
+/* The longest symlink target followed. Linux's PATH_MAX, for the same reason the
+ * follow limits are Linux's: a volume from a desktop could not hold a longer one. */
+#define EXT4_PATH_MAX 4096
 
 #define EXT4_ROOT_INO 2
 
@@ -57,9 +62,27 @@ extern "C" {
  * On success `*ino_out` is the inode, and `*is_dir_out` (may be NULL) says whether
  * it is a directory - the one bit of the resolved inode a caller almost always
  * needs next, saved a second read.
+ *
+ * Symlinks are followed, including the last component: this answers "what does
+ * this path name", which is what opening and reading want. A component the path
+ * goes through is always followed whichever call is used, since a link to a
+ * directory that cannot be entered is a directory nothing can be done with.
+ * EXT4_PATH_ELOOP comes back when the links lead in a circle or nest too deeply.
  */
 int ext4_resolve_path(const ext4_fs *r, const char *path,
                       uint32_t *ino_out, int *is_dir_out);
+
+/*
+ * The same, but the last component is not followed - so a path naming a symlink
+ * resolves to the link itself rather than to whatever it points at.
+ *
+ * This is the difference between stat and lstat, and it matters wherever the link
+ * IS the subject: reading its target, showing it in a listing, removing it. Using
+ * the following version there would read, describe or delete the wrong object, and
+ * for a dangling link it would fail outright on something that plainly exists.
+ */
+int ext4_resolve_path_nofollow(const ext4_fs *r, const char *path,
+                               uint32_t *ino_out, int *is_dir_out);
 
 /*
  * Resolves the directory that would contain `path`, and copies out the final

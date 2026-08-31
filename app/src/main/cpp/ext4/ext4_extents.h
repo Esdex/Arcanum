@@ -188,6 +188,15 @@ uint64_t ext4_inode_size(const uint8_t *inode);
 long ext4_read_file(const ext4_fs *fs, const uint8_t *inode,
                     uint64_t offset, uint8_t *buf, uint64_t length);
 
+/*
+ * Copies a symlink's target out of its inode, NUL-terminated (#163). Returns its
+ * length, or a negative EXT4_ERR_* - including EXT4_ERR_FORMAT when the inode is
+ * not a symlink at all, so a caller cannot mistake one kind of object for another.
+ *
+ * `cap` must exceed the longest target accepted, since the terminator needs room.
+ */
+long ext4_readlink(const ext4_fs *fs, const uint8_t *inode, char *out, size_t cap);
+
 #ifdef __cplusplus
 }
 #endif
