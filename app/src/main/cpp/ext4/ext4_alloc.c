@@ -766,27 +766,80 @@ int64_t ext4_alloc_block(ext4_wfs *fs) {
     return ext4_alloc_block_goal(fs, 0);
 }
 
-int ext4_free_block(ext4_wfs *fs, uint64_t block) {
-    if (block < fs->first_data_block || block >= fs->blocks_count) return -1;
-
-    uint64_t rel = block - fs->first_data_block;
-    uint32_t g   = (uint32_t)(rel / fs->blocks_per_group);
-    uint32_t bit = (uint32_t)(rel % fs->blocks_per_group);
-    if (g >= fs->groups || bit >= group_block_count(fs, g)) return -1;
-
+/*
+ * Gives back the part of [start, start+count) that falls in group `g`, in one
+ * bitmap write. Returns how many blocks that was, or -1.
+ *
+ * The whole slice is checked before a single bit is cleared, so a run that runs
+ * into a block nobody owns changes nothing at all rather than half of it. What
+ * the old one-block-at-a-time version did was refuse partway through its caller's
+ * loop, leaving the earlier blocks freed - the same refusal, on a worse state.
+ */
+static int64_t free_in_group(ext4_wfs *fs, uint32_t g, uint32_t bit,
+                             uint64_t count) {
     uint8_t *d = group_desc(fs, g);
     /* A group still flagged BLOCK_UNINIT has never been allocated from - taking a
      * block is what initialises it - so a block being handed back from one did not
      * come from here. Refuse rather than build a bitmap to clear a bit in. */
     if (rd16(d + EXT4_GD_FLAGS_OFF) & EXT4_BG_BLOCK_UNINIT) return -1;
-    if (load_bitmap(fs, g, d)) return -1;
-    if (!(fs->bitmap[bit >> 3] & (1u << (bit & 7)))) return -1;   /* already free */
 
-    fs->bitmap[bit >> 3] &= (uint8_t)~(1u << (bit & 7));
+    uint32_t limit = group_block_count(fs, g);
+    if (bit >= limit) return -1;
+    uint32_t n = (uint64_t)(limit - bit) < count ? limit - bit : (uint32_t)count;
+
+    if (load_bitmap(fs, g, d)) return -1;
+    for (uint32_t k = 0; k < n; k++)
+        if (!(fs->bitmap[(bit + k) >> 3] & (1u << ((bit + k) & 7))))
+            return -1;                                   /* already free */
+
+    for (uint32_t k = 0; k < n; k++)
+        fs->bitmap[(bit + k) >> 3] &= (uint8_t)~(1u << ((bit + k) & 7));
+
     if (write_bitmap(fs, d)) return -1;
     store_bitmap_csum(fs, d);
-    group_set_free_blocks(fs, d, group_free_blocks(fs, d) + 1);
+    group_set_free_blocks(fs, d, group_free_blocks(fs, d) + n);
     store_desc_csum(fs, g, d);
-    sb_set_free_blocks(fs, ext4_sb_free_blocks(fs) + 1);
+    sb_set_free_blocks(fs, ext4_sb_free_blocks(fs) + n);
+    return (int64_t)n;
+}
+
+/*
+ * Gives back a run of consecutive blocks, one bitmap write per group it spans
+ * (#165).
+ *
+ * The mirror of taking blocks a run at a time (#161), and the easier half by some
+ * way. Taking has to reserve ahead, because a caller asks for one block at a time
+ * and the run only exists in the allocator's head; freeing is handed the run - an
+ * extent is already a length of consecutive blocks, and `free_subtree` and
+ * `truncate_node` walked it one block at a time only because that was the API.
+ * So there is no deferral here and no state kept between calls: the bits are
+ * cleared and written before this returns, exactly as before, just once for the
+ * run instead of once per block. Deleting a file that is one clean extent used to
+ * rewrite the same 4 KiB block up to 32768 times.
+ *
+ * A run crossing a group boundary is split, since each group's bitmap is its own
+ * block. A partial refusal stops where it stopped and says so, which is what the
+ * per-block version did too.
+ */
+int ext4_free_run(ext4_wfs *fs, uint64_t start, uint64_t count) {
+    if (count == 0) return 0;
+    if (start < fs->first_data_block || start >= fs->blocks_count) return -1;
+    if (count > fs->blocks_count - start) return -1;
+
+    while (count > 0) {
+        uint64_t rel = start - fs->first_data_block;
+        uint32_t g   = (uint32_t)(rel / fs->blocks_per_group);
+        uint32_t bit = (uint32_t)(rel % fs->blocks_per_group);
+        if (g >= fs->groups) return -1;
+
+        int64_t n = free_in_group(fs, g, bit, count);
+        if (n <= 0) return -1;
+        start += (uint64_t)n;
+        count -= (uint64_t)n;
+    }
     return 0;
+}
+
+int ext4_free_block(ext4_wfs *fs, uint64_t block) {
+    return ext4_free_run(fs, block, 1);
 }

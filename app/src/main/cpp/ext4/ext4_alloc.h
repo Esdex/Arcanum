@@ -205,6 +205,14 @@ int64_t ext4_alloc_block_goal(ext4_wfs *fs, uint64_t goal);
  * bitmap was never written, or was not allocated in the first place. */
 int  ext4_free_block(ext4_wfs *fs, uint64_t block);
 
+/*
+ * Gives back `count` consecutive blocks in one bitmap write per group they span
+ * (#165), which is what an extent is and what freeing one used to do a block at a
+ * time. Same return as ext4_free_block, and the same refusals - a run holding a
+ * block that is already free changes nothing in the group it was found in.
+ */
+int  ext4_free_run(ext4_wfs *fs, uint64_t start, uint64_t count);
+
 uint64_t ext4_sb_free_blocks(const ext4_wfs *fs);
 uint32_t ext4_sb_free_inodes(const ext4_wfs *fs);
 

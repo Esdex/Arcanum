@@ -106,6 +106,7 @@ run sessioncheck.py  ./sessioncheck.py
 run desccheck.py     ./desccheck.py
 run runcheck.py      ./runcheck.py
 run nodecheck.py     ./nodecheck.py
+run freecheck.py     ./freecheck.py
 run asancheck.sh     ./asancheck.sh
 run fuzz.sh          ./fuzz.sh
 

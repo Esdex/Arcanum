@@ -702,11 +702,14 @@ static int free_subtree(ext4_wfs *fs, uint8_t *node, uint16_t depth,
             uint32_t len = raw > EXT4_MAX_INIT_LEN ? raw - EXT4_MAX_INIT_LEN : raw;
             uint64_t phys = ee_physical(e);
             /* A preallocated extent owns its blocks as much as a written one
-             * does - reading as zeroes does not make them free. */
-            for (uint32_t k = 0; k < len; k++) {
-                if (ext4_free_block(fs, phys + k)) return EXTW_ERR_FORMAT;
-                (*freed_data)++;
-            }
+             * does - reading as zeroes does not make them free.
+             *
+             * The whole extent goes back in one call, which is one bitmap write
+             * rather than `len` of them (#165). An extent is a length of
+             * consecutive blocks by definition, so the run was always here; only
+             * the API made this a loop. */
+            if (ext4_free_run(fs, phys, len)) return EXTW_ERR_FORMAT;
+            *freed_data += len;
         }
         return EXTW_OK;
     }
@@ -753,16 +756,15 @@ static int truncate_node(ext4_wfs *fs, uint8_t *node, uint16_t depth, uint32_t k
             uint64_t phys = ee_physical(e);
 
             if (lo >= keep) {
-                for (uint32_t k = 0; k < len; k++) {
-                    if (ext4_free_block(fs, phys + k)) return EXTW_ERR_FORMAT;
-                    (*freed_data)++;
-                }
+                if (ext4_free_run(fs, phys, len)) return EXTW_ERR_FORMAT;
+                *freed_data += len;
             } else if (lo + len > keep) {
+                /* The tail of an extent the cut falls inside. Still a run - it is
+                 * the same extent, from the cut onwards (#165). */
                 uint32_t nlen = keep - lo;
-                for (uint32_t k = nlen; k < len; k++) {
-                    if (ext4_free_block(fs, phys + k)) return EXTW_ERR_FORMAT;
-                    (*freed_data)++;
-                }
+                if (ext4_free_run(fs, phys + nlen, len - nlen))
+                    return EXTW_ERR_FORMAT;
+                *freed_data += len - nlen;
                 wr16(e + EE_LEN_OFF,
                      (uint16_t)(uninit ? nlen + EXT4_MAX_INIT_LEN : nlen));
                 kept = (uint16_t)(i + 1);
