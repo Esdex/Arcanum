@@ -279,12 +279,6 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         title           = ctx.getString(R.string.notif_paste_failed, this.failed, this.total),
         subtitle        = ctx.getString(R.string.notif_paste_failed_subtitle)
     )
-    is InAppNotification.FilesCopied -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF6B7280),
-        icon            = Icons.Outlined.ContentCopy,
-        title           = ctx.resources.getQuantityString(R.plurals.notif_items_clipboard_copied, this.count, this.count),
-        subtitle        = ctx.getString(R.string.notif_clipboard_subtitle)
-    )
     is InAppNotification.FilesLinked -> NotificationDisplayConfig(
         backgroundColor = Color(0xFF6B7280),
         icon            = Icons.Outlined.Link,
@@ -294,12 +288,6 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
             InAppNotification.LinkedKind.FOLDERS -> R.string.notif_linked_folders
             InAppNotification.LinkedKind.MIXED   -> R.string.notif_linked_mixed
         })
-    )
-    is InAppNotification.FilesCut -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF6B7280),
-        icon            = Icons.Outlined.ContentCut,
-        title           = ctx.resources.getQuantityString(R.plurals.notif_items_clipboard_cut, this.count, this.count),
-        subtitle        = ctx.getString(R.string.notif_clipboard_subtitle)
     )
     InAppNotification.FilesAlreadyHere -> NotificationDisplayConfig(
         backgroundColor = Color(0xFF6B7280),

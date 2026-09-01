@@ -34,8 +34,6 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.arcanum.files.data.FileBrowserPrefs
 import zip.arcanum.arcanum.files.data.fileManagerPrefs
-import zip.arcanum.arcanum.files.domain.ClipboardItem
-import zip.arcanum.arcanum.files.domain.FileClipboard
 import zip.arcanum.arcanum.gallery.AudioPlayerQueue
 import zip.arcanum.arcanum.gallery.MediaScanner
 import zip.arcanum.arcanum.gallery.ThumbnailManager
@@ -62,7 +60,6 @@ import javax.inject.Inject
 class FileManagerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val engine: VeraCryptEngine,
-    private val clipboard: FileClipboard,
     private val repo: ContainerRepository,
     private val audioQueue: AudioPlayerQueue,
     private val thumbnailManager: ThumbnailManager,
@@ -257,7 +254,6 @@ class FileManagerViewModel @Inject constructor(
         val searchQuery: String = "",
         val isSearchActive: Boolean = false,
         val isSearchRecursive: Boolean = false,
-        val clipboardCount: Int = 0,
         /* Whether the filesystem underneath can hold a second name for one file.
          * Only ext4 can; FAT and exFAT have nothing to offer but a copy, and a
          * menu entry that silently copied would be the opposite of the ask (#128). */
@@ -630,67 +626,6 @@ class FileManagerViewModel @Inject constructor(
 
     fun clearSelection() = exitSelectionMode()
 
-    // ── Clipboard ─────────────────────────────────────────────────────────
-
-    fun copySelected() {
-        val s = _state.value
-        val handle = repo.getContainerHandle(s.containerId) ?: return
-        val items = s.selectedItems.mapNotNull { path ->
-            s.files.find { it.path == path }?.let { f ->
-                ClipboardItem(
-                    sourceContainerId = s.containerId,
-                    sourceHandle      = handle,
-                    sourcePath        = f.path,
-                    fileName          = f.name,
-                    isDirectory       = f.isDirectory,
-                    isCut             = false,
-                    kind                  = f.kind,
-                    linkTarget            = f.linkTarget,
-                    linkTargetIsDirectory = f.linkTargetIsDirectory,
-                    linkBroken            = f.linkBroken
-                )
-            }
-        }
-        if (items.isEmpty()) return
-        clipboard.copy(items)
-        _state.update { it.copy(
-            clipboardCount       = clipboard.count,
-            isSelectionMode      = false,
-            selectedItems        = emptySet(),
-            pendingNotification  = InAppNotification.FilesCopied(items.size)
-        ) }
-    }
-
-    fun cutSelected() {
-        val s = _state.value
-        if (s.isReadOnly) return
-        val handle = repo.getContainerHandle(s.containerId) ?: return
-        val items = s.selectedItems.mapNotNull { path ->
-            s.files.find { it.path == path }?.let { f ->
-                ClipboardItem(
-                    sourceContainerId = s.containerId,
-                    sourceHandle      = handle,
-                    sourcePath        = f.path,
-                    fileName          = f.name,
-                    isDirectory       = f.isDirectory,
-                    isCut             = true,
-                    kind                  = f.kind,
-                    linkTarget            = f.linkTarget,
-                    linkTargetIsDirectory = f.linkTargetIsDirectory,
-                    linkBroken            = f.linkBroken
-                )
-            }
-        }
-        if (items.isEmpty()) return
-        clipboard.cut(items)
-        _state.update { it.copy(
-            clipboardCount       = clipboard.count,
-            isSelectionMode      = false,
-            selectedItems        = emptySet(),
-            pendingNotification  = InAppNotification.FilesCut(items.size)
-        ) }
-    }
-
     /**
      * Gives each of `items` a second name in `destPath`, inside this same vault (#128).
      *
@@ -751,160 +686,6 @@ class FileManagerViewModel @Inject constructor(
         }
     }
 
-    fun paste() {
-        if (_state.value.isReadOnly) return
-        val destContainerId = _state.value.containerId
-        val destHandle = repo.getContainerHandle(destContainerId) ?: return
-        val clipItems = clipboard.items
-        if (clipItems.isEmpty()) return
-        val currentPath = _state.value.currentPath
-        val isCut = clipboard.isCut
-
-        viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isOperationInProgress = true, operationMessage = "Pasting…") }
-            // Three outcomes, not two. A paste that moved nothing because the items are
-            // already here is fine; a paste where every item failed is not, and until now
-            // both ended in silence and looked exactly like success (#129).
-            beginConflictTracking(if (isCut) ConflictScope.MOVE else ConflictScope.COPY)
-            var count   = 0
-            var failed  = 0
-            var skipped = 0
-            val tally   = CarryTally()
-            val chunkSize = 1 * 1024 * 1024
-
-            for (item in clipItems) {
-                try {
-                    val sameContainer = item.sourceContainerId == destContainerId
-                    val sourceParent  = item.sourcePath.substringBeforeLast("/").ifEmpty { "/" }
-                    val intoOwnFolder = sameContainer && sourceParent == currentPath
-
-                    /* Pasting into the folder the item is already in (#113).
-                       Source and destination paths are identical here, so the
-                       copy below would write the item onto itself and the delete
-                       that follows a cut would then destroy it outright. A move
-                       to where it already is has nothing to do. */
-                    if (intoOwnFolder && isCut) { skipped++; continue }
-
-                    /* Pasting a folder into itself or into its own subtree (cut
-                       /a, paste in /a or /a/b) would recurse into the copy it is
-                       creating and then delete the original. Refuse instead. */
-                    val srcDir = item.sourcePath.trimEnd('/')
-                    val intoOwnSubtree = sameContainer && item.isDirectory &&
-                        (currentPath == srcDir || currentPath.startsWith("$srcDir/"))
-                    if (intoOwnSubtree) { skipped++; continue }
-
-                    /*
-                     * A copy into the same folder becomes a duplicate rather than a write
-                     * onto itself, so it behaves like every other file manager instead of
-                     * silently doing nothing - and it is not worth a question, since the
-                     * clash is one the user just made on purpose.
-                     *
-                     * Anywhere else a name already in use is asked about, the same way an
-                     * import asks (#157). Until now a paste wrote straight over whatever
-                     * held the name, with nothing said before or after (#169). A folder is
-                     * still not asked about: it merges into the one that is there, which
-                     * is what every file manager does and what makes the question about
-                     * files the meaningful one.
-                     */
-                    val destName: String
-                    var replacing = false
-                    if (intoOwnFolder) {
-                        val taken = namesIn(destHandle, currentPath)
-                        destName = freeName(item.fileName, taken)
-                        taken.add(destName)
-                    } else if (item.isDirectory) {
-                        destName = item.fileName
-                    } else {
-                        val choice = nameToWriteOrReplace(destHandle, currentPath, item.fileName)
-                        if (choice == null) { tally.refused++; continue }
-                        destName  = choice.name
-                        replacing = choice.replacing
-                    }
-
-                    val destPath = if (currentPath == "/") "/$destName" else "$currentPath/$destName"
-                    _state.update { it.copy(operationMessage = "${if (isCut) "Moving" else "Copying"} ${item.fileName}…") }
-
-                    /* A rename and a new link both refuse a name in use, so Replace has
-                       to take what is there out of the way first. */
-                    if (replacing && !clearForReplace(destHandle, currentPath, destName)) {
-                        failed++
-                        continue
-                    }
-
-                    /*
-                     * A move inside one vault is a rename: the entry changes folder and
-                     * nothing is read or written. Move to has always done this; the
-                     * clipboard copied every byte and deleted the original instead, which
-                     * turned a link into an empty file and quietly split a file with two
-                     * names into two separate files, each holding its own copy (#168).
-                     */
-                    if (sameContainer && isCut) {
-                        val rc = runCatching {
-                            engine.renameFile(item.sourceHandle, item.sourcePath, destPath)
-                        }.getOrDefault(VeraCryptEngine.ERR_FS)
-                        if (rc == VeraCryptEngine.ERR_OK) count++ else failed++
-                        continue
-                    }
-
-                    val carried = carryOddEntry(
-                        EntryKind(item), item.sourceHandle, item.sourcePath,
-                        destHandle, destPath, sameContainer, isCut, tally
-                    )
-                    if (carried != null) {
-                        when (carried) {
-                            Carried.DONE        -> count++
-                            Carried.FAILED      -> failed++
-                            Carried.LEFT_BEHIND -> {}
-                        }
-                        continue
-                    }
-
-                    if (item.isDirectory) {
-                        val ok = copyDirectoryRecursive(item.sourceHandle, item.sourcePath, destHandle, destPath, tally)
-                        if (ok && isCut) runCatching { engine.deleteDirectory(item.sourceHandle, item.sourcePath) }
-                        if (ok) count++ else failed++
-                    } else {
-                        var offset = 0L
-                        var writeOk = true
-                        while (true) {
-                            val chunk = engine.readFile(item.sourceHandle, item.sourcePath, offset, chunkSize) ?: run { writeOk = false; break }
-                            val rc = engine.writeFile(destHandle, destPath, chunk, offset)
-                            if (rc != VeraCryptEngine.ERR_OK) { writeOk = false; break }
-                            offset += chunk.size
-                            if (chunk.size < chunkSize) break
-                        }
-                        if (!writeOk) runCatching { engine.deleteFile(destHandle, destPath) }
-                        if (writeOk) {
-                            if (isCut) runCatching { engine.deleteFile(item.sourceHandle, item.sourcePath) }
-                            count++
-                        } else failed++
-                    }
-                } catch (_: Exception) { failed++ }
-            }
-            clipboard.clear()
-            refreshNow()
-            val destDesc = if (currentPath == "/") "Root" else currentPath
-            _state.update { it.copy(
-                isOperationInProgress = false,
-                operationMessage      = null,
-                clipboardCount        = 0,
-                pendingNotification   = when {
-                    // Failure first: someone told "3 copied" and not told "2 were not"
-                    // walks away believing all five arrived.
-                    failed > 0  -> InAppNotification.FilesPasteFailed(failed, clipItems.size)
-                    /* Reported even when nothing arrived: items that stayed behind are
-                       the one outcome silence would misread as success (#168). */
-                    count > 0 || tally.leftBehind > 0 || tally.refused > 0 ->
-                        if (isCut) InAppNotification.FilesMoved(
-                            count, destDesc, tally.leftBehind, tally.refused)
-                        else InAppNotification.FilesPasted(count, tally.leftBehind, tally.refused)
-                    skipped > 0 -> InAppNotification.FilesAlreadyHere
-                    else        -> null
-                }
-            ) }
-        }
-    }
-
     /**
      * First name of the form "base (n).ext" not already in [taken], starting at
      * "base (1).ext". Used when copying an item into the folder it already
@@ -947,13 +728,23 @@ class FileManagerViewModel @Inject constructor(
 
             for (item in toCopy) {
                 val parentDir = item.path.substringBeforeLast("/").let { if (it.isEmpty()) "/" else it }
-                if (destinationContainerId == s.containerId && parentDir == destinationPath) { skipped++; continue }
+                val intoOwnFolder = destinationContainerId == s.containerId && parentDir == destinationPath
 
                 try {
-                    /* The same question a paste asks, for the same reason (#169). */
+                    /*
+                     * Choosing the folder the item already lives in is how a file is
+                     * duplicated - the numbered copy that Copy and Paste used to make
+                     * (#113). It is not a clash to ask about, since it is one the user
+                     * has just asked for on purpose; anywhere else a taken name is put to
+                     * them as a question, exactly as an import does (#157, #169).
+                     */
                     var destName  = item.name
                     var replacing = false
-                    if (!item.isDirectory) {
+                    if (intoOwnFolder) {
+                        val taken = namesIn(destHandle, destinationPath)
+                        destName = freeName(item.name, taken)
+                        taken.add(destName)
+                    } else if (!item.isDirectory) {
                         val choice = nameToWriteOrReplace(destHandle, destinationPath, item.name)
                         if (choice == null) { tally.refused++; continue }
                         destName  = choice.name
@@ -1002,6 +793,11 @@ class FileManagerViewModel @Inject constructor(
             }
 
             exitSelectionMode()
+            /* The copy may have landed in the folder on screen - duplicating a file into
+               its own folder is the ordinary way to duplicate one - so the listing has to
+               be read again. Move already did this; copy did not, and the new file only
+               appeared after leaving the folder and coming back. */
+            refreshNow()
             _state.update { it.copy(
                 isOperationInProgress = false,
                 operationMessage      = null,
@@ -1727,8 +1523,6 @@ class FileManagerViewModel @Inject constructor(
     ) {
         constructor(f: NativeFileInfo) : this(
             f.isSymlink, f.isSpecial, f.linkTarget, f.linkBroken, f.opensAsDirectory)
-        constructor(i: ClipboardItem) : this(
-            i.isSymlink, i.isSpecial, i.linkTarget, i.linkBroken, i.opensAsDirectory)
     }
 
     /**

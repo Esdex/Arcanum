@@ -261,11 +261,12 @@ fun FileManagerScreen(
     var enableAccessTarget     by remember { mutableStateOf<NativeFileInfo?>(null) }
 
     // Hoist sheet states unconditionally (Compose rule: no hooks inside conditions)
-    val propertiesSheetState   = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val sortSheetState         = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val moveSheetState         = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val copySheetState         = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val linkSheetState         = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    /*
+     * Sheet states are created where the sheet is, not up here. A hoisted SheetState
+     * outlives the sheet that used it, and a reused one can arrive at the next opening
+     * already settled as hidden - the sheet then appears and dismisses itself on the same
+     * frame, which is what "it opens and closes, one time in two" was.
+     */
 
     // Single entry point for Open with, shared by the item menu and by tapping a file that
     // has no in-app viewer, so both routes behave identically (#103).
@@ -479,8 +480,6 @@ fun FileManagerScreen(
                             onSort           = { showSortSheet = true; showMoreMenu = false },
                             onToggleHidden   = { viewModel.toggleShowHidden(); showMoreMenu = false },
                             showHidden       = state.showHidden,
-                            clipboardCount   = state.clipboardCount,
-                            onPaste          = { viewModel.paste(); showMoreMenu = false },
                         )
                     }
                 }
@@ -523,14 +522,12 @@ fun FileManagerScreen(
         ) {
             SelectionBottomBar(
                 isReadOnly = state.isReadOnly,
-                onCopy   = {
-                    if (mountedContainers.size <= 1) viewModel.copySelected()
-                    else showCopySheet = true
-                },
-                onMove   = {
-                    if (mountedContainers.size <= 1) viewModel.cutSelected()
-                    else showMoveSheet = true
-                },
+                /* Both always ask where to. There used to be two different answers
+                   to one button - a clipboard when a single vault was mounted, a
+                   destination sheet when more than one were - and the clipboard half
+                   meant finding Paste in a menu at the top afterwards. */
+                onCopy   = { showCopySheet = true },
+                onMove   = { showMoveSheet = true },
                 onExport = { exportLauncher.launch(null) },
                 onDelete = { showDeleteConfirm = true }
             )
@@ -746,7 +743,7 @@ fun FileManagerScreen(
     if (propertiesTarget != null) {
         AppSheet(
             onDismissRequest = { propertiesTarget = null },
-            sheetState       = propertiesSheetState
+            sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             propertiesTarget?.let { file ->
                 FilePropertiesContent(file = file, formatSize = viewModel::formatFileSize)
@@ -840,7 +837,7 @@ fun FileManagerScreen(
     if (showSortSheet) {
         AppSheet(
             onDismissRequest = { showSortSheet = false },
-            sheetState       = sortSheetState
+            sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             SortSheetContent(
                 sortBy        = state.sortBy,
@@ -856,7 +853,7 @@ fun FileManagerScreen(
     if (showMoveSheet) {
         AppSheet(
             onDismissRequest = { showMoveSheet = false },
-            sheetState       = moveSheetState
+            sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             DestinationPickerSheetContent(
                 title              = stringResource(R.string.files_move_to_title),
@@ -875,7 +872,7 @@ fun FileManagerScreen(
     if (linkTargets.isNotEmpty()) {
         AppSheet(
             onDismissRequest = { linkTargets = emptyList() },
-            sheetState       = linkSheetState
+            sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             DestinationPickerSheetContent(
                 title              = stringResource(R.string.files_link_to_title),
@@ -897,7 +894,7 @@ fun FileManagerScreen(
     if (showCopySheet) {
         AppSheet(
             onDismissRequest = { showCopySheet = false },
-            sheetState       = copySheetState
+            sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             DestinationPickerSheetContent(
                 title              = stringResource(R.string.files_copy_to_title),
@@ -935,8 +932,6 @@ private fun FileManagerTopBar(
     onSort: () -> Unit,
     onToggleHidden: () -> Unit,
     showHidden: Boolean,
-    clipboardCount: Int,
-    onPaste: () -> Unit,
 ) {
     val searchFocusRequester = remember { FocusRequester() }
     LaunchedEffect(isSearchActive) {
@@ -1003,15 +998,6 @@ private fun FileManagerTopBar(
                         Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.files_cd_more))
                     }
                     DropdownMenu(expanded = moreMenuExpanded, onDismissRequest = onMoreDismiss) {
-                        if (clipboardCount > 0) {
-                            DropdownMenuItem(
-                                text = { Text(pluralStringResource(R.plurals.files_paste_clipboard, clipboardCount, clipboardCount)) },
-                                leadingIcon = { Icon(Icons.Outlined.ContentPaste, null) },
-                                onClick = onPaste,
-                                enabled = !isReadOnly
-                            )
-                            HorizontalDivider()
-                        }
                         DropdownMenuItem(
                             text = { Text(if (showHidden) stringResource(R.string.files_hide_hidden) else stringResource(R.string.files_show_hidden)) },
                             leadingIcon = { Icon(Icons.Outlined.FileOpen, null) },
@@ -1833,7 +1819,11 @@ private fun DestinationPickerSheetContent(
         val others  = containers.filter { it.id != currentContainerId }
         current + others
     }
-    var selectedContainer by remember { mutableStateOf<Container?>(null) }
+    /* One vault mounted means there is nothing to choose between, so the sheet opens
+       inside it rather than on a list of one. */
+    var selectedContainer by remember {
+        mutableStateOf<Container?>(sortedContainers.singleOrNull())
+    }
     var browsePath        by remember { mutableStateOf("/") }
     var browseDirs        by remember { mutableStateOf<List<NativeFileInfo>>(emptyList()) }
     var isLoadingDirs     by remember { mutableStateOf(false) }
@@ -1887,8 +1877,13 @@ private fun DestinationPickerSheetContent(
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        /* Where the vault's file lives, not a generic folder: with two
+                           or three of them listed, the storage is what tells them apart
+                           at a glance. Same rule as the vault's own screen. */
                         Icon(
-                            Icons.Outlined.Folder, null,
+                            zip.arcanum.arcanum.containers.ui.vaultStorageIcon(
+                                path = c.path, safUri = c.safUri, usbSaltHash = c.usbSaltHash
+                            ), null,
                             tint     = iconTint,
                             modifier = Modifier.size(24.dp)
                         )
@@ -1906,9 +1901,16 @@ private fun DestinationPickerSheetContent(
             }
         } else {
             // ── Directory browser ─────────────────────────────────────────
+            /* Entering the browser is what loads a folder; when the sheet opens straight
+               inside the only mounted vault, nothing has tapped anything, so the root has
+               to be asked for here. */
+            LaunchedEffect(container) { loadDirs(container, browsePath) }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { selectedContainer = null }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.files_cd_back_to_vaults))
+                if (sortedContainers.size > 1) {
+                    IconButton(onClick = { selectedContainer = null }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack,
+                             contentDescription = stringResource(R.string.files_cd_back_to_vaults))
+                    }
                 }
                 Text(
                     container.name,

@@ -56,7 +56,6 @@
     <string name="files_importing_name">Importing %1$s</string>
     <string name="files_import_counter">%1$d/%2$d</string>
     <string name="files_import_percent">%1$d%%</string>
-    <string name="notif_clipboard_subtitle">Open the menu at the top to paste them</string>
     <string name="notif_already_here">Nothing to move</string>
     <string name="notif_already_here_subtitle">Those items are already in this folder</string>
     <plurals name="notif_files_skipped">
@@ -125,14 +124,6 @@
     <plurals name="notif_items_linked">
         <item quantity="one">%1$d item linked</item>
         <item quantity="other">%1$d items linked</item>
-    </plurals>
-    <plurals name="notif_items_clipboard_copied">
-        <item quantity="one">%1$d item ready to paste</item>
-        <item quantity="other">%1$d items ready to paste</item>
-    </plurals>
-    <plurals name="notif_items_clipboard_cut">
-        <item quantity="one">%1$d item ready to move</item>
-        <item quantity="other">%1$d items ready to move</item>
     </plurals>
     <plurals name="notif_items_left_behind">
         <item quantity="one">%1$d item stayed where it was</item>
@@ -382,10 +373,6 @@
     <string name="files_move_here">Move here</string>
     <string name="files_copy_here">Copy here</string>
 
-    <plurals name="files_paste_clipboard">
-        <item quantity="one">Paste (%1$d item)</item>
-        <item quantity="other">Paste (%1$d items)</item>
-    </plurals>
     <plurals name="files_delete_count">
         <item quantity="one">Delete %1$d item?</item>
         <item quantity="other">Delete %1$d items?</item>

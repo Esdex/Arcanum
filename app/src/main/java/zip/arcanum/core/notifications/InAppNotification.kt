@@ -90,13 +90,7 @@ sealed class InAppNotification {
      * found. The reporter of #129 read that as a dead button. These say what happened
      * and where the other half of the operation lives.
      */
-    data class FilesCopied(val count: Int) : InAppNotification() {
-        override val priority = 1
-    }
 
-    data class FilesCut(val count: Int) : InAppNotification() {
-        override val priority = 1
-    }
 
     /**
      * A second name was made for something (#128). Its own notification rather than
