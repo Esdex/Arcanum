@@ -234,7 +234,17 @@ fun AppNavigation(pinManager: PinManager) {
     LaunchedEffect(mountPhase) {
         if (mountPhase is MountCoordinator.Phase.ScanComplete) {
             val containerId = (mountPhase as MountCoordinator.Phase.ScanComplete).containerId
-            navController.navigate(Screen.ContainerScreen.buildRoute(containerId))
+            /*
+             * Single top, because two of the same vault must never be able to stack,
+             * whatever calls this. It WAS called twice for one mount: the effects here
+             * are disposed and recreated with their keys unchanged, so this one ran a
+             * second time for a state that had not moved (#176). The second copy is what
+             * made Back look broken - the first press removed a screen indistinguishable
+             * from the one beneath it.
+             */
+            navController.navigate(Screen.ContainerScreen.buildRoute(containerId)) {
+                launchSingleTop = true
+            }
             delay(100)
             mountCoordinator.dismiss()
         }
