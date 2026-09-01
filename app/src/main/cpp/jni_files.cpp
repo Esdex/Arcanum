@@ -95,7 +95,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
         infoCls = env->FindClass("zip/arcanum/crypto/NativeFileInfo");
         if (!infoCls) return nullptr;
         ctor = env->GetMethodID(infoCls, "<init>",
-                                "(Ljava/lang/String;Ljava/lang/String;JZJILjava/lang/String;ZZI)V");
+                                "(Ljava/lang/String;Ljava/lang/String;JZJILjava/lang/String;ZZIJ)V");
         if (!ctor) return env->NewObjectArray(0, infoCls, nullptr);
     }
 
@@ -168,7 +168,10 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
         jstring jName = utf8_to_jstring(env, e.name.c_str());
         jstring jPath = utf8_to_jstring(env, e.path.c_str());
         /* FAT and exFAT hold files and folders and nothing else, so the kind is
-         * decided entirely by isDir and there is never a link to describe. */
+         * decided entirely by isDir and there is never a link to describe. The
+         * inode is 0 for the same reason: these filesystems have no such number,
+         * and 0 reads as "no way to tell two entries apart" rather than as an
+         * identity two different files could share. */
         jobject fi    = env->NewObject(infoCls, ctor,
                                        jName, jPath,
                                        (jlong)e.size,
@@ -179,7 +182,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
                                        (jstring)nullptr,
                                        (jboolean)0,
                                        (jboolean)0,
-                                       (jint)1);
+                                       (jint)1,
+                                       (jlong)0);
         env->SetObjectArrayElement(result, (jsize)i, fi);
         if (jName) env->DeleteLocalRef(jName);
         if (jPath) env->DeleteLocalRef(jPath);

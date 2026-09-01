@@ -357,7 +357,7 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
         infoCls = env->FindClass("zip/arcanum/crypto/NativeFileInfo");
         if (!infoCls) return nullptr;
         ctor = env->GetMethodID(infoCls, "<init>",
-                                "(Ljava/lang/String;Ljava/lang/String;JZJILjava/lang/String;ZZI)V");
+                                "(Ljava/lang/String;Ljava/lang/String;JZJILjava/lang/String;ZZIJ)V");
         if (!ctor) return env->NewObjectArray(0, infoCls, nullptr);
     }
 
@@ -373,6 +373,7 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
         bool        targetIsDir;
         bool        broken;
         jint        names;
+        jlong       inode;      /* what the entry LEADS TO - a link's target, 0 if dead */
     };
     std::vector<Entry> entries;
     {
@@ -414,6 +415,7 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
             std::string linkTarget;
             bool     targetIsDir = false, broken = false;
             jint     names = 1;
+            jlong    ino   = (jlong)d.ino;
 
             uint8_t inode[EXT4_MAX_INODE_SIZE];
             memset(inode, 0, sizeof(inode));
@@ -462,8 +464,13 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
                         ext4_resolve_path(r, full.c_str(), &tino, &tdir) != EXT4_PATH_OK) {
                         broken = true;
                         size   = 0;
+                        ino    = 0;
                     } else {
                         targetIsDir = tdir != 0;
+                        /* The target's inode, not the link's: two names for one
+                         * file must compare equal whichever kind of link made the
+                         * second one (#167). */
+                        ino = (jlong)tino;
                         uint8_t tnode[EXT4_MAX_INODE_SIZE];
                         memset(tnode, 0, sizeof(tnode));
                         size = ext4_read_inode_raw(r, tino, tnode, sizeof(tnode)) == EXT4_OK
@@ -480,7 +487,8 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
             }
             entries.push_back(Entry{
                 d.name, child_path(dirPath, d.name.c_str()),
-                size, isDir, mtime, kind, linkTarget, targetIsDir, broken, names });
+                size, isDir, mtime, kind, linkTarget, targetIsDir, broken, names,
+                ino });
         }
     }
 
@@ -498,7 +506,8 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
                                        (jlong)e.size, (jboolean)(e.isDir ? 1 : 0),
                                        e.mtime, e.kind, jTarget,
                                        (jboolean)(e.targetIsDir ? 1 : 0),
-                                       (jboolean)(e.broken ? 1 : 0), e.names);
+                                       (jboolean)(e.broken ? 1 : 0), e.names,
+                                       e.inode);
         env->SetObjectArrayElement(result, (jsize)i, fi);
         if (jName)   env->DeleteLocalRef(jName);
         if (jPath)   env->DeleteLocalRef(jPath);

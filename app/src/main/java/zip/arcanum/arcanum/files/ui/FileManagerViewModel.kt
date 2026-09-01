@@ -1418,6 +1418,33 @@ class FileManagerViewModel @Inject constructor(
         return FolderImport(count, skipped, hiddenProtected, failureCode)
     }
 
+    /**
+     * What one export produced. A count on its own cannot describe an export out of
+     * an ext4 vault: a link lives inside the vault and there is nowhere outside to
+     * put one, so some items land as something other than themselves and some
+     * cannot land at all (#167).
+     *
+     * [exported] counts the picked items that produced something, as it always did -
+     * a folder is one of them. [skipped] counts items at any depth there was nothing
+     * to write for. [duplicates] counts files written out more than once, which is
+     * what a second name for one file has to become outside the vault.
+     */
+    private class ExportTally {
+        var exported = 0
+        var skipped  = 0
+        private val written    = HashSet<Long>()
+        private val duplicated = HashSet<Long>()
+
+        /** How many distinct files left as more than one copy, not how many extra writes. */
+        val duplicates: Int get() = duplicated.size
+
+        /** Once per file actually written, at any depth. Inode 0 means the filesystem
+         *  cannot tell two entries apart - FAT and exFAT - so nothing is claimed there. */
+        fun noteWritten(inode: Long) {
+            if (inode > 0L && !written.add(inode)) duplicated.add(inode)
+        }
+    }
+
     fun exportSelected(context: Context, treeUri: android.net.Uri) {
         if (refuseIfLocked()) return
         val s = _state.value
@@ -1426,39 +1453,63 @@ class FileManagerViewModel @Inject constructor(
 
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isOperationInProgress = true) }
-            var count = 0
-            val chunkSize = 1 * 1024 * 1024
+            val tally = ExportTally()
             val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
             val treeDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, treeDocId)
             for (file in toExport) {
                 try {
                     _state.update { it.copy(operationMessage = "Exporting ${file.name}…") }
-                    if (file.isDirectory) {
-                        val ok = exportDirectoryRecursive(context, handle, file.path, treeDocUri, file.name)
-                        if (ok) count++
-                    } else {
-                        val docUri = DocumentsContract.createDocument(
-                            context.contentResolver, treeDocUri,
-                            getMimeType(file.name), file.name
-                        ) ?: continue
-                        context.contentResolver.openOutputStream(docUri)?.use { out ->
-                            var offset = 0L
-                            while (offset < file.size) {
-                                val chunk = engine.readFile(handle, file.path, offset, chunkSize) ?: break
-                                out.write(chunk)
-                                offset += chunk.size
-                                if (chunk.size < chunkSize) break
+                    when {
+                        /*
+                         * Nothing behind it to write. Both used to be created outside as
+                         * an empty file under the item's own name and counted as
+                         * exported, which is the worst of the answers available: the
+                         * user is told the item left the vault and what they have is
+                         * zero bytes (#167).
+                         */
+                        file.isSpecial || (file.isSymlink && file.linkBroken) -> tally.skipped++
+
+                        /*
+                         * A folder, or a link to one. SAF has no notion of a link, so
+                         * the only thing that can leave is what the link leads to,
+                         * written out under the link's own name - which is what the
+                         * user sees when they open it here.
+                         */
+                        file.opensAsDirectory -> {
+                            val ok = exportDirectoryRecursive(
+                                context, handle, file.path, treeDocUri, file.name,
+                                tally, setOf(file.inode)
+                            )
+                            if (ok) tally.exported++
+                        }
+
+                        else -> {
+                            val ok = exportOneFile(
+                                context, handle, file.path, file.size, file.name, treeDocUri
+                            )
+                            if (ok) {
+                                tally.noteWritten(file.inode)
+                                tally.exported++
                             }
                         }
-                        count++
                     }
                 } catch (_: Exception) { }
             }
+            /* Debug builds say what the walk decided, so a device pass has something to
+             * check the banner against - what a link became is invisible once it is
+             * outside the vault. Counts only, never a name. */
+            if (zip.arcanum.BuildConfig.DEBUG)
+                android.util.Log.d("ArcanumExport", "exported=${tally.exported} " +
+                    "skipped=${tally.skipped} duplicates=${tally.duplicates}")
             exitSelectionMode()
             _state.update { it.copy(
                 isOperationInProgress = false,
                 operationMessage      = null,
-                pendingNotification   = if (count > 0) InAppNotification.FilesExported(count) else null
+                /* Shown even when nothing landed: an export of one dead link used to end
+                 * in silence, and silence after an operation reads as success. */
+                pendingNotification   = if (tally.exported > 0 || tally.skipped > 0)
+                    InAppNotification.FilesExported(tally.exported, tally.skipped, tally.duplicates)
+                else null
             ) }
         }
     }
@@ -1492,12 +1543,49 @@ class FileManagerViewModel @Inject constructor(
         } catch (_: Exception) { false }
     }
 
+    /**
+     * Writes one file out through SAF. Shared by the picked items and by the walk, so
+     * a link found inside a folder leaves exactly as one picked by hand does.
+     *
+     * [size] is the size of what will be read, which for a link is its target's rather
+     * than the length of the path it holds.
+     */
+    private suspend fun exportOneFile(
+        context: Context,
+        handle: Long,
+        srcPath: String,
+        size: Long,
+        name: String,
+        parentDocUri: android.net.Uri
+    ): Boolean {
+        val docUri = DocumentsContract.createDocument(
+            context.contentResolver, parentDocUri, getMimeType(name), name
+        ) ?: return false
+        val out = context.contentResolver.openOutputStream(docUri) ?: return false
+        val chunkSize = 1 * 1024 * 1024
+        out.use { stream ->
+            var offset = 0L
+            while (offset < size) {
+                val chunk = engine.readFile(handle, srcPath, offset, chunkSize) ?: break
+                stream.write(chunk)
+                offset += chunk.size
+                if (chunk.size < chunkSize) break
+            }
+        }
+        return true
+    }
+
+    /**
+     * [ancestors] holds the inodes of the folders on the way here, this one included.
+     */
     private suspend fun exportDirectoryRecursive(
         context: Context,
         handle: Long,
         srcPath: String,
         parentDocUri: android.net.Uri,
-        dirName: String
+        dirName: String,
+        tally: ExportTally,
+        ancestors: Set<Long>
     ): Boolean {
         val dirUri = DocumentsContract.createDocument(
             context.contentResolver, parentDocUri,
@@ -1505,27 +1593,38 @@ class FileManagerViewModel @Inject constructor(
         ) ?: return false
         val entries = runCatching { engine.listFilesOrNull(handle, srcPath)?.toList() }.getOrNull()
             ?: return false
-        val chunkSize = 1 * 1024 * 1024
         var allOk = true
         for (entry in entries) {
             val entryPath = if (srcPath == "/") "/${entry.name}" else "$srcPath/${entry.name}"
             try {
-                if (entry.isDirectory) {
-                    val ok = exportDirectoryRecursive(context, handle, entryPath, dirUri, entry.name)
-                    if (!ok) allOk = false
-                } else {
-                    val docUri = DocumentsContract.createDocument(
-                        context.contentResolver, dirUri,
-                        getMimeType(entry.name), entry.name
-                    ) ?: run { allOk = false; continue }
-                    context.contentResolver.openOutputStream(docUri)?.use { out ->
-                        var offset = 0L
-                        while (offset < entry.size) {
-                            val chunk = engine.readFile(handle, entryPath, offset, chunkSize) ?: break
-                            out.write(chunk)
-                            offset += chunk.size
-                            if (chunk.size < chunkSize) break
+                when {
+                    entry.isSpecial || (entry.isSymlink && entry.linkBroken) -> tally.skipped++
+
+                    entry.opensAsDirectory -> {
+                        /*
+                         * A folder link is followed like any other folder, since that is
+                         * the only way what it holds can leave the vault. Following one
+                         * that leads back into a folder already on the way here would
+                         * copy that folder into itself until the storage or the stack
+                         * gives out; a ring has to revisit a folder it is already
+                         * inside, so refusing exactly that is enough to stop every one.
+                         */
+                        if (entry.inode > 0L && entry.inode in ancestors) {
+                            tally.skipped++
+                        } else {
+                            val ok = exportDirectoryRecursive(
+                                context, handle, entryPath, dirUri, entry.name,
+                                tally, ancestors + entry.inode
+                            )
+                            if (!ok) allOk = false
                         }
+                    }
+
+                    else -> {
+                        val ok = exportOneFile(
+                            context, handle, entryPath, entry.size, entry.name, dirUri
+                        )
+                        if (ok) tally.noteWritten(entry.inode) else allOk = false
                     }
                 }
             } catch (_: Exception) { allOk = false }

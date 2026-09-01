@@ -90,6 +90,7 @@
     <string name="notif_folder_created">Folder created</string>
     <string name="notif_files_imported_subtitle">Encrypted and stored in vault</string>
     <string name="notif_files_exported_subtitle">Saved to selected folder</string>
+    <string name="notif_files_exported_skipped_and_copies">%1$d could not leave, %2$d left as copies</string>
     <string name="notif_hidden_write_protection">Write Error</string>
     <string name="notif_hidden_write_protection_subtitle">A storage error occurred while importing</string>
     <string name="notif_import_failed">Import Failed</string>
@@ -142,6 +143,14 @@
     <plurals name="notif_files_imported">
         <item quantity="one">%1$d file imported</item>
         <item quantity="other">%1$d files imported</item>
+    </plurals>
+    <plurals name="notif_files_exported_skipped">
+        <item quantity="one">%1$d item could not leave the vault</item>
+        <item quantity="other">%1$d items could not leave the vault</item>
+    </plurals>
+    <plurals name="notif_files_exported_copies">
+        <item quantity="one">%1$d file left as more than one copy</item>
+        <item quantity="other">%1$d files left as more than one copy</item>
     </plurals>
     <plurals name="notif_files_exported">
         <item quantity="one">%1$d file exported</item>

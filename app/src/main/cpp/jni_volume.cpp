@@ -50,7 +50,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void * /*reserved*/) {
     if (localFileInfo) {
         g_jniCache.fileInfoCls = (jclass)env->NewGlobalRef(localFileInfo);
         g_jniCache.fileInfoCtor = env->GetMethodID(g_jniCache.fileInfoCls, "<init>",
-                                       "(Ljava/lang/String;Ljava/lang/String;JZJILjava/lang/String;ZZI)V");
+                                       "(Ljava/lang/String;Ljava/lang/String;JZJILjava/lang/String;ZZIJ)V");
         env->DeleteLocalRef(localFileInfo);
     }
     if (env->ExceptionCheck()) env->ExceptionClear();

@@ -331,7 +331,18 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         backgroundColor = Color(0xFF16A34A),
         icon            = Icons.Outlined.CheckCircle,
         title           = ctx.resources.getQuantityString(R.plurals.notif_files_exported, this.count, this.count),
-        subtitle        = ctx.getString(R.string.notif_files_exported_subtitle)
+        /* The subtitle is one line, so when both are true the skipped items come
+         * first: something the user picked is not out there at all, which is worth
+         * more than knowing that something else went out twice. */
+        subtitle        = when {
+            this.skipped > 0 && this.duplicates > 0 -> ctx.getString(
+                R.string.notif_files_exported_skipped_and_copies, this.skipped, this.duplicates)
+            this.skipped > 0 -> ctx.resources.getQuantityString(
+                R.plurals.notif_files_exported_skipped, this.skipped, this.skipped)
+            this.duplicates > 0 -> ctx.resources.getQuantityString(
+                R.plurals.notif_files_exported_copies, this.duplicates, this.duplicates)
+            else -> ctx.getString(R.string.notif_files_exported_subtitle)
+        }
     )
     InAppNotification.HiddenVolumeWriteProtection -> NotificationDisplayConfig(
         backgroundColor = Color(0xFFDC2626),

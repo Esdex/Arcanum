@@ -13,7 +13,7 @@
 -keep class zip.arcanum.crypto.VeraCryptEngine { *; }
 -keep class zip.arcanum.crypto.VeraCryptEngine$Companion { *; }
 # NativeFileInfo is instantiated by C++ via JNI NewObject — constructor
-# signature (String,String,long,boolean,long,int,String,boolean,boolean,int) must
+# signature (String,String,long,boolean,long,int,String,boolean,boolean,int,long) must
 # be renamed or removed. R8 cannot see a call that exists only in C++, so a
 # mismatch here is a NoSuchMethodError at runtime in release builds and nothing
 # at all in debug ones.

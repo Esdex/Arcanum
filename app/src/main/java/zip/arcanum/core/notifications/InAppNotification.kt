@@ -209,7 +209,18 @@ sealed class InAppNotification {
         override val priority = 1
     }
 
-    data class FilesExported(val count: Int) : InAppNotification() {
+    /**
+     * [skipped] counts items an export could not carry out of the vault at all - a
+     * link that leads nowhere, a special file, a folder link that leads back into
+     * what is already being exported. [duplicates] counts files that left as more
+     * than one copy, which is what a second name for one file becomes outside,
+     * where nothing can hold a link (#167).
+     */
+    data class FilesExported(
+        val count: Int,
+        val skipped: Int = 0,
+        val duplicates: Int = 0
+    ) : InAppNotification() {
         override val priority = 1
     }
 

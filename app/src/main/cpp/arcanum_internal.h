@@ -459,9 +459,9 @@ struct JniCache {
     JavaVM   *vm           = nullptr;
     jclass    fileInfoCls  = nullptr;
     jmethodID fileInfoCtor = nullptr;
-    /* NativeFileInfo(String,String,J,Z,J,I,String,Z,Z,I) - name, path, size,
+    /* NativeFileInfo(String,String,J,Z,J,I,String,Z,Z,I,J) - name, path, size,
      * isDirectory, mtime, kind, linkTarget, linkTargetIsDirectory,
-     * linkBroken, nameCount. Both listing paths build it, and the ProGuard rule
+     * linkBroken, nameCount, inode. Both listing paths build it, and the ProGuard rule
      * keeps the constructor: R8 cannot see a call that only exists in C++. */
     jclass    stringCls    = nullptr;
     jmethodID stringCtor   = nullptr;   /* String(byte[], String) */

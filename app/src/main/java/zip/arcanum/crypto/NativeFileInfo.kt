@@ -47,6 +47,19 @@ data class NativeFileInfo(
      * such thing.
      */
     val nameCount: Int = 1,
+    /**
+     * The inode this entry leads to, or 0 when there is nothing behind it - a
+     * broken link, or a filesystem without the notion. It follows the link, the
+     * way [opensAsDirectory] does and [isDirectory] does not: two entries with the
+     * same inode are one file, whether the second name is a hard link or a
+     * symlink pointing at the first.
+     *
+     * [nameCount] says a file has another name somewhere; this says whether two
+     * entries in hand are that same file. Export needs the second question to warn
+     * that two of the selected names will land outside as two separate copies
+     * (#167), and to refuse to walk into a folder it is already inside.
+     */
+    val inode: Long = 0L,
 ) {
     val isSymlink: Boolean get() = kind == KIND_SYMLINK
 
