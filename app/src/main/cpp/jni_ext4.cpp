@@ -59,15 +59,13 @@ extern "C" {
  * it to the label. */
 #define EXT4_FS_TYPE_ID 5
 
-#define INODE_MODE_OFF  0x00
-#define INODE_MTIME_OFF 0x10
-#define INODE_MODE_OFF  0x00
+#define INODE_MODE_OFF        0x00
+#define INODE_MTIME_OFF       0x10
+#define INODE_LINKS_COUNT_OFF 0x1A
 #define EXT4_S_IFMT     0xF000
 #define EXT4_S_IFDIR    0x4000
 #define EXT4_S_IFREG    0x8000
 #define EXT4_S_IFLNK    0xA000
-#define EXT4_S_IFMT     0xF000
-#define EXT4_S_IFDIR    0x4000
 
 /* ─── superblock offsets (fs-usage only) ─────────────────────────────── */
 #define SB_BLOCKS_LO_OFF        0x04
@@ -359,7 +357,7 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
         infoCls = env->FindClass("zip/arcanum/crypto/NativeFileInfo");
         if (!infoCls) return nullptr;
         ctor = env->GetMethodID(infoCls, "<init>",
-                                "(Ljava/lang/String;Ljava/lang/String;JZJILjava/lang/String;ZZ)V");
+                                "(Ljava/lang/String;Ljava/lang/String;JZJILjava/lang/String;ZZI)V");
         if (!ctor) return env->NewObjectArray(0, infoCls, nullptr);
     }
 
@@ -374,6 +372,7 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
         std::string linkTarget;   /* empty unless kind is a symlink */
         bool        targetIsDir;
         bool        broken;
+        jint        names;
     };
     std::vector<Entry> entries;
     {
@@ -414,12 +413,17 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
             bool     isDir = d.ftype == EXT4_FT_DIR;
             std::string linkTarget;
             bool     targetIsDir = false, broken = false;
+            jint     names = 1;
 
             uint8_t inode[EXT4_MAX_INODE_SIZE];
             memset(inode, 0, sizeof(inode));
             if (ext4_read_inode_raw(r, d.ino, inode, sizeof(inode)) == EXT4_OK) {
                 size  = ext4_inode_size(inode);
                 mtime = (jlong)rd32(inode + INODE_MTIME_OFF) * 1000LL;
+                /* The only visible trace a hard link leaves: the file itself is
+                 * unchanged, so how many names it has is the one thing that says
+                 * a second one was made rather than a copy (#128). */
+                names = (jint)rd16(inode + INODE_LINKS_COUNT_OFF);
 
                 /*
                  * The kind comes from the inode's mode rather than the directory
@@ -476,7 +480,7 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
             }
             entries.push_back(Entry{
                 d.name, child_path(dirPath, d.name.c_str()),
-                size, isDir, mtime, kind, linkTarget, targetIsDir, broken });
+                size, isDir, mtime, kind, linkTarget, targetIsDir, broken, names });
         }
     }
 
@@ -494,7 +498,7 @@ jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath) {
                                        (jlong)e.size, (jboolean)(e.isDir ? 1 : 0),
                                        e.mtime, e.kind, jTarget,
                                        (jboolean)(e.targetIsDir ? 1 : 0),
-                                       (jboolean)(e.broken ? 1 : 0));
+                                       (jboolean)(e.broken ? 1 : 0), e.names);
         env->SetObjectArrayElement(result, (jsize)i, fi);
         if (jName)   env->DeleteLocalRef(jName);
         if (jPath)   env->DeleteLocalRef(jPath);
@@ -853,6 +857,73 @@ jint ext4jni_create_directory(JNIEnv *env, jlong handle, jstring jDirPath) {
 
     if (rc == EXT4_DIRW_OK) return ERR_OK;
     if (rc == EXT4_CREATE_ERR_NOINODE || rc == EXT4_DIRW_ERR_NOROOM) return ERR_NO_SPACE;
+    s.tear();
+    return write_error(pdrv, ERR_FS);
+}
+
+/* ─── ext4jni_create_link ────────────────────────────────────────────── */
+
+/*
+ * Gives `targetPath` a second name at `linkPath`, and decides which KIND of link
+ * that is (#128).
+ *
+ * The choice is made here rather than asked of the caller, because it follows
+ * entirely from what is being linked and there is nothing for a user to weigh up.
+ * A file gets a HARD link: one inode, two names, no extra space, and no way for it
+ * to end up pointing at nothing - which is word for word what the feature was asked
+ * for. A directory cannot have one; ext4 forbids it and so does every other
+ * filesystem, because "." and ".." would stop saying which parent a folder has. So
+ * a directory gets a symbolic link instead.
+ *
+ * The stored target is the path as the app gave it, which is absolute from the root
+ * of the volume. That survives the LINK being moved, and it means the same thing to
+ * a desktop, whose mount point is that same root. A relative target would have been
+ * shorter and would break the first time the link was moved to another folder.
+ *
+ * The target is resolved with following on, so a link made to a link points at the
+ * file underneath rather than at the middle one - the same as `ln` on a desktop.
+ */
+jint ext4jni_create_link(JNIEnv *env, jlong handle, jstring jLinkPath,
+                         jstring jTargetPath) {
+    std::string linkPath = jstring_to_string(env, jLinkPath);
+    std::string targetPath = jstring_to_string(env, jTargetPath);
+
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    int pdrv = ext4_pdrv(handle);
+    if (pdrv < 0) return ERR_NO_SLOT;
+    if (is_read_only(pdrv)) return ERR_READ_ONLY;
+
+    ext4_fs *r = nullptr;
+    if (!open_reader(pdrv, &r)) return ERR_FS;
+
+    uint32_t dir_ino = 0;
+    char name[256];
+    int prc = ext4_resolve_parent(r, linkPath.c_str(), &dir_ino, name, sizeof(name));
+    if (prc != EXT4_PATH_OK) return path_error(prc);
+
+    uint32_t target_ino = 0;
+    int target_is_dir = 0;
+    prc = ext4_resolve_path(r, targetPath.c_str(), &target_ino, &target_is_dir);
+    if (prc != EXT4_PATH_OK) return path_error(prc);
+
+    WriteSession s(pdrv);
+    if (!s.ok()) return ERR_FS;
+
+    int rc;
+    if (target_is_dir) {
+        uint32_t ino = 0;
+        rc = ext4_symlink(s.fs(), r, dir_ino, name, targetPath.c_str(),
+                          now_seconds(), &ino);
+    } else {
+        rc = ext4_hardlink(s.fs(), r, dir_ino, name, target_ino, now_seconds());
+    }
+
+    if (rc == EXT4_DIRW_OK) return ERR_OK;
+    if (rc == EXT4_DIRW_ERR_EXISTS) return ERR_EXISTS;
+    if (rc == EXT4_CREATE_ERR_NOINODE || rc == EXT4_DIRW_ERR_NOROOM)
+        return ERR_NO_SPACE;
+    /* Nothing was written for the refusals above - they are decided before an
+     * inode is taken - so the session is only torn for the rest. */
     s.tear();
     return write_error(pdrv, ERR_FS);
 }

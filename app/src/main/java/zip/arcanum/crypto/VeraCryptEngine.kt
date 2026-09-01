@@ -527,6 +527,19 @@ class VeraCryptEngine @Inject constructor(
     fun createDirectory(handle: Long, dirPath: String): Int =
         marked { nativeCreateDirectory(handle, dirPath) }
 
+    /**
+     * Gives [targetPath] a second name at [linkPath].
+     *
+     * Which kind of link that is follows from what is being linked and is decided
+     * natively: a file gets a hard link — one inode under two names, no extra space
+     * and no way for it to dangle — and a directory, which cannot have one, gets a
+     * symbolic link instead. ext4 only; FAT and exFAT return ERR_UNSUPPORTED,
+     * because the only thing either could offer is a copy, which is what this
+     * exists to avoid.
+     */
+    fun createLink(handle: Long, linkPath: String, targetPath: String): Int =
+        marked { nativeCreateLink(handle, linkPath, targetPath) }
+
     fun renameFile(handle: Long, oldPath: String, newPath: String): Int =
         marked { nativeRenameFile(handle, oldPath, newPath) }
 
@@ -855,6 +868,9 @@ class VeraCryptEngine @Inject constructor(
     private external fun nativeDeleteDirectory(handle: Long, dirPath: String): Int
 
     private external fun nativeCreateDirectory(handle: Long, dirPath: String): Int
+    private external fun nativeCreateLink(
+        handle: Long, linkPath: String, targetPath: String
+    ): Int
 
     private external fun nativeRenameFile(handle: Long, oldPath: String, newPath: String): Int
 

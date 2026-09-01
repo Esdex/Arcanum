@@ -40,6 +40,7 @@
 #define _FILE_OFFSET_BITS 64
 
 #include "ext4_create.h"
+#include "ext4_extwrite.h"
 #include "ext4_csum.h"
 #include "ext4_log.h"
 
@@ -68,6 +69,7 @@
 #define INODE_FILE_ACL_HI_OFF 0x76   /* osd2.linux2.l_i_file_acl_high */
 
 #define EXT4_S_IFREG            0x8000
+#define INODE_IBLOCK_SIZE       60
 #define EXT4_S_IFDIR            0x4000
 #define EXT4_S_IFMT             0xF000
 /* Kinds this driver never creates but will meet on a volume made elsewhere. They
@@ -217,6 +219,219 @@ int ext4_create_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     rc = ext4_fs_flush(w) ? EXT4_DIRW_ERR_IO : EXT4_DIRW_OK;
     EXT4_LOGI("create '%s': inode %lld, %s", name, (long long)ino,
               rc == EXT4_DIRW_OK ? "ok" : "flush failed");
+    return rc;
+}
+
+static uint8_t ftype_of(const uint8_t *inode);
+
+/*
+ * The longest target that fits inside the inode.
+ *
+ * i_block is 60 bytes and the kernel stores the terminator there too, so 59 is the
+ * boundary it uses and the boundary used here - a "fast" symlink, which owns no
+ * data blocks at all. One byte either side of that and a desktop and this driver
+ * would disagree about what shape a link is, which e2fsck would then report.
+ */
+#define EXT4_FAST_SYMLINK_MAX 59
+
+typedef struct { const char *target; size_t len; uint32_t bs; } symlink_src;
+
+static int fill_symlink(void *user, uint32_t logical, uint8_t *buf) {
+    const symlink_src *s = (const symlink_src *)user;
+    uint64_t off = (uint64_t)logical * s->bs;
+    memset(buf, 0, s->bs);
+    if (off < s->len) {
+        size_t n = s->len - (size_t)off;
+        if (n > s->bs) n = s->bs;
+        memcpy(buf, s->target + off, n);
+    }
+    return 0;
+}
+
+/*
+ * Creates a symlink: a name that holds a path instead of contents (#128).
+ *
+ * Built alongside ext4_create_file rather than on top of it, because the one thing
+ * that makes a symlink is the thing create_file cannot leave out. A short target
+ * lives in i_block, exactly where an extent root would be, and such an inode must
+ * NOT carry the extents flag - so the header create_file writes there has to be
+ * taken back out rather than worked around. A long one is an ordinary file whose
+ * blocks hold the path, and keeps the flag.
+ *
+ * The order is create_file's, for create_file's reason: the inode is complete and
+ * already claims the one link its name will be, and only then does a directory
+ * entry point at it. An interrupted create leaves an inode nothing names, which a
+ * check reclaims; the other order leaves a name pointing at nothing, which it
+ * cannot.
+ */
+int ext4_symlink(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
+                 const char *name, const char *target, uint32_t when,
+                 uint32_t *ino_out) {
+    if (!target) return EXT4_DIRW_ERR_NAME;
+    size_t len = strlen(target);
+    EXT4_LOGI("symlink '%s' -> '%s' in dir inode %u", name, target, dir_ino);
+
+    /* An empty target names nothing at all and no tool writes one; a path longer
+     * than the system's maximum could not have come from a desktop either, and
+     * following it would need a buffer nothing here promises. */
+    if (len == 0 || len > EXT4_SYMLINK_TARGET_MAX) {
+        EXT4_LOGE("symlink '%s': the target is %zu bytes", name, len);
+        return EXT4_DIRW_ERR_NAME;
+    }
+
+    uint32_t existing = 0;
+    int rc = ext4_dir_lookup(r, dir_ino, name, &existing);
+    if (rc == EXT4_DIRW_OK) {
+        EXT4_LOGE("symlink '%s': a name already points at inode %u", name, existing);
+        return EXT4_DIRW_ERR_EXISTS;
+    }
+    if (rc != EXT4_DIRW_ERR_ABSENT) return rc;
+
+    int64_t ino = ext4_alloc_inode(w);
+    if (ino < 0) {
+        EXT4_LOGE("symlink '%s': no free inode", name);
+        return EXT4_CREATE_ERR_NOINODE;
+    }
+
+    uint8_t *inode = malloc(w->inode_size);
+    if (!inode) { ext4_free_inode(w, (uint32_t)ino); return EXT4_DIRW_ERR_IO; }
+
+    /* 0777 like every symlink on every system: the permission bits of a link are
+     * never consulted, only those of whatever it names. */
+    init_inode(inode, w->inode_size, (uint16_t)(EXT4_S_IFLNK | 0777), 1, when);
+
+    int fast = len <= EXT4_FAST_SYMLINK_MAX;
+    if (fast) {
+        /* Out goes the extent header init_inode put there, in goes the path. The
+         * flag has to go with it: an inode claiming extents whose i_block is a
+         * string is what makes a reader hand back sixty bytes of path as data. */
+        wr32(inode + INODE_FLAGS_OFF, 0);
+        memset(inode + INODE_IBLOCK_OFF, 0, INODE_IBLOCK_SIZE);
+        memcpy(inode + INODE_IBLOCK_OFF, target, len);
+        wr32(inode + INODE_SIZE_LO_OFF, (uint32_t)len);
+    }
+
+    rc = ext4_write_inode_raw(w, (uint32_t)ino, inode);
+    free(inode);
+    if (rc != EXT4_DIRW_OK) {
+        EXT4_LOGE("symlink '%s': writing inode %lld failed (%d)", name,
+                  (long long)ino, rc);
+        ext4_free_inode(w, (uint32_t)ino);
+        return rc;
+    }
+
+    if (!fast) {
+        uint32_t blocks = (uint32_t)((len + w->block_size - 1) / w->block_size);
+        symlink_src src = { target, len, w->block_size };
+        uint32_t got = 0;
+        int arc = ext4_append_blocks(w, (uint32_t)ino, blocks, fill_symlink,
+                                     &src, &got);
+        if (arc == EXTW_OK && got == blocks) arc = ext4_set_size(w, (uint32_t)ino, len);
+        if (arc != EXTW_OK) {
+            EXT4_LOGE("symlink '%s': storing a %zu byte target failed (%d)",
+                      name, len, arc);
+            ext4_truncate_blocks(w, (uint32_t)ino, 0);
+            ext4_free_inode(w, (uint32_t)ino);
+            return EXT4_DIRW_ERR_IO;
+        }
+    }
+
+    rc = ext4_dir_add(w, r, dir_ino, (uint32_t)ino, EXT4_FT_SYMLINK, name);
+    if (rc != EXT4_DIRW_OK) {
+        EXT4_LOGE("symlink '%s': adding the directory entry failed (%d)", name, rc);
+        if (!fast) ext4_truncate_blocks(w, (uint32_t)ino, 0);
+        ext4_free_inode(w, (uint32_t)ino);
+        return rc;
+    }
+
+    if (ino_out) *ino_out = (uint32_t)ino;
+    rc = ext4_fs_flush(w) ? EXT4_DIRW_ERR_IO : EXT4_DIRW_OK;
+    EXT4_LOGI("symlink '%s': inode %lld, %s target, %s", name, (long long)ino,
+              fast ? "inline" : "block", rc == EXT4_DIRW_OK ? "ok" : "flush failed");
+    return rc;
+}
+
+/*
+ * Gives an inode that already exists a second name - a hard link (#128).
+ *
+ * No new inode, no new blocks: one more directory entry and one more on the link
+ * count. Neither name is the original afterwards, and the data goes only when the
+ * last of them is removed.
+ *
+ * **The count is raised before the entry is added, and that order is not
+ * arbitrary.** Interrupted between the two, a count that is one too high leaves an
+ * inode a check reclaims - nothing is lost. The other way round leaves a count one
+ * too LOW, and then deleting either name takes it to zero and frees an inode the
+ * other name still points at: the file disappears from a place the user never
+ * touched. Both states are repairable, but only one of them is repairable without
+ * losing something.
+ *
+ * A directory cannot be given a second name. The kernel refuses it for the reason
+ * that matters here too: "." and ".." would no longer say which parent a directory
+ * has, and a tree with two ways into one folder is a tree a recursive walk cannot
+ * finish.
+ */
+int ext4_hardlink(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
+                  const char *name, uint32_t target_ino, uint32_t when) {
+    EXT4_LOGI("hardlink '%s' -> inode %u in dir inode %u", name, target_ino, dir_ino);
+
+    uint32_t existing = 0;
+    int rc = ext4_dir_lookup(r, dir_ino, name, &existing);
+    if (rc == EXT4_DIRW_OK) {
+        EXT4_LOGE("hardlink '%s': a name already points at inode %u", name, existing);
+        return EXT4_DIRW_ERR_EXISTS;
+    }
+    if (rc != EXT4_DIRW_ERR_ABSENT) return rc;
+
+    uint8_t *inode = malloc(w->inode_size);
+    if (!inode) return EXT4_DIRW_ERR_IO;
+    if (ext4_read_inode_raw(r, target_ino, inode, w->inode_size) != EXT4_OK) {
+        free(inode);
+        return EXT4_DIRW_ERR_IO;
+    }
+
+    uint16_t mode = rd16(inode + INODE_MODE_OFF);
+    if ((mode & EXT4_S_IFMT) == EXT4_S_IFDIR) {
+        free(inode);
+        EXT4_LOGE("hardlink '%s': inode %u is a directory", name, target_ino);
+        return EXT4_CREATE_ERR_ISDIR;
+    }
+
+    /* ext4 stops at 65000 rather than at what the field holds, leaving room for
+     * the values above it that mean something else. Refusing here is a refusal;
+     * letting it wrap is a count that no longer describes anything. */
+    uint16_t links = rd16(inode + INODE_LINKS_COUNT_OFF);
+    if (links >= EXT4_LINK_MAX) {
+        free(inode);
+        EXT4_LOGE("hardlink '%s': inode %u already has %u names", name, target_ino,
+                  links);
+        return EXT4_CREATE_ERR_MLINK;
+    }
+    uint8_t ftype = ftype_of(inode);
+    free(inode);
+
+    rc = ext4_inode_adjust_links(w, target_ino, +1);
+    if (rc != EXTW_OK) {
+        EXT4_LOGE("hardlink '%s': raising the link count failed (%d)", name, rc);
+        return EXT4_DIRW_ERR_IO;
+    }
+
+    rc = ext4_dir_add(w, r, dir_ino, target_ino, ftype, name);
+    if (rc != EXT4_DIRW_OK) {
+        EXT4_LOGE("hardlink '%s': adding the directory entry failed (%d), putting "
+                  "the count back", name, rc);
+        ext4_inode_adjust_links(w, target_ino, -1);
+        return rc;
+    }
+
+    /* A second name is a change to the inode, and ctime is the field that records
+     * one. Left alone, a desktop shows a file whose link count grew at a moment
+     * nothing appears to have happened. */
+    (void)ext4_set_ctime(w, target_ino, when);
+
+    rc = ext4_fs_flush(w) ? EXT4_DIRW_ERR_IO : EXT4_DIRW_OK;
+    EXT4_LOGI("hardlink '%s': inode %u now has %u names, %s", name, target_ino,
+              links + 1, rc == EXT4_DIRW_OK ? "ok" : "flush failed");
     return rc;
 }
 

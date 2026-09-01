@@ -224,6 +224,10 @@ class FileManagerViewModel @Inject constructor(
         val isSearchActive: Boolean = false,
         val isSearchRecursive: Boolean = false,
         val clipboardCount: Int = 0,
+        /* Whether the filesystem underneath can hold a second name for one file.
+         * Only ext4 can; FAT and exFAT have nothing to offer but a copy, and a
+         * menu entry that silently copied would be the opposite of the ask (#128). */
+        val supportsLinks: Boolean = false,
         val error: String? = null,
         val pendingNotification: InAppNotification? = null,
         val isOperationInProgress: Boolean = false,
@@ -332,7 +336,17 @@ class FileManagerViewModel @Inject constructor(
     fun initialize(containerId: String) {
         if (initialized && _state.value.containerId == containerId) return
         initialized = true
-        _state.update { it.copy(containerId = containerId, isReadOnly = repo.isContainerReadOnly(containerId)) }
+        _state.update {
+            it.copy(containerId = containerId,
+                    isReadOnly = repo.isContainerReadOnly(containerId))
+        }
+        /* The filesystem has to be read, so it cannot be part of the update above.
+         * Links exist only on ext4 (#128). */
+        viewModelScope.launch {
+            val fs = runCatching { repo.getContainerById(containerId)?.filesystem }
+                .getOrNull()
+            _state.update { it.copy(supportsLinks = fs.equals("ext4", ignoreCase = true)) }
+        }
         viewModelScope.launch {
             runCatching {
                 val p = prefs.data.first()
@@ -630,6 +644,66 @@ class FileManagerViewModel @Inject constructor(
             selectedItems        = emptySet(),
             pendingNotification  = InAppNotification.FilesCut(items.size)
         ) }
+    }
+
+    /**
+     * Gives each of `items` a second name in `destPath`, inside this same vault (#128).
+     *
+     * One vault only, and that is not a limitation to be lifted later: a link is a
+     * name pointing at something in the same filesystem, and there is no such thing
+     * as one that reaches into another container. What could be offered instead is a
+     * copy, which takes the space again and stops being the same file — the two
+     * things the feature exists to avoid.
+     *
+     * Which kind each one gets is decided natively from what is being linked: a file
+     * gets a hard link, a folder a symbolic one. The user is shown one word.
+     */
+    fun createLinkAt(items: List<NativeFileInfo>, destPath: String) {
+        if (_state.value.isReadOnly || items.isEmpty()) return
+        val containerId = _state.value.containerId
+        val handle = repo.getContainerHandle(containerId) ?: return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _state.update { it.copy(isOperationInProgress = true,
+                                    operationMessage = "Linking…") }
+            var count = 0
+            var failed = 0
+            val taken = runCatching {
+                engine.listFilesOrNull(handle, destPath)?.map { it.name }?.toMutableSet()
+            }.getOrNull() ?: mutableSetOf()
+
+            for (item in items) {
+                val name = freeName(item.name, taken)
+                taken.add(name)
+                val linkPath = if (destPath == "/") "/$name" else "$destPath/$name"
+                val rc = runCatching { engine.createLink(handle, linkPath, item.path) }
+                    .getOrDefault(VeraCryptEngine.ERR_FS)
+                if (rc == VeraCryptEngine.ERR_OK) count++ else failed++
+            }
+
+            /* What was linked decides what may be promised about it: a file gets
+             * a hard link and cannot come apart, a folder gets a symbolic one and
+             * can. Taken from the items rather than from the results, since a
+             * failure does not change what was being asked for. */
+            val dirs = items.count { it.isDirectory }
+            val kind = when {
+                dirs == 0            -> InAppNotification.LinkedKind.FILES
+                dirs == items.size   -> InAppNotification.LinkedKind.FOLDERS
+                else                 -> InAppNotification.LinkedKind.MIXED
+            }
+
+            clearSelection()
+            loadDirectory(_state.value.currentPath)
+            _state.update {
+                it.copy(isOperationInProgress = false, operationMessage = null,
+                        pendingNotification = when {
+                            failed > 0 -> InAppNotification.FilesPasteFailed(
+                                failed, failed + count)
+                            count > 0  -> InAppNotification.FilesLinked(count, kind)
+                            else       -> null
+                        })
+            }
+        }
     }
 
     fun paste() {

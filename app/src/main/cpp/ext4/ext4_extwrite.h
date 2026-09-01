@@ -143,6 +143,10 @@ int ext4_write_inode_raw(ext4_wfs *fs, uint32_t ino, uint8_t *inode);
  */
 int ext4_set_mtime(ext4_wfs *fs, uint32_t ino, uint32_t when);
 
+/* Moves the inode-change time alone. A second name for a file changes no byte of
+ * it, so its modification time must not move (#128). */
+int ext4_set_ctime(ext4_wfs *fs, uint32_t ino, uint32_t when);
+
 #ifdef __cplusplus
 }
 #endif

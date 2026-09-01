@@ -81,6 +81,7 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.LinkOff
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Search
@@ -252,6 +253,10 @@ fun FileManagerScreen(
      * device node both look like ordinary rows, so silence reads as the app being
      * broken rather than as the vault holding something odd (#163). */
     var explainTarget          by remember { mutableStateOf<NativeFileInfo?>(null) }
+    /* What a Create link is about to act on - one row from its own menu, or the
+     * whole selection. Held here rather than read at confirm time, because the
+     * selection is cleared while the sheet is open (#128). */
+    var linkTargets            by remember { mutableStateOf<List<NativeFileInfo>>(emptyList()) }
     // Set when Open with is blocked on the vault's External app access being off
     var enableAccessTarget     by remember { mutableStateOf<NativeFileInfo?>(null) }
 
@@ -260,6 +265,7 @@ fun FileManagerScreen(
     val sortSheetState         = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val moveSheetState         = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val copySheetState         = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val linkSheetState         = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // Single entry point for Open with, shared by the item menu and by tapping a file that
     // has no in-app viewer, so both routes behave identically (#103).
@@ -373,6 +379,8 @@ fun FileManagerScreen(
                                 },
                                 onRename             = { renameTarget = it },
                                 onProperties         = { propertiesTarget = it },
+                                canLink              = state.supportsLinks,
+                                onCreateLink         = { linkTargets = listOf(it) },
                                 onOpenWith           = launchOpenWith,
                                 formatSize           = viewModel::formatFileSize
                             )
@@ -434,6 +442,23 @@ fun FileManagerScreen(
                             onSelectAll    = viewModel::selectAll,
                             onRename       = { renameTarget = it },
                             onProperties   = { propertiesTarget = it },
+                            /* Gone when nothing picked could have a second name:
+                             * a button that opens a folder picker and then does
+                             * nothing is worse than no button. */
+                            canLink        = state.supportsLinks && state.files.any {
+                                it.path in state.selectedItems &&
+                                    !it.isSymlink && !it.isSpecial
+                            },
+                            onCreateLink   = {
+                                /* The whole selection, and links are never made to
+                                 * links or to special files - a second name for a
+                                 * link would name what IT points at, which is not
+                                 * what the row said. */
+                                linkTargets = state.files.filter {
+                                    it.path in state.selectedItems &&
+                                        !it.isSymlink && !it.isSpecial
+                                }
+                            },
                             onOpenWith     = launchOpenWith
                         )
                     } else {
@@ -617,10 +642,37 @@ fun FileManagerScreen(
 
     if (showDeleteConfirm) {
         val count = state.selectedItems.size
+        /*
+         * A file with more than one name does not go anywhere when one of them is
+         * removed, and no space comes back. The dialog's usual line - that this
+         * cannot be undone - is then simply untrue, so this is not an extra warning
+         * bolted on but the same sentence corrected where it is wrong (#128).
+         *
+         * How many, never where. The link between an inode and its names runs one
+         * way on disk: a name knows its inode, an inode knows nothing about its
+         * names. Finding the other place means walking the whole vault comparing
+         * inode numbers, which is not something to do in front of a delete button.
+         */
+        val alsoElsewhere = state.files.count {
+            it.path in state.selectedItems && it.nameCount > 1
+        }
+        val single = state.files.singleOrNull { it.path in state.selectedItems }
         AppDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title  = { Text(pluralStringResource(R.plurals.files_delete_count, count, count)) },
-            text   = { Text(stringResource(R.string.common_this_cannot_be_undone)) },
+            text   = {
+                Text(when {
+                    alsoElsewhere == 0 ->
+                        stringResource(R.string.common_this_cannot_be_undone)
+                    single != null && single.nameCount > 1 ->
+                        stringResource(R.string.files_delete_also_elsewhere_one,
+                                       single.nameCount)
+                    else ->
+                        stringResource(R.string.common_this_cannot_be_undone) + "\n\n" +
+                        pluralStringResource(R.plurals.files_delete_also_elsewhere_many,
+                                             alsoElsewhere, alsoElsewhere)
+                })
+            },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.deleteSelected()
@@ -811,6 +863,28 @@ fun FileManagerScreen(
         }
     }
 
+    if (linkTargets.isNotEmpty()) {
+        AppSheet(
+            onDismissRequest = { linkTargets = emptyList() },
+            sheetState       = linkSheetState
+        ) {
+            DestinationPickerSheetContent(
+                title              = stringResource(R.string.files_link_to_title),
+                currentContainerId = containerId,
+                /* This vault and no other. A link names something in the same
+                 * filesystem; offering another vault could only ever end in a
+                 * refusal or, worse, a copy (#128). */
+                containers         = mountedContainers.filter { it.id == containerId },
+                onListDirs         = viewModel::listDirectoriesAt,
+                onConfirm          = { _, path, _ ->
+                    viewModel.createLinkAt(linkTargets, path)
+                    linkTargets = emptyList()
+                },
+                confirmLabel       = stringResource(R.string.files_link_here)
+            )
+        }
+    }
+
     if (showCopySheet) {
         AppSheet(
             onDismissRequest = { showCopySheet = false },
@@ -967,7 +1041,9 @@ private fun SelectionTopBar(
     onSelectAll: () -> Unit,
     onRename: (NativeFileInfo) -> Unit,
     onProperties: (NativeFileInfo) -> Unit,
-    onOpenWith: (NativeFileInfo) -> Unit
+    onOpenWith: (NativeFileInfo) -> Unit,
+    canLink: Boolean,
+    onCreateLink: () -> Unit
 ) {
     val isAmoled  = LocalAmoledMode.current
     val hazeState = LocalHazeState.current
@@ -986,6 +1062,16 @@ private fun SelectionTopBar(
         actions = {
             IconButton(onClick = onSelectAll) {
                 Icon(Icons.Outlined.SelectAll, contentDescription = stringResource(R.string.files_cd_select_all))
+            }
+            /* Beside Select all rather than in the overflow, because that menu
+             * only exists while exactly one item is picked, and linking means the
+             * same thing for one item and for forty (#128). Absent, not disabled,
+             * when the vault cannot hold links or nothing picked can have one. */
+            if (canLink && !isReadOnly) {
+                IconButton(onClick = onCreateLink) {
+                    Icon(Icons.Outlined.Link,
+                         contentDescription = stringResource(R.string.files_action_create_link))
+                }
             }
             // Single-item actions live here rather than in the bottom bar: that
             // row is SpaceEvenly with a label under each icon, and six entries
@@ -1109,6 +1195,8 @@ private fun FileListContent(
     onRename: (NativeFileInfo) -> Unit,
     onProperties: (NativeFileInfo) -> Unit,
     onOpenWith: (NativeFileInfo) -> Unit,
+    canLink: Boolean,
+    onCreateLink: (NativeFileInfo) -> Unit,
     formatSize: (Long) -> String
 ) {
     LazyColumn(
@@ -1129,6 +1217,8 @@ private fun FileListContent(
                 onRename           = { onRename(file) },
                 onProperties       = { onProperties(file) },
                 onOpenWith         = { onOpenWith(file) },
+                canLink            = canLink,
+                onCreateLink       = { onCreateLink(file) },
                 formatSize         = formatSize
             )
         }
@@ -1180,6 +1270,8 @@ private fun FileListItem(
     onRename: () -> Unit,
     onProperties: () -> Unit,
     onOpenWith: () -> Unit,
+    canLink: Boolean,
+    onCreateLink: () -> Unit,
     formatSize: (Long) -> String
 ) {
     val isHidden = file.name.startsWith(".")
@@ -1305,6 +1397,22 @@ private fun FileListItem(
                         leadingIcon = { Icon(Icons.Outlined.Info, null) },
                         onClick = { onProperties(); showItemMenu = false }
                     )
+                    /* Only where the filesystem can hold a second name for one
+                     * file, which is ext4 alone. On FAT and exFAT the entry is
+                     * absent rather than greyed out: there is nothing to explain,
+                     * they simply have no such thing (#128).
+                     *
+                     * Never on a link. A second name for a link is a name for the
+                     * thing it points at, which is not what the row says it would
+                     * do - and a link to a link is a chain nobody asked for. */
+                    if (canLink && !file.isSymlink && !file.isSpecial) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.files_action_create_link)) },
+                            leadingIcon = { Icon(Icons.Outlined.Link, null) },
+                            onClick = { onCreateLink(); showItemMenu = false },
+                            enabled = !isReadOnly
+                        )
+                    }
                 }
             }
         }
@@ -1596,6 +1704,18 @@ private fun FilePropertiesContent(file: NativeFileInfo, formatSize: (Long) -> St
          * size is the target's, which only makes sense once the target is named. */
         file.linkTarget?.let {
             PropertiesRow(stringResource(R.string.files_props_target), it)
+        }
+        /* A file under more than one name. Shown only when there is more than one,
+         * because otherwise it is the answer for every file in the vault and says
+         * nothing - and shown at all because a second name is the file itself, so
+         * there is no other way to tell one from the copy it was made instead of
+         * (#128). */
+        if (file.nameCount > 1) {
+            PropertiesRow(
+                stringResource(R.string.files_props_places),
+                pluralStringResource(R.plurals.files_props_places_count,
+                                     file.nameCount, file.nameCount)
+            )
         }
         PropertiesRow(stringResource(R.string.files_props_size),
                       if (file.isDirectory || file.linkBroken || file.isSpecial) "—"

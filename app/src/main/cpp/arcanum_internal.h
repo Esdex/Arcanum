@@ -459,10 +459,10 @@ struct JniCache {
     JavaVM   *vm           = nullptr;
     jclass    fileInfoCls  = nullptr;
     jmethodID fileInfoCtor = nullptr;
-    /* NativeFileInfo(String,String,J,Z,J,I,String,Z,Z) - name, path, size,
+    /* NativeFileInfo(String,String,J,Z,J,I,String,Z,Z,I) - name, path, size,
      * isDirectory, mtime, kind, linkTarget, linkTargetIsDirectory,
-     * linkBroken. Both listing paths build it, and the ProGuard rule keeps
-     * the constructor: R8 cannot see a call that only exists in C++. */
+     * linkBroken, nameCount. Both listing paths build it, and the ProGuard rule
+     * keeps the constructor: R8 cannot see a call that only exists in C++. */
     jclass    stringCls    = nullptr;
     jmethodID stringCtor   = nullptr;   /* String(byte[], String) */
     jstring   utf8Name     = nullptr;   /* "UTF-8", interned as a GlobalRef */
@@ -549,6 +549,8 @@ jint         ext4jni_write_file(JNIEnv *env, jlong handle, jstring jFilePath,
 jint         ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
                               jbyteArray jData, jlong offset);
 jint         ext4jni_create_directory(JNIEnv *env, jlong handle, jstring jDirPath);
+jint         ext4jni_create_link(JNIEnv *env, jlong handle, jstring jLinkPath,
+                                 jstring jTargetPath);
 jint         ext4jni_delete_file(JNIEnv *env, jlong handle, jstring jFilePath);
 jint         ext4jni_delete_directory(JNIEnv *env, jlong handle, jstring jDirPath);
 jint         ext4jni_rename(JNIEnv *env, jlong handle, jstring jOld, jstring jNew);

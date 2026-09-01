@@ -111,6 +111,18 @@
         <item quantity="one">%1$d item copied</item>
         <item quantity="other">%1$d items copied</item>
     </plurals>
+    <plurals name="files_delete_also_elsewhere_many">
+        <item quantity="one">%1$d of these is also in another place and will stay there.</item>
+        <item quantity="other">%1$d of these are also in other places and will stay there.</item>
+    </plurals>
+    <plurals name="files_props_places_count">
+        <item quantity="one">%1$d place</item>
+        <item quantity="other">%1$d places</item>
+    </plurals>
+    <plurals name="notif_items_linked">
+        <item quantity="one">%1$d item linked</item>
+        <item quantity="other">%1$d items linked</item>
+    </plurals>
     <plurals name="notif_items_clipboard_copied">
         <item quantity="one">%1$d item ready to paste</item>
         <item quantity="other">%1$d items ready to paste</item>
@@ -314,6 +326,14 @@
     <string name="files_props_type_folder">Folder</string>
     <string name="files_props_type_link">Link</string>
     <string name="files_props_target">Points to</string>
+    <string name="files_props_places">Same file in</string>
+    <string name="files_action_create_link">Create link</string>
+    <string name="files_delete_also_elsewhere_one">This file is in %1$d places. Removing it here leaves the others, and frees no space.</string>
+    <string name="files_link_to_title">Create link in</string>
+    <string name="files_link_here">Create link</string>
+    <string name="notif_linked_files">The same file, in both places at once</string>
+    <string name="notif_linked_folders">A way into the same folder, not a copy</string>
+    <string name="notif_linked_mixed">Linked, not copied — nothing was duplicated</string>
     <string name="files_type_image">Image</string>
     <string name="files_type_video">Video</string>
     <string name="files_type_audio">Audio</string>

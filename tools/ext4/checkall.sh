@@ -108,6 +108,7 @@ run runcheck.py      ./runcheck.py
 run nodecheck.py     ./nodecheck.py
 run freecheck.py     ./freecheck.py
 run linkcheck.py     ./linkcheck.py
+run mklinkcheck.py   ./mklinkcheck.py
 run asancheck.sh     ./asancheck.sh
 run fuzz.sh          ./fuzz.sh
 

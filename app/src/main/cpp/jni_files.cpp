@@ -95,7 +95,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
         infoCls = env->FindClass("zip/arcanum/crypto/NativeFileInfo");
         if (!infoCls) return nullptr;
         ctor = env->GetMethodID(infoCls, "<init>",
-                                "(Ljava/lang/String;Ljava/lang/String;JZJILjava/lang/String;ZZ)V");
+                                "(Ljava/lang/String;Ljava/lang/String;JZJILjava/lang/String;ZZI)V");
         if (!ctor) return env->NewObjectArray(0, infoCls, nullptr);
     }
 
@@ -178,7 +178,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeListFiles(
                                                       : ARC_KIND_REGULAR),
                                        (jstring)nullptr,
                                        (jboolean)0,
-                                       (jboolean)0);
+                                       (jboolean)0,
+                                       (jint)1);
         env->SetObjectArrayElement(result, (jsize)i, fi);
         if (jName) env->DeleteLocalRef(jName);
         if (jPath) env->DeleteLocalRef(jPath);
@@ -678,6 +679,20 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeRenameFile(
     FRESULT fr = f_rename(fullOldPath, fullNewPath);
     /* Kept in step with the ext4 path: a name clash is ERR_EXISTS, the rest ERR_FS. */
     return (fr == FR_OK) ? ERR_OK : (fr == FR_EXIST) ? ERR_EXISTS : ERR_FS;
+}
+
+/* ─── JNI: nativeCreateLink ─────────────────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateLink(
+        JNIEnv *env, jobject /*thiz*/,
+        jlong handle, jstring jLinkPath, jstring jTargetPath)
+{
+    /* ext4 only. FAT and exFAT have no concept of a second name for one file, and
+     * there is nothing to approximate it with that would not be a copy - which is
+     * the thing the feature exists to avoid. */
+    if (!ext4jni_is_container(handle)) return ERR_UNSUPPORTED;
+    return ext4jni_create_link(env, handle, jLinkPath, jTargetPath);
 }
 
 /* ─── JNI: nativeCreateDirectory ────────────────────────────────────── */

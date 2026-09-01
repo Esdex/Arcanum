@@ -1107,6 +1107,31 @@ int ext4_write_inode_raw(ext4_wfs *fs, uint32_t ino, uint8_t *inode) {
     return write_inode(fs, ino, inode);
 }
 
+/*
+ * Moves only the inode-change time (#128).
+ *
+ * Kept apart from ext4_set_mtime because what changed is not the contents. A second
+ * name for a file leaves every byte of it where it was, and a modification time that
+ * moved would say otherwise - to a desktop, to a backup tool, and to anything sorting
+ * by date.
+ */
+int ext4_set_ctime(ext4_wfs *fs, uint32_t ino, uint32_t when) {
+    uint8_t *inode = malloc(fs->inode_size);
+    if (!inode) return EXTW_ERR_IO;
+
+    int rc = read_inode(fs, ino, inode);
+    if (rc != EXTW_OK) goto out;
+
+    wr32(inode + INODE_CTIME_OFF, when);
+
+    rc = write_inode(fs, ino, inode);
+    if (rc == EXTW_OK) rc = ext4_fs_flush(fs) ? EXTW_ERR_IO : EXTW_OK;
+
+out:
+    free(inode);
+    return rc;
+}
+
 int ext4_set_mtime(ext4_wfs *fs, uint32_t ino, uint32_t when) {
     uint8_t *inode = malloc(fs->inode_size);
     if (!inode) return EXTW_ERR_IO;

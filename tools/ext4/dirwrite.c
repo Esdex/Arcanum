@@ -54,6 +54,8 @@ static const char *strerr(int rc) {
     case EXT4_DIRW_ERR_NOROOM: return "no gap big enough in any existing block";
     case EXT4_DIRW_ERR_NAME:   return "not a usable name";
     case EXT4_CREATE_ERR_NOINODE: return "no free inode left";
+    case EXT4_CREATE_ERR_ISDIR:   return "a directory cannot have a second name";
+    case EXT4_CREATE_ERR_MLINK:   return "already has as many names as ext4 allows";
     case EXT4_DIRW_ERR_HTREE:  return "hash-indexed directory, refused rather than corrupted";
     case EXT4_CREATE_ERR_NOTDIR:   return "that name is not a directory";
     case EXT4_CREATE_ERR_NOTEMPTY: return "the directory still holds something";
@@ -68,15 +70,21 @@ int main(int argc, char **argv) {
     int unlinking = (argc == 6 && !strcmp(argv[3], "unlink"));
     int makingdir = (argc == 6 && !strcmp(argv[3], "mkdir"));
     int rmdiring  = (argc == 6 && !strcmp(argv[3], "rmdir"));
-    if (!adding && !removing && !creating && !unlinking && !makingdir && !rmdiring) {
+    int symlinking = (argc == 7 && !strcmp(argv[3], "symlink"));
+    int hardlinking = (argc == 7 && !strcmp(argv[3], "hardlink"));
+    if (!adding && !removing && !creating && !unlinking && !makingdir && !rmdiring
+            && !symlinking && !hardlinking) {
         fprintf(stderr,
                 "usage: %s <image> <dir-inode> add <name> <inode> <file-type>\n"
                 "       %s <image> <dir-inode> remove <name>\n"
                 "       %s <image> <dir-inode> create <name> <when>\n"
                 "       %s <image> <dir-inode> unlink <name> <when>\n"
                 "       %s <image> <dir-inode> mkdir <name> <when>\n"
-                "       %s <image> <dir-inode> rmdir <name> <when>\n",
-                argv[0], argv[0], argv[0], argv[0], argv[0], argv[0]);
+                "       %s <image> <dir-inode> rmdir <name> <when>\n"
+                "       %s <image> <dir-inode> symlink <name> <target> <when>\n"
+                "       %s <image> <dir-inode> hardlink <name> <target-inode> <when>\n",
+                argv[0], argv[0], argv[0], argv[0], argv[0], argv[0], argv[0],
+                argv[0]);
         return 2;
     }
 
@@ -117,6 +125,15 @@ int main(int argc, char **argv) {
     } else if (rmdiring) {
         rc = ext4_rmdir(&w, &r, dir_ino, argv[4],
                         (uint32_t)strtoul(argv[5], NULL, 10));
+    } else if (symlinking) {
+        uint32_t made = 0;
+        rc = ext4_symlink(&w, &r, dir_ino, argv[4], argv[5],
+                          (uint32_t)strtoul(argv[6], NULL, 10), &made);
+        if (rc == EXT4_DIRW_OK) printf("%u\n", made);
+    } else if (hardlinking) {
+        rc = ext4_hardlink(&w, &r, dir_ino, argv[4],
+                           (uint32_t)strtoul(argv[5], NULL, 10),
+                           (uint32_t)strtoul(argv[6], NULL, 10));
     } else if (adding) {
         uint32_t target = (uint32_t)strtoul(argv[5], NULL, 10);
         rc = ext4_dir_add(&w, &r, dir_ino, target,

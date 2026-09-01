@@ -37,6 +37,16 @@ extern "C" {
 #define EXT4_CREATE_ERR_NOTEMPTY -10  /* it still holds something other than . and .. */
 #define EXT4_CREATE_ERR_LOOP     -11  /* a directory would be moved inside itself */
 #define EXT4_CREATE_ERR_ISDIR    -12  /* unlink was handed a directory - that is rmdir's */
+#define EXT4_CREATE_ERR_MLINK    -13  /* the inode already has as many names as ext4 allows */
+
+/* ext4 stops a link count at 65000 rather than at what the 16-bit field holds,
+ * leaving the values above it free to mean something else. Matched here so a
+ * volume this driver writes cannot hold a count a desktop would refuse. */
+#define EXT4_LINK_MAX 65000
+
+/* The longest symlink target accepted. Linux's PATH_MAX, since a longer one could
+ * not have been written on a desktop and could not be followed here either. */
+#define EXT4_SYMLINK_TARGET_MAX 4096
 
 /*
  * Makes an empty regular file called `name` in `dir_ino` and reports its inode.
@@ -114,6 +124,34 @@ int ext4_rmdir(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
  * inode and the two directories keep the times they had - a deliberate minimum,
  * since no check here verifies a timestamp and unverified writes are not added.
  */
+/*
+ * Creates a symlink `name` in `dir_ino` holding the path `target` (#128).
+ *
+ * The target is stored exactly as given: a path with no leading slash is measured
+ * from the directory the link sits in, one with a slash from the root of the volume.
+ * Nothing here interprets it, and nothing checks that it names anything - a link to
+ * a name that does not exist yet is ordinary, and one that never will is how a
+ * desktop's absolute paths arrive.
+ *
+ * EXT4_DIRW_ERR_NAME for an empty target or one past EXT4_SYMLINK_TARGET_MAX,
+ * EXT4_DIRW_ERR_EXISTS if the name is taken, EXT4_CREATE_ERR_NOINODE if the volume
+ * has no inode left.
+ */
+int ext4_symlink(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
+                 const char *name, const char *target, uint32_t when,
+                 uint32_t *ino_out);
+
+/*
+ * Gives `target_ino` a second name in `dir_ino` - a hard link (#128).
+ *
+ * No new inode and no new blocks: the same file under another name, and the data
+ * goes only when the last name is removed. EXT4_CREATE_ERR_ISDIR for a directory,
+ * which cannot have one, and EXT4_CREATE_ERR_MLINK when it already has as many
+ * names as ext4 permits.
+ */
+int ext4_hardlink(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
+                  const char *name, uint32_t target_ino, uint32_t when);
+
 int ext4_rename(ext4_wfs *w, const ext4_fs *r,
                 uint32_t src_parent, const char *src_name,
                 uint32_t dst_parent, const char *dst_name);

@@ -34,6 +34,19 @@ data class NativeFileInfo(
     val linkTargetIsDirectory: Boolean = false,
     /** The link names something that is not there, or a ring of links. */
     val linkBroken: Boolean = false,
+    /**
+     * How many names this file has. One for almost everything; more once a hard
+     * link has been made, since that is a second name for one file rather than a
+     * second file.
+     *
+     * Carried because it is the ONLY visible trace a hard link leaves. The second
+     * name is not a copy and not a shortcut — it is the file, so there is nothing
+     * about it to look at, and a user who has just made one cannot otherwise tell
+     * it apart from the copy they were trying to avoid. `ls -l` shows this in its
+     * second column for the same reason. Always 1 on FAT and exFAT, which have no
+     * such thing.
+     */
+    val nameCount: Int = 1,
 ) {
     val isSymlink: Boolean get() = kind == KIND_SYMLINK
 

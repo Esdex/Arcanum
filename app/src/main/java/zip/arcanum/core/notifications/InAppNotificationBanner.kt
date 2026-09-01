@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentCut
@@ -275,6 +276,16 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         icon            = Icons.Outlined.ContentCopy,
         title           = ctx.resources.getQuantityString(R.plurals.notif_items_clipboard_copied, this.count, this.count),
         subtitle        = ctx.getString(R.string.notif_clipboard_subtitle)
+    )
+    is InAppNotification.FilesLinked -> NotificationDisplayConfig(
+        backgroundColor = Color(0xFF6B7280),
+        icon            = Icons.Outlined.Link,
+        title           = ctx.resources.getQuantityString(R.plurals.notif_items_linked, this.count, this.count),
+        subtitle        = ctx.getString(when (this.kind) {
+            InAppNotification.LinkedKind.FILES   -> R.string.notif_linked_files
+            InAppNotification.LinkedKind.FOLDERS -> R.string.notif_linked_folders
+            InAppNotification.LinkedKind.MIXED   -> R.string.notif_linked_mixed
+        })
     )
     is InAppNotification.FilesCut -> NotificationDisplayConfig(
         backgroundColor = Color(0xFF6B7280),

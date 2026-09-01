@@ -98,6 +98,26 @@ sealed class InAppNotification {
         override val priority = 1
     }
 
+    /**
+     * A second name was made for something (#128). Its own notification rather than
+     * reusing the paste one, because nothing was copied and the vault has not got
+     * any fuller - saying "pasted" would describe the wrong thing happening to the
+     * user's space.
+     *
+     * [kind] exists because the promise is not the same for both. A file gets a hard
+     * link and "the same file in both places" is true of it word for word - one
+     * inode, two names, and no way for either to stop working. A folder gets a
+     * symbolic one, which is a path rather than the folder itself and CAN go dead if
+     * the folder is moved or removed. Saying the file sentence over a folder would
+     * promise something the app does not give.
+     */
+    data class FilesLinked(val count: Int, val kind: LinkedKind) : InAppNotification() {
+        override val priority = 1
+    }
+
+    /** What was linked, since files and folders are not linked the same way. */
+    enum class LinkedKind { FILES, FOLDERS, MIXED }
+
     /** Tapping the hero icon for details on a vault that is not open. */
     data object DetailsNeedMount : InAppNotification() {
         override val priority = 2
