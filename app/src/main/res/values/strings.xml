@@ -150,6 +150,10 @@
         <item quantity="one">%1$d file imported</item>
         <item quantity="other">%1$d files imported</item>
     </plurals>
+    <plurals name="notif_files_exported_failed">
+        <item quantity="one">%1$d file did not come out whole, kept as .part</item>
+        <item quantity="other">%1$d files did not come out whole, kept as .part</item>
+    </plurals>
     <plurals name="notif_files_exported_skipped">
         <item quantity="one">%1$d item could not leave the vault</item>
         <item quantity="other">%1$d items could not leave the vault</item>

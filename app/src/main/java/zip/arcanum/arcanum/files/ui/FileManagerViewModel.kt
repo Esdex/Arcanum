@@ -1602,6 +1602,9 @@ class FileManagerViewModel @Inject constructor(
     private class ExportTally {
         var exported = 0
         var skipped  = 0
+        /** Items that did not come out whole: a read that stopped short, or nothing
+         *  written at all. What did come out is kept, named ".part" (#170). */
+        var failed   = 0
         private val written    = HashSet<Long>()
         private val duplicated = HashSet<Long>()
 
@@ -1646,11 +1649,16 @@ class FileManagerViewModel @Inject constructor(
                          * user sees when they open it here.
                          */
                         file.opensAsDirectory -> {
+                            val failedBefore = tally.failed
                             val ok = exportDirectoryRecursive(
                                 context, handle, file.path, treeDocUri, file.name,
                                 tally, setOf(file.inode)
                             )
+                            /* The walk counts what failed inside it, so a folder that lost
+                               one file is not counted again here - only one that could not
+                               be created or listed at all. */
                             if (ok) tally.exported++
+                            else if (tally.failed == failedBefore) tally.failed++
                         }
 
                         else -> {
@@ -1660,6 +1668,8 @@ class FileManagerViewModel @Inject constructor(
                             if (ok) {
                                 tally.noteWritten(file.inode)
                                 tally.exported++
+                            } else {
+                                tally.failed++
                             }
                         }
                     }
@@ -1670,15 +1680,18 @@ class FileManagerViewModel @Inject constructor(
              * outside the vault. Counts only, never a name. */
             if (zip.arcanum.BuildConfig.DEBUG)
                 android.util.Log.d("ArcanumExport", "exported=${tally.exported} " +
-                    "skipped=${tally.skipped} duplicates=${tally.duplicates}")
+                    "skipped=${tally.skipped} duplicates=${tally.duplicates} " +
+                    "failed=${tally.failed}")
             exitSelectionMode()
             _state.update { it.copy(
                 isOperationInProgress = false,
                 operationMessage      = null,
                 /* Shown even when nothing landed: an export of one dead link used to end
                  * in silence, and silence after an operation reads as success. */
-                pendingNotification   = if (tally.exported > 0 || tally.skipped > 0)
-                    InAppNotification.FilesExported(tally.exported, tally.skipped, tally.duplicates)
+                pendingNotification   = if (tally.exported > 0 || tally.skipped > 0 ||
+                                              tally.failed > 0)
+                    InAppNotification.FilesExported(
+                        tally.exported, tally.skipped, tally.duplicates, tally.failed)
                 else null
             ) }
         }
@@ -1817,16 +1830,29 @@ class FileManagerViewModel @Inject constructor(
         ) ?: return false
         val out = context.contentResolver.openOutputStream(docUri) ?: return false
         val chunkSize = 1 * 1024 * 1024
+        var written = 0L
         out.use { stream ->
-            var offset = 0L
-            while (offset < size) {
-                val chunk = engine.readFile(handle, srcPath, offset, chunkSize) ?: break
+            while (written < size) {
+                val chunk = engine.readFile(handle, srcPath, written, chunkSize) ?: break
                 stream.write(chunk)
-                offset += chunk.size
+                written += chunk.size
                 if (chunk.size < chunkSize) break
             }
         }
-        return true
+        if (written >= size) return true
+
+        /*
+         * Fewer bytes out than the file holds - a read that failed, a read that came back
+         * short, a stream that stopped. What landed is kept rather than deleted: if a vault
+         * is going wrong an export is how the rest of it is rescued, and throwing away the
+         * part that did come out would be the worst answer available. It cannot keep the
+         * name of the whole file either, because nothing about a short file looks short, so
+         * it is marked .part the way a half-finished download is (#170).
+         */
+        runCatching {
+            DocumentsContract.renameDocument(context.contentResolver, docUri, "$name.part")
+        }
+        return false
     }
 
     /**
@@ -1878,7 +1904,8 @@ class FileManagerViewModel @Inject constructor(
                         val ok = exportOneFile(
                             context, handle, entryPath, entry.size, entry.name, dirUri
                         )
-                        if (ok) tally.noteWritten(entry.inode) else allOk = false
+                        if (ok) tally.noteWritten(entry.inode)
+                        else { tally.failed++; allOk = false }
                     }
                 }
             } catch (_: Exception) { allOk = false }

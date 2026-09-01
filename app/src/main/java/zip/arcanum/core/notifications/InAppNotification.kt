@@ -235,7 +235,9 @@ sealed class InAppNotification {
     data class FilesExported(
         val count: Int,
         val skipped: Int = 0,
-        val duplicates: Int = 0
+        val duplicates: Int = 0,
+        /** Items that did not come out whole and were left outside as ".part" (#170). */
+        val failed: Int = 0
     ) : InAppNotification() {
         override val priority = 1
     }

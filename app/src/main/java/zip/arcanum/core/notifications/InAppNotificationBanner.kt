@@ -344,13 +344,18 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         else ctx.getString(R.string.notif_files_imported_subtitle)
     )
     is InAppNotification.FilesExported -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF16A34A),
-        icon            = Icons.Outlined.CheckCircle,
+        /* A green tick over an export that lost part of a file is the whole of what #170
+         * was about, so anything that did not come out whole takes the banner with it. */
+        backgroundColor = if (this.failed > 0) Color(0xFFDC2626) else Color(0xFF16A34A),
+        icon            = if (this.failed > 0) Icons.Outlined.Warning
+                          else Icons.Outlined.CheckCircle,
         title           = ctx.resources.getQuantityString(R.plurals.notif_files_exported, this.count, this.count),
         /* The subtitle is one line, so when both are true the skipped items come
          * first: something the user picked is not out there at all, which is worth
          * more than knowing that something else went out twice. */
         subtitle        = when {
+            this.failed > 0 -> ctx.resources.getQuantityString(
+                R.plurals.notif_files_exported_failed, this.failed, this.failed)
             this.skipped > 0 && this.duplicates > 0 -> ctx.getString(
                 R.string.notif_files_exported_skipped_and_copies, this.skipped, this.duplicates)
             this.skipped > 0 -> ctx.resources.getQuantityString(
