@@ -230,11 +230,19 @@ private fun MountScreenContent(
     }
     var showPassword   by remember { mutableStateOf(false) }
     var showHashSheet  by remember { mutableStateOf(false) }
-    /* Opened when something is remembered, so a read-only mount or a chosen PRF is visible
-     * rather than being applied from behind a collapsed section. */
+    /*
+     * Opened when this vault is remembered as mounting a way the user chose, so read-only
+     * or hidden-volume protection is visible rather than applied from behind a collapsed
+     * section.
+     *
+     * The remembered PRF is deliberately NOT one of those. It is read out of the header
+     * after a mount succeeds rather than picked by anyone (#148), so every vault opened
+     * even once has one - which left Advanced expanded on all of them, on the strength of
+     * a value nobody chose. It also changes nothing about the mount except how long the
+     * unlock takes.
+     */
     var showAdvanced  by rememberSaveable(mountId) {
-        mutableStateOf(container.mountReadOnly || container.mountProtectHidden ||
-                       container.mountHashId != VeraCryptEngine.HASH_AUTO)
+        mutableStateOf(container.mountReadOnly || container.mountProtectHidden)
     }
     var pimValue      by remember { mutableStateOf("") }
     var showPim       by remember { mutableStateOf(false) }
