@@ -174,7 +174,12 @@ int ext4_create_file(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     uint32_t existing = 0;
     int rc = ext4_dir_lookup(r, dir_ino, name, &existing);
     if (rc == EXT4_DIRW_OK) {
-        EXT4_LOGE("create '%s': a name already points at inode %u", name, existing);
+        /* Not a failure: the caller asked whether the name was free and is being
+         * told that it is not. Every one of these five is on a path a user walks -
+         * an import or a paste asking keep both / skip / replace (#157, #169), a
+         * folder merging into one of the same name, Create link meeting a taken
+         * name - and an E line for it reads as a fault in someone else's log (#171). */
+        EXT4_LOGD("create '%s': a name already points at inode %u", name, existing);
         return EXT4_DIRW_ERR_EXISTS;
     }
     if (rc != EXT4_DIRW_ERR_ABSENT) {
@@ -282,7 +287,7 @@ int ext4_symlink(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     uint32_t existing = 0;
     int rc = ext4_dir_lookup(r, dir_ino, name, &existing);
     if (rc == EXT4_DIRW_OK) {
-        EXT4_LOGE("symlink '%s': a name already points at inode %u", name, existing);
+        EXT4_LOGD("symlink '%s': a name already points at inode %u", name, existing);
         return EXT4_DIRW_ERR_EXISTS;
     }
     if (rc != EXT4_DIRW_ERR_ABSENT) return rc;
@@ -378,7 +383,7 @@ int ext4_hardlink(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     uint32_t existing = 0;
     int rc = ext4_dir_lookup(r, dir_ino, name, &existing);
     if (rc == EXT4_DIRW_OK) {
-        EXT4_LOGE("hardlink '%s': a name already points at inode %u", name, existing);
+        EXT4_LOGD("hardlink '%s': a name already points at inode %u", name, existing);
         return EXT4_DIRW_ERR_EXISTS;
     }
     if (rc != EXT4_DIRW_ERR_ABSENT) return rc;
@@ -706,7 +711,7 @@ int ext4_mkdir(ext4_wfs *w, const ext4_fs *r, uint32_t dir_ino,
     uint32_t existing = 0;
     int rc = ext4_dir_lookup(r, dir_ino, name, &existing);
     if (rc == EXT4_DIRW_OK) {
-        EXT4_LOGE("mkdir '%s': a name already points at inode %u", name, existing);
+        EXT4_LOGD("mkdir '%s': a name already points at inode %u", name, existing);
         return EXT4_DIRW_ERR_EXISTS;
     }
     if (rc != EXT4_DIRW_ERR_ABSENT) return rc;
@@ -908,7 +913,9 @@ int ext4_rename(ext4_wfs *w, const ext4_fs *r,
     uint32_t clash = 0;
     rc = ext4_dir_lookup(r, dst_parent, dst_name, &clash);
     if (rc == EXT4_DIRW_OK) {
-        EXT4_LOGE("rename: destination '%s' already exists (inode %u)", dst_name, clash);
+        /* Reached on an ordinary move since #168 made a move inside one vault a
+         * rename: the name is taken and #169 asks the user what to do about it. */
+        EXT4_LOGD("rename: destination '%s' already exists (inode %u)", dst_name, clash);
         return EXT4_DIRW_ERR_EXISTS;
     }
     if (rc != EXT4_DIRW_ERR_ABSENT) return rc;
