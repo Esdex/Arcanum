@@ -668,18 +668,12 @@ private fun VaultConfigHero(
     onBlocked: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val isInAppStorage = remember(container?.path, container?.safUri) {
-        container != null &&
-        container.safUri.isEmpty() &&
-        (container.path.startsWith(context.filesDir.absolutePath) ||
-         container.path.startsWith(context.noBackupFilesDir.absolutePath))
-    }
     val isUsbVault = container?.usbSaltHash?.isNotEmpty() == true
-    val heroIcon = when {
-        isUsbVault     -> Icons.Outlined.Usb
-        isInAppStorage -> Icons.Outlined.PhoneAndroid
-        else           -> Icons.Outlined.Storage
-    }
+    val heroIcon = vaultStorageIcon(
+        path        = container?.path ?: "",
+        safUri      = container?.safUri ?: "",
+        usbSaltHash = container?.usbSaltHash ?: ""
+    )
 
     val iconBg by animateColorAsState(
         targetValue   = if (isMounted) Color(0xFF16A34A) else MaterialTheme.colorScheme.primaryContainer,
