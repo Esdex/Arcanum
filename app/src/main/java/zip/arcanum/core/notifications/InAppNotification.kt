@@ -193,15 +193,21 @@ sealed class InAppNotification {
      * turn into something else: a special file, or a link going where nothing can hold
      * one - into another vault, or onto FAT (#168).
      */
-    data class FilesPasted(val count: Int, val leftBehind: Int = 0) : InAppNotification() {
+    data class FilesPasted(
+        val count: Int,
+        val leftBehind: Int = 0,
+        /** Names already taken that the user chose to leave alone (#169). */
+        val skipped: Int = 0
+    ) : InAppNotification() {
         override val priority = 1
     }
 
-    /** See [FilesPasted] for [leftBehind]. */
+    /** See [FilesPasted] for [leftBehind] and [skipped]. */
     data class FilesMoved(
         val count: Int,
         val destinationName: String,
-        val leftBehind: Int = 0
+        val leftBehind: Int = 0,
+        val skipped: Int = 0
     ) : InAppNotification() {
         override val priority = 1
     }

@@ -698,7 +698,16 @@ fun FileManagerScreen(
         AppDialog(
             onDismissRequest = { viewModel.answerConflict(FileManagerViewModel.ConflictChoice.SKIP) },
             title = { Text(stringResource(R.string.import_conflict_title)) },
-            text  = { Text(stringResource(R.string.import_conflict_body, prompt.fileName)) },
+            text  = {
+                Text(stringResource(
+                    when (prompt.scope) {
+                        FileManagerViewModel.ConflictScope.IMPORT -> R.string.import_conflict_body
+                        FileManagerViewModel.ConflictScope.COPY   -> R.string.copy_conflict_body
+                        FileManagerViewModel.ConflictScope.MOVE   -> R.string.move_conflict_body
+                    },
+                    prompt.fileName
+                ))
+            },
             confirmButton = {
                 Column(horizontalAlignment = Alignment.End) {
                     TextButton(onClick = {

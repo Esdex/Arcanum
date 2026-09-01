@@ -102,13 +102,15 @@ class FileManagerViewModel @Inject constructor(
      */
     private var conflictAnswer: CompletableDeferred<ConflictChoice>? = null
     private var conflictPolicy: ConflictChoice? = null
+    private var conflictScope: ConflictScope = ConflictScope.IMPORT
 
     /* Names already in each destination directory, read once per directory per operation
      * and kept up to date as files land, so a second file cannot collide with the first. */
     private val destinationNames = mutableMapOf<String, MutableSet<String>>()
 
-    private fun beginConflictTracking() {
+    private fun beginConflictTracking(scope: ConflictScope) {
         conflictPolicy = null
+        conflictScope = scope
         destinationNames.clear()
     }
 
@@ -119,28 +121,60 @@ class FileManagerViewModel @Inject constructor(
                 .toMutableSet()
         }
 
+    /** A name to write under, and whether writing it replaces something already there. */
+    private class NameChoice(val name: String, val replacing: Boolean)
+
     /**
      * The name to write `name` under in `dir`, or null when the user chose to skip it.
      * Suspends on the first collision of an operation while the answer is given.
+     *
+     * An import writes through a path that truncates whatever holds the name, so it only
+     * needs the name back. A paste can also arrive as a rename or as a new link, and both
+     * of those refuse a name that is in use rather than overwriting it - so [NameChoice]
+     * carries whether the way has to be cleared first (#169).
      */
-    private suspend fun nameToWrite(handle: Long, dir: String, name: String): String? {
+    private suspend fun nameToWriteOrReplace(
+        handle: Long, dir: String, name: String
+    ): NameChoice? {
         val taken = namesIn(handle, dir)
         if (name !in taken) {
             taken.add(name)
-            return name
+            return NameChoice(name, replacing = false)
         }
         val choice = conflictPolicy ?: askAboutConflict(name)
         return when (choice) {
             ConflictChoice.SKIP      -> null
-            ConflictChoice.REPLACE   -> name          /* the write truncates what is there */
-            ConflictChoice.KEEP_BOTH -> freeName(name, taken).also { taken.add(it) }
+            ConflictChoice.REPLACE   -> NameChoice(name, replacing = true)
+            ConflictChoice.KEEP_BOTH ->
+                NameChoice(freeName(name, taken).also { taken.add(it) }, replacing = false)
         }
+    }
+
+    private suspend fun nameToWrite(handle: Long, dir: String, name: String): String? =
+        nameToWriteOrReplace(handle, dir, name)?.name
+
+    /**
+     * Clears the way for a write that cannot overwrite by itself - a rename or a new link,
+     * both of which refuse a name already in use. Only ever reached after the user chose
+     * Replace.
+     *
+     * Refuses when a folder holds the name: Replace was offered for the file that was
+     * named in the question, and deleting a whole tree on the strength of a name clash is
+     * not something to do on that answer.
+     */
+    private suspend fun clearForReplace(handle: Long, dir: String, name: String): Boolean {
+        val existing = runCatching { engine.listFilesOrNull(handle, dir)?.toList() }
+            .getOrNull()?.find { it.name == name } ?: return true
+        if (existing.isDirectory) return false
+        val path = if (dir == "/") "/$name" else "$dir/$name"
+        return runCatching { engine.deleteFile(handle, path) }
+            .getOrDefault(VeraCryptEngine.ERR_FS) == VeraCryptEngine.ERR_OK
     }
 
     private suspend fun askAboutConflict(name: String): ConflictChoice {
         val answer = CompletableDeferred<ConflictChoice>()
         conflictAnswer = answer
-        _state.update { it.copy(conflictPrompt = ConflictPrompt(name)) }
+        _state.update { it.copy(conflictPrompt = ConflictPrompt(name, conflictScope)) }
         val choice = answer.await()
         conflictAnswer = null
         conflictPolicy = choice
@@ -258,8 +292,11 @@ class FileManagerViewModel @Inject constructor(
      */
     enum class ConflictChoice { SKIP, REPLACE, KEEP_BOTH }
 
+    /** Which operation is asking, so the dialog can say what the answer covers. */
+    enum class ConflictScope { IMPORT, COPY, MOVE }
+
     /** The name that collided, while the operation waits for an answer about it. */
-    data class ConflictPrompt(val fileName: String)
+    data class ConflictPrompt(val fileName: String, val scope: ConflictScope)
 
     data class ImportProgress(
         val fileName: String,
@@ -728,17 +765,12 @@ class FileManagerViewModel @Inject constructor(
             // Three outcomes, not two. A paste that moved nothing because the items are
             // already here is fine; a paste where every item failed is not, and until now
             // both ended in silence and looked exactly like success (#129).
+            beginConflictTracking(if (isCut) ConflictScope.MOVE else ConflictScope.COPY)
             var count   = 0
             var failed  = 0
             var skipped = 0
             val tally   = CarryTally()
             val chunkSize = 1 * 1024 * 1024
-
-            /* Names already in the destination, used to pick a free one when
-               copying an item into the folder it already lives in. */
-            val takenNames = runCatching {
-                engine.listFilesOrNull(destHandle, currentPath)?.map { it.name }?.toMutableSet()
-            }.getOrNull() ?: mutableSetOf()
 
             for (item in clipItems) {
                 try {
@@ -761,15 +793,43 @@ class FileManagerViewModel @Inject constructor(
                         (currentPath == srcDir || currentPath.startsWith("$srcDir/"))
                     if (intoOwnSubtree) { skipped++; continue }
 
-                    /* A copy into the same folder becomes a duplicate rather than
-                       a write onto itself, so it behaves like every other file
-                       manager instead of silently doing nothing. */
-                    val destName = if (intoOwnFolder) freeName(item.fileName, takenNames)
-                                   else item.fileName
-                    takenNames.add(destName)
+                    /*
+                     * A copy into the same folder becomes a duplicate rather than a write
+                     * onto itself, so it behaves like every other file manager instead of
+                     * silently doing nothing - and it is not worth a question, since the
+                     * clash is one the user just made on purpose.
+                     *
+                     * Anywhere else a name already in use is asked about, the same way an
+                     * import asks (#157). Until now a paste wrote straight over whatever
+                     * held the name, with nothing said before or after (#169). A folder is
+                     * still not asked about: it merges into the one that is there, which
+                     * is what every file manager does and what makes the question about
+                     * files the meaningful one.
+                     */
+                    val destName: String
+                    var replacing = false
+                    if (intoOwnFolder) {
+                        val taken = namesIn(destHandle, currentPath)
+                        destName = freeName(item.fileName, taken)
+                        taken.add(destName)
+                    } else if (item.isDirectory) {
+                        destName = item.fileName
+                    } else {
+                        val choice = nameToWriteOrReplace(destHandle, currentPath, item.fileName)
+                        if (choice == null) { tally.refused++; continue }
+                        destName  = choice.name
+                        replacing = choice.replacing
+                    }
 
                     val destPath = if (currentPath == "/") "/$destName" else "$currentPath/$destName"
                     _state.update { it.copy(operationMessage = "${if (isCut) "Moving" else "Copying"} ${item.fileName}…") }
+
+                    /* A rename and a new link both refuse a name in use, so Replace has
+                       to take what is there out of the way first. */
+                    if (replacing && !clearForReplace(destHandle, currentPath, destName)) {
+                        failed++
+                        continue
+                    }
 
                     /*
                      * A move inside one vault is a rename: the entry changes folder and
@@ -834,9 +894,10 @@ class FileManagerViewModel @Inject constructor(
                     failed > 0  -> InAppNotification.FilesPasteFailed(failed, clipItems.size)
                     /* Reported even when nothing arrived: items that stayed behind are
                        the one outcome silence would misread as success (#168). */
-                    count > 0 || tally.leftBehind > 0 ->
-                        if (isCut) InAppNotification.FilesMoved(count, destDesc, tally.leftBehind)
-                        else InAppNotification.FilesPasted(count, tally.leftBehind)
+                    count > 0 || tally.leftBehind > 0 || tally.refused > 0 ->
+                        if (isCut) InAppNotification.FilesMoved(
+                            count, destDesc, tally.leftBehind, tally.refused)
+                        else InAppNotification.FilesPasted(count, tally.leftBehind, tally.refused)
                     skipped > 0 -> InAppNotification.FilesAlreadyHere
                     else        -> null
                 }
@@ -877,6 +938,7 @@ class FileManagerViewModel @Inject constructor(
             // Three outcomes, not two. A paste that moved nothing because the items are
             // already here is fine; a paste where every item failed is not, and until now
             // both ended in silence and looked exactly like success (#129).
+            beginConflictTracking(ConflictScope.COPY)
             var count   = 0
             var failed  = 0
             var skipped = 0
@@ -888,8 +950,22 @@ class FileManagerViewModel @Inject constructor(
                 if (destinationContainerId == s.containerId && parentDir == destinationPath) { skipped++; continue }
 
                 try {
-                    val destItemPath = if (destinationPath == "/") "/${item.name}" else "$destinationPath/${item.name}"
+                    /* The same question a paste asks, for the same reason (#169). */
+                    var destName  = item.name
+                    var replacing = false
+                    if (!item.isDirectory) {
+                        val choice = nameToWriteOrReplace(destHandle, destinationPath, item.name)
+                        if (choice == null) { tally.refused++; continue }
+                        destName  = choice.name
+                        replacing = choice.replacing
+                    }
+                    val destItemPath = if (destinationPath == "/") "/$destName" else "$destinationPath/$destName"
                     _state.update { it.copy(operationMessage = "Copying ${item.name}…") }
+
+                    if (replacing && !clearForReplace(destHandle, destinationPath, destName)) {
+                        failed++
+                        continue
+                    }
 
                     val carried = carryOddEntry(
                         EntryKind(item), sourceHandle, item.path,
@@ -931,8 +1007,8 @@ class FileManagerViewModel @Inject constructor(
                 operationMessage      = null,
                 pendingNotification   = when {
                     failed > 0  -> InAppNotification.FilesPasteFailed(failed, toCopy.size)
-                    count > 0 || tally.leftBehind > 0 ->
-                        InAppNotification.FilesPasted(count, tally.leftBehind)
+                    count > 0 || tally.leftBehind > 0 || tally.refused > 0 ->
+                        InAppNotification.FilesPasted(count, tally.leftBehind, tally.refused)
                     skipped > 0 -> InAppNotification.FilesAlreadyHere
                     else        -> null
                 }
@@ -953,6 +1029,7 @@ class FileManagerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isOperationInProgress = true, operationMessage = "Moving…") }
             // See paste(): a move that moves nothing has to say which kind of nothing.
+            beginConflictTracking(ConflictScope.MOVE)
             var count   = 0
             var failed  = 0
             var skipped = 0
@@ -962,8 +1039,21 @@ class FileManagerViewModel @Inject constructor(
                 val parentDir = item.path.substringBeforeLast("/").let { if (it.isEmpty()) "/" else it }
                 if (destinationContainerId == s.containerId && parentDir == destinationPath) { skipped++; continue }
 
-                val destItemPath = if (destinationPath == "/") "/${item.name}" else "$destinationPath/${item.name}"
+                var destName  = item.name
+                var replacing = false
+                if (!item.isDirectory) {
+                    val choice = nameToWriteOrReplace(destHandle, destinationPath, item.name)
+                    if (choice == null) { tally.refused++; continue }
+                    destName  = choice.name
+                    replacing = choice.replacing
+                }
+                val destItemPath = if (destinationPath == "/") "/$destName" else "$destinationPath/$destName"
                 _state.update { it.copy(operationMessage = "Moving ${item.name}…") }
+
+                if (replacing && !clearForReplace(destHandle, destinationPath, destName)) {
+                    failed++
+                    continue
+                }
 
                 /* Into another vault a link cannot travel as a link and a special file
                    cannot travel at all, so both stay where they are rather than being
@@ -1003,8 +1093,9 @@ class FileManagerViewModel @Inject constructor(
                 operationMessage      = null,
                 pendingNotification   = when {
                     failed > 0  -> InAppNotification.FilesPasteFailed(failed, toMove.size)
-                    count > 0 || tally.leftBehind > 0 ->
-                        InAppNotification.FilesMoved(count, destinationName, tally.leftBehind)
+                    count > 0 || tally.leftBehind > 0 || tally.refused > 0 ->
+                        InAppNotification.FilesMoved(
+                            count, destinationName, tally.leftBehind, tally.refused)
                     skipped > 0 -> InAppNotification.FilesAlreadyHere
                     else        -> null
                 }
@@ -1200,7 +1291,7 @@ class FileManagerViewModel @Inject constructor(
 
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isOperationInProgress = true) }
-            beginConflictTracking()
+            beginConflictTracking(ConflictScope.IMPORT)
             var count = 0
             var skipped = 0
             var hiddenProtected = false
@@ -1306,7 +1397,7 @@ class FileManagerViewModel @Inject constructor(
 
         viewModelScope.launch(Dispatchers.IO) {
             _state.update { it.copy(isOperationInProgress = true) }
-            beginConflictTracking()
+            beginConflictTracking(ConflictScope.IMPORT)
 
             val rootDocId  = DocumentsContract.getTreeDocumentId(treeUri)
             val rootDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootDocId)
@@ -1599,8 +1690,16 @@ class FileManagerViewModel @Inject constructor(
 
     // ── Private helpers ───────────────────────────────────────────────────
 
-    /** How many items a copy or a move had to leave where they were (#168). */
-    private class CarryTally { var leftBehind = 0 }
+    /**
+     * What a copy or a move could not carry. [leftBehind] is what it could not take at
+     * all - a link going where nothing can hold one, a special file (#168). [refused] is
+     * what the user chose to leave alone when its name was already taken (#169), counted
+     * here rather than beside each caller because a folder walk meets those names too.
+     */
+    private class CarryTally {
+        var leftBehind = 0
+        var refused    = 0
+    }
 
     /** What carrying one entry came to. */
     private enum class Carried { DONE, LEFT_BEHIND, FAILED }
@@ -1801,7 +1900,21 @@ class FileManagerViewModel @Inject constructor(
             val sameVault = srcHandle == destHandle
             for (entry in entries) {
                 val srcEntry  = if (srcPath  == "/") "/${entry.name}" else "$srcPath/${entry.name}"
-                val destEntry = if (destPath == "/") "/${entry.name}" else "$destPath/${entry.name}"
+                /*
+                 * A folder merges into one of the same name, so the names that clash are
+                 * the ones inside it - and those are asked about exactly as an import
+                 * asks about the files inside a folder it is merging (#157, #169). The
+                 * answer given at the first clash covers the whole walk. Folders
+                 * themselves are not asked about, at any depth: they merge.
+                 */
+                val choice = if (entry.isDirectory) NameChoice(entry.name, replacing = false)
+                             else nameToWriteOrReplace(destHandle, destPath, entry.name)
+                if (choice == null) { tally.refused++; continue }
+                val destEntry = if (destPath == "/") "/${choice.name}" else "$destPath/${choice.name}"
+                if (choice.replacing && !clearForReplace(destHandle, destPath, choice.name)) {
+                    allCopied = false
+                    continue
+                }
                 /* A link inside a folder is carried exactly as one picked by hand is. */
                 val carried = carryOddEntry(
                     EntryKind(entry), srcHandle, srcEntry, destHandle, destEntry,
@@ -1848,7 +1961,16 @@ class FileManagerViewModel @Inject constructor(
             val sameVault = srcHandle == destHandle
             for (entry in entries) {
                 val srcEntry  = if (srcPath  == "/") "/${entry.name}" else "$srcPath/${entry.name}"
-                val destEntry = if (destPath == "/") "/${entry.name}" else "$destPath/${entry.name}"
+                val choice = if (entry.isDirectory) NameChoice(entry.name, replacing = false)
+                             else nameToWriteOrReplace(destHandle, destPath, entry.name)
+                /* A name left alone is a file that did not move, so the source folder below
+                   must survive with it still inside. */
+                if (choice == null) { tally.refused++; allMoved = false; continue }
+                val destEntry = if (destPath == "/") "/${choice.name}" else "$destPath/${choice.name}"
+                if (choice.replacing && !clearForReplace(destHandle, destPath, choice.name)) {
+                    allMoved = false
+                    continue
+                }
                 val carried = carryOddEntry(
                     EntryKind(entry), srcHandle, srcEntry, destHandle, destEntry,
                     sameVault, isMove = true, tally = tally

@@ -65,6 +65,8 @@
     </plurals>
     <string name="import_conflict_title">This name is already taken</string>
     <string name="import_conflict_body">A file called \"%1$s\" is already in this folder. Your answer applies to the rest of this import.</string>
+    <string name="copy_conflict_body">A file called \"%1$s\" is already in this folder. Your answer applies to the rest of this copy.</string>
+    <string name="move_conflict_body">A file called \"%1$s\" is already in this folder. Your answer applies to the rest of this move.</string>
     <string name="import_conflict_skip">Skip</string>
     <string name="import_conflict_replace">Replace</string>
     <string name="import_conflict_keep_both">Keep both</string>
