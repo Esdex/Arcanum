@@ -116,7 +116,7 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
         if (cache) ext4_blockcache_read(cache, byteOff, block_size, buf);
         /* Only misses reach here, so this line now counts device traffic rather than
          * requests - which is what a measurement of #155 wants to see. */
-        EXT4_LOGD("read block %llu (%u sectors)", (unsigned long long)block, nsec);
+        EXT4_LOGB("read block %llu (%u sectors)", (unsigned long long)block, nsec);
         return 0;
     }
 
@@ -166,7 +166,7 @@ static int dev_rw(DriveContext *ctx, uint64_t block, uint32_t block_size,
     }
     ctx->ext4Writes++;
     if (cache) ext4_blockcache_wrote(cache, byteOff, block_size, buf);
-    EXT4_LOGD("wrote block %llu (%u sectors)", (unsigned long long)block, nsec);
+    EXT4_LOGB("wrote block %llu (%u sectors)", (unsigned long long)block, nsec);
     return 0;
 }
 

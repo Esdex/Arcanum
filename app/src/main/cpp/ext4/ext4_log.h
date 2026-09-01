@@ -66,4 +66,27 @@
 
 #endif
 
+/*
+ * One line per block read or written. Off unless someone asks for it, and that is
+ * not tidiness: a single export wrote 1342 of these in a second, 804 of them inside
+ * one 40 ms window, and logcat prunes a burst like that - it is rate limited per tag
+ * and says so in its own `Pruned` column. What gets thrown away is not the spam, it
+ * is whatever else the app said in the same breath.
+ *
+ * That cost hours on #173: two log lines from the read path went missing, in three
+ * runs out of four, while the reads themselves were provably happening. The reads
+ * were fine. The log was not able to carry both them and the trace.
+ *
+ * Build with -DARCANUM_TRACE_BLOCKS to get it back for a session spent chasing I/O.
+ */
+#include <stdio.h>
+
+#if defined(__ANDROID__) && !defined(NDEBUG) && defined(ARCANUM_TRACE_BLOCKS)
+#define EXT4_LOGB(...) EXT4_LOGD(__VA_ARGS__)
+#else
+/* Silent, but the format string is still checked against its arguments, exactly as
+ * the host form of the other three is. */
+#define EXT4_LOGB(...) do { if (0) fprintf(stderr, __VA_ARGS__); } while (0)
+#endif
+
 #endif

@@ -12,6 +12,13 @@
 #include "arcanum_file_kind.h"
 #include "arcanum_internal.h"
 
+extern "C" {
+/* The driver's own logging, used here for the read entry points only: it is the one
+ * macro set proven to reach logcat from a debug build (#174), and #175 is precisely
+ * a question about which of these functions runs at all. */
+#include "ext4/ext4_log.h"
+}
+
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -301,8 +308,11 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
 
     // Reject non-positive or unreasonably large requests.
     // A negative length would wrap to ~4 GB when cast to UINT, causing a buffer overflow.
-    if (length <= 0 || length > 16 * 1024 * 1024 || offset < 0)
+    if (length <= 0 || length > 16 * 1024 * 1024 || offset < 0) {
+        EXT4_LOGD("fat read refused: offset %lld, length %d",
+                  (long long)offset, (int)length);
         return env->NewByteArray(0);
+    }
 
     std::string path = jstring_to_string(env, jFilePath);
 
@@ -315,11 +325,19 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
 
     std::lock_guard<std::mutex> lock(g_fatfs_mutex);
     int pdrv = decode_handle(handle);
-    if (pdrv < 0) { free(nativeBuf); return env->NewByteArray(0); }
+    if (pdrv < 0) {
+        EXT4_LOGD("fat read of '%s': no drive for this handle", path.c_str());
+        free(nativeBuf);
+        return env->NewByteArray(0);
+    }
 
     // Reuse the cached open handle (or open + build a fast-seek table on a miss).
     FIL* fp = acquire_read_file(pdrv, path);
-    if (!fp) { free(nativeBuf); return env->NewByteArray(0); }
+    if (!fp) {
+        EXT4_LOGD("fat read of '%s': the file would not open", path.c_str());
+        free(nativeBuf);
+        return env->NewByteArray(0);
+    }
 
     // Only seek when the read is non-sequential; back-to-back playback reads land
     // exactly on the current file pointer and skip it entirely.
