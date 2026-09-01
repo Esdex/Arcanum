@@ -188,11 +188,21 @@ sealed class InAppNotification {
         override val priority = 1
     }
 
-    data class FilesPasted(val count: Int) : InAppNotification() {
+    /**
+     * [leftBehind] counts items a copy or a move could not take with it and did not
+     * turn into something else: a special file, or a link going where nothing can hold
+     * one - into another vault, or onto FAT (#168).
+     */
+    data class FilesPasted(val count: Int, val leftBehind: Int = 0) : InAppNotification() {
         override val priority = 1
     }
 
-    data class FilesMoved(val count: Int, val destinationName: String) : InAppNotification() {
+    /** See [FilesPasted] for [leftBehind]. */
+    data class FilesMoved(
+        val count: Int,
+        val destinationName: String,
+        val leftBehind: Int = 0
+    ) : InAppNotification() {
         override val priority = 1
     }
 

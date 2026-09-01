@@ -132,6 +132,10 @@
         <item quantity="one">%1$d item ready to move</item>
         <item quantity="other">%1$d items ready to move</item>
     </plurals>
+    <plurals name="notif_items_left_behind">
+        <item quantity="one">%1$d item stayed where it was</item>
+        <item quantity="other">%1$d items stayed where they were</item>
+    </plurals>
     <plurals name="notif_items_moved">
         <item quantity="one">%1$d item moved</item>
         <item quantity="other">%1$d items moved</item>

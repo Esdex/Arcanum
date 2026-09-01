@@ -937,6 +937,52 @@ jint ext4jni_create_link(JNIEnv *env, jlong handle, jstring jLinkPath,
     return write_error(pdrv, ERR_FS);
 }
 
+/* ─── ext4jni_create_symlink ─────────────────────────────────────────── */
+/*
+ * Writes a symbolic link holding exactly the target it is given, without looking
+ * at what that target names. ext4jni_create_link is the one a user reaches through
+ * Create link, and it resolves the target to decide between a hard and a symbolic
+ * link; this one is for copying a link that already exists, where the answer is
+ * settled - it was a symlink, it stays a symlink, and it keeps the same target text
+ * whether or not anything is there. A link that leads nowhere is copied as a link
+ * that leads nowhere, which is the only faithful answer and what `cp -d` does (#168).
+ */
+jint ext4jni_create_symlink(JNIEnv *env, jlong handle, jstring jLinkPath,
+                            jstring jTarget) {
+    std::string linkPath = jstring_to_string(env, jLinkPath);
+    std::string target   = jstring_to_string(env, jTarget);
+
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    int pdrv = ext4_pdrv(handle);
+    if (pdrv < 0) return ERR_NO_SLOT;
+    if (is_read_only(pdrv)) return ERR_READ_ONLY;
+
+    ext4_fs *r = nullptr;
+    if (!open_reader(pdrv, &r)) return ERR_FS;
+
+    uint32_t dir_ino = 0;
+    char name[256];
+    int prc = ext4_resolve_parent(r, linkPath.c_str(), &dir_ino, name, sizeof(name));
+    if (prc != EXT4_PATH_OK) return path_error(prc);
+
+    WriteSession s(pdrv);
+    if (!s.ok()) return ERR_FS;
+
+    uint32_t ino = 0;
+    int rc = ext4_symlink(s.fs(), r, dir_ino, name, target.c_str(),
+                          now_seconds(), &ino);
+
+    if (rc == EXT4_DIRW_OK) return ERR_OK;
+    if (rc == EXT4_DIRW_ERR_EXISTS) return ERR_EXISTS;
+    if (rc == EXT4_DIRW_ERR_NAME) return ERR_FILE;
+    if (rc == EXT4_CREATE_ERR_NOINODE || rc == EXT4_DIRW_ERR_NOROOM)
+        return ERR_NO_SPACE;
+    /* As in create_link: the refusals above are decided before an inode is taken,
+     * so only the rest can have left the volume half written. */
+    s.tear();
+    return write_error(pdrv, ERR_FS);
+}
+
 /* ─── ext4jni_delete_file ────────────────────────────────────────────── */
 
 jint ext4jni_delete_file(JNIEnv *env, jlong handle, jstring jFilePath) {

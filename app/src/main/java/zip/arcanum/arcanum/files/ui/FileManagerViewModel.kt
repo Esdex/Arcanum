@@ -606,7 +606,11 @@ class FileManagerViewModel @Inject constructor(
                     sourcePath        = f.path,
                     fileName          = f.name,
                     isDirectory       = f.isDirectory,
-                    isCut             = false
+                    isCut             = false,
+                    kind                  = f.kind,
+                    linkTarget            = f.linkTarget,
+                    linkTargetIsDirectory = f.linkTargetIsDirectory,
+                    linkBroken            = f.linkBroken
                 )
             }
         }
@@ -632,7 +636,11 @@ class FileManagerViewModel @Inject constructor(
                     sourcePath        = f.path,
                     fileName          = f.name,
                     isDirectory       = f.isDirectory,
-                    isCut             = true
+                    isCut             = true,
+                    kind                  = f.kind,
+                    linkTarget            = f.linkTarget,
+                    linkTargetIsDirectory = f.linkTargetIsDirectory,
+                    linkBroken            = f.linkBroken
                 )
             }
         }
@@ -723,6 +731,7 @@ class FileManagerViewModel @Inject constructor(
             var count   = 0
             var failed  = 0
             var skipped = 0
+            val tally   = CarryTally()
             val chunkSize = 1 * 1024 * 1024
 
             /* Names already in the destination, used to pick a free one when
@@ -761,8 +770,37 @@ class FileManagerViewModel @Inject constructor(
 
                     val destPath = if (currentPath == "/") "/$destName" else "$currentPath/$destName"
                     _state.update { it.copy(operationMessage = "${if (isCut) "Moving" else "Copying"} ${item.fileName}…") }
+
+                    /*
+                     * A move inside one vault is a rename: the entry changes folder and
+                     * nothing is read or written. Move to has always done this; the
+                     * clipboard copied every byte and deleted the original instead, which
+                     * turned a link into an empty file and quietly split a file with two
+                     * names into two separate files, each holding its own copy (#168).
+                     */
+                    if (sameContainer && isCut) {
+                        val rc = runCatching {
+                            engine.renameFile(item.sourceHandle, item.sourcePath, destPath)
+                        }.getOrDefault(VeraCryptEngine.ERR_FS)
+                        if (rc == VeraCryptEngine.ERR_OK) count++ else failed++
+                        continue
+                    }
+
+                    val carried = carryOddEntry(
+                        EntryKind(item), item.sourceHandle, item.sourcePath,
+                        destHandle, destPath, sameContainer, isCut, tally
+                    )
+                    if (carried != null) {
+                        when (carried) {
+                            Carried.DONE        -> count++
+                            Carried.FAILED      -> failed++
+                            Carried.LEFT_BEHIND -> {}
+                        }
+                        continue
+                    }
+
                     if (item.isDirectory) {
-                        val ok = copyDirectoryRecursive(item.sourceHandle, item.sourcePath, destHandle, destPath)
+                        val ok = copyDirectoryRecursive(item.sourceHandle, item.sourcePath, destHandle, destPath, tally)
                         if (ok && isCut) runCatching { engine.deleteDirectory(item.sourceHandle, item.sourcePath) }
                         if (ok) count++ else failed++
                     } else {
@@ -794,8 +832,11 @@ class FileManagerViewModel @Inject constructor(
                     // Failure first: someone told "3 copied" and not told "2 were not"
                     // walks away believing all five arrived.
                     failed > 0  -> InAppNotification.FilesPasteFailed(failed, clipItems.size)
-                    count > 0   -> if (isCut) InAppNotification.FilesMoved(count, destDesc)
-                                   else InAppNotification.FilesPasted(count)
+                    /* Reported even when nothing arrived: items that stayed behind are
+                       the one outcome silence would misread as success (#168). */
+                    count > 0 || tally.leftBehind > 0 ->
+                        if (isCut) InAppNotification.FilesMoved(count, destDesc, tally.leftBehind)
+                        else InAppNotification.FilesPasted(count, tally.leftBehind)
                     skipped > 0 -> InAppNotification.FilesAlreadyHere
                     else        -> null
                 }
@@ -839,6 +880,7 @@ class FileManagerViewModel @Inject constructor(
             var count   = 0
             var failed  = 0
             var skipped = 0
+            val tally   = CarryTally()
             val chunkSize = 1 * 1024 * 1024
 
             for (item in toCopy) {
@@ -848,8 +890,24 @@ class FileManagerViewModel @Inject constructor(
                 try {
                     val destItemPath = if (destinationPath == "/") "/${item.name}" else "$destinationPath/${item.name}"
                     _state.update { it.copy(operationMessage = "Copying ${item.name}…") }
+
+                    val carried = carryOddEntry(
+                        EntryKind(item), sourceHandle, item.path,
+                        destHandle, destItemPath,
+                        sameVault = destinationContainerId == s.containerId,
+                        isMove = false, tally = tally
+                    )
+                    if (carried != null) {
+                        when (carried) {
+                            Carried.DONE        -> count++
+                            Carried.FAILED      -> failed++
+                            Carried.LEFT_BEHIND -> {}
+                        }
+                        continue
+                    }
+
                     if (item.isDirectory) {
-                        val ok = copyDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath)
+                        val ok = copyDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath, tally)
                         if (ok) count++ else failed++
                     } else {
                         var offset = 0L
@@ -873,7 +931,8 @@ class FileManagerViewModel @Inject constructor(
                 operationMessage      = null,
                 pendingNotification   = when {
                     failed > 0  -> InAppNotification.FilesPasteFailed(failed, toCopy.size)
-                    count > 0   -> InAppNotification.FilesPasted(count)
+                    count > 0 || tally.leftBehind > 0 ->
+                        InAppNotification.FilesPasted(count, tally.leftBehind)
                     skipped > 0 -> InAppNotification.FilesAlreadyHere
                     else        -> null
                 }
@@ -897,6 +956,7 @@ class FileManagerViewModel @Inject constructor(
             var count   = 0
             var failed  = 0
             var skipped = 0
+            val tally   = CarryTally()
 
             for (item in toMove) {
                 val parentDir = item.path.substringBeforeLast("/").let { if (it.isEmpty()) "/" else it }
@@ -905,6 +965,24 @@ class FileManagerViewModel @Inject constructor(
                 val destItemPath = if (destinationPath == "/") "/${item.name}" else "$destinationPath/${item.name}"
                 _state.update { it.copy(operationMessage = "Moving ${item.name}…") }
 
+                /* Into another vault a link cannot travel as a link and a special file
+                   cannot travel at all, so both stay where they are rather than being
+                   turned into something else on the way (#168). A move inside the vault
+                   is a rename below and keeps everything it is. */
+                val carried = carryOddEntry(
+                    EntryKind(item), sourceHandle, item.path, destHandle, destItemPath,
+                    sameVault = destinationContainerId == s.containerId,
+                    isMove = true, tally = tally
+                )
+                if (carried != null) {
+                    when (carried) {
+                        Carried.DONE        -> count++
+                        Carried.FAILED      -> failed++
+                        Carried.LEFT_BEHIND -> {}
+                    }
+                    continue
+                }
+
                 val moved = when {
                     destinationContainerId == s.containerId -> {
                         val result = runCatching {
@@ -912,7 +990,7 @@ class FileManagerViewModel @Inject constructor(
                         }.getOrDefault(VeraCryptEngine.ERR_FS)
                         result == VeraCryptEngine.ERR_OK
                     }
-                    item.isDirectory -> moveDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath)
+                    item.isDirectory -> moveDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath, tally)
                     else -> moveFile(sourceHandle, item.path, destHandle, destItemPath, item.size)
                 }
                 if (moved) count++ else failed++
@@ -925,7 +1003,8 @@ class FileManagerViewModel @Inject constructor(
                 operationMessage      = null,
                 pendingNotification   = when {
                     failed > 0  -> InAppNotification.FilesPasteFailed(failed, toMove.size)
-                    count > 0   -> InAppNotification.FilesMoved(count, destinationName)
+                    count > 0 || tally.leftBehind > 0 ->
+                        InAppNotification.FilesMoved(count, destinationName, tally.leftBehind)
                     skipped > 0 -> InAppNotification.FilesAlreadyHere
                     else        -> null
                 }
@@ -1520,6 +1599,82 @@ class FileManagerViewModel @Inject constructor(
 
     // ── Private helpers ───────────────────────────────────────────────────
 
+    /** How many items a copy or a move had to leave where they were (#168). */
+    private class CarryTally { var leftBehind = 0 }
+
+    /** What carrying one entry came to. */
+    private enum class Carried { DONE, LEFT_BEHIND, FAILED }
+
+    /** The facts about an entry that decide how it can be carried, from either side. */
+    private class EntryKind(
+        val isSymlink: Boolean,
+        val isSpecial: Boolean,
+        val linkTarget: String?,
+        val linkBroken: Boolean,
+        val opensAsDirectory: Boolean
+    ) {
+        constructor(f: NativeFileInfo) : this(
+            f.isSymlink, f.isSpecial, f.linkTarget, f.linkBroken, f.opensAsDirectory)
+        constructor(i: ClipboardItem) : this(
+            i.isSymlink, i.isSpecial, i.linkTarget, i.linkBroken, i.opensAsDirectory)
+    }
+
+    /**
+     * Carries a link or a special file - the two things a plain read cannot move.
+     * Returns null for an ordinary file or folder, which the caller carries its own way.
+     *
+     * One sentence decides all of it: a link stays a link inside the vault it lives in,
+     * and cannot be one anywhere else. What used to happen instead was that a folder
+     * link went down the file branch, read back empty, and landed as a 0 byte file under
+     * the link's name - and a cut deleted the link afterwards (#168).
+     *
+     * - a special file (FIFO, socket, device node) is left where it is wherever it was
+     *   going: nothing here can create one, and reading it gives nothing
+     * - moved inside its own vault, it is a rename - the entry changes folder and not one
+     *   byte is read or written, which is also the only form that keeps a file with two
+     *   names one file
+     * - copied inside its own vault, the link is written again with the same target, dead
+     *   ones included: a link that leads nowhere copies as a link that leads nowhere
+     * - copied into another vault, or onto FAT, it becomes what it leads to, which is the
+     *   answer export gives for the same reason. A dead one has nothing to become and is
+     *   left where it is
+     * - MOVED where it cannot stay a link, it is left where it is rather than converted.
+     *   Turning it into a copy and then deleting it is precisely the fault being fixed
+     */
+    private suspend fun carryOddEntry(
+        entry: EntryKind,
+        srcHandle: Long, srcPath: String,
+        destHandle: Long, destPath: String,
+        sameVault: Boolean,
+        isMove: Boolean,
+        tally: CarryTally
+    ): Carried? {
+        if (entry.isSpecial) { tally.leftBehind++; return Carried.LEFT_BEHIND }
+        if (!entry.isSymlink) return null
+
+        if (sameVault) {
+            val rc = if (isMove) {
+                runCatching { engine.renameFile(srcHandle, srcPath, destPath) }
+                    .getOrDefault(VeraCryptEngine.ERR_FS)
+            } else {
+                val target = entry.linkTarget ?: return Carried.FAILED
+                runCatching { engine.createSymlink(destHandle, destPath, target) }
+                    .getOrDefault(VeraCryptEngine.ERR_FS)
+            }
+            return if (rc == VeraCryptEngine.ERR_OK) Carried.DONE else Carried.FAILED
+        }
+
+        if (isMove || entry.linkBroken) { tally.leftBehind++; return Carried.LEFT_BEHIND }
+
+        if (entry.opensAsDirectory) {
+            val ok = copyDirectoryRecursive(srcHandle, srcPath, destHandle, destPath, tally)
+            return if (ok) Carried.DONE else Carried.FAILED
+        }
+        /* A link to a file, going somewhere that cannot hold a link: reading it follows
+           it, so the caller's ordinary file copy already writes out the file itself. */
+        return null
+    }
+
     private suspend fun moveFile(
         srcHandle: Long, srcPath: String,
         destHandle: Long, destPath: String,
@@ -1634,7 +1789,8 @@ class FileManagerViewModel @Inject constructor(
 
     private suspend fun copyDirectoryRecursive(
         srcHandle: Long, srcPath: String,
-        destHandle: Long, destPath: String
+        destHandle: Long, destPath: String,
+        tally: CarryTally
     ): Boolean {
         return try {
             runCatching { engine.createDirectory(destHandle, destPath) }
@@ -1642,11 +1798,23 @@ class FileManagerViewModel @Inject constructor(
                 ?: return false
             var allCopied = true
             val chunkSize = 1 * 1024 * 1024
+            val sameVault = srcHandle == destHandle
             for (entry in entries) {
                 val srcEntry  = if (srcPath  == "/") "/${entry.name}" else "$srcPath/${entry.name}"
                 val destEntry = if (destPath == "/") "/${entry.name}" else "$destPath/${entry.name}"
-                val copied = if (entry.isDirectory) {
-                    copyDirectoryRecursive(srcHandle, srcEntry, destHandle, destEntry)
+                /* A link inside a folder is carried exactly as one picked by hand is. */
+                val carried = carryOddEntry(
+                    EntryKind(entry), srcHandle, srcEntry, destHandle, destEntry,
+                    sameVault, isMove = false, tally = tally
+                )
+                if (carried != null) {
+                    /* Left behind is not a failure of the copy: nothing was lost and the
+                       tally has counted it. */
+                    if (carried == Carried.FAILED) allCopied = false
+                    continue
+                }
+                val copied = if (entry.opensAsDirectory) {
+                    copyDirectoryRecursive(srcHandle, srcEntry, destHandle, destEntry, tally)
                 } else {
                     var offset = 0L
                     var ok = true
@@ -1669,18 +1837,31 @@ class FileManagerViewModel @Inject constructor(
 
     private suspend fun moveDirectoryRecursive(
         srcHandle: Long, srcPath: String,
-        destHandle: Long, destPath: String
+        destHandle: Long, destPath: String,
+        tally: CarryTally
     ): Boolean {
         return try {
             runCatching { engine.createDirectory(destHandle, destPath) }
             val entries = engine.listFilesOrNull(srcHandle, srcPath)?.toList()
                 ?: return false
             var allMoved = true
+            val sameVault = srcHandle == destHandle
             for (entry in entries) {
                 val srcEntry  = if (srcPath  == "/") "/${entry.name}" else "$srcPath/${entry.name}"
                 val destEntry = if (destPath == "/") "/${entry.name}" else "$destPath/${entry.name}"
-                val moved = if (entry.isDirectory) {
-                    moveDirectoryRecursive(srcHandle, srcEntry, destHandle, destEntry)
+                val carried = carryOddEntry(
+                    EntryKind(entry), srcHandle, srcEntry, destHandle, destEntry,
+                    sameVault, isMove = true, tally = tally
+                )
+                if (carried != null) {
+                    /* Here, unlike a copy, a link left behind DOES stop the move counting
+                       as complete - that is what keeps the source folder below from being
+                       deleted with the link still inside it. */
+                    if (carried != Carried.DONE) allMoved = false
+                    continue
+                }
+                val moved = if (entry.opensAsDirectory) {
+                    moveDirectoryRecursive(srcHandle, srcEntry, destHandle, destEntry, tally)
                 } else {
                     moveFile(srcHandle, srcEntry, destHandle, destEntry, entry.size)
                 }

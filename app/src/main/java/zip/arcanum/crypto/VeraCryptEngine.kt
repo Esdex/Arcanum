@@ -540,6 +540,19 @@ class VeraCryptEngine @Inject constructor(
     fun createLink(handle: Long, linkPath: String, targetPath: String): Int =
         marked { nativeCreateLink(handle, linkPath, targetPath) }
 
+    /**
+     * Writes a symbolic link at [linkPath] holding [target] exactly as given, without
+     * looking at what it names.
+     *
+     * [createLink] is the one behind Create link, and it decides between a hard and a
+     * symbolic link by resolving the target. This one is for copying a link that
+     * already exists: it was a symlink, it stays a symlink, and it keeps its target
+     * text whether or not there is anything at the end of it - a link that leads
+     * nowhere copies as a link that leads nowhere (#168). ext4 only.
+     */
+    fun createSymlink(handle: Long, linkPath: String, target: String): Int =
+        marked { nativeCreateSymlink(handle, linkPath, target) }
+
     fun renameFile(handle: Long, oldPath: String, newPath: String): Int =
         marked { nativeRenameFile(handle, oldPath, newPath) }
 
@@ -870,6 +883,10 @@ class VeraCryptEngine @Inject constructor(
     private external fun nativeCreateDirectory(handle: Long, dirPath: String): Int
     private external fun nativeCreateLink(
         handle: Long, linkPath: String, targetPath: String
+    ): Int
+
+    private external fun nativeCreateSymlink(
+        handle: Long, linkPath: String, target: String
     ): Int
 
     private external fun nativeRenameFile(handle: Long, oldPath: String, newPath: String): Int

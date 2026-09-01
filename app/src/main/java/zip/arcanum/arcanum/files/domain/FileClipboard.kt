@@ -1,5 +1,6 @@
 package zip.arcanum.arcanum.files.domain
 
+import zip.arcanum.crypto.NativeFileInfo
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -9,8 +10,27 @@ data class ClipboardItem(
     val sourcePath: String,
     val fileName: String,
     val isDirectory: Boolean,
-    val isCut: Boolean = false
-)
+    val isCut: Boolean = false,
+    /*
+     * What the item is, carried alongside isDirectory because a paste has to know
+     * before it reads anything: a link cannot be copied by reading it, and a special
+     * file cannot be copied at all (#168). The values are NativeFileInfo.KIND_*, and
+     * the three link fields mean what they mean there. Everything defaults to an
+     * ordinary file, so a clipboard filled from a filesystem without links - FAT,
+     * exFAT - needs to say nothing.
+     */
+    val kind: Int = NativeFileInfo.KIND_REGULAR,
+    val linkTarget: String? = null,
+    val linkTargetIsDirectory: Boolean = false,
+    val linkBroken: Boolean = false
+) {
+    val isSymlink: Boolean get() = kind == NativeFileInfo.KIND_SYMLINK
+    val isSpecial: Boolean get() = kind == NativeFileInfo.KIND_SPECIAL
+
+    /** Follows the link, exactly as NativeFileInfo.opensAsDirectory does. */
+    val opensAsDirectory: Boolean
+        get() = isDirectory || (isSymlink && linkTargetIsDirectory && !linkBroken)
+}
 
 @Singleton
 class FileClipboard @Inject constructor() {

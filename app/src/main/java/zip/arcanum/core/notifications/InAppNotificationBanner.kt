@@ -263,7 +263,10 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         backgroundColor = Color(0xFF16A34A),
         icon            = Icons.Outlined.CheckCircle,
         title           = ctx.resources.getQuantityString(R.plurals.notif_items_copied, this.count, this.count),
-        subtitle        = ctx.getString(R.string.notif_files_pasted_subtitle)
+        subtitle        = if (this.leftBehind > 0)
+            ctx.resources.getQuantityString(
+                R.plurals.notif_items_left_behind, this.leftBehind, this.leftBehind)
+        else ctx.getString(R.string.notif_files_pasted_subtitle)
     )
     is InAppNotification.FilesPasteFailed -> NotificationDisplayConfig(
         backgroundColor = Color(0xFFDC2626),
@@ -303,7 +306,12 @@ private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplay
         backgroundColor = Color(0xFF16A34A),
         icon            = Icons.AutoMirrored.Outlined.DriveFileMove,
         title           = ctx.resources.getQuantityString(R.plurals.notif_items_moved, this.count, this.count),
-        subtitle        = ctx.getString(R.string.notif_files_moved_subtitle, this.destinationName)
+        /* What stayed behind outranks where the rest went: the destination is on screen
+         * anyway, and an item that did not travel is the thing worth knowing. */
+        subtitle        = if (this.leftBehind > 0)
+            ctx.resources.getQuantityString(
+                R.plurals.notif_items_left_behind, this.leftBehind, this.leftBehind)
+        else ctx.getString(R.string.notif_files_moved_subtitle, this.destinationName)
     )
     is InAppNotification.FilesDeleted -> NotificationDisplayConfig(
         backgroundColor = Color(0xFF6B7280),

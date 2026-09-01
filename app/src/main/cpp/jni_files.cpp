@@ -699,6 +699,18 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateLink(
     return ext4jni_create_link(env, handle, jLinkPath, jTargetPath);
 }
 
+/* ─── JNI: nativeCreateSymlink ──────────────────────────────────────── */
+
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateSymlink(
+        JNIEnv *env, jobject /*thiz*/,
+        jlong handle, jstring jLinkPath, jstring jTarget)
+{
+    /* ext4 only, for the same reason as nativeCreateLink. */
+    if (!ext4jni_is_container(handle)) return ERR_UNSUPPORTED;
+    return ext4jni_create_symlink(env, handle, jLinkPath, jTarget);
+}
+
 /* ─── JNI: nativeCreateDirectory ────────────────────────────────────── */
 
 extern "C" JNIEXPORT jint JNICALL
