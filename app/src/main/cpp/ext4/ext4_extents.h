@@ -132,12 +132,19 @@ typedef struct {
 } ext4_fs;
 
 /* One resolved run of blocks. `uninit` marks a preallocated extent that reads
- * as zeroes rather than as stored data. */
+ * as zeroes rather than as stored data.
+ *
+ * `bad` marks an entry that failed validation - a leaf naming blocks outside the
+ * volume, an index pointing outside it, an index block that would not read. Only
+ * the read path ever sees one: the walk stops at the first failure for everybody
+ * else, and a caller that gets one must not touch its `physical` (#173). `logical`
+ * is still meaningful and says where in the file the damage begins. */
 typedef struct {
     uint32_t logical;
     uint64_t physical;
     uint32_t length;
     int      uninit;
+    int      bad;
 } ext4_extent_run;
 
 /*
@@ -160,6 +167,22 @@ typedef int (*ext4_extent_cb)(void *user, const ext4_extent_run *run);
 
 int ext4_walk_extents(const ext4_fs *fs, const uint8_t *inode,
                       ext4_extent_cb emit, void *user);
+
+/*
+ * Reads what can be read and returns how many bytes that was, counting from
+ * `offset` and stopping at the first thing that cannot be read. A hole is not a
+ * stop - it is legitimately zeroes. A short result means the rest of the file is
+ * unreachable, not that the file ends there.
+ *
+ * ONLY EXPORT MAY USE THIS. Every other caller wants ext4_read_file, which refuses
+ * the whole read: handing back bytes from a structure that failed validation is how
+ * a reader invents file contents, and a copy or an import doing it would write the
+ * invention into a second place and report success. An export is the one operation
+ * where the opposite is wanted, because it is how a damaged vault is emptied - and
+ * what comes out short is marked and counted rather than passed off as whole (#170).
+ */
+long ext4_read_file_partial(const ext4_fs *fs, const uint8_t *inode,
+                            uint64_t offset, uint8_t *buf, uint64_t length);
 
 /* Maps one logical block to a physical one. Sets *physical to 0 for a hole. */
 int ext4_map_block(const ext4_fs *fs, const uint8_t *inode,

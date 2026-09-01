@@ -1831,14 +1831,31 @@ class FileManagerViewModel @Inject constructor(
         val out = context.contentResolver.openOutputStream(docUri) ?: return false
         val chunkSize = 1 * 1024 * 1024
         var written = 0L
+        var chunks  = 0
+        var lastLen = -1
         out.use { stream ->
             while (written < size) {
-                val chunk = engine.readFile(handle, srcPath, written, chunkSize) ?: break
+                /*
+                 * The one caller allowed to read what it can rather than nothing at all
+                 * (#173). An export is how a vault in trouble is emptied, so a file
+                 * whose last part is unreachable should still give up the rest - and
+                 * what comes out short is marked .part below, never passed off as whole.
+                 */
+                val chunk = engine.readFilePartial(handle, srcPath, written, chunkSize) ?: break
                 stream.write(chunk)
                 written += chunk.size
+                chunks++
+                lastLen = chunk.size
                 if (chunk.size < chunkSize) break
             }
         }
+        /* Counts only, never a name - the same rule the tally line follows. What it is
+         * for: a short export is decided by these four numbers, and reading them off the
+         * log is how the .part case was confirmed to be the file's readable part rather
+         * than a coincidence of the right length (#170, #173). */
+        if (zip.arcanum.BuildConfig.DEBUG)
+            android.util.Log.d("ArcanumExport", "one file: size=$size written=$written " +
+                "chunks=$chunks lastChunk=$lastLen chunkSize=$chunkSize")
         if (written >= size) return true
 
         /*

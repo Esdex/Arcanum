@@ -87,6 +87,7 @@ static uint64_t idx_child(const uint8_t *e) {
 
 static void leaf_run(const uint8_t *e, ext4_extent_run *run) {
     uint16_t len = rd16(e + 4);
+    run->bad      = 0;          /* set by the walk, never by the entry itself */
     run->logical  = rd32(e);
     run->physical = (uint64_t)rd32(e + 8) | ((uint64_t)rd16(e + 6) << 32);
     run->uninit   = len > EXT4_MAX_INIT_LEN;
@@ -100,7 +101,7 @@ static size_t entries_per_block(const ext4_fs *fs) {
 /* Depth-first walk. Recursion is bounded by EXT4_MAX_DEPTH, which the header
  * check enforces, so the stack cost is fixed no matter what the image claims. */
 static int walk_node(const ext4_fs *fs, const uint8_t *node, size_t capacity,
-                     ext4_extent_cb emit, void *user, int guard) {
+                     ext4_extent_cb emit, void *user, int guard, int report_bad) {
     eh_t eh;
     int rc = parse_header(node, capacity, &eh);
     if (rc != EXT4_OK) return rc;
@@ -112,7 +113,19 @@ static int walk_node(const ext4_fs *fs, const uint8_t *node, size_t capacity,
         for (uint16_t i = 0; i < eh.entries; i++, entry += 12) {
             ext4_extent_run run;
             leaf_run(entry, &run);
-            if (run.physical + run.length > fs->blocks_count) return EXT4_ERR_RANGE;
+            if (run.physical + run.length > fs->blocks_count) {
+                /*
+                 * Blocks outside the volume. Refusing the walk is right for every
+                 * caller but one, so that stays the default; under report_bad the
+                 * entry is handed over marked instead, and the caller decides
+                 * whether damage at THIS point in the file concerns it (#173).
+                 * Its physical start is cleared so a caller that ignores the mark
+                 * cannot read from it by accident.
+                 */
+                if (!report_bad) return EXT4_ERR_RANGE;
+                run.bad      = 1;
+                run.physical = 0;
+            }
             rc = emit(user, &run);
             if (rc != 0) return rc;
         }
@@ -128,21 +141,38 @@ static int walk_node(const ext4_fs *fs, const uint8_t *node, size_t capacity,
 
     for (uint16_t i = 0; i < eh.entries; i++, entry += 12) {
         uint64_t blk = idx_child(entry);
-        if (blk == 0 || blk >= fs->blocks_count) return EXT4_ERR_RANGE;
-        if (fs->read_block(fs->ctx, blk, child) != EXT4_OK) return EXT4_ERR_IO;
-        rc = walk_node(fs, child, entries_per_block(fs), emit, user, guard + 1);
+        int broken = (blk == 0 || blk >= fs->blocks_count);
+        if (!broken && fs->read_block(fs->ctx, blk, child) != EXT4_OK) broken = 1;
+        if (broken) {
+            /* Same rule as a leaf, one level up: everything under this index is
+             * unreachable, and where that starts is the only thing worth saying.
+             * A length of zero says "from here on", since how much the subtree
+             * covered cannot be known once it cannot be read. */
+            if (!report_bad) return (blk == 0 || blk >= fs->blocks_count)
+                                        ? EXT4_ERR_RANGE : EXT4_ERR_IO;
+            ext4_extent_run bad = { rd32(entry), 0, 0, 0, 1 };
+            rc = emit(user, &bad);
+            return rc != 0 ? rc : EXT4_OK;
+        }
+        rc = walk_node(fs, child, entries_per_block(fs), emit, user, guard + 1,
+                       report_bad);
         if (rc != EXT4_OK) return rc;
     }
     return EXT4_OK;
 }
 
-int ext4_walk_extents(const ext4_fs *fs, const uint8_t *inode,
-                      ext4_extent_cb emit, void *user) {
+static int walk_extents_ex(const ext4_fs *fs, const uint8_t *inode,
+                           ext4_extent_cb emit, void *user, int report_bad) {
     if (!(rd32(inode + INODE_FLAGS_OFF) & EXT4_INODE_FLAG_EXTENTS))
         return EXT4_ERR_NOT_EXTENT;
     /* The inode's own i_block is 60 bytes: a 12-byte header and room for 4 entries. */
     return walk_node(fs, inode + INODE_IBLOCK_OFF,
-                     (INODE_IBLOCK_SIZE - 12) / 12, emit, user, 0);
+                     (INODE_IBLOCK_SIZE - 12) / 12, emit, user, 0, report_bad);
+}
+
+int ext4_walk_extents(const ext4_fs *fs, const uint8_t *inode,
+                      ext4_extent_cb emit, void *user) {
+    return walk_extents_ex(fs, inode, emit, user, /*report_bad=*/0);
 }
 
 typedef struct {
@@ -248,6 +278,9 @@ typedef struct {
     uint64_t want_end;     /* one past the last */
     uint8_t *out;          /* pre-zeroed, so holes need no writing */
     int      rc;
+    /* Where the good part ends, as a byte offset in the file. Starts at `offset`
+     * so a failure before anything was read gives a length of zero. */
+    uint64_t bad_at;
 } read_ctx;
 
 static int read_cb(void *user, const ext4_extent_run *run) {
@@ -255,6 +288,21 @@ static int read_cb(void *user, const ext4_extent_run *run) {
     uint64_t bs  = r->fs->block_size;
     uint64_t beg = (uint64_t)run->logical * bs;
     uint64_t end = beg + (uint64_t)run->length * bs;
+
+    /*
+     * An entry that failed validation. Where it sits decides everything: damage
+     * past the end of what was asked for is none of this read's business and the
+     * read succeeds, which is why the first megabyte of a file whose second
+     * megabyte is unreachable now comes out. Damage inside the window stops the
+     * read here and records where, so a partial read can hand back the good part
+     * and a strict one can refuse the lot (#173).
+     */
+    if (run->bad) {
+        if (beg >= r->want_end) return 1;
+        r->bad_at = beg < r->want_start ? r->want_start : beg;
+        r->rc     = EXT4_ERR_RANGE;
+        return 1;
+    }
 
     if (end <= r->want_start) return 0;          /* entirely before the window */
     if (beg >= r->want_end)   return 1;          /* past it, and runs are ordered */
@@ -274,7 +322,9 @@ static int read_cb(void *user, const ext4_extent_run *run) {
 
         uint64_t phys = run->physical + (blk_index - run->logical);
         if (r->fs->read_block(r->fs->ctx, phys, block) != EXT4_OK) {
-            r->rc = EXT4_ERR_IO;
+            /* Everything before this byte is in the buffer and is the file's own. */
+            r->bad_at = from;
+            r->rc     = EXT4_ERR_IO;
             return 1;
         }
         memcpy(r->out + (from - r->want_start), block + blk_offset, (size_t)chunk);
@@ -283,8 +333,9 @@ static int read_cb(void *user, const ext4_extent_run *run) {
     return 0;
 }
 
-long ext4_read_file(const ext4_fs *fs, const uint8_t *inode,
-                    uint64_t offset, uint8_t *buf, uint64_t length) {
+static long read_file_common(const ext4_fs *fs, const uint8_t *inode,
+                             uint64_t offset, uint8_t *buf, uint64_t length,
+                             int partial) {
     uint64_t size = ext4_inode_size(inode);
     if (offset >= size) return 0;
     if (offset + length > size) length = size - offset;
@@ -294,11 +345,25 @@ long ext4_read_file(const ext4_fs *fs, const uint8_t *inode,
      * this way the walk only has to fill in what it actually finds. */
     memset(buf, 0, (size_t)length);
 
-    read_ctx ctx = { fs, offset, offset + length, buf, EXT4_OK };
-    int rc = ext4_walk_extents(fs, inode, read_cb, &ctx);
+    read_ctx ctx = { fs, offset, offset + length, buf, EXT4_OK, offset };
+    /* The walk reports a failed entry rather than refusing outright, because
+     * whether it matters depends on where in the file it is - which only read_cb
+     * knows. Both kinds of read want that; they differ in what they do with it. */
+    int rc = walk_extents_ex(fs, inode, read_cb, &ctx, /*report_bad=*/1);
     if (rc != EXT4_OK && rc != 1) return rc;
-    if (ctx.rc != EXT4_OK) return ctx.rc;
+    if (ctx.rc != EXT4_OK)
+        return partial ? (long)(ctx.bad_at - offset) : ctx.rc;
     return (long)length;
+}
+
+long ext4_read_file(const ext4_fs *fs, const uint8_t *inode,
+                    uint64_t offset, uint8_t *buf, uint64_t length) {
+    return read_file_common(fs, inode, offset, buf, length, /*partial=*/0);
+}
+
+long ext4_read_file_partial(const ext4_fs *fs, const uint8_t *inode,
+                            uint64_t offset, uint8_t *buf, uint64_t length) {
+    return read_file_common(fs, inode, offset, buf, length, /*partial=*/1);
 }
 
 /* ── Superblock and inode location ────────────────────────────────────────── */

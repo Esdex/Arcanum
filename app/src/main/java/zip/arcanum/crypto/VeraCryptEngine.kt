@@ -497,6 +497,22 @@ class VeraCryptEngine @Inject constructor(
     fun readFile(handle: Long, filePath: String, offset: Long, length: Int): ByteArray? =
         marked { nativeReadFile(handle, filePath, offset, length) }
 
+    /**
+     * Reads what can be read and hands back exactly that, where [readFile] refuses the
+     * whole file if any part of what it walks is unreadable.
+     *
+     * **Only export may use this.** Refusing is the right answer everywhere else: bytes
+     * from a structure that failed validation are a reader's invention, and a copy or an
+     * import that wrote them would put that invention in a second place and report
+     * success. An export is the one operation where the opposite is wanted, since it is
+     * how a damaged vault is emptied - and a short result there is marked `.part` and
+     * counted rather than passed off as the whole file (#170, #173).
+     *
+     * A short return does not mean the file ended: compare it against the size.
+     */
+    fun readFilePartial(handle: Long, filePath: String, offset: Long, length: Int): ByteArray? =
+        marked { nativeReadFilePartial(handle, filePath, offset, length) }
+
     fun writeFile(handle: Long, filePath: String, data: ByteArray, offset: Long): Int =
         marked { nativeWriteFile(handle, filePath, data, offset) }
 
@@ -884,6 +900,10 @@ class VeraCryptEngine @Inject constructor(
     private external fun nativeCreateLink(
         handle: Long, linkPath: String, targetPath: String
     ): Int
+
+    private external fun nativeReadFilePartial(
+        handle: Long, filePath: String, offset: Long, length: Int
+    ): ByteArray?
 
     private external fun nativeCreateSymlink(
         handle: Long, linkPath: String, target: String

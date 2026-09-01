@@ -699,6 +699,22 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateLink(
     return ext4jni_create_link(env, handle, jLinkPath, jTargetPath);
 }
 
+/* ─── JNI: nativeReadFilePartial ────────────────────────────────────── */
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFilePartial(
+        JNIEnv *env, jobject thiz,
+        jlong handle, jstring jFilePath, jlong offset, jint length)
+{
+    if (ext4jni_is_container(handle))
+        return ext4jni_read_file_partial(env, handle, jFilePath, offset, length);
+    /* FAT and exFAT have nothing of the kind to offer: FatFs reads what it reads
+     * and reports a short count by itself, which is what the ordinary path already
+     * hands back. */
+    return Java_zip_arcanum_crypto_VeraCryptEngine_nativeReadFile(
+            env, thiz, handle, jFilePath, offset, length);
+}
+
 /* ─── JNI: nativeCreateSymlink ──────────────────────────────────────── */
 
 extern "C" JNIEXPORT jint JNICALL

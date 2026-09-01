@@ -544,6 +544,8 @@ jint         ext4jni_get_filesystem();                    /* takes no lock, need
 jobjectArray ext4jni_list_files(JNIEnv *env, jlong handle, jstring jDirPath);
 jbyteArray   ext4jni_read_file(JNIEnv *env, jlong handle, jstring jFilePath,
                                jlong offset, jint length);
+jbyteArray   ext4jni_read_file_partial(JNIEnv *env, jlong handle, jstring jFilePath,
+                                       jlong offset, jint length);
 jint         ext4jni_write_file(JNIEnv *env, jlong handle, jstring jFilePath,
                                 jbyteArray jData, jlong offset);
 jint         ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,

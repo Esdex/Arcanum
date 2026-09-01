@@ -45,6 +45,7 @@ extern "C" {
 #include "ext4/ext4_create.h"
 #include "ext4/ext4_path.h"
 #include "ext4/ext4_mkfs.h"
+#include "ext4/ext4_log.h"
 }
 #include "ext4/ext4_device.h"
 
@@ -560,6 +561,112 @@ jbyteArray ext4jni_read_file(JNIEnv *env, jlong handle, jstring jFilePath,
             free(nativeBuf);
             return nullptr;
         }
+    }
+
+    jbyteArray result = env->NewByteArray((jsize)produced);
+    if (result && produced > 0)
+        env->SetByteArrayRegion(result, 0, (jsize)produced, (const jbyte *)nativeBuf);
+    free(nativeBuf);
+    return result;
+}
+
+/* ─── ext4jni_read_file_partial ──────────────────────────────────────── */
+/*
+ * The same read, except that damage stops it rather than voiding it: what could be
+ * read is returned and the caller is told how much that was.
+ *
+ * Only the export path calls this, and the reason it may is that an export is how a
+ * vault in trouble is emptied - refusing the whole file because its last megabyte is
+ * unreachable throws away the rest of someone's data. Everything else keeps calling
+ * ext4jni_read_file, because a copy or an import that wrote out a short read would
+ * put an invented file in a second place and call it a success (#173).
+ *
+ * A short return is not the end of the file: the caller compares what it got against
+ * the size it asked for, and Arcanum marks such an export .part (#170).
+ */
+jbyteArray ext4jni_read_file_partial(JNIEnv *env, jlong handle, jstring jFilePath,
+                                     jlong offset, jint length) {
+    /*
+     * Every refusal below says why. An empty array is what the caller sees for all
+     * of them, and an export reading a chunk short cannot tell "there was nothing
+     * left" from "this could not be attempted" - which is a distinction worth one
+     * line in a debug log, and one I went looking for and could not find.
+     */
+    if (length <= 0 || length > 16 * 1024 * 1024 || offset < 0) {
+        EXT4_LOGD("ext4: partial read refused: offset %lld, length %d",
+                  (long long)offset, (int)length);
+        return env->NewByteArray(0);
+    }
+
+    std::string path = jstring_to_string(env, jFilePath);
+
+    auto *nativeBuf = static_cast<uint8_t *>(malloc((size_t)length));
+    if (!nativeBuf) {
+        EXT4_LOGD("ext4: partial read of '%s': no memory for %d bytes",
+                  path.c_str(), (int)length);
+        return env->NewByteArray(0);
+    }
+
+    long produced = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+        int pdrv = ext4_pdrv(handle);
+        if (pdrv < 0) {
+            EXT4_LOGD("ext4: partial read of '%s': no drive for this handle",
+                      path.c_str());
+            free(nativeBuf);
+            return env->NewByteArray(0);
+        }
+
+        ext4_fs *r = nullptr;
+        if (!open_reader(pdrv, &r)) {
+            EXT4_LOGD("ext4: partial read of '%s': the volume would not open",
+                      path.c_str());
+            free(nativeBuf);
+            return env->NewByteArray(0);
+        }
+
+        uint32_t ino = 0;
+        int is_dir = 0;
+        if (ext4_resolve_path(r, path.c_str(), &ino, &is_dir) != EXT4_PATH_OK
+                || is_dir) {
+            EXT4_LOGD("ext4: partial read of '%s': %s", path.c_str(),
+                      is_dir ? "it is a directory" : "the path did not resolve");
+            free(nativeBuf);
+            return env->NewByteArray(0);
+        }
+
+        uint8_t inode[EXT4_MAX_INODE_SIZE];
+        memset(inode, 0, sizeof(inode));
+        if (ext4_read_inode_raw(r, ino, inode, sizeof(inode)) != EXT4_OK) {
+            EXT4_LOGD("ext4: partial read of '%s': inode %u would not read",
+                      path.c_str(), ino);
+            free(nativeBuf);
+            return env->NewByteArray(0);
+        }
+
+        produced = ext4_read_file_partial(r, inode, (uint64_t)offset,
+                                          nativeBuf, (uint64_t)length);
+        if (produced < 0) {
+            /* Not "some of it is unreadable" but "none of this can be attempted" -
+             * an inode with no extent tree at all, say. */
+            EXT4_LOGD("ext4: partial read of '%s' refused (%ld)", path.c_str(), produced);
+            free(nativeBuf);
+            return env->NewByteArray(0);
+        }
+        /*
+         * Short against what the FILE could give, not against what was asked for.
+         * Every read of a file smaller than the chunk ends short of the request, and
+         * saying so would put a line that reads like damage under every small file
+         * exported - the same fault as #171, one issue later.
+         */
+        uint64_t size  = ext4_inode_size(inode);
+        uint64_t avail = (uint64_t)offset >= size ? 0 : size - (uint64_t)offset;
+        if (avail > (uint64_t)length) avail = (uint64_t)length;
+        if ((uint64_t)produced < avail)
+            EXT4_LOGD("ext4: '%s' gave %ld of %llu readable bytes at offset %lld",
+                      path.c_str(), produced, (unsigned long long)avail,
+                      (long long)offset);
     }
 
     jbyteArray result = env->NewByteArray((jsize)produced);
