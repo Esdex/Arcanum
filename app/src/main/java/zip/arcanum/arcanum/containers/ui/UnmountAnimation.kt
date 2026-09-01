@@ -3,7 +3,6 @@ package zip.arcanum.arcanum.containers.ui
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -40,55 +39,45 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import zip.arcanum.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 private val GreenLock = Color(0xFF16A34A)
 
 /**
- * Full-screen unmount animation overlay.
+ * Full-screen unmount overlay.
  *
  * Sequence:
  *  1. Fade to fully black (380 ms) — AppNavigation pops ContainerScreen in parallel
  *  2. Green open-lock bounces in
- *  3. Lock closes → haptic → color transitions white
+ *  3. Lock closes → haptic → colour transitions white
  *  4. "Vault Unmounted / Your data is protected" fades in
- *  5. Scrim fades out (VaultScreen revealed) + lock flies to [iconTarget] in the vault list
- *  6. [onIconLanded] — vault card icon reappears under the fading overlay
- *  7. [onComplete] — overlay is removed
+ *  5. Everything fades out and [onComplete] removes the overlay
+ *
+ * The lock used to fly from the middle of the screen into the vault's icon in the list
+ * behind it, which is why this once took the icon's position and told the caller when it
+ * had landed. The flight is gone; what it announces is said by the words.
  */
 @Composable
 fun UnmountAnimationOverlay(
-    iconTarget: Offset?,
-    onIconLanded: () -> Unit,
     onComplete: () -> Unit
 ) {
     val haptic                  = LocalHapticFeedback.current
-    val currentIconTarget      by rememberUpdatedState(iconTarget)
-    val currentOnIconLanded    by rememberUpdatedState(onIconLanded)
     val currentOnComplete      by rememberUpdatedState(onComplete)
 
     val scrimAlpha  = remember { Animatable(0f) }
     val lockScale   = remember { Animatable(0f) }
     val lockAlpha   = remember { Animatable(0f) }
-    val lockOffsetX = remember { Animatable(0f) }
-    val lockOffsetY = remember { Animatable(0f) }
     val textAlpha   = remember { Animatable(0f) }
 
     var lockClosed     by remember { mutableStateOf(false) }
     var lockColorGreen by remember { mutableStateOf(true) }
-    // Center of the overlay Box = screen center, measured once on first layout
-    var overlayCenter  by remember { mutableStateOf<Offset?>(null) }
 
     val lockColor by animateColorAsState(
         targetValue   = if (lockColorGreen) GreenLock else Color.White,
@@ -120,31 +109,13 @@ fun UnmountAnimationOverlay(
         textAlpha.animateTo(1f, tween(300))
         delay(900)
 
-        // 6. Scrim fades + text fades + lock flies to vault card
+        // 6. Everything fades out together
         launch { scrimAlpha.animateTo(0f, tween(520)) }
         launch { textAlpha.animateTo(0f, tween(280)) }
+        launch { lockAlpha.animateTo(0f, tween(400)) }
+        delay(560)
 
-        val target = currentIconTarget
-        val center = overlayCenter  // screen center (center of the full-screen Box)
-
-        if (target != null && center != null) {
-            val dX = target.x - center.x
-            val dY = target.y - center.y
-            launch { lockOffsetX.animateTo(dX, tween(580, easing = FastOutSlowInEasing)) }
-            launch { lockOffsetY.animateTo(dY, tween(580, easing = FastOutSlowInEasing)) }
-            launch { lockScale.animateTo(0.35f, tween(580, easing = FastOutSlowInEasing)) }
-            launch { lockAlpha.animateTo(0f, tween(200, delayMillis = 380)) }
-        } else {
-            launch { lockAlpha.animateTo(0f, tween(400)) }
-        }
-
-        delay(600)
-
-        // 7. Card icon may now reappear (starts its own 300 ms fade-in)
-        currentOnIconLanded()
-        delay(300)
-
-        // 8. Overlay removed
+        // 7. Overlay removed
         currentOnComplete()
     }
 
@@ -152,16 +123,6 @@ fun UnmountAnimationOverlay(
         modifier = Modifier
             .fillMaxSize()
             .zIndex(200f)
-            .onGloballyPositioned { coords ->
-                if (overlayCenter == null) {
-                    val size = coords.size
-                    val pos  = coords.positionInWindow()
-                    overlayCenter = Offset(
-                        x = pos.x + size.width  / 2f,
-                        y = pos.y + size.height / 2f
-                    )
-                }
-            }
     ) {
         // Full black scrim
         Box(
@@ -170,12 +131,9 @@ fun UnmountAnimationOverlay(
                 .background(Color.Black.copy(alpha = scrimAlpha.value))
         )
 
-        // Lock icon — moves independently during fly phase
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .fillMaxSize()
-                .offset { IntOffset(lockOffsetX.value.roundToInt(), lockOffsetY.value.roundToInt()) }
+            modifier = Modifier.fillMaxSize()
         ) {
             AnimatedContent(
                 targetState  = lockClosed,

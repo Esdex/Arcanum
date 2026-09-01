@@ -76,7 +76,6 @@ import zip.arcanum.usb.isExtendedContainer
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.CheckBox
@@ -177,9 +176,6 @@ fun VaultScreen(
     onMountContainer: (containerId: String) -> Unit = {},
     onMountSuccess: (id: String) -> Unit = {},
     onUnmountStart: (containerId: String) -> Unit = {},
-    unmountedContainerId: String? = null,
-    onUnmountedIconPositioned: (Offset) -> Unit = {},
-    suppressBackHandler: Boolean = false,
     autoMountContainerId: String? = null,
     onAutoMountHandled: () -> Unit = {},
     onOpenWhatsNew: () -> Unit = {},
@@ -331,7 +327,7 @@ fun VaultScreen(
         }
     }
 
-    BackHandler(enabled = !suppressBackHandler) {
+    BackHandler {
         when {
             selectionMode -> { selectionMode = false; selectedIds = emptySet() }
             fabExpanded   -> fabExpanded = false
@@ -453,8 +449,6 @@ fun VaultScreen(
                                             container              = container,
                                             selectedIds            = selectedIds,
                                             selectionMode          = selectionMode,
-                                            unmountedContainerId   = unmountedContainerId,
-                                            onUnmountedIconPositioned = onUnmountedIconPositioned,
                                             contextMenuContainerId = contextMenuContainerId,
                                             onContextMenuChange    = { open -> contextMenuContainerId = if (open) container.id else null },
                                             onSelect               = { selectedIds = if (container.id in selectedIds) selectedIds - container.id else selectedIds + container.id },
@@ -483,8 +477,6 @@ fun VaultScreen(
                                         container              = container,
                                         selectedIds            = selectedIds,
                                         selectionMode          = selectionMode,
-                                        unmountedContainerId   = unmountedContainerId,
-                                        onUnmountedIconPositioned = onUnmountedIconPositioned,
                                         contextMenuContainerId = contextMenuContainerId,
                                         onContextMenuChange    = { open -> contextMenuContainerId = if (open) container.id else null },
                                         onSelect               = { selectedIds = if (container.id in selectedIds) selectedIds - container.id else selectedIds + container.id },
@@ -1015,8 +1007,6 @@ private fun VaultCardItem(
     container: ContainerEntity,
     selectedIds: Set<String>,
     selectionMode: Boolean,
-    unmountedContainerId: String?,
-    onUnmountedIconPositioned: (Offset) -> Unit,
     contextMenuContainerId: String?,
     onContextMenuChange: (Boolean) -> Unit,
     onSelect: () -> Unit,
@@ -1029,8 +1019,6 @@ private fun VaultCardItem(
         container               = container,
         isSelected              = container.id in selectedIds,
         inSelectionMode         = selectionMode,
-        isBeingUnmounted        = container.id == unmountedContainerId,
-        onIconPositioned        = onUnmountedIconPositioned,
         onLockIconClick         = if (container.isMounted && !selectionMode) onUnmount else null,
         showContextMenu         = container.id == contextMenuContainerId,
         onShowContextMenuChange = onContextMenuChange,
@@ -1217,8 +1205,6 @@ private fun VaultCard(
     container: ContainerEntity,
     isSelected: Boolean,
     inSelectionMode: Boolean,
-    isBeingUnmounted: Boolean = false,
-    onIconPositioned: (Offset) -> Unit = {},
     onLockIconClick: (() -> Unit)? = null,
     showContextMenu: Boolean = false,
     onShowContextMenuChange: (Boolean) -> Unit = {},
@@ -1301,37 +1287,31 @@ private fun VaultCard(
                 animationSpec = tween<Color>(300),
                 label         = "icon_tint"
             )
-            val iconAlpha by animateFloatAsState(
-                targetValue   = if (isBeingUnmounted) 0f else 1f,
-                animationSpec = tween(300),
-                label         = "vault_icon_alpha"
-            )
             Surface(
                 shape    = RoundedCornerShape(14.dp),
                 color    = iconBg,
                 modifier = Modifier
                     .size(52.dp)
-                    .onGloballyPositioned { coords ->
-                        if (isBeingUnmounted) {
-                            val pos  = coords.positionInWindow()
-                            val size = coords.size
-                            onIconPositioned(
-                                Offset(pos.x + size.width / 2f, pos.y + size.height / 2f)
-                            )
-                        }
-                    }
                     .then(
                         if (onLockIconClick != null) Modifier.clickable(onClick = onLockIconClick)
                         else Modifier
                     )
             ) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    /* Where the vault is kept, not a lock. Whether it is open is already
+                       said by the colour behind this icon and by the row itself, and with
+                       a list of vaults the useful distinction is USB from phone from
+                       ordinary storage. Same rule as the vault's own screen and the
+                       destination sheet. */
                     Icon(
-                        imageVector        = if (container.isMounted) Icons.Outlined.LockOpen
-                                            else Icons.Outlined.Lock,
+                        imageVector        = vaultStorageIcon(
+                            path        = container.path,
+                            safUri      = container.safUri,
+                            usbSaltHash = container.usbSaltHash
+                        ),
                         contentDescription = null,
                         tint               = iconTint,
-                        modifier           = Modifier.size(26.dp).alpha(iconAlpha)
+                        modifier           = Modifier.size(26.dp)
                     )
                     if (container.hasBiometric && !container.isMounted) {
                         Icon(

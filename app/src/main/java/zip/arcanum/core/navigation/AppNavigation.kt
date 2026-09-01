@@ -20,7 +20,6 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -104,8 +103,6 @@ fun AppNavigation(pinManager: PinManager) {
     }
 
     var showUnmountOverlay         by remember { mutableStateOf(false) }
-    var unmountedContainerId       by remember { mutableStateOf<String?>(null) }
-    var unmountIconOffset          by remember { mutableStateOf<Offset?>(null) }
     var pendingMountContainerId    by remember { mutableStateOf<String?>(null) }
 
 
@@ -343,14 +340,7 @@ fun AppNavigation(pinManager: PinManager) {
                 onMountSuccess = { containerId ->
                     mountCoordinator.beginUnlocking(containerId)
                 },
-                onUnmountStart = { containerId ->
-                    unmountedContainerId = containerId
-                    unmountIconOffset    = null
-                    showUnmountOverlay   = true
-                },
-                unmountedContainerId      = unmountedContainerId,
-                onUnmountedIconPositioned = { unmountIconOffset = it },
-                suppressBackHandler       = showUnmountOverlay,
+                onUnmountStart = { showUnmountOverlay = true },
                 autoMountContainerId      = pendingMountContainerId,
                 onAutoMountHandled        = { pendingMountContainerId = null },
                 onOpenWhatsNew            = {
@@ -409,13 +399,11 @@ fun AppNavigation(pinManager: PinManager) {
         ) {
             ContainerScreen(
                 onBack          = { navController.popBackStack() },
-                onUnmountStart  = { containerId ->
+                onUnmountStart  = {
                     // Pop ContainerScreen immediately — same frame as the overlay appearing.
                     // The scrim fades in over VaultScreen, hiding the instant nav transition.
                     navController.popBackStack(Screen.VaultScreen.route, inclusive = false)
-                    unmountedContainerId = containerId
-                    unmountIconOffset    = null
-                    showUnmountOverlay   = true
+                    showUnmountOverlay = true
                 },
                 onPhotoClick       = { fileId -> navController.navigate(Screen.PhotoViewer.buildRoute(fileId)) },
                 onVideoClick       = { fileId -> navController.navigate(Screen.PhotoViewer.buildRoute(fileId)) },
@@ -671,16 +659,9 @@ fun AppNavigation(pinManager: PinManager) {
         )
     }
 
-    // Unmount animation — lives above NavHost so it survives navigation
+    // The unmount overlay — above the NavHost so it survives the navigation underneath it
     if (showUnmountOverlay) {
-        UnmountAnimationOverlay(
-            iconTarget   = unmountIconOffset,
-            onIconLanded = { unmountedContainerId = null },
-            onComplete   = {
-                showUnmountOverlay = false
-                unmountIconOffset  = null
-            }
-        )
+        UnmountAnimationOverlay(onComplete = { showUnmountOverlay = false })
     }
 
     } // outer Box
