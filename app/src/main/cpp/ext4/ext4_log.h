@@ -14,20 +14,38 @@
 /*
  * Logging for the ext4 layer.
  *
- * On Android every call goes to logcat under one tag, so a container operation
- * can be followed end to end from `adb logcat -s Arcanum-ext4`. That is the only
- * window onto this code running on a real device - it is never executed on the
- * host except by the test harness, where these macros produce no output at all.
+ * In a DEBUG build on Android every call goes to logcat under one tag, so a
+ * container operation can be followed end to end from `adb logcat -s
+ * Arcanum-ext4`. That is the only window onto this code running on a real device
+ * - it is never executed on the host except by the test harness.
  *
- * The host form is `if (0) fprintf(...)`: it emits nothing, so the harness stays
- * quiet and behaviour is byte-for-byte unchanged, but the compiler still checks
- * every format string against its arguments. A wrong %-specifier is then a build
- * error here, on a machine that builds, rather than a surprise in the field.
+ * A RELEASE build says nothing at all, and that is the point (#174). These
+ * messages name what they are working on: `resolve '/photos/holiday.jpg' ->
+ * inode 15`, `unlink 'tax-2025.pdf' from dir inode 21`. Logcat is not world
+ * readable on a current Android, but `adb logcat` reads it and a bug report
+ * carries it - and a bug report is exactly what someone is asked to send when
+ * something has gone wrong with their files. An app built so that nobody can
+ * tell what is in a vault must not narrate it into the system log.
+ *
+ * Nothing was gained by keeping them either. To read a native log from a release
+ * build you need adb, and anyone with adb can install the debug build, which has
+ * all of this. If diagnostics from the field are ever wanted, the way is a code
+ * returned to Kotlin and logged there - never a name out of C.
+ *
+ * The silent form is `if (0) fprintf(...)`: it emits nothing and costs nothing,
+ * but the compiler still checks every format string against its arguments. A
+ * wrong %-specifier is then a build error on a machine that builds, in every
+ * configuration, rather than a surprise in the field. It is what the host
+ * harness has always used, and now what a release build uses too.
+ *
+ * NDEBUG is what tells them apart: CMake defines it in the release
+ * configurations and not in the debug one, which is the same switch the JNI
+ * layer's own LOGI/LOGE hang on.
  */
 #ifndef ARCANUM_EXT4_LOG_H
 #define ARCANUM_EXT4_LOG_H
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) && !defined(NDEBUG)
 
 #include <android/log.h>
 
@@ -40,7 +58,8 @@
 
 #include <stdio.h>
 
-/* No output, but the format string is still type-checked at compile time. */
+/* The host harness, and any release build. No output, but the format string is
+ * still type-checked at compile time. */
 #define EXT4_LOGI(...) do { if (0) fprintf(stderr, __VA_ARGS__); } while (0)
 #define EXT4_LOGE(...) do { if (0) fprintf(stderr, __VA_ARGS__); } while (0)
 #define EXT4_LOGD(...) do { if (0) fprintf(stderr, __VA_ARGS__); } while (0)
