@@ -261,6 +261,29 @@ fun FileManagerScreen(
      */
 
     val notifications = LocalNotifications.current
+    var showOperationSheet by remember { mutableStateOf(false) }
+
+    /*
+     * Nothing opens this sheet but the user: the row while the work runs, the banner after
+     * it. So it leaves with the operation rather than turning into the result under someone
+     * who did not ask for it. The result itself is kept - the banner reopens it.
+     */
+    val operationFinished = state.operation?.finished == true
+    LaunchedEffect(operationFinished) {
+        if (operationFinished) showOperationSheet = false
+    }
+
+    /*
+     * The banner is the short version of what an operation did; tapping it asks for the
+     * long one (#158). Only the notification this screen's own finished operation raised
+     * opens it - the gallery raises the same kinds and has no operation behind them here.
+     */
+    LaunchedEffect(Unit) {
+        notifications.acted.collect { acted ->
+            val op = viewModel.state.value.operation
+            if (op != null && op.finished && op.result == acted) showOperationSheet = true
+        }
+    }
 
     // Single entry point for Open with, shared by the item menu and by tapping a file that
     // has no in-app viewer, so both routes behave identically (#103).
@@ -490,10 +513,28 @@ fun FileManagerScreen(
                 }
 
                 AnimatedVisibility(visible = state.isOperationInProgress) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        val importing = state.importProgress
-                        if (importing != null) {
-                            ImportProgressRow(importing)
+                    // Tapping it opens the whole picture (#158). One line is not much when a
+                    // folder of a hundred files is going in.
+                    //
+                    // It carries the top bar's own background: it sits directly under it and
+                    // belongs to it rather than to the list, which scrolls away beneath.
+                    val barIsAmoled  = LocalAmoledMode.current
+                    val barHazeState = LocalHazeState.current
+                    val barColor     = TopAppBarDefaults.topAppBarColors().containerColor
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (barIsAmoled)
+                                    Modifier.hazeOrSolid(barHazeState, ArcanumHazeStyle.topBar, Color.Black)
+                                else Modifier.background(barColor)
+                            )
+                            .clickable { showOperationSheet = true }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        val running = state.operation
+                        if (running != null) {
+                            OperationProgressRow(running)
                         } else {
                             state.operationMessage?.let {
                                 Text(it, style = MaterialTheme.typography.bodySmall,
@@ -881,6 +922,32 @@ fun FileManagerScreen(
                     linkTargets = emptyList()
                 },
                 confirmLabel       = stringResource(R.string.files_link_here)
+            )
+        }
+    }
+
+    /*
+     * The details of the operation (#158). It is opened from the progress line and, unlike
+     * that line, does not go away when the work ends: it turns into the result and waits to
+     * be closed. The state is created inside the `if` on purpose - a hoisted SheetState
+     * outlives its sheet and can arrive at the next opening already hidden (49996f0).
+     */
+    state.operation?.let { op ->
+        if (showOperationSheet) {
+            OperationDetailsSheet(
+                progress   = op,
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                formatSize = viewModel::formatFileSize,
+                /* Only an import can be stopped so far, and only while it runs. Read from
+                   the state the screen already observes, so the button goes when it does. */
+                canCancel  = op.kind == FileManagerViewModel.OperationKind.IMPORT && !op.finished,
+                onPause    = viewModel::pauseOperation,
+                onResume   = viewModel::resumeOperation,
+                onCancel   = viewModel::cancelOperation,
+                onDismiss  = {
+                    showOperationSheet = false
+                    viewModel.clearFinishedOperation()
+                }
             )
         }
     }
@@ -2059,18 +2126,20 @@ private fun formatDate(millis: Long): String =
     if (millis > 0) DATE_FMT.format(Date(millis)) else "—"
 
 /**
- * The import indicator: which file is being written, how far into it, and - when several
- * were picked - which one of them this is.
+ * The line above the list: what is being worked on now, where it is in the batch, and how
+ * far along. Every operation drives it, not just an import (#158) - before this, paste,
+ * move, delete and export showed a few words and a bar that ran on its own and meant
+ * nothing.
  *
  * The counter takes the right-hand slot in the header and the percentage takes the one
- * beside the bar, so the two never compete for the same space: with one file there is no
+ * beside the bar, so the two never compete for the same space: with one item there is no
  * count worth showing, and with several the count is the more useful of the two.
  */
 @Composable
-private fun ImportProgressRow(progress: FileManagerViewModel.ImportProgress) {
+private fun OperationProgressRow(progress: FileManagerViewModel.OperationProgress) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-            text     = stringResource(R.string.files_importing_name, progress.fileName),
+            text     = operationLine(progress),
             style    = MaterialTheme.typography.bodySmall,
             color    = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
@@ -2088,29 +2157,38 @@ private fun ImportProgressRow(progress: FileManagerViewModel.ImportProgress) {
     }
     Spacer(Modifier.height(4.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
-        val fraction = progress.fraction
+        /* With several items the batch is what the bar should show; with one, the file is
+         * the batch. Either can be unknown, and then the bar runs without a position
+         * rather than showing one that is made up. */
+        val fraction = if (progress.total > 1) progress.totalFraction ?: progress.currentFraction
+                       else progress.currentFraction ?: progress.totalFraction
         if (fraction == null) {
-            // The provider would not say how large the file is, so the bar runs without a
-            // position rather than showing one that is made up.
             LinearProgressIndicator(Modifier.weight(1f))
         } else {
             val animated by animateFloatAsState(
                 targetValue   = fraction,
                 animationSpec = tween(200),
-                label         = "importProgress"
+                label         = "operationProgress"
             )
             LinearProgressIndicator(progress = { animated }, modifier = Modifier.weight(1f))
-            if (progress.total <= 1) {
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text      = stringResource(R.string.files_import_percent, (animated * 100).roundToInt()),
-                    style     = MaterialTheme.typography.bodySmall,
-                    color     = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.End,
-                    // Fixed width so the bar does not shrink as the number grows a digit.
-                    modifier  = Modifier.width(40.dp)
-                )
-            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text      = stringResource(R.string.files_import_percent, (animated * 100).roundToInt()),
+                style     = MaterialTheme.typography.bodySmall,
+                color     = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.End,
+                // Fixed width so the bar does not shrink as the number grows a digit.
+                modifier  = Modifier.width(40.dp)
+            )
         }
     }
+}
+
+/** "Importing holiday.jpg", or just "Importing" until the first name is known. */
+@Composable
+private fun operationLine(progress: FileManagerViewModel.OperationProgress): String {
+    if (progress.preparing) return stringResource(R.string.files_op_preparing)
+    val verb = stringResource(operationVerbRes(progress.kind))
+    return if (progress.currentName.isEmpty()) verb
+           else stringResource(R.string.files_operation_line, verb, progress.currentName)
 }

@@ -166,6 +166,14 @@ sealed class InAppNotification {
     data class FilesImported(val count: Int, val skipped: Int = 0) : InAppNotification()
 
     /**
+     * An import the user stopped (#158). Its own notification rather than a count of what
+     * landed, because "12 files imported" after asking for it to stop reads as the app
+     * having ignored the request. What did land stays in the vault; the file being written
+     * at the time does not.
+     */
+    data class ImportCancelled(val imported: Int) : InAppNotification()
+
+    /**
      * [skipped] counts items an export could not carry out of the vault at all - a
      * link that leads nowhere, a special file, a folder link that leads back into
      * what is already being exported. [duplicates] counts files that left as more

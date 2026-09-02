@@ -703,6 +703,9 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
         notification = currentNotification,
         onDismiss    = { notifications.dismiss() },
         onAction     = { notif ->
+            // Said before the routing below, because most notifications are acted on by
+            // whoever raised them rather than by navigating anywhere.
+            notifications.actedOn(notif)
             when (notif) {
                 is InAppNotification.AppUpdated -> {
                     settingsViewModel.markUpdateSeen()

@@ -265,13 +265,13 @@ class FileManagerViewModel @Inject constructor(
         val operationMessage: String? = null,
         /* Non-null while an import is stopped waiting for an answer about a name (#157). */
         val conflictPrompt: ConflictPrompt? = null,
-        val importProgress: ImportProgress? = null,
+        val operation: OperationProgress? = null,
         val isReadOnly: Boolean = false,
         val thumbnails: Map<String, android.graphics.Bitmap> = emptyMap()
     )
 
     /**
-     * What the import indicator shows. Separate from [FileManagerState.operationMessage]
+     * What the progress line shows. Separate from [FileManagerState.operationMessage]
      * because an import is the one operation that can say how far along it is: it streams
      * in chunks, so the bytes written against the file's size are known as it goes.
      *
@@ -295,12 +295,89 @@ class FileManagerViewModel @Inject constructor(
     /** The name that collided, while the operation waits for an answer about it. */
     data class ConflictPrompt(val fileName: String, val scope: ConflictScope)
 
-    data class ImportProgress(
-        val fileName: String,
-        val index: Int,
-        val total: Int,
-        val fraction: Float?
-    )
+    enum class OperationKind { IMPORT, EXPORT, COPY, MOVE, DELETE, LINK }
+
+    /**
+     * What one running operation is doing, for both the line above the list and the sheet
+     * behind it (#158).
+     *
+     * Everything here is counted rather than guessed. [currentSize] and [bytesTotal] are
+     * zero when nobody could say - a provider that does not declare a size, or a selection
+     * with a folder in it, whose contents are discovered as the walk goes - and every
+     * derived figure below is null in that case rather than made up. A bar that means
+     * nothing is worse than no bar: it says the app knows something it does not.
+     *
+     * [finished] is the reason this outlives the operation. The sheet stays open when the
+     * work ends and turns into the result, because someone watching the detail loses it
+     * exactly when it becomes final otherwise.
+     */
+    data class OperationProgress(
+        val kind: OperationKind,
+        /**
+         * True while the batch is still being measured rather than moved. A folder import
+         * walks the tree first so that everything after it can show a position instead of a
+         * bar running on its own.
+         */
+        val preparing: Boolean = false,
+        /** Folders inside the batch, counted by that same walk. */
+        val folders: Int = 0,
+        /** Where the items are going, in words: a folder, a vault, or the device. */
+        val destination: String = "",
+        val currentName: String = "",
+        val currentDone: Long = 0L,
+        val currentSize: Long = 0L,
+        /** 1-based position in the batch. Zero while the size of the batch is unknown. */
+        val index: Int = 0,
+        val total: Int = 0,
+        /** Bytes of the items already finished, current one excluded. */
+        val bytesDone: Long = 0L,
+        val bytesTotal: Long = 0L,
+        val startedAtMs: Long = 0L,
+        val skipped: Int = 0,
+        val failed: Int = 0,
+        val leftBehind: Int = 0,
+        val finished: Boolean = false,
+        /** Stopped because the user said so, not because anything went wrong. */
+        val cancelled: Boolean = false,
+        val done: Int = 0,
+        val endedAtMs: Long = 0L,
+        /**
+         * The notification that reported this operation, so that tapping it can open these
+         * details and nothing else can. A delete in the gallery raises the same kind of
+         * notification and has no operation behind it here; without this the two would be
+         * indistinguishable (#158).
+         */
+        val result: InAppNotification? = null
+    ) {
+        val currentFraction: Float?
+            get() = if (currentSize > 0L) (currentDone.toFloat() / currentSize).coerceIn(0f, 1f) else null
+
+        val movedBytes: Long get() = bytesDone + currentDone
+
+        /** By bytes when they are known, otherwise by position, otherwise not at all. */
+        val totalFraction: Float?
+            get() = when {
+                bytesTotal > 0L -> (movedBytes.toFloat() / bytesTotal).coerceIn(0f, 1f)
+                total > 0       -> ((index - 1).coerceAtLeast(0).toFloat() / total).coerceIn(0f, 1f)
+                else            -> null
+            }
+
+        fun elapsedMs(nowMs: Long): Long = (if (finished) endedAtMs else nowMs) - startedAtMs
+
+        /** Null until there is enough of a sample to mean anything. */
+        fun bytesPerSecond(nowMs: Long): Long? {
+            val ms = elapsedMs(nowMs)
+            if (ms < 1_000L || movedBytes <= 0L) return null
+            return movedBytes * 1000L / ms
+        }
+
+        fun secondsLeft(nowMs: Long): Long? {
+            if (finished || bytesTotal <= 0L) return null
+            val rate = bytesPerSecond(nowMs) ?: return null
+            if (rate <= 0L) return null
+            return ((bytesTotal - movedBytes).coerceAtLeast(0L)) / rate
+        }
+    }
 
     private val _state = MutableStateFlow(FileManagerState())
     val state = _state.asStateFlow()
@@ -645,8 +722,7 @@ class FileManagerViewModel @Inject constructor(
         val handle = repo.getContainerHandle(containerId) ?: return
 
         viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isOperationInProgress = true,
-                                    operationMessage = "Linking…") }
+            beginOperation(OperationKind.LINK, folderName(destPath), total = items.size)
             var count = 0
             var failed = 0
             val taken = runCatching {
@@ -675,7 +751,7 @@ class FileManagerViewModel @Inject constructor(
 
             clearSelection()
             loadDirectory(_state.value.currentPath)
-            _state.update { it.copy(isOperationInProgress = false, operationMessage = null) }
+            finishOperation(done = count, failed = failed)
             notifyResult(when {
                 failed > 0 -> InAppNotification.FilesPasteFailed(failed, failed + count)
                 count > 0  -> InAppNotification.FilesLinked(count, kind)
@@ -713,7 +789,14 @@ class FileManagerViewModel @Inject constructor(
         val toCopy = s.selectedItems.mapNotNull { path -> s.files.find { it.path == path } }
 
         viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isOperationInProgress = true, operationMessage = "Copying…") }
+            beginOperation(
+                OperationKind.COPY,
+                destination = destinationName,
+                total       = toCopy.size,
+                // Zero when a folder is in the selection: its contents are discovered while
+                // walking, so there is no honest total to promise.
+                bytesTotal  = if (toCopy.any { it.isDirectory }) 0L else toCopy.sumOf { it.size }
+            )
             // Three outcomes, not two. A paste that moved nothing because the items are
             // already here is fine; a paste where every item failed is not, and until now
             // both ended in silence and looked exactly like success (#129).
@@ -724,7 +807,7 @@ class FileManagerViewModel @Inject constructor(
             val tally   = CarryTally()
             val chunkSize = 1 * 1024 * 1024
 
-            for (item in toCopy) {
+            for ((itemIndex, item) in toCopy.withIndex()) {
                 val parentDir = item.path.substringBeforeLast("/").let { if (it.isEmpty()) "/" else it }
                 val intoOwnFolder = destinationContainerId == s.containerId && parentDir == destinationPath
 
@@ -749,7 +832,7 @@ class FileManagerViewModel @Inject constructor(
                         replacing = choice.replacing
                     }
                     val destItemPath = if (destinationPath == "/") "/$destName" else "$destinationPath/$destName"
-                    _state.update { it.copy(operationMessage = "Copying ${item.name}…") }
+                    operationItem(item.name, if (item.isDirectory) 0L else item.size, itemIndex + 1)
 
                     if (replacing && !clearForReplace(destHandle, destinationPath, destName)) {
                         failed++
@@ -782,6 +865,7 @@ class FileManagerViewModel @Inject constructor(
                             val rc = engine.writeFile(destHandle, destItemPath, chunk, offset)
                             if (rc != VeraCryptEngine.ERR_OK) { writeOk = false; break }
                             offset += chunk.size
+                            operationBytes(offset)
                             if (chunk.size < chunkSize) break
                         }
                         if (!writeOk) runCatching { engine.deleteFile(destHandle, destItemPath) }
@@ -796,7 +880,8 @@ class FileManagerViewModel @Inject constructor(
                be read again. Move already did this; copy did not, and the new file only
                appeared after leaving the folder and coming back. */
             refreshNow()
-            _state.update { it.copy(isOperationInProgress = false, operationMessage = null) }
+            finishOperation(done = count, skipped = skipped + tally.refused,
+                            failed = failed, leftBehind = tally.leftBehind)
             notifyResult(when {
                 failed > 0  -> InAppNotification.FilesPasteFailed(failed, toCopy.size)
                 count > 0 || tally.leftBehind > 0 || tally.refused > 0 ->
@@ -818,7 +903,12 @@ class FileManagerViewModel @Inject constructor(
         val toMove = s.selectedItems.mapNotNull { path -> s.files.find { it.path == path } }
 
         viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isOperationInProgress = true, operationMessage = "Moving…") }
+            beginOperation(
+                OperationKind.MOVE,
+                destination = destinationName,
+                total       = toMove.size,
+                bytesTotal  = if (toMove.any { it.isDirectory }) 0L else toMove.sumOf { it.size }
+            )
             // See paste(): a move that moves nothing has to say which kind of nothing.
             beginConflictTracking(ConflictScope.MOVE)
             var count   = 0
@@ -826,7 +916,7 @@ class FileManagerViewModel @Inject constructor(
             var skipped = 0
             val tally   = CarryTally()
 
-            for (item in toMove) {
+            for ((itemIndex, item) in toMove.withIndex()) {
                 val parentDir = item.path.substringBeforeLast("/").let { if (it.isEmpty()) "/" else it }
                 if (destinationContainerId == s.containerId && parentDir == destinationPath) { skipped++; continue }
 
@@ -839,7 +929,7 @@ class FileManagerViewModel @Inject constructor(
                     replacing = choice.replacing
                 }
                 val destItemPath = if (destinationPath == "/") "/$destName" else "$destinationPath/$destName"
-                _state.update { it.copy(operationMessage = "Moving ${item.name}…") }
+                operationItem(item.name, if (item.isDirectory) 0L else item.size, itemIndex + 1)
 
                 if (replacing && !clearForReplace(destHandle, destinationPath, destName)) {
                     failed++
@@ -879,7 +969,8 @@ class FileManagerViewModel @Inject constructor(
 
             exitSelectionMode()
             refreshNow()
-            _state.update { it.copy(isOperationInProgress = false, operationMessage = null) }
+            finishOperation(done = count, skipped = skipped + tally.refused,
+                            failed = failed, leftBehind = tally.leftBehind)
             notifyResult(when {
                 failed > 0  -> InAppNotification.FilesPasteFailed(failed, toMove.size)
                 count > 0 || tally.leftBehind > 0 || tally.refused > 0 ->
@@ -939,9 +1030,10 @@ class FileManagerViewModel @Inject constructor(
         val toDelete = s.selectedItems.mapNotNull { path -> s.files.find { it.path == path } }
 
         viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isOperationInProgress = true) }
+            beginOperation(OperationKind.DELETE, folderName(s.currentPath), total = toDelete.size)
             var count = 0
-            for (file in toDelete) {
+            for ((n, file) in toDelete.withIndex()) {
+                operationItem(file.name, size = 0L, index = n + 1)
                 val rc = runCatching {
                     if (file.isDirectory) engine.deleteDirectory(handle, file.path)
                     else engine.deleteFile(handle, file.path)
@@ -954,7 +1046,7 @@ class FileManagerViewModel @Inject constructor(
             }
             exitSelectionMode()
             refreshNow()
-            _state.update { it.copy(isOperationInProgress = false) }
+            finishOperation(done = count, failed = toDelete.size - count)
             notifyResult(if (count > 0) InAppNotification.FilesDeleted(count) else null)
             if (count > 0) thumbnailManager.notifyFilesDeleted(s.containerId)
         }
@@ -1075,10 +1167,24 @@ class FileManagerViewModel @Inject constructor(
         val handle = repo.getContainerHandle(s.containerId) ?: return
 
         viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isOperationInProgress = true) }
+            /* Asked once, up front, and kept: the same query answers the bar for each file
+               and the total for the batch, instead of being run twice per file. */
+            val declaredSizes = uris.map { uriSize(context, it) }
+            beginOperation(
+                OperationKind.IMPORT,
+                destination = folderName(s.currentPath),
+                total       = uris.size,
+                bytesTotal  = if (declaredSizes.any { it <= 0L }) 0L else declaredSizes.sum()
+            )
             beginConflictTracking(ConflictScope.IMPORT)
             var count = 0
             var skipped = 0
+            /* Files this import could not write. The banner names the cause; the sheet has
+             * to say how many, and "at least one" is not a count (#158). */
+            var failedFiles = 0
+            /** True once the user has stopped it: what is already in stays, the rest is
+             *  never started, and none of it is reported as a failure. */
+            var stopped = false
             var hiddenProtected = false
             /* Null while everything is fine; set to the first failing native
                code so the banner can say what actually went wrong (#114). */
@@ -1087,6 +1193,7 @@ class FileManagerViewModel @Inject constructor(
             val importedMedia = mutableListOf<Pair<String, Long>>()
             for ((index, uri) in uris.withIndex()) {
                 if (hiddenProtected || failureCode != null) break
+                if (cancelRequested()) { stopped = true; break }
                 try {
                     val rawName = getFileNameFromUri(context, uri) ?: continue
                     val original = File(rawName).name.ifEmpty { continue }
@@ -1094,14 +1201,8 @@ class FileManagerViewModel @Inject constructor(
                     val name = nameToWrite(handle, s.currentPath, original)
                     if (name == null) { skipped++; continue }
                     val destPath = buildDestinationPath(s.currentPath, name)
-                    val declaredSize = uriSize(context, uri)
-                    val progress = ImportProgress(
-                        fileName = name,
-                        index    = index + 1,
-                        total    = uris.size,
-                        fraction = if (declaredSize > 0L) 0f else null
-                    )
-                    _state.update { it.copy(importProgress = progress) }
+                    val declaredSize = declaredSizes[index]
+                    operationItem(name, declaredSize, index + 1)
                     var fileOk = false
                     var fileSize = 0L
                     context.contentResolver.openInputStream(uri)?.use { input ->
@@ -1110,33 +1211,41 @@ class FileManagerViewModel @Inject constructor(
                         var read: Int = 0
                         var done = false
                         while (!done && input.read(buffer).also { read = it } != -1) {
+                            /* Asked before the write, so a Yes takes effect before another
+                               chunk lands rather than after it. */
+                            if (cancelRequested()) {
+                                stopped = true
+                                /* The source is still outside, so half a file in the vault
+                                   is worth nothing and looks whole. It goes. */
+                                runCatching { engine.deleteFile(handle, destPath) }
+                                fileOk = false
+                                done = true
+                                break
+                            }
                             val rc = engine.writeFile(handle, destPath, buffer.copyOf(read), offset)
                             when {
                                 rc == VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> {
                                     hiddenProtected = true
+                                    failedFiles++
                                     runCatching { engine.deleteFile(handle, destPath) }
                                     done = true
                                 }
                                 rc != VeraCryptEngine.ERR_OK -> {
                                     failureCode = rc
+                                    failedFiles++
                                     runCatching { engine.deleteFile(handle, destPath) }
                                     done = true
                                 }
                                 else -> {
                                     offset += read
                                     fileOk = true
-                                    if (declaredSize > 0L) {
-                                        val done_ = (offset.toFloat() / declaredSize).coerceIn(0f, 1f)
-                                        _state.update {
-                                            it.copy(importProgress = progress.copy(fraction = done_))
-                                        }
-                                    }
+                                    operationBytes(offset)
                                 }
                             }
                         }
                         fileSize = offset
                     }
-                    if (!hiddenProtected && failureCode == null) {
+                    if (!hiddenProtected && failureCode == null && !stopped) {
                         count++
                         if (fileOk) {
                             val srcTime = FileUtils.uriLastModified(context, uri)
@@ -1153,18 +1262,17 @@ class FileManagerViewModel @Inject constructor(
                 } catch (_: Exception) { }
             }
             refreshNow()
-            _state.update { it.copy(
-                isOperationInProgress = false,
-                operationMessage      = null,
-                importProgress        = null
-            ) }
+            finishOperation(done = count, skipped = skipped, failed = failedFiles)
             notifyResult(when {
+                stopped              -> InAppNotification.ImportCancelled(count)
                 hiddenProtected      -> InAppNotification.HiddenVolumeWriteProtection
                 failureCode != null  -> InAppNotification.ImportFailed(importFailureReason(failureCode))
                 count > 0            -> InAppNotification.FilesImported(count, skipped)
                 skipped > 0          -> InAppNotification.FilesImported(0, skipped)
                 else                 -> null
             })
+            /* What did land is indexed even when the rest was stopped: those files are in
+               the vault and the gallery has to know about them. */
             if (importedMedia.isNotEmpty()) {
                 indexAndThumbnail(handle, s.containerId, importedMedia)
             }
@@ -1181,7 +1289,8 @@ class FileManagerViewModel @Inject constructor(
         val handle = repo.getContainerHandle(s.containerId) ?: return
 
         viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isOperationInProgress = true) }
+            beginOperation(OperationKind.IMPORT, destination = folderName(s.currentPath),
+                           preparing = true)
             beginConflictTracking(ConflictScope.IMPORT)
 
             val rootDocId  = DocumentsContract.getTreeDocumentId(treeUri)
@@ -1193,23 +1302,34 @@ class FileManagerViewModel @Inject constructor(
             )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
                 ?: rootDocId.substringAfterLast('/')
 
+            /* Measured before a byte is written, so the rest of it looks like an import of
+               files: a position in the batch, a percentage, a speed and a time left. The
+               walk costs one cursor per folder and nothing is written during it. */
+            val counted = countTree(context, treeUri, rootDocId)
+            operationCounted(
+                files   = counted.files,
+                folders = counted.folders,
+                bytes   = if (counted.sizesKnown) counted.bytes else 0L
+            )
+
             val destPath = buildDestinationPath(s.currentPath, folderName)
             runCatching { engine.createDirectory(handle, destPath) }
 
             val importedMedia = mutableListOf<Pair<String, Long>>()
-            val (count, skipped, hiddenProtected, failureCode) =
+            val (count, skipped, hiddenProtected, failureCode, failedFiles) =
                 importFolderRecursive(context, handle, treeUri, rootDocId, destPath, importedMedia)
 
-            if (deleteAfterImport && !hiddenProtected && failureCode == null && count > 0)
+            /* Read before finishOperation clears it. A stopped import must not take the
+               source folder with it: most of it never came in. */
+            val stopped = operationCancelled.value
+
+            if (deleteAfterImport && !stopped && !hiddenProtected && failureCode == null && count > 0)
                 runCatching { DocumentsContract.deleteDocument(context.contentResolver, rootDocUri) }
 
             refreshNow()
-            _state.update { it.copy(
-                isOperationInProgress = false,
-                operationMessage      = null,
-                importProgress        = null
-            ) }
+            finishOperation(done = count, skipped = skipped, failed = failedFiles)
             notifyResult(when {
+                stopped              -> InAppNotification.ImportCancelled(count)
                 hiddenProtected      -> InAppNotification.HiddenVolumeWriteProtection
                 failureCode != null  -> InAppNotification.ImportFailed(importFailureReason(failureCode))
                 count > 0            -> InAppNotification.FilesImported(count, skipped)
@@ -1244,13 +1364,65 @@ class FileManagerViewModel @Inject constructor(
     private fun sanitizeEntryName(name: String): String? =
         File(name).name.takeUnless { it.isEmpty() || it == "." || it == ".." }
 
-    /* Four things come back from a walk now, which is one more than a Triple should carry. */
+    /* More than a Triple should carry. [failed] counts the files that could not be written,
+     * which the details sheet reports; [failureCode] is the first cause, which the banner
+     * names (#158). */
     private data class FolderImport(
         val count: Int,
         val skipped: Int,
         val hiddenProtected: Boolean,
-        val failureCode: Int?
+        val failureCode: Int?,
+        val failed: Int
     )
+
+    /** What a folder holds, measured before anything is written. */
+    private data class TreeCount(val files: Int, val folders: Int, val bytes: Long, val sizesKnown: Boolean)
+
+    /**
+     * Walks the tree without writing anything, so the import that follows can say "file 7 of
+     * 340" instead of running a bar that means nothing (#158).
+     *
+     * One cursor per folder, the same query the import itself uses. A provider that will not
+     * declare a size costs the byte total but not the count: [TreeCount.sizesKnown] says
+     * which of the two can be trusted.
+     */
+    private fun countTree(context: Context, treeUri: android.net.Uri, docId: String): TreeCount {
+        var files = 0
+        var folders = 0
+        var bytes = 0L
+        var sizesKnown = true
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
+        context.contentResolver.query(
+            childrenUri,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+                DocumentsContract.Document.COLUMN_SIZE
+            ),
+            null, null, null
+        )?.use { cursor ->
+            val idCol   = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val mimeCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+            val sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+            while (cursor.moveToNext()) {
+                val childId   = cursor.getString(idCol) ?: continue
+                val childMime = cursor.getString(mimeCol) ?: continue
+                if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                    folders++
+                    val sub = countTree(context, treeUri, childId)
+                    files   += sub.files
+                    folders += sub.folders
+                    bytes   += sub.bytes
+                    if (!sub.sizesKnown) sizesKnown = false
+                } else {
+                    files++
+                    val size = if (sizeCol >= 0 && !cursor.isNull(sizeCol)) cursor.getLong(sizeCol) else -1L
+                    if (size < 0L) sizesKnown = false else bytes += size
+                }
+            }
+        }
+        return TreeCount(files, folders, bytes, sizesKnown)
+    }
 
     private suspend fun importFolderRecursive(
         context: Context,
@@ -1273,6 +1445,8 @@ class FileManagerViewModel @Inject constructor(
         )
         var count           = 0
         var skipped         = 0
+        var failed          = 0
+        var stopped         = false
         var hiddenProtected = false
         /* First failing native code, or null while everything succeeded. */
         var failureCode: Int? = null
@@ -1285,7 +1459,8 @@ class FileManagerViewModel @Inject constructor(
             val sizeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
             val timeCol = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
 
-            while (cursor.moveToNext() && !hiddenProtected && failureCode == null) {
+            while (cursor.moveToNext() && !hiddenProtected && failureCode == null && !stopped) {
+                if (cancelRequested()) { stopped = true; break }
                 val childDocId  = cursor.getString(idCol) ?: continue
                 val childName   = cursor.getString(nameCol) ?: continue
                 val childMime   = cursor.getString(mimeCol) ?: continue
@@ -1303,6 +1478,7 @@ class FileManagerViewModel @Inject constructor(
                             importFolderRecursive(context, handle, treeUri, childDocId, childDest, importedMedia)
                         count += sub.count
                         skipped += sub.skipped
+                        failed += sub.failed
                         if (sub.hiddenProtected) hiddenProtected = true
                         if (sub.failureCode != null) failureCode = sub.failureCode
                     } else {
@@ -1315,16 +1491,10 @@ class FileManagerViewModel @Inject constructor(
                             cursor.getLong(sizeCol) else 0L
                         val childMtime = if (timeCol >= 0 && !cursor.isNull(timeCol))
                             cursor.getLong(timeCol) else 0L
-                        // total 0: a folder import discovers its files as it walks, so there
-                        // is no count to show - the name and the current file's bar are what
-                        // it can honestly report.
-                        val childProgress = ImportProgress(
-                            fileName = safeName,
-                            index    = 0,
-                            total    = 0,
-                            fraction = if (childSize > 0L) 0f else null
-                        )
-                        _state.update { it.copy(importProgress = childProgress) }
+                        /* The position comes from the running count rather than from an
+                           index into a list: the walk finds its files one at a time, and the
+                           batch it is counting against was measured before it started. */
+                        operationNextItem(safeName, childSize)
                         var childFileSize = 0L
                         context.contentResolver.openInputStream(childUri)?.use { input ->
                             var offset = 0L
@@ -1332,32 +1502,35 @@ class FileManagerViewModel @Inject constructor(
                             var read = 0
                             var done = false
                             while (!done && input.read(buffer).also { read = it } != -1) {
+                                if (cancelRequested()) {
+                                    stopped = true
+                                    runCatching { engine.deleteFile(handle, childDest) }
+                                    done = true
+                                    break
+                                }
                                 val rc = engine.writeFile(handle, childDest, buffer.copyOf(read), offset)
                                 when {
                                     rc == VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> {
                                         hiddenProtected = true
+                                        failed++
                                         runCatching { engine.deleteFile(handle, childDest) }
                                         done = true
                                     }
                                     rc != VeraCryptEngine.ERR_OK -> {
                                         failureCode = rc
+                                        failed++
                                         runCatching { engine.deleteFile(handle, childDest) }
                                         done = true
                                     }
                                     else -> {
                                         offset += read
-                                        if (childSize > 0L) {
-                                            val done_ = (offset.toFloat() / childSize).coerceIn(0f, 1f)
-                                            _state.update {
-                                                it.copy(importProgress = childProgress.copy(fraction = done_))
-                                            }
-                                        }
+                                        operationBytes(offset)
                                     }
                                 }
                             }
                             childFileSize = offset
                         }
-                        if (!hiddenProtected && failureCode == null) {
+                        if (!hiddenProtected && failureCode == null && !stopped) {
                             count++
                             if (childMtime > 0L)
                                 runCatching { engine.setFileTime(handle, childDest, childMtime) }
@@ -1370,7 +1543,7 @@ class FileManagerViewModel @Inject constructor(
                 } catch (_: Exception) { failureCode = VeraCryptEngine.ERR_FS }
             }
         }
-        return FolderImport(count, skipped, hiddenProtected, failureCode)
+        return FolderImport(count, skipped, hiddenProtected, failureCode, failed)
     }
 
     /**
@@ -1410,13 +1583,18 @@ class FileManagerViewModel @Inject constructor(
         val toExport = s.selectedItems.mapNotNull { path -> s.files.find { it.path == path } }
 
         viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isOperationInProgress = true) }
+            beginOperation(
+                OperationKind.EXPORT,
+                destination = treeDocName(context, treeUri),
+                total       = toExport.size,
+                bytesTotal  = if (toExport.any { it.isDirectory }) 0L else toExport.sumOf { it.size }
+            )
             val tally = ExportTally()
             val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
             val treeDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, treeDocId)
-            for (file in toExport) {
+            for ((fileIndex, file) in toExport.withIndex()) {
                 try {
-                    _state.update { it.copy(operationMessage = "Exporting ${file.name}…") }
+                    operationItem(file.name, if (file.isDirectory) 0L else file.size, fileIndex + 1)
                     when {
                         /*
                          * Nothing behind it to write. Both used to be created outside as
@@ -1468,7 +1646,7 @@ class FileManagerViewModel @Inject constructor(
                     "skipped=${tally.skipped} duplicates=${tally.duplicates} " +
                     "failed=${tally.failed}")
             exitSelectionMode()
-            _state.update { it.copy(isOperationInProgress = false, operationMessage = null) }
+            finishOperation(done = tally.exported, skipped = tally.skipped, failed = tally.failed)
             /* Reported even when nothing landed: an export of one dead link used to end in
              * silence, and silence after an operation reads as success. */
             notifyResult(
@@ -1479,9 +1657,180 @@ class FileManagerViewModel @Inject constructor(
         }
     }
 
+    /** The last part of a path, in words, for saying where something is going. */
+    private fun folderName(path: String): String =
+        path.trimEnd('/').substringAfterLast('/').ifEmpty { "/" }
+
+    /** The name of the folder a tree URI points at, falling back to nothing rather than
+     *  to a document id, which is not a place anyone recognises. */
+    private fun treeDocName(context: Context, treeUri: android.net.Uri): String =
+        runCatching {
+            val docId  = DocumentsContract.getTreeDocumentId(treeUri)
+            val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+            context.contentResolver.query(
+                docUri, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null
+            )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        }.getOrNull() ?: ""
+
+    // ── Operation progress (#158) ─────────────────────────────────────────
+    // Six operations, one model. Each says what it is starting, what item it is on, how
+    // many bytes of that item have moved, and how it ended.
+
+    /*
+     * Cancelling an import (#158). Two flags rather than one, because the question is asked
+     * with the work still running: while the dialog is up the loop parks between chunks, so
+     * nothing more is written under someone who is deciding whether to stop. A dialog closed
+     * without an answer is a No, and the loop carries on where it parked.
+     *
+     * Checked between chunks, never inside a write: a half-written chunk is not something
+     * the vault should have to think about.
+     */
+    private val operationPaused    = MutableStateFlow(false)
+    private val operationCancelled = MutableStateFlow(false)
+
+    fun pauseOperation()  { operationPaused.value = true }
+    fun resumeOperation() { operationPaused.value = false }
+
+    fun cancelOperation() {
+        operationCancelled.value = true
+        // Released so the loop can wake and see the flag it is being cancelled by.
+        operationPaused.value = false
+    }
+
+    /** Parks while the user decides, then says whether the work should stop. */
+    private suspend fun cancelRequested(): Boolean {
+        if (operationPaused.value) operationPaused.first { !it }
+        return operationCancelled.value
+    }
+
+    private fun beginOperation(
+        kind: OperationKind,
+        destination: String,
+        total: Int = 0,
+        bytesTotal: Long = 0L,
+        preparing: Boolean = false
+    ) {
+        operationPaused.value    = false
+        operationCancelled.value = false
+        _state.update { it.copy(
+            isOperationInProgress = true,
+            operation = OperationProgress(
+                kind        = kind,
+                destination = destination,
+                total       = total,
+                bytesTotal  = bytesTotal,
+                preparing   = preparing,
+                startedAtMs = android.os.SystemClock.elapsedRealtime()
+            )
+        ) }
+    }
+
+    /** Moving on to the next item: its bytes are added to the batch, and the count moves. */
+    private fun operationItem(name: String, size: Long, index: Int) {
+        _state.update { st ->
+            val op = st.operation ?: return@update st
+            st.copy(operation = op.copy(
+                currentName = name,
+                currentSize = size,
+                currentDone = 0L,
+                bytesDone   = op.bytesDone + op.currentDone,
+                index       = index
+            ))
+        }
+    }
+
+    /** The batch turned out to hold this much. Ends the measuring phase. */
+    private fun operationCounted(files: Int, folders: Int, bytes: Long) {
+        _state.update { st ->
+            val op = st.operation ?: return@update st
+            st.copy(operation = op.copy(
+                preparing  = false,
+                total      = files,
+                folders    = folders,
+                bytesTotal = bytes
+            ))
+        }
+    }
+
+    /** Like [operationItem], for a walk that finds its items one at a time. */
+    private fun operationNextItem(name: String, size: Long) {
+        _state.update { st ->
+            val op = st.operation ?: return@update st
+            st.copy(operation = op.copy(
+                currentName = name,
+                currentSize = size,
+                currentDone = 0L,
+                bytesDone   = op.bytesDone + op.currentDone,
+                index       = op.index + 1
+            ))
+        }
+    }
+
+    private fun operationBytes(doneInCurrent: Long) {
+        _state.update { st ->
+            val op = st.operation ?: return@update st
+            st.copy(operation = op.copy(currentDone = doneInCurrent))
+        }
+    }
+
+    private fun operationTally(skipped: Int = 0, failed: Int = 0, leftBehind: Int = 0) {
+        _state.update { st ->
+            val op = st.operation ?: return@update st
+            st.copy(operation = op.copy(
+                skipped    = op.skipped + skipped,
+                failed     = op.failed + failed,
+                leftBehind = op.leftBehind + leftBehind
+            ))
+        }
+    }
+
+    /**
+     * The operation is over. The progress survives it, because the sheet stays open and
+     * turns into the result - see [OperationProgress.finished]. It is dropped when the
+     * sheet is closed, or when the next operation starts.
+     */
+    private fun finishOperation(done: Int, skipped: Int = 0, failed: Int = 0, leftBehind: Int = 0) {
+        val wasCancelled = operationCancelled.value
+        operationPaused.value    = false
+        operationCancelled.value = false
+        _state.update { st ->
+            val op = st.operation ?: return@update st.copy(isOperationInProgress = false)
+            st.copy(
+                isOperationInProgress = false,
+                operationMessage      = null,
+                operation = op.copy(
+                    finished   = true,
+                    cancelled  = wasCancelled,
+                    done       = done,
+                    skipped    = skipped,
+                    failed     = failed,
+                    leftBehind = leftBehind,
+                    bytesDone  = op.bytesDone + op.currentDone,
+                    currentDone = 0L,
+                    currentSize = 0L,
+                    currentName = "",
+                    endedAtMs  = android.os.SystemClock.elapsedRealtime()
+                )
+            )
+        }
+    }
+
+    /** The user closed the details of an operation that has ended. */
+    fun clearFinishedOperation() {
+        _state.update { st ->
+            if (st.operation?.finished == true) st.copy(operation = null) else st
+        }
+    }
+
     /** Results are optional: an operation that did nothing worth reporting says nothing. */
     private fun notifyResult(notification: InAppNotification?) {
-        notification?.let(notifications::notify)
+        if (notification == null) return
+        // Stamped on the operation first: the tap can arrive as soon as the banner is up.
+        _state.update { st ->
+            val op = st.operation ?: return@update st
+            st.copy(operation = op.copy(result = notification))
+        }
+        notifications.notify(notification)
     }
 
     // ── Private helpers ───────────────────────────────────────────────────

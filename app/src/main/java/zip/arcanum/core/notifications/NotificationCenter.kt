@@ -1,6 +1,9 @@
 package zip.arcanum.core.notifications
 
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
@@ -79,6 +82,21 @@ class NotificationCenter @Inject constructor() {
         } else {
             enqueue(notification)
         }
+    }
+
+    /**
+     * A notification the user tapped. Whoever raised it can offer more than the one line it
+     * fits: the file manager opens the details of the operation behind it (#158).
+     *
+     * A flow rather than a callback because the notification is raised in one place and
+     * acted on in another - the host that draws it is not the screen that knows what it
+     * means. Nothing replays: a tap is a moment, not a state.
+     */
+    private val _acted = MutableSharedFlow<InAppNotification>(extraBufferCapacity = 4)
+    val acted: SharedFlow<InAppNotification> = _acted.asSharedFlow()
+
+    fun actedOn(notification: InAppNotification) {
+        _acted.tryEmit(notification)
     }
 
     /** The current one is done with - dismissed, acted on, or its time ran out. */

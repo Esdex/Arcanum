@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Eject
@@ -88,7 +89,9 @@ val InAppNotification.severity: NotificationSeverity
         is InAppNotification.OperationRefusedLocked  -> NotificationSeverity.WARNING
 
         /* Prompts, not failures. All three used to be red, which put "no vault is open" in
-         * the same colour as "the write failed". */
+         * the same colour as "the write failed". A stopped import belongs here too: the
+         * user asked for it, so it is news rather than trouble. */
+        is InAppNotification.ImportCancelled,
         is InAppNotification.DetailsNeedMount,
         is InAppNotification.DisguiseAlreadyApplied,
         is InAppNotification.MountNeedsCredentials,
@@ -177,6 +180,7 @@ private val InAppNotification.icon: ImageVector
         is InAppNotification.UsbSafeToRemove         -> Icons.Outlined.Eject
         is InAppNotification.VaultAdded              -> Icons.Outlined.FolderZip
         is InAppNotification.AddressCopied           -> Icons.Outlined.ContentCopy
+        is InAppNotification.ImportCancelled         -> Icons.Outlined.Cancel
         is InAppNotification.DisguiseAlreadyApplied  -> Icons.Outlined.Calculate
         is InAppNotification.FilesLinked             -> Icons.Outlined.Link
         is InAppNotification.FilesMoved              -> Icons.AutoMirrored.Outlined.DriveFileMove
@@ -217,6 +221,7 @@ private fun InAppNotification.title(ctx: Context): String = when (this) {
     is InAppNotification.FilesDeleted  -> ctx.resources.getQuantityString(R.plurals.notif_items_deleted, count, count)
     is InAppNotification.FilesLinked   -> ctx.resources.getQuantityString(R.plurals.notif_items_linked, count, count)
     is InAppNotification.FilesImported -> ctx.resources.getQuantityString(R.plurals.notif_files_imported, count, count)
+    is InAppNotification.ImportCancelled -> ctx.getString(R.string.notif_import_cancelled)
     is InAppNotification.FilesExported -> ctx.resources.getQuantityString(R.plurals.notif_files_exported, count, count)
 }
 
@@ -245,6 +250,8 @@ private fun InAppNotification.subtitle(ctx: Context): String = when (this) {
     is InAppNotification.SupportDeveloper       -> ctx.getString(R.string.notif_support_developer_subtitle)
     is InAppNotification.GoPremium              -> ctx.getString(R.string.notif_go_premium_subtitle)
     is InAppNotification.FilesPasteFailed       -> ctx.getString(R.string.notif_paste_failed_subtitle)
+    is InAppNotification.ImportCancelled        ->
+        ctx.resources.getQuantityString(R.plurals.notif_import_cancelled_body, imported, imported)
 
     is InAppNotification.FilesLinked -> ctx.getString(when (kind) {
         InAppNotification.LinkedKind.FILES   -> R.string.notif_linked_files
