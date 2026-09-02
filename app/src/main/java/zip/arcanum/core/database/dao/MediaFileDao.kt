@@ -48,6 +48,17 @@ interface MediaFileDao {
     @Query("SELECT * FROM media_files WHERE containerId = :containerId")
     suspend fun getAllForContainerOnce(containerId: String): List<MediaFileEntity>
 
+    /**
+     * Rows belonging to no vault on the list. An empty [ids] means no vaults exist, and then
+     * every row is an orphan - which is the correct reading, not an accident (#134).
+     */
+    @Query("DELETE FROM media_files WHERE containerId NOT IN (:ids)")
+    suspend fun deleteOrphans(ids: List<String>): Int
+
+    /** Rows left across every vault, including vaults that no longer exist (#134). */
+    @Query("SELECT COUNT(*) FROM media_files")
+    suspend fun countAll(): Int
+
     @Query("DELETE FROM media_files WHERE containerId = :containerId")
     suspend fun deleteAllForContainer(containerId: String)
 

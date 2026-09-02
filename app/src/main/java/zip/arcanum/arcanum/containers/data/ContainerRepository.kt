@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import zip.arcanum.arcanum.containers.domain.Container
-import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.arcanum.saf.VaultDocumentsProvider
 import zip.arcanum.core.database.dao.ContainerDao
 import zip.arcanum.core.database.entities.ContainerEntity
@@ -25,8 +24,7 @@ import javax.inject.Singleton
 class ContainerRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dao: ContainerDao,
-    private val mediaDao: zip.arcanum.core.database.dao.MediaFileDao,
-    private val thumbnailManager: ThumbnailManager
+    private val traceCleaner: zip.arcanum.core.security.VaultTraceCleaner
 ) {
     private val _mountedContainerIds = MutableStateFlow<Set<String>>(emptySet())
     val mountedContainerIds: StateFlow<Set<String>> = _mountedContainerIds.asStateFlow()
@@ -65,8 +63,7 @@ class ContainerRepository @Inject constructor(
         dao.insertContainer(container.toEntity())
 
     suspend fun deleteContainer(container: Container) {
-        thumbnailManager.clearCache(container.id)
-        mediaDao.deleteAllForContainer(container.id)
+        traceCleaner.purge(container.id)
         dao.deleteContainerById(container.id)
     }
 
@@ -242,11 +239,11 @@ class ContainerRepository @Inject constructor(
     suspend fun deleteContainersById(ids: Set<String>) {
         ids.forEach { id ->
             mounted.remove(id)?.parcelFd?.close()
-            thumbnailManager.clearCache(id)
-            // The media index is not merely cache: its rows carry the names and paths of
-            // files that were inside the vault, and nothing was removing them when the
-            // vault went - media_files has no foreign key to cascade from.
-            mediaDao.deleteAllForContainer(id)
+            /* Everything the app holds about this vault other than its row - the media
+               index, the thumbnails, the biometric credentials, the picker's grant on the
+               file, the waveforms, the mount log. One place, shared with panic mode, so
+               that the two paths cannot clean different things again (#134). */
+            traceCleaner.purge(id)
             revokeExternalAccess(id)
             dao.deleteContainerById(id)
         }

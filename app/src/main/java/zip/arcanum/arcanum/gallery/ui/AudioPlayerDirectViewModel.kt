@@ -385,9 +385,16 @@ class AudioPlayerDirectViewModel @Inject constructor(
         } catch (_: Exception) {}
     }
 
+    /*
+     * The vault is its own segment of the name rather than being mixed into one hash. Mixed
+     * in, it could not be picked out again, so a vault that was forgotten or wiped left its
+     * waveforms in the cache with no way to tell which were its (#134). The contents were
+     * always encrypted; the names were not, and they outlived the vault.
+     */
     private fun waveformCacheFile(path: String, fileSize: Long): java.io.File {
-        val hash = (containerId.hashCode().toLong() shl 32) xor path.hashCode().toLong() xor fileSize
-        return java.io.File(appContext.cacheDir, "wf_${java.lang.Long.toHexString(hash)}.dat")
+        val vault = zip.arcanum.core.security.VaultTraceCleaner.waveformVaultKey(containerId)
+        val file  = java.lang.Long.toHexString(path.hashCode().toLong() xor fileSize)
+        return java.io.File(appContext.cacheDir, "wf_${vault}_$file.dat")
     }
 
     private fun waveformMasterKey(): androidx.security.crypto.MasterKey =

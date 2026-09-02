@@ -2283,6 +2283,14 @@ private fun DebugSubScreen(
                     state.db?.let { db ->
                         DebugRow("Schema", "v${db.version}")
                         DebugRow("Containers", "${db.total} total, ${db.mounted} mounted")
+                        /* What the app still holds about vaults, whether they exist or not
+                         * (#134). With an empty vault list these should all be zero. */
+                        DebugRow("Media rows", db.mediaRows.toString())
+                        DebugRow("Thumbnail dirs", db.thumbnailDirs.toString())
+                        DebugRow("Waveforms", db.waveforms.toString())
+                        DebugRow("URI grants held", db.persistedUriGrants.toString())
+                        DebugRow("Mount log", if (db.hasMountLog) "saved" else "none")
+                        DebugRow("Crash logs", db.crashLogs.toString())
                     }
                 }
 

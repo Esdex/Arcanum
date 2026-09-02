@@ -45,7 +45,9 @@ class PanicManager @Inject constructor(
     private val pinManager: PinManager,
     private val containerDao: ContainerDao,
     private val historyDao: CalculatorHistoryDao,
-    private val biometricCryptoManager: BiometricCryptoManager
+    private val biometricCryptoManager: BiometricCryptoManager,
+    private val traceCleaner: VaultTraceCleaner,
+    private val appPreferences: AppPreferences
 ) {
     private object Keys {
         val ENABLED            = booleanPreferencesKey("enabled")
@@ -116,7 +118,11 @@ class PanicManager @Inject constructor(
             val all = containerDao.getAllContainersOnce()
             all.forEach { entity ->
                 secureDeleteEntity(entity)
-                biometricCryptoManager.deleteCredentials(entity.id)
+                /* Not just the credentials: the media index, the thumbnails, the picker's
+                   grant on the file and the waveforms went untouched by every panic path,
+                   so a wipe erased the vault and left behind the names and paths of
+                   everything that had been inside it (#134). */
+                traceCleaner.purge(entity.id)
             }
             containerDao.deleteAll()
             historyDao.clearHistory()
@@ -133,13 +139,37 @@ class PanicManager @Inject constructor(
                     VaultPanicAction.DELETE -> {
                         containerDao.getContainerById(containerId)?.let { entity ->
                             secureDeleteEntity(entity)
+                            traceCleaner.purge(containerId)
                             containerDao.deleteContainer(entity)
                         }
                     }
-                    VaultPanicAction.FORGET -> containerDao.deleteContainerById(containerId)
+                    /* Forget leaves the file alone and takes everything the app knows -
+                       which has to include what was inside it, or "forgotten" is a word
+                       for a vault the app can still list the contents of. */
+                    VaultPanicAction.FORGET -> {
+                        traceCleaner.purge(containerId)
+                        containerDao.deleteContainerById(containerId)
+                    }
                     VaultPanicAction.KEEP   -> {}
                 }
             }
+        }
+
+        /*
+         * The option existed, was saved, and was shown in the settings and in the dry-run -
+         * and nothing ever read it here. Anyone who ticked "Clear app settings" got nothing
+         * at all (#134).
+         *
+         * The crash logs and the waveforms go with it: a stack trace can quote a container
+         * path, and a waveform file's name outlives the vault it came from. The mount log is
+         * cleared on every vault removal already, and again here for a wipe that removed
+         * none.
+         */
+        if (settings.clearSettings) {
+            appPreferences.clearAllExceptDisguise()
+            traceCleaner.clearCrashLogs()
+            traceCleaner.clearMountLog()
+            traceCleaner.clearAllWaveforms()
         }
         context.panicDataStore.edit { it.clear() }
         // Drop any lingering SAF root from other apps' pickers. Access is already dead - the DB

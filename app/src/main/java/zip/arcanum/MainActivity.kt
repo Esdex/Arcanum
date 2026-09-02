@@ -20,6 +20,7 @@ import zip.arcanum.core.navigation.AppNavigation
 import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.core.security.PinManager
+import zip.arcanum.core.security.VaultTraceCleaner
 import zip.arcanum.core.theme.AppTheme
 import zip.arcanum.crypto.VeraCryptEngine
 import zip.arcanum.settings.DisguiseOverlay
@@ -35,6 +36,7 @@ class MainActivity : AppCompatActivity() {
     @Inject lateinit var idleMonitor: IdleMonitor
     @Inject lateinit var shareIntake: ShareIntake
     @Inject lateinit var notifications: NotificationCenter
+    @Inject lateinit var traceCleaner: VaultTraceCleaner
 
     private val settingsViewModel: SettingsViewModel by viewModels()
 
@@ -54,7 +56,12 @@ class MainActivity : AppCompatActivity() {
         // vault is mounted while no handle exists, leaving it shown as mounted but empty (#101).
         // resetMountedState only clears flags for containers this process does not hold, so it
         // preserves live mounts and is safe on a config change (e.g. rotation) too.
-        lifecycleScope.launch(Dispatchers.IO) { containerRepo.resetMountedState() }
+        lifecycleScope.launch(Dispatchers.IO) {
+            containerRepo.resetMountedState()
+            // Traces of vaults that stopped existing before the app learned to clean up
+            // after them (#134). One query and one directory listing.
+            traceCleaner.purgeOrphans()
+        }
 
         setContent {
             val themeMode               by settingsViewModel.themeMode.collectAsStateWithLifecycle()

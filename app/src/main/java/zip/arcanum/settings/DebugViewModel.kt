@@ -48,6 +48,7 @@ class DebugViewModel @Inject constructor(
     private val dao: ContainerDao,
     private val panicManager: PanicManager,
     private val thumbnailManager: ThumbnailManager,
+    private val mediaDao: zip.arcanum.core.database.dao.MediaFileDao,
     private val veraCryptEngine: zip.arcanum.crypto.VeraCryptEngine,
     private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
     @ApplicationContext private val context: Context
@@ -76,7 +77,22 @@ class DebugViewModel @Inject constructor(
     data class DatabaseInfo(
         val version: Int,
         val total: Int,
-        val mounted: Int
+        val mounted: Int,
+        /**
+         * What the app is still holding, counted across every vault - the numbers the audit
+         * of #134 was about. A media row carries the name and path of a file that was inside
+         * a vault; a thumbnail directory is named after the vault it belongs to; a persisted
+         * URI grant names a file the app may no longer know anything about.
+         *
+         * With no vaults on the list, every one of these should be zero. Anything else is a
+         * trace of a vault that has stopped existing.
+         */
+        val mediaRows: Int,
+        val thumbnailDirs: Int,
+        val waveforms: Int,
+        val persistedUriGrants: Int,
+        val hasMountLog: Boolean,
+        val crashLogs: Int
     )
 
     data class MountedContainer(
@@ -152,10 +168,21 @@ class DebugViewModel @Inject constructor(
                     pim    = repo.getPimForContainer(entity.id)
                 )
             }
+            val thumbRoot = java.io.File(context.cacheDir, "arcanum_thumbs")
             val dbInfo = DatabaseInfo(
-                version = AppDatabase.VERSION,
-                total   = allContainers.size,
-                mounted = mountedList.size
+                version            = AppDatabase.VERSION,
+                total              = allContainers.size,
+                mounted            = mountedList.size,
+                mediaRows          = runCatching { mediaDao.countAll() }.getOrDefault(-1),
+                thumbnailDirs      = thumbRoot.listFiles()?.count { it.isDirectory } ?: 0,
+                waveforms          = context.cacheDir.listFiles()
+                                        ?.count { it.name.startsWith("wf_") && it.name.endsWith(".dat") } ?: 0,
+                persistedUriGrants = runCatching {
+                                        context.contentResolver.persistedUriPermissions.size
+                                     }.getOrDefault(-1),
+                hasMountLog        = java.io.File(context.filesDir, ArcanumApp.MOUNT_LOG_FILE).exists(),
+                crashLogs          = java.io.File(context.filesDir, ArcanumApp.CRASH_DIR_NAME)
+                                        .listFiles()?.size ?: 0
             )
 
             _state.update { it.copy(

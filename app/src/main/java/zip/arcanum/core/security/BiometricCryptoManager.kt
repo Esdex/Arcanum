@@ -24,6 +24,8 @@ class BiometricCryptoManager @Inject constructor(
     companion object {
         private const val KEY_ALIAS  = "arcanum_biometric_key"
         private const val PREFS_FILE = "arcanum_bio_prefs"
+        /** Every per-vault key this store writes. Kept in one place so a sweep cannot miss one. */
+        private val PREFIXES = listOf("bio_enc_", "bio_iv_", "bio_kf_")
         private const val TRANSFORM  =
             "${KeyProperties.KEY_ALGORITHM_AES}/" +
             "${KeyProperties.BLOCK_MODE_CBC}/" +
@@ -116,6 +118,20 @@ class BiometricCryptoManager @Inject constructor(
             (0 until arr.length()).map { arr.getString(it) }
         } catch (_: Exception) { emptyList() }
     }
+
+    /**
+     * Vault ids this store still holds anything for.
+     *
+     * The keys are encrypted at rest with a deterministic scheme, so they cannot be read off
+     * the file - but they come back in the clear from the store itself, which is what makes
+     * an orphan sweep possible at all (#134).
+     */
+    fun knownContainerIds(): Set<String> =
+        runCatching {
+            prefs.all.keys.mapNotNull { key ->
+                PREFIXES.firstOrNull { key.startsWith(it) }?.let { key.removePrefix(it) }
+            }.toSet()
+        }.getOrDefault(emptySet())
 
     fun deleteCredentials(containerId: String) {
         prefs.edit()

@@ -57,6 +57,23 @@ class AppPreferences @Inject constructor(
         val LAST_SUPPORT_PROMPT_AT    = longPreferencesKey("last_support_prompt_at")
     }
 
+    /**
+     * Wipes the app's settings, for panic mode's "Clear app settings" (#134).
+     *
+     * [Keys.CALCULATOR_ENABLED] is carried over rather than cleared, and that is not a
+     * detail: the launcher icon is a component alias and does not come back with a
+     * preference, so clearing this one would leave an icon that says Calculator over an app
+     * that opens at the PIN screen. The point of a panic wipe is that nothing looks unusual
+     * afterwards.
+     */
+    suspend fun clearAllExceptDisguise() {
+        val keepCalculator = context.appPrefsDataStore.data.first()[Keys.CALCULATOR_ENABLED]
+        context.appPrefsDataStore.edit { prefs ->
+            prefs.clear()
+            if (keepCalculator != null) prefs[Keys.CALCULATOR_ENABLED] = keepCalculator
+        }
+    }
+
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
         .map { it[Keys.AUTO_LOCK] ?: true }
 
