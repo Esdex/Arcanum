@@ -14,7 +14,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import zip.arcanum.core.notifications.InAppNotification
-import zip.arcanum.core.notifications.InAppNotificationBanner
+import zip.arcanum.core.notifications.LocalNotifications
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -22,7 +22,6 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -411,7 +410,7 @@ private fun MountScreenContent(
     // The lock is the only way to mount now, so it has to advertise itself: a small hop
     // every few seconds while the screen sits idle, and a shake when it is tapped with
     // nothing to unlock with.
-    var notification by remember { mutableStateOf<InAppNotification?>(null) }
+    val notifications = LocalNotifications.current
 
     // Shown once, to new installs and to anyone who updates into the moved control. The
     // flag defaults to true so a slow read of the preference cannot flash the dialog at
@@ -557,7 +556,7 @@ private fun MountScreenContent(
                                 // shake, the buzz and the banner all say the same thing
                                 // three ways, because one of them is the one that lands.
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                notification = InAppNotification.MountNeedsCredentials
+                                notifications.notify(InAppNotification.MountNeedsCredentials)
                                 shakeTrigger++
                             }
                         }
@@ -996,14 +995,6 @@ private fun MountScreenContent(
                 }
             )
         }
-
-        // ── Notification banner ───────────────────────────────────────────────
-        InAppNotificationBanner(
-            notification = notification,
-            onDismiss    = { notification = null },
-            onAction     = { notification = null },
-            modifier     = Modifier.align(Alignment.TopCenter).statusBarsPadding().zIndex(20f)
-        )
 
         // ── Mounting overlay ──────────────────────────────────────────────────
         if (isMounting) {

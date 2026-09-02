@@ -25,24 +25,16 @@ enum class ImportFailureReason {
     UNKNOWN
 }
 
+/**
+ * One thing worth telling the user, as data. How loud it is, how long it stays and what
+ * colour it wears are not here - they are one table in NotificationSpec.kt, so that adding
+ * a notification is a decision about wording rather than about styling (#135).
+ *
+ * [bannerKey] is what makes two of the same thing one thing: a second notification with a
+ * key already in the queue replaces it instead of queueing behind it.
+ */
 sealed class InAppNotification {
-    abstract val priority: Int
     open val bannerKey: String get() = this::class.simpleName ?: ""
-    open val persistent: Boolean get() = false
-
-    data class VaultMounted(
-        val vaultId: String,
-        val vaultName: String
-    ) : InAppNotification() {
-        override val priority = 1
-    }
-
-    data class VaultUnmounted(
-        val vaultId: String,
-        val vaultName: String
-    ) : InAppNotification() {
-        override val priority = 1
-    }
 
     /**
      * An ext4 vault was opened whose superblock says the last session that wrote to
@@ -53,44 +45,29 @@ sealed class InAppNotification {
      * check tidies, and it is left to the user whether to bother. Raised once, when
      * the vault is opened, because the first write clears the flag.
      */
-    data object VaultNeedsCheck : InAppNotification() {
-        override val priority = 2
-    }
+    data object VaultNeedsCheck : InAppNotification()
 
     /**
      * A USB-hosted vault finished unmounting and the drive can be unplugged.
      *
-     * Distinct from [VaultUnmounted] because the user has a physical action to take, and
-     * for this vault kind forgetting it risks data rather than tidiness: the drive's own
-     * write cache cannot be flushed on demand.
+     * Its own notification because the user has a physical action to take, and for this
+     * vault kind forgetting it risks data rather than tidiness: the drive's own write
+     * cache cannot be flushed on demand. Sticky for the same reason - a drive still in
+     * the socket cannot be allowed to time out unseen.
      */
     data class UsbSafeToRemove(
         val vaultId: String,
         val vaultName: String
-    ) : InAppNotification() {
-        override val priority = 1
-    }
+    ) : InAppNotification()
 
     /**
      * A paste where items did not make it. Until this existed a failed paste looked
      * exactly like a successful one - silence either way (#129).
      */
-    data class FilesPasteFailed(val failed: Int, val total: Int) : InAppNotification() {
-        override val priority = 3
-    }
+    data class FilesPasteFailed(val failed: Int, val total: Int) : InAppNotification()
 
     /** A move into the folder the items are already in: correct, and worth saying. */
-    data object FilesAlreadyHere : InAppNotification() {
-        override val priority = 1
-    }
-
-    /**
-     * Copy and Cut with a single vault mounted leave no trace on screen - the only sign
-     * is a Paste entry appearing inside the overflow menu, which has to be opened to be
-     * found. The reporter of #129 read that as a dead button. These say what happened
-     * and where the other half of the operation lives.
-     */
-
+    data object FilesAlreadyHere : InAppNotification()
 
     /**
      * A second name was made for something (#128). Its own notification rather than
@@ -105,82 +82,61 @@ sealed class InAppNotification {
      * the folder is moved or removed. Saying the file sentence over a folder would
      * promise something the app does not give.
      */
-    data class FilesLinked(val count: Int, val kind: LinkedKind) : InAppNotification() {
-        override val priority = 1
-    }
+    data class FilesLinked(val count: Int, val kind: LinkedKind) : InAppNotification()
 
     /** What was linked, since files and folders are not linked the same way. */
     enum class LinkedKind { FILES, FOLDERS, MIXED }
 
     /** Tapping the hero icon for details on a vault that is not open. */
-    data object DetailsNeedMount : InAppNotification() {
-        override val priority = 2
-    }
+    data object DetailsNeedMount : InAppNotification()
 
     /** Tapping the lock with nothing to unlock with - a prompt, not a failure. */
-    data object MountNeedsCredentials : InAppNotification() {
-        override val priority = 2
-    }
+    data object MountNeedsCredentials : InAppNotification()
 
     /**
      * A file picker came back after the app had locked itself, so the import or export it
      * was going to start was refused. Shown when the user unlocks and returns, since that
      * is the first moment they can see anything at all.
      */
-    data object OperationRefusedLocked : InAppNotification() {
-        override val priority = 2
-    }
+    data object OperationRefusedLocked : InAppNotification()
 
     data class VaultError(
         val vaultId: String,
         val message: String
-    ) : InAppNotification() {
-        override val priority = 2
-    }
+    ) : InAppNotification()
 
     data class ExportSuccess(
         val fileName: String
-    ) : InAppNotification() {
-        override val priority = 1
-    }
+    ) : InAppNotification()
 
     data class VaultAdded(
         val fileName: String
-    ) : InAppNotification() {
-        override val priority = 1
-    }
+    ) : InAppNotification()
 
     data class VaultAlreadyExists(
         val fileName: String
-    ) : InAppNotification() {
-        override val priority = 2
-    }
+    ) : InAppNotification()
 
-    data object VaultInvalidFile : InAppNotification() {
-        override val priority = 2
-    }
+    data object VaultInvalidFile : InAppNotification()
 
     data class VaultAddError(
         val message: String
-    ) : InAppNotification() {
-        override val priority = 2
-    }
+    ) : InAppNotification()
 
-    data object PanicExecuted : InAppNotification() {
-        override val priority = 0
-    }
+    data object SupportDeveloper : InAppNotification()
 
-    data object SupportDeveloper : InAppNotification() {
-        override val priority = 4
-    }
+    data object DateUpdated : InAppNotification()
 
-    data object DateUpdated : InAppNotification() {
-        override val priority = 1
-    }
+    /**
+     * A donation address went to the clipboard. Android 13 and up show their own
+     * clipboard confirmation, so this is only raised below that - see DonationsScreen.
+     */
+    data class AddressCopied(val label: String) : InAppNotification()
 
-    data class FileRenamed(val newName: String) : InAppNotification() {
-        override val priority = 1
-    }
+    /** A control that the applied camouflage has taken out of the user's hands. */
+    data object DisguiseAlreadyApplied : InAppNotification()
+
+    data class FileRenamed(val newName: String) : InAppNotification()
 
     /**
      * [leftBehind] counts items a copy or a move could not take with it and did not
@@ -192,9 +148,7 @@ sealed class InAppNotification {
         val leftBehind: Int = 0,
         /** Names already taken that the user chose to leave alone (#169). */
         val skipped: Int = 0
-    ) : InAppNotification() {
-        override val priority = 1
-    }
+    ) : InAppNotification()
 
     /** See [FilesPasted] for [leftBehind] and [skipped]. */
     data class FilesMoved(
@@ -202,22 +156,14 @@ sealed class InAppNotification {
         val destinationName: String,
         val leftBehind: Int = 0,
         val skipped: Int = 0
-    ) : InAppNotification() {
-        override val priority = 1
-    }
+    ) : InAppNotification()
 
-    data class FilesDeleted(val count: Int) : InAppNotification() {
-        override val priority = 1
-    }
+    data class FilesDeleted(val count: Int) : InAppNotification()
 
-    data class FolderCreated(val name: String) : InAppNotification() {
-        override val priority = 1
-    }
+    data class FolderCreated(val name: String) : InAppNotification()
 
     /** [skipped] counts names that were already taken and left alone at the user's word (#157). */
-    data class FilesImported(val count: Int, val skipped: Int = 0) : InAppNotification() {
-        override val priority = 1
-    }
+    data class FilesImported(val count: Int, val skipped: Int = 0) : InAppNotification()
 
     /**
      * [skipped] counts items an export could not carry out of the vault at all - a
@@ -232,13 +178,9 @@ sealed class InAppNotification {
         val duplicates: Int = 0,
         /** Items that did not come out whole and were left outside as ".part" (#170). */
         val failed: Int = 0
-    ) : InAppNotification() {
-        override val priority = 1
-    }
+    ) : InAppNotification()
 
-    data object HiddenVolumeWriteProtection : InAppNotification() {
-        override val priority = 3
-    }
+    data object HiddenVolumeWriteProtection : InAppNotification()
 
     /**
      * [reason] is the native error the write actually failed with. It used to
@@ -246,24 +188,15 @@ sealed class InAppNotification {
      * every cause, which sent the reporter of #114 looking for a space problem
      * that was not there.
      */
-    data class ImportFailed(val reason: ImportFailureReason) : InAppNotification() {
-        override val priority = 2
-    }
+    data class ImportFailed(val reason: ImportFailureReason) : InAppNotification()
 
-    data object ReadOnlyError : InAppNotification() {
-        override val priority = 2
-    }
+    data object ReadOnlyError : InAppNotification()
 
     /**
      * Shown on the Play flavour in place of [SupportDeveloper], where the equivalent of a
      * donation is buying the full version. Never shown to someone who already has it.
      */
-    data object GoPremium : InAppNotification() {
-        override val priority = 3
-    }
+    data object GoPremium : InAppNotification()
 
-    data object AppUpdated : InAppNotification() {
-        override val priority    = 3
-        override val persistent  = true
-    }
+    data object AppUpdated : InAppNotification()
 }

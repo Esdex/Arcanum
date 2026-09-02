@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -57,6 +56,9 @@ import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
+import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.LocalNotifications
+import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.R
 import zip.arcanum.core.theme.LocalAmoledMode
 import zip.arcanum.core.theme.LocalDarkMode
@@ -148,6 +150,7 @@ private val DONATION_TARGETS = listOf(
 internal fun DonationsSubScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val haptic  = LocalHapticFeedback.current
+    val notifications = LocalNotifications.current
 
     val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.star))
     val progress by animateLottieCompositionAsState(
@@ -270,7 +273,7 @@ internal fun DonationsSubScreen(onBack: () -> Unit) {
                         },
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            copyAddress(context, context.getString(target.labelRes), target.address)
+                            copyAddress(context, notifications, context.getString(target.labelRes), target.address)
                         }
                     ) {
                         // Truncated on purpose: a Monero address is 95 characters and would
@@ -302,15 +305,16 @@ internal fun DonationsSubScreen(onBack: () -> Unit) {
  * Android 13 shows its own confirmation whenever an app writes to the clipboard, so a
  * toast of ours would be the second one on screen. Only older versions need telling.
  */
-private fun copyAddress(context: Context, label: String, address: String) {
+private fun copyAddress(
+    context: Context,
+    notifications: NotificationCenter,
+    label: String,
+    address: String
+) {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     cm.setPrimaryClip(ClipData.newPlainText(label, address))
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-        Toast.makeText(
-            context,
-            context.getString(R.string.donations_copied, label),
-            Toast.LENGTH_SHORT
-        ).show()
+        notifications.notify(InAppNotification.AddressCopied(label))
     }
 }
 

@@ -16,6 +16,7 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
@@ -25,7 +26,8 @@ class ContainerScreenViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repo: ContainerRepository,
     private val cryptoEngine: VeraCryptEngine,
-    appPreferences: AppPreferences
+    appPreferences: AppPreferences,
+    private val notifications: NotificationCenter
 ) : ViewModel() {
 
     val containerId: String = savedStateHandle[Screen.ContainerScreen.ARG] ?: ""
@@ -38,18 +40,13 @@ class ContainerScreenViewModel @Inject constructor(
         .map { it.route }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /**
-     * Raised when the vault's ext4 superblock says the last session that wrote to it
-     * did not finish - the app killed, the battery gone, a drive pulled (#142).
-     *
-     * Read here rather than at mount because this is the screen the user lands on;
-     * the value itself was recorded when the volume was opened and does not change
-     * while it stays open, so asking late still answers about the session that was
-     * interrupted. Always null for FAT and exFAT, which keep no such flag.
+    /*
+     * The "last write session did not finish" notice (#142) is raised from here rather
+     * than at mount time because this is the screen the user lands on. The flag itself was
+     * read when the volume was opened and does not change while it stays open, so asking
+     * late still answers about the session that was interrupted. Always absent on FAT and
+     * exFAT, which keep no such flag.
      */
-    private val _needsCheckNotice = MutableStateFlow<InAppNotification?>(null)
-    val needsCheckNotice = _needsCheckNotice.asStateFlow()
-
     init {
         viewModelScope.launch {
             _container.value = repo.getContainerById(containerId)
@@ -58,12 +55,10 @@ class ContainerScreenViewModel @Inject constructor(
             if (handle != null && withContext(Dispatchers.IO) {
                     cryptoEngine.ext4NeedsCheck(handle)
                 }) {
-                _needsCheckNotice.value = InAppNotification.VaultNeedsCheck
+                notifications.notify(InAppNotification.VaultNeedsCheck)
             }
         }
     }
-
-    fun clearNeedsCheckNotice() { _needsCheckNotice.value = null }
 
     fun unmount(onDone: () -> Unit) {
         viewModelScope.launch {

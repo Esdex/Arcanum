@@ -43,7 +43,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -149,7 +148,7 @@ import zip.arcanum.core.components.UpgradeOverlay
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.notifications.InAppNotification
-import zip.arcanum.core.notifications.InAppNotificationBanner
+import zip.arcanum.core.notifications.LocalNotifications
 import java.text.DecimalFormat
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -203,7 +202,7 @@ fun VaultScreen(
     var showLockDialog     by remember { mutableStateOf(false) }
     var containerToUnmount        by remember { mutableStateOf<ContainerEntity?>(null) }
     var containerToRemoveFromList by remember { mutableStateOf<ContainerEntity?>(null) }
-    var notification              by remember { mutableStateOf<InAppNotification?>(null) }
+    val notifications             = LocalNotifications.current
     var selectionMode      by remember { mutableStateOf(false) }
     var selectedIds        by remember { mutableStateOf(emptySet<String>()) }
     var showForgetSelectedDialog by remember { mutableStateOf(false) }
@@ -222,16 +221,17 @@ fun VaultScreen(
     LaunchedEffect(Unit) { viewModel.initVersionCheck() }
 
     LaunchedEffect(showUpdateBanner) {
-        if (showUpdateBanner) notification = InAppNotification.AppUpdated
+        if (showUpdateBanner) notifications.notify(InAppNotification.AppUpdated)
     }
 
-    // The support prompt yields to anything already on screen — an update banner or a
-    // vault operation result is what the user was actually doing, and both outrank an ask.
+    // The support prompt yields to anything already on screen - an update banner or a vault
+    // operation result is what the user was actually doing, and both outrank an ask. That
+    // yielding is the queue's job now: an announcement never interrupts and never queues
+    // ahead of work (#135).
     LaunchedEffect(Unit) { viewModel.checkSupportPrompt() }
-    LaunchedEffect(supportPrompt, notification) {
+    LaunchedEffect(supportPrompt) {
         val prompt = supportPrompt ?: return@LaunchedEffect
-        if (notification != null) return@LaunchedEffect
-        notification = prompt
+        notifications.notify(prompt)
         viewModel.markSupportPromptShown()
     }
 
@@ -259,11 +259,11 @@ fun VaultScreen(
     LaunchedEffect(addVaultResult) {
         val result = addVaultResult ?: return@LaunchedEffect
         when (result) {
-            is VaultViewModel.AddVaultResult.Added         -> notification = InAppNotification.VaultAdded(result.fileName)
-            is VaultViewModel.AddVaultResult.AlreadyExists -> notification = InAppNotification.VaultAlreadyExists(result.fileName)
-            VaultViewModel.AddVaultResult.InvalidFile      -> notification = InAppNotification.VaultInvalidFile
+            is VaultViewModel.AddVaultResult.Added         -> notifications.notify(InAppNotification.VaultAdded(result.fileName))
+            is VaultViewModel.AddVaultResult.AlreadyExists -> notifications.notify(InAppNotification.VaultAlreadyExists(result.fileName))
+            VaultViewModel.AddVaultResult.InvalidFile      -> notifications.notify(InAppNotification.VaultInvalidFile)
             VaultViewModel.AddVaultResult.LimitReached     -> showUpgradeDialog = true
-            is VaultViewModel.AddVaultResult.Error         -> notification = InAppNotification.VaultAddError(result.message)
+            is VaultViewModel.AddVaultResult.Error         -> notifications.notify(InAppNotification.VaultAddError(result.message))
             VaultViewModel.AddVaultResult.NoUsbDrive       -> showUsbInsertPrompt = true
         }
         viewModel.clearAddVaultResult()
@@ -611,28 +611,6 @@ fun VaultScreen(
                 }
             }
 
-            // ── Notification banner ───────────────────────────────────────────
-            InAppNotificationBanner(
-                notification = notification,
-                onDismiss    = { notification = null },
-                onAction     = { notif ->
-                    when (notif) {
-                        is InAppNotification.AppUpdated -> {
-                            viewModel.markUpdateSeen()
-                            onOpenWhatsNew()
-                        }
-                        is InAppNotification.SupportDeveloper -> onOpenDonations()
-                        is InAppNotification.GoPremium        -> onOpenPremium()
-                        else -> Unit
-                    }
-                    notification = null
-                },
-                modifier     = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .zIndex(10f)
-            )
-
             // ── Unmount confirm dialog ────────────────────────────────────────
             containerToUnmount?.let { c ->
                 val isUsb = c.usbSaltHash.isNotEmpty()
@@ -654,7 +632,7 @@ fun VaultScreen(
                                 onUnmountStart(c.id)
                                 // Tells the user the physical action is now safe. For a
                                 // file vault there is nothing to unplug and nothing to say.
-                                if (isUsb) notification = InAppNotification.UsbSafeToRemove(c.id, c.name)
+                                if (isUsb) notifications.notify(InAppNotification.UsbSafeToRemove(c.id, c.name))
                             }
                         }) {
                             Text(stringResource(if (isUsb) R.string.vault_eject_confirm else R.string.vault_unmount_confirm))

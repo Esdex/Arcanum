@@ -160,6 +160,7 @@ import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.EmptyStateView
 import zip.arcanum.core.components.LocalHazeState
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.LocalNotifications
 import zip.arcanum.core.theme.ArcanumHazeStyle
 import zip.arcanum.core.theme.LocalAmoledMode
 import zip.arcanum.crypto.NativeFileInfo
@@ -179,7 +180,6 @@ private val MEDIA_EXTENSIONS = setOf(
 fun FileManagerScreen(
     containerId: String,
     onBack: () -> Unit,
-    onNotification: ((InAppNotification) -> Unit)? = null,
     bottomPadding: Dp = 0.dp,
     onAudioFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
     onMediaFileClick: ((fileId: String) -> Unit)? = null,
@@ -202,14 +202,6 @@ fun FileManagerScreen(
     )
 
     LaunchedEffect(containerId) { viewModel.initialize(containerId) }
-
-    // Forward notifications
-    LaunchedEffect(state.pendingNotification) {
-        state.pendingNotification?.let { notif ->
-            onNotification?.invoke(notif)
-            viewModel.clearPendingNotification()
-        }
-    }
 
     // Close FAB when selection mode activates
     LaunchedEffect(state.isSelectionMode) { if (state.isSelectionMode) showFabMenu = false }
@@ -268,19 +260,21 @@ fun FileManagerScreen(
      * frame, which is what "it opens and closes, one time in two" was.
      */
 
+    val notifications = LocalNotifications.current
+
     // Single entry point for Open with, shared by the item menu and by tapping a file that
     // has no in-app viewer, so both routes behave identically (#103).
     val openWithResult: (FileManagerViewModel.OpenWithRequest) -> Unit = { result ->
         when (result) {
             is FileManagerViewModel.OpenWithRequest.Ready ->
                 if (runCatching { context.startActivity(result.chooser) }.isFailure) {
-                    onNotification?.invoke(InAppNotification.VaultError(
+                    notifications.notify(InAppNotification.VaultError(
                         state.containerId, context.getString(R.string.files_open_with_no_app)
                     ))
                 }
             FileManagerViewModel.OpenWithRequest.NeedsExternalAccess -> {}
             FileManagerViewModel.OpenWithRequest.Unavailable ->
-                onNotification?.invoke(InAppNotification.VaultError(
+                notifications.notify(InAppNotification.VaultError(
                     state.containerId, context.getString(R.string.files_open_with_unavailable)
                 ))
         }

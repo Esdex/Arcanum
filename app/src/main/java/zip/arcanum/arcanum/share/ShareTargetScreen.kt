@@ -2,7 +2,6 @@
 
 package zip.arcanum.arcanum.share
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -41,6 +40,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.LocalNotifications
 import zip.arcanum.R
 import zip.arcanum.core.components.rememberMediaLocationGate
 
@@ -63,13 +64,13 @@ fun ShareTargetScreen(
 
     BackHandler { onCancel() }
 
+    /* Files shared in from another app are imported like any others, and the app already
+     * has a word for that. The toast this replaces also died with the screen that raised
+     * it, which is exactly what a share does the moment it finishes (#135). */
+    val notifications = LocalNotifications.current
     LaunchedEffect(state.savedCount) {
         state.savedCount?.let { count ->
-            Toast.makeText(
-                context,
-                context.resources.getQuantityString(R.plurals.share_saved_toast, count, count),
-                Toast.LENGTH_SHORT
-            ).show()
+            notifications.notify(InAppNotification.FilesImported(count))
             onDone()
         }
     }

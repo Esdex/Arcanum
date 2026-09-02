@@ -149,6 +149,10 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import zip.arcanum.BuildConfig
+import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.LocalNotifications
+import zip.arcanum.core.notifications.ImportFailureReason
+import zip.arcanum.core.notifications.dwellMillis
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.AppSheet
@@ -588,6 +592,7 @@ private fun SecuritySubScreen(
     val context     = LocalContext.current
     var showWarning by remember { mutableStateOf(false) }
     val receiveShares by viewModel.receiveShares.collectAsState()
+    val notifications = LocalNotifications.current
 
     SubScreenScaffold(title = stringResource(R.string.settings_security_title), onBack = onBack) { innerPadding ->
         Column(
@@ -665,7 +670,6 @@ private fun SecuritySubScreen(
                         else viewModel.setScreenCaptureProtection(true)
                     }
                 )
-                val disguiseToast = stringResource(R.string.settings_security_disguise_toast)
                 Box {
                     SettingsSwitch(
                         title           = stringResource(R.string.settings_security_disguise_title),
@@ -682,7 +686,7 @@ private fun SecuritySubScreen(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication        = null
                                 ) {
-                                    Toast.makeText(context, disguiseToast, Toast.LENGTH_SHORT).show()
+                                    notifications.notify(InAppNotification.DisguiseAlreadyApplied)
                                 }
                         )
                     }
@@ -1944,6 +1948,20 @@ private fun DebugSubScreen(
     var showUsbSweepConfirm by remember { mutableStateOf(false) }
     val isAmoled       = LocalAmoledMode.current
     val debugHazeState = remember { HazeState() }
+    val notifications  = LocalNotifications.current
+    var debugNotificationWalk by remember { mutableStateOf(false) }
+
+    // One after another, each given its own dwell plus a breath, so they are seen rather
+    // than queued behind one another.
+    LaunchedEffect(debugNotificationWalk) {
+        if (!debugNotificationWalk) return@LaunchedEffect
+        allNotificationsForDebug().forEach { n ->
+            notifications.notify(n)
+            kotlinx.coroutines.delay(if (n.dwellMillis > 0L) n.dwellMillis + 400L else 2_500L)
+            notifications.dismiss()
+        }
+        debugNotificationWalk = false
+    }
 
     CompositionLocalProvider(LocalHazeState provides debugHazeState) {
 
@@ -2288,6 +2306,65 @@ private fun DebugSubScreen(
                             bgColor = Color(0xFF37474F),
                             fgRes   = R.drawable.ic_launcher_calc_fg,
                             active  = disguiseApplied
+                        )
+                    }
+                }
+
+                /* ── Notifications ─────────────────────────────────────────────
+                 * The queue's rules are not visible from any one screen, and reproducing
+                 * two dozen situations by hand to look at them is not a test anyone runs
+                 * twice. Debug only (#135). */
+                PanicSectionLabel("Notifications")
+                SettingsGroup {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            // Success, warning, error, announcement, in that order. The
+                            // error should cut in front, and the rest follow it in turn.
+                            onClick  = {
+                                notifications.notify(InAppNotification.FilesDeleted(3))
+                                notifications.notify(InAppNotification.VaultNeedsCheck)
+                                notifications.notify(InAppNotification.ReadOnlyError)
+                                notifications.notify(InAppNotification.SupportDeveloper)
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("One of each", style = MaterialTheme.typography.labelMedium)
+                        }
+                        OutlinedButton(
+                            // Eight at once, two of them the same thing: three should
+                            // survive behind the first, and the duplicate should merge.
+                            onClick  = {
+                                notifications.notify(InAppNotification.FileRenamed("one.txt"))
+                                notifications.notify(InAppNotification.FolderCreated("Folder"))
+                                notifications.notify(InAppNotification.FilesDeleted(1))
+                                notifications.notify(InAppNotification.FilesDeleted(7))
+                                notifications.notify(InAppNotification.DateUpdated)
+                                notifications.notify(InAppNotification.FilesImported(12, skipped = 2))
+                                notifications.notify(InAppNotification.FilesExported(9, failed = 1))
+                                notifications.notify(InAppNotification.ExportSuccess("late.jpg"))
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Flood", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                    OutlinedButton(
+                        // Every one of them, in turn, so the wording and the colour of each
+                        // can be looked at without arranging for it to happen.
+                        onClick  = { debugNotificationWalk = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            if (debugNotificationWalk) "Walking through them..." else "Show every notification",
+                            style = MaterialTheme.typography.labelMedium
                         )
                     }
                 }
@@ -2924,3 +3001,47 @@ private fun AboutLinkCard(
     }
 }
 
+
+
+/**
+ * Every notification the app can raise, with plausible contents. Debug only: it exists so
+ * the wording, the colour and the dwell of each can be looked at side by side instead of
+ * being arranged for one at a time (#135).
+ */
+private fun allNotificationsForDebug(): List<InAppNotification> = listOf(
+    InAppNotification.FilesPasted(4),
+    InAppNotification.FilesPasted(4, leftBehind = 1),
+    InAppNotification.FilesMoved(2, "Photos"),
+    InAppNotification.FilesMoved(2, "Photos", skipped = 1),
+    InAppNotification.FilesDeleted(3),
+    InAppNotification.FilesLinked(2, InAppNotification.LinkedKind.FILES),
+    InAppNotification.FilesAlreadyHere,
+    InAppNotification.FolderCreated("Documents"),
+    InAppNotification.FileRenamed("holiday.jpg"),
+    InAppNotification.FilesImported(12),
+    InAppNotification.FilesImported(12, skipped = 3),
+    InAppNotification.FilesExported(9),
+    InAppNotification.FilesExported(9, skipped = 2, duplicates = 1),
+    InAppNotification.FilesExported(9, failed = 1),
+    InAppNotification.ExportSuccess("holiday.jpg"),
+    InAppNotification.DateUpdated,
+    InAppNotification.AddressCopied("Monero"),
+    InAppNotification.VaultAdded("vault.hc"),
+    InAppNotification.VaultAlreadyExists("vault.hc"),
+    InAppNotification.VaultNeedsCheck,
+    InAppNotification.UsbSafeToRemove("id", "USB vault"),
+    InAppNotification.DetailsNeedMount,
+    InAppNotification.MountNeedsCredentials,
+    InAppNotification.DisguiseAlreadyApplied,
+    InAppNotification.OperationRefusedLocked,
+    InAppNotification.HiddenVolumeWriteProtection,
+    InAppNotification.FilesPasteFailed(2, 5),
+    InAppNotification.ImportFailed(ImportFailureReason.NO_SPACE),
+    InAppNotification.ImportFailed(ImportFailureReason.TOO_FRAGMENTED),
+    InAppNotification.ReadOnlyError,
+    InAppNotification.VaultError("id", "Could not open the volume"),
+    InAppNotification.VaultInvalidFile,
+    InAppNotification.VaultAddError("Not a container"),
+    InAppNotification.AppUpdated,
+    InAppNotification.SupportDeveloper
+)

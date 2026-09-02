@@ -23,6 +23,7 @@ import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.crypto.VeraCryptEngine
 import kotlinx.coroutines.flow.SharingStarted
@@ -44,7 +45,8 @@ class GalleryViewModel @Inject constructor(
     private val mediaFileDao: MediaFileDao,
     private val repo: ContainerRepository,
     private val engine: VeraCryptEngine,
-    private val prefs: AppPreferences
+    private val prefs: AppPreferences,
+    private val notifications: NotificationCenter
 ) : ViewModel() {
 
     enum class MediaFilter { ALL, PHOTOS, VIDEOS }
@@ -83,7 +85,6 @@ class GalleryViewModel @Inject constructor(
         val searchQuery: String = "",
         val isSearchActive: Boolean = false,
         val isEmpty: Boolean = false,
-        val pendingNotification: InAppNotification? = null,
         val showDeleteConfirm: Boolean = false,
         val isReadOnly: Boolean = false
     )
@@ -336,13 +337,9 @@ class GalleryViewModel @Inject constructor(
             withContext(Dispatchers.Main) {
                 toDelete.forEach { evictThumbnail(it) }
                 _selectedIds.value = emptySet()
-                _uiState.update { it.copy(pendingNotification = if (count > 0) InAppNotification.FilesDeleted(count) else null) }
+                if (count > 0) notifications.notify(InAppNotification.FilesDeleted(count))
             }
         }
-    }
-
-    fun clearNotification() {
-        _uiState.update { it.copy(pendingNotification = null) }
     }
 
     // ── Thumbnails ────────────────────────────────────────────────────────────

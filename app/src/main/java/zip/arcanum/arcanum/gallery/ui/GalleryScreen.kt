@@ -92,7 +92,6 @@ import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.EmptyStateView
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
-import zip.arcanum.core.notifications.InAppNotification
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.activity.compose.BackHandler
@@ -104,7 +103,6 @@ fun GalleryScreen(
     showTopBar: Boolean = true,
     bottomPadding: Dp = 80.dp,
     onMediaClick: (MediaFileEntity) -> Unit = {},
-    onNotification: ((InAppNotification) -> Unit)? = null,
     viewModel: GalleryViewModel = hiltViewModel()
 ) {
     LaunchedEffect(containerId) {
@@ -143,15 +141,6 @@ fun GalleryScreen(
     val isPreloading = containerId != null
             && preloadState.isRunning
             && preloadState.containerId == containerId
-
-    // Bubble notification up to parent
-    LaunchedEffect(uiState.pendingNotification) {
-        val n = uiState.pendingNotification
-        if (n != null) {
-            onNotification?.invoke(n)
-            viewModel.clearNotification()
-        }
-    }
 
     // Delete confirmation dialog
     if (uiState.showDeleteConfirm) {

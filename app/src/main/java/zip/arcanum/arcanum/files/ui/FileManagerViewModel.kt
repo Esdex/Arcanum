@@ -48,6 +48,7 @@ import zip.arcanum.core.security.SessionState
 import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.notifications.ImportFailureReason
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.security.AppPreferences
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -67,7 +68,8 @@ class FileManagerViewModel @Inject constructor(
     private val mediaFileDao: MediaFileDao,
     private val appPrefs: AppPreferences,
     private val idleMonitor: IdleMonitor,
-    private val sessionState: SessionState
+    private val sessionState: SessionState,
+    private val notifications: NotificationCenter
 ) : ViewModel() {
 
     /*
@@ -186,7 +188,7 @@ class FileManagerViewModel @Inject constructor(
 
     private fun refuseIfLocked(): Boolean {
         if (!sessionState.isLocked) return false
-        _state.update { it.copy(pendingNotification = InAppNotification.OperationRefusedLocked) }
+        notifications.notify(InAppNotification.OperationRefusedLocked)
         return true
     }
 
@@ -259,7 +261,6 @@ class FileManagerViewModel @Inject constructor(
          * menu entry that silently copied would be the opposite of the ask (#128). */
         val supportsLinks: Boolean = false,
         val error: String? = null,
-        val pendingNotification: InAppNotification? = null,
         val isOperationInProgress: Boolean = false,
         val operationMessage: String? = null,
         /* Non-null while an import is stopped waiting for an answer about a name (#157). */
@@ -674,15 +675,12 @@ class FileManagerViewModel @Inject constructor(
 
             clearSelection()
             loadDirectory(_state.value.currentPath)
-            _state.update {
-                it.copy(isOperationInProgress = false, operationMessage = null,
-                        pendingNotification = when {
-                            failed > 0 -> InAppNotification.FilesPasteFailed(
-                                failed, failed + count)
-                            count > 0  -> InAppNotification.FilesLinked(count, kind)
-                            else       -> null
-                        })
-            }
+            _state.update { it.copy(isOperationInProgress = false, operationMessage = null) }
+            notifyResult(when {
+                failed > 0 -> InAppNotification.FilesPasteFailed(failed, failed + count)
+                count > 0  -> InAppNotification.FilesLinked(count, kind)
+                else       -> null
+            })
         }
     }
 
@@ -798,17 +796,14 @@ class FileManagerViewModel @Inject constructor(
                be read again. Move already did this; copy did not, and the new file only
                appeared after leaving the folder and coming back. */
             refreshNow()
-            _state.update { it.copy(
-                isOperationInProgress = false,
-                operationMessage      = null,
-                pendingNotification   = when {
-                    failed > 0  -> InAppNotification.FilesPasteFailed(failed, toCopy.size)
-                    count > 0 || tally.leftBehind > 0 || tally.refused > 0 ->
-                        InAppNotification.FilesPasted(count, tally.leftBehind, tally.refused)
-                    skipped > 0 -> InAppNotification.FilesAlreadyHere
-                    else        -> null
-                }
-            ) }
+            _state.update { it.copy(isOperationInProgress = false, operationMessage = null) }
+            notifyResult(when {
+                failed > 0  -> InAppNotification.FilesPasteFailed(failed, toCopy.size)
+                count > 0 || tally.leftBehind > 0 || tally.refused > 0 ->
+                    InAppNotification.FilesPasted(count, tally.leftBehind, tally.refused)
+                skipped > 0 -> InAppNotification.FilesAlreadyHere
+                else        -> null
+            })
         }
     }
 
@@ -884,18 +879,14 @@ class FileManagerViewModel @Inject constructor(
 
             exitSelectionMode()
             refreshNow()
-            _state.update { it.copy(
-                isOperationInProgress = false,
-                operationMessage      = null,
-                pendingNotification   = when {
-                    failed > 0  -> InAppNotification.FilesPasteFailed(failed, toMove.size)
-                    count > 0 || tally.leftBehind > 0 || tally.refused > 0 ->
-                        InAppNotification.FilesMoved(
-                            count, destinationName, tally.leftBehind, tally.refused)
-                    skipped > 0 -> InAppNotification.FilesAlreadyHere
-                    else        -> null
-                }
-            ) }
+            _state.update { it.copy(isOperationInProgress = false, operationMessage = null) }
+            notifyResult(when {
+                failed > 0  -> InAppNotification.FilesPasteFailed(failed, toMove.size)
+                count > 0 || tally.leftBehind > 0 || tally.refused > 0 ->
+                    InAppNotification.FilesMoved(count, destinationName, tally.leftBehind, tally.refused)
+                skipped > 0 -> InAppNotification.FilesAlreadyHere
+                else        -> null
+            })
         }
     }
 
@@ -963,10 +954,8 @@ class FileManagerViewModel @Inject constructor(
             }
             exitSelectionMode()
             refreshNow()
-            _state.update { it.copy(
-                isOperationInProgress = false,
-                pendingNotification   = if (count > 0) InAppNotification.FilesDeleted(count) else null
-            ) }
+            _state.update { it.copy(isOperationInProgress = false) }
+            notifyResult(if (count > 0) InAppNotification.FilesDeleted(count) else null)
             if (count > 0) thumbnailManager.notifyFilesDeleted(s.containerId)
         }
     }
@@ -1025,7 +1014,7 @@ class FileManagerViewModel @Inject constructor(
     fun createFolder(name: String) {
         val s = _state.value
         if (s.isReadOnly) {
-            _state.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+            notifications.notify(InAppNotification.ReadOnlyError)
             return
         }
         val handle = repo.getContainerHandle(s.containerId) ?: return
@@ -1034,9 +1023,9 @@ class FileManagerViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val rc = runCatching { engine.createDirectory(handle, folderPath) }.getOrDefault(VeraCryptEngine.ERR_FS)
             refreshNow()
-            _state.update {
-                it.copy(pendingNotification = if (rc == VeraCryptEngine.ERR_OK) InAppNotification.FolderCreated(name) else InAppNotification.ReadOnlyError)
-            }
+            notifications.notify(
+                if (rc == VeraCryptEngine.ERR_OK) InAppNotification.FolderCreated(name)
+                else InAppNotification.ReadOnlyError)
         }
     }
 
@@ -1070,7 +1059,7 @@ class FileManagerViewModel @Inject constructor(
                     else                  renameFileMedia(s.containerId, file.path, newPath, finalName)
                 }
                 refreshNow()
-                _state.update { it.copy(pendingNotification = InAppNotification.FileRenamed(finalName)) }
+                notifications.notify(InAppNotification.FileRenamed(finalName))
             }
             withContext(Dispatchers.Main) { onResult(success) }
         }
@@ -1080,7 +1069,7 @@ class FileManagerViewModel @Inject constructor(
         if (refuseIfLocked()) return
         val s = _state.value
         if (s.isReadOnly) {
-            _state.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+            notifications.notify(InAppNotification.ReadOnlyError)
             return
         }
         val handle = repo.getContainerHandle(s.containerId) ?: return
@@ -1167,15 +1156,15 @@ class FileManagerViewModel @Inject constructor(
             _state.update { it.copy(
                 isOperationInProgress = false,
                 operationMessage      = null,
-                importProgress        = null,
-                pendingNotification   = when {
-                    hiddenProtected      -> InAppNotification.HiddenVolumeWriteProtection
-                    failureCode != null  -> InAppNotification.ImportFailed(importFailureReason(failureCode))
-                    count > 0            -> InAppNotification.FilesImported(count, skipped)
-                    skipped > 0          -> InAppNotification.FilesImported(0, skipped)
-                    else                 -> null
-                }
+                importProgress        = null
             ) }
+            notifyResult(when {
+                hiddenProtected      -> InAppNotification.HiddenVolumeWriteProtection
+                failureCode != null  -> InAppNotification.ImportFailed(importFailureReason(failureCode))
+                count > 0            -> InAppNotification.FilesImported(count, skipped)
+                skipped > 0          -> InAppNotification.FilesImported(0, skipped)
+                else                 -> null
+            })
             if (importedMedia.isNotEmpty()) {
                 indexAndThumbnail(handle, s.containerId, importedMedia)
             }
@@ -1186,7 +1175,7 @@ class FileManagerViewModel @Inject constructor(
         if (refuseIfLocked()) return
         val s = _state.value
         if (s.isReadOnly) {
-            _state.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+            notifications.notify(InAppNotification.ReadOnlyError)
             return
         }
         val handle = repo.getContainerHandle(s.containerId) ?: return
@@ -1218,15 +1207,15 @@ class FileManagerViewModel @Inject constructor(
             _state.update { it.copy(
                 isOperationInProgress = false,
                 operationMessage      = null,
-                importProgress        = null,
-                pendingNotification   = when {
-                    hiddenProtected      -> InAppNotification.HiddenVolumeWriteProtection
-                    failureCode != null  -> InAppNotification.ImportFailed(importFailureReason(failureCode))
-                    count > 0            -> InAppNotification.FilesImported(count, skipped)
-                    skipped > 0          -> InAppNotification.FilesImported(0, skipped)
-                    else                 -> null
-                }
+                importProgress        = null
             ) }
+            notifyResult(when {
+                hiddenProtected      -> InAppNotification.HiddenVolumeWriteProtection
+                failureCode != null  -> InAppNotification.ImportFailed(importFailureReason(failureCode))
+                count > 0            -> InAppNotification.FilesImported(count, skipped)
+                skipped > 0          -> InAppNotification.FilesImported(0, skipped)
+                else                 -> null
+            })
             if (importedMedia.isNotEmpty()) {
                 indexAndThumbnail(handle, s.containerId, importedMedia)
             }
@@ -1479,22 +1468,20 @@ class FileManagerViewModel @Inject constructor(
                     "skipped=${tally.skipped} duplicates=${tally.duplicates} " +
                     "failed=${tally.failed}")
             exitSelectionMode()
-            _state.update { it.copy(
-                isOperationInProgress = false,
-                operationMessage      = null,
-                /* Shown even when nothing landed: an export of one dead link used to end
-                 * in silence, and silence after an operation reads as success. */
-                pendingNotification   = if (tally.exported > 0 || tally.skipped > 0 ||
-                                              tally.failed > 0)
+            _state.update { it.copy(isOperationInProgress = false, operationMessage = null) }
+            /* Reported even when nothing landed: an export of one dead link used to end in
+             * silence, and silence after an operation reads as success. */
+            notifyResult(
+                if (tally.exported > 0 || tally.skipped > 0 || tally.failed > 0)
                     InAppNotification.FilesExported(
                         tally.exported, tally.skipped, tally.duplicates, tally.failed)
-                else null
-            ) }
+                else null)
         }
     }
 
-    fun clearPendingNotification() {
-        _state.update { it.copy(pendingNotification = null) }
+    /** Results are optional: an operation that did nothing worth reporting says nothing. */
+    private fun notifyResult(notification: InAppNotification?) {
+        notification?.let(notifications::notify)
     }
 
     // ── Private helpers ───────────────────────────────────────────────────

@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -81,8 +80,6 @@ import zip.arcanum.core.components.LocalHazeState
 import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.navigation_components.BottomNavItem
 import zip.arcanum.core.navigation_components.FloatingBottomBar
-import zip.arcanum.core.notifications.InAppNotification
-import zip.arcanum.core.notifications.InAppNotificationBanner
 import zip.arcanum.core.theme.LocalAmoledMode
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
@@ -124,22 +121,10 @@ fun ContainerScreen(
         if (selectedTab == BottomNavItem.ContainerInfo.route) storageViewModel.refresh()
     }
     var defaultTabApplied      by rememberSaveable { mutableStateOf(false) }
-    var notification           by remember { mutableStateOf<InAppNotification?>(null) }
     var showUnmountConfirm     by remember { mutableStateOf(false) }
 
     // Open on the user's preferred tab the first time this screen is shown. Guarded
     // so it never overrides a manual tab switch or a restored tab after process death.
-    // An ext4 vault whose last write session did not finish says so on the way in
-    // (#142). Raised into the banner this screen already owns rather than shown at
-    // mount time, because mounting navigates straight here.
-    val needsCheckNotice by viewModel.needsCheckNotice.collectAsState()
-    LaunchedEffect(needsCheckNotice) {
-        needsCheckNotice?.let {
-            notification = it
-            viewModel.clearNeedsCheckNotice()
-        }
-    }
-
     val defaultTabRoute by viewModel.defaultTabRoute.collectAsState()
     LaunchedEffect(defaultTabRoute) {
         if (!defaultTabApplied && defaultTabRoute != null) {
@@ -258,13 +243,11 @@ fun ContainerScreen(
                                             MediaFileType.AUDIO -> onAudioClick(file.id)
                                         }
                                     },
-                                    onNotification   = { notification = it },
                                     viewModel        = galleryViewModel
                                 )
                                 BottomNavItem.ContainerFiles -> FileManagerScreen(
                                     containerId      = viewModel.containerId,
                                     onBack           = onBack,
-                                    onNotification   = { notification = it },
                                     bottomPadding    = 60.dp + navBarPadding,
                                     onAudioFileClick = { path, name, size ->
                                         onAudioFileClick(viewModel.containerId, path, name, size)
@@ -315,17 +298,6 @@ fun ContainerScreen(
                         }
                     )
                 }
-
-                // In-app notification banner
-                InAppNotificationBanner(
-                    notification = notification,
-                    onDismiss    = { notification = null },
-                    onAction     = { notification = null },
-                    modifier     = Modifier
-                        .align(Alignment.TopCenter)
-                        .statusBarsPadding()
-                        .zIndex(10f)
-                )
 
             }
         }

@@ -171,6 +171,7 @@ import zip.arcanum.core.components.LocalHazeState
 import zip.arcanum.core.components.WheelDateTimePicker
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.LocalNotifications
 import java.text.DecimalFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -185,7 +186,6 @@ fun MediaViewerScreen(
     photoId: String,
     onBack: () -> Unit,
     onOpenEditor: (String) -> Unit = {},
-    onNotification: (InAppNotification) -> Unit = {},
     viewModel: PhotoViewerViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -314,17 +314,14 @@ fun MediaViewerScreen(
         ActivityResultContracts.CreateDocument("*/*")
     ) { uri -> if (uri != null) viewModel.exportToUri(uri) }
 
+    /* The export notification is raised here rather than in the view model because the
+     * name of what was exported is what the user needs to read, and the screen is what
+     * holds it. */
+    val notifications = LocalNotifications.current
     LaunchedEffect(uiState.exportDone) {
         if (uiState.exportDone) {
-            onNotification(InAppNotification.ExportSuccess(uiState.currentFile?.fileName ?: ""))
+            notifications.notify(InAppNotification.ExportSuccess(uiState.currentFile?.fileName ?: ""))
             viewModel.clearExportDone()
-        }
-    }
-
-    LaunchedEffect(uiState.pendingNotification) {
-        uiState.pendingNotification?.let {
-            onNotification(it)
-            viewModel.clearPendingNotification()
         }
     }
 

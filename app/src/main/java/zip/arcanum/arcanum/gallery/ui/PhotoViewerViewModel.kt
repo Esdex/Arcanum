@@ -32,6 +32,7 @@ import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.crypto.VeraCryptEngine
 import kotlin.random.Random
@@ -47,7 +48,8 @@ class PhotoViewerViewModel @Inject constructor(
     private val exifReader: ExifReader,
     private val thumbnailManager: ThumbnailManager,
     private val idleMonitor: IdleMonitor,
-    private val prefs: AppPreferences
+    private val prefs: AppPreferences,
+    private val notifications: NotificationCenter
 ) : ViewModel() {
 
     private val fileId: String = savedStateHandle[Screen.PhotoViewer.ARG] ?: ""
@@ -68,7 +70,6 @@ class PhotoViewerViewModel @Inject constructor(
         val exportDone: Boolean = false,
         val exifData: MediaExifData? = null,
         val isExifLoading: Boolean = false,
-        val pendingNotification: InAppNotification? = null,
         val isReadOnly: Boolean = false
     )
 
@@ -304,7 +305,7 @@ class PhotoViewerViewModel @Inject constructor(
     fun updateDateTime(newDateMillis: Long) {
         val file = _uiState.value.currentFile ?: return
         if (repo.isContainerReadOnly(file.containerId)) {
-            _uiState.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+            notifications.notify(InAppNotification.ReadOnlyError)
             return
         }
         val handle = repo.getContainerHandle(file.containerId) ?: return
@@ -317,7 +318,7 @@ class PhotoViewerViewModel @Inject constructor(
                     val (app1Offset, modifiedApp1) = patch
                     val rc = engine.writeFile(handle, file.relativePath, modifiedApp1, app1Offset.toLong())
                     if (rc != 0) {
-                        _uiState.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+                        notifications.notify(InAppNotification.ReadOnlyError)
                         return@launch
                     }
                 }
@@ -331,16 +332,16 @@ class PhotoViewerViewModel @Inject constructor(
                 siblings    = siblings,
                 currentIndex = idx,
                 exifData    = _uiState.value.exifData?.copy(dateTimeOriginal = newDateMillis)
-                              ?: MediaExifData(dateTimeOriginal = newDateMillis),
-                pendingNotification = InAppNotification.DateUpdated
+                              ?: MediaExifData(dateTimeOriginal = newDateMillis)
             ) }
+            notifications.notify(InAppNotification.DateUpdated)
         }
     }
 
     fun updateGps(lat: Double, lng: Double) {
         val file = _uiState.value.currentFile ?: return
         if (repo.isContainerReadOnly(file.containerId)) {
-            _uiState.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+            notifications.notify(InAppNotification.ReadOnlyError)
             return
         }
         val handle = repo.getContainerHandle(file.containerId) ?: return
@@ -353,16 +354,16 @@ class PhotoViewerViewModel @Inject constructor(
                     val (app1Offset, modifiedApp1) = patch
                     val rc = engine.writeFile(handle, file.relativePath, modifiedApp1, app1Offset.toLong())
                     if (rc != 0) {
-                        _uiState.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+                        notifications.notify(InAppNotification.ReadOnlyError)
                         return@launch
                     }
                 }
             }
             _uiState.update { it.copy(
                 exifData = _uiState.value.exifData?.copy(gpsLatitude = lat, gpsLongitude = lng)
-                           ?: MediaExifData(gpsLatitude = lat, gpsLongitude = lng),
-                pendingNotification = InAppNotification.DateUpdated
+                           ?: MediaExifData(gpsLatitude = lat, gpsLongitude = lng)
             ) }
+            notifications.notify(InAppNotification.DateUpdated)
         }
     }
 
@@ -386,11 +387,8 @@ class PhotoViewerViewModel @Inject constructor(
                 val updated = file.copy(fileName = finalName, relativePath = newPath)
                 mediaFileDao.updateMediaFile(updated)
                 val siblings = _uiState.value.siblings.map { if (it.id == file.id) updated else it }
-                _uiState.update { it.copy(
-                    currentFile = updated,
-                    siblings    = siblings,
-                    pendingNotification = InAppNotification.FileRenamed(finalName)
-                ) }
+                _uiState.update { it.copy(currentFile = updated, siblings = siblings) }
+                notifications.notify(InAppNotification.FileRenamed(finalName))
             }
             withContext(Dispatchers.Main) { onResult(success) }
         }
@@ -408,7 +406,7 @@ class PhotoViewerViewModel @Inject constructor(
                 thumbnailManager.clearFileCache(file.containerId, file.relativePath, file.id)
                 launch(Dispatchers.Main) { onDone() }
             } else {
-                _uiState.update { it.copy(pendingNotification = InAppNotification.ReadOnlyError) }
+                notifications.notify(InAppNotification.ReadOnlyError)
             }
         }
     }
@@ -436,7 +434,6 @@ class PhotoViewerViewModel @Inject constructor(
 
     fun clearExportDone() { _uiState.update { it.copy(exportDone = false) } }
 
-    fun clearPendingNotification() { _uiState.update { it.copy(pendingNotification = null) } }
 
     fun getHandle(): Long? {
         val containerId = _uiState.value.currentFile?.containerId ?: return null

@@ -14,7 +14,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -74,7 +73,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -93,7 +91,7 @@ import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.notifications.InAppNotification
-import zip.arcanum.core.notifications.InAppNotificationBanner
+import zip.arcanum.core.notifications.LocalNotifications
 import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.LocalHazeState
 import zip.arcanum.core.components.SettingsSwitch
@@ -163,7 +161,7 @@ fun VaultConfigScreen(
     var showUnmountDialog    by remember { mutableStateOf(false) }
     var renameText           by remember { mutableStateOf("") }
     var detailsContainer     by remember { mutableStateOf<Container?>(null) }
-    var notification         by remember { mutableStateOf<InAppNotification?>(null) }
+    val notifications        = LocalNotifications.current
     val scope                = rememberCoroutineScope()
 
     LaunchedEffect(renameResult) {
@@ -285,7 +283,7 @@ fun VaultConfigScreen(
                         onOpenDetails = {
                             scope.launch { detailsContainer = viewModel.getContainerDomain(containerId) }
                         },
-                        onBlocked = { notification = InAppNotification.DetailsNeedMount }
+                        onBlocked = { notifications.notify(InAppNotification.DetailsNeedMount) }
                     )
 
                     // ── Operations ───────────────────────────────────────────────
@@ -387,13 +385,6 @@ fun VaultConfigScreen(
             }
         }
 
-        // ── Notification banner ───────────────────────────────────────────────
-        InAppNotificationBanner(
-            notification = notification,
-            onDismiss    = { notification = null },
-            onAction     = { notification = null },
-            modifier     = Modifier.align(Alignment.TopCenter).statusBarsPadding().zIndex(20f)
-        )
         }
 
         // ── Rename dialog ─────────────────────────────────────────────────────────

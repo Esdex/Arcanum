@@ -17,6 +17,7 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.share.ShareIntake
 import zip.arcanum.arcanum.share.ShareReceiver
 import zip.arcanum.core.navigation.AppNavigation
+import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.theme.AppTheme
@@ -33,6 +34,7 @@ class MainActivity : AppCompatActivity() {
     @Inject lateinit var engine: VeraCryptEngine
     @Inject lateinit var idleMonitor: IdleMonitor
     @Inject lateinit var shareIntake: ShareIntake
+    @Inject lateinit var notifications: NotificationCenter
 
     private val settingsViewModel: SettingsViewModel by viewModels()
 
@@ -77,7 +79,7 @@ class MainActivity : AppCompatActivity() {
                 amoledMode   = isAmoledGlass,
                 dynamicColor = isDynamicColor
             ) {
-                AppNavigation(pinManager = pinManager)
+                AppNavigation(pinManager = pinManager, notifications = notifications)
 
                 if (showDisguiseOverlay) {
                     DisguiseOverlay(

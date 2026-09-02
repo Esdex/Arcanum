@@ -9,6 +9,9 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -47,6 +50,10 @@ import zip.arcanum.arcanum.gallery.ui.AudioPlayerScreen
 import zip.arcanum.arcanum.gallery.ui.MediaViewerScreen
 import zip.arcanum.arcanum.gallery.editor.PhotoEditorScreen
 import zip.arcanum.calculator.ui.CalculatorScreen
+import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.InAppNotificationBanner
+import zip.arcanum.core.notifications.LocalNotifications
+import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.settings.SettingsViewModel
@@ -78,7 +85,7 @@ fun autoLockDelayMillis(index: Int): Long = when (index) {
 }
 
 @Composable
-fun AppNavigation(pinManager: PinManager) {
+fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
     val isPinSet          by pinManager.isPinSetFlow.collectAsState()
     val navController      = rememberNavController()
     val settingsViewModel: SettingsViewModel = hiltViewModel()
@@ -256,6 +263,17 @@ fun AppNavigation(pinManager: PinManager) {
         }
     }
 
+    /*
+     * Nothing is shown over the disguise. The calculator and the PIN screen are not the
+     * user's session, and a vault's name on a banner there would give away both the app and
+     * what is in it. What arrives while locked waits and is delivered on the way back in -
+     * which is what OperationRefusedLocked was hand-rolled to do before the queue existed.
+     */
+    LaunchedEffect(isUnlockedArea) { notifications.setDelivering(isUnlockedArea) }
+
+    val currentNotification by notifications.current.collectAsState()
+
+    CompositionLocalProvider(LocalNotifications provides notifications) {
     Box(Modifier.fillMaxSize()) {
 
     NavHost(navController = navController, startDestination = startDestination) {
@@ -438,8 +456,7 @@ fun AppNavigation(pinManager: PinManager) {
             MediaViewerScreen(
                 photoId        = photoId,
                 onBack         = { navController.popBackStack() },
-                onOpenEditor   = { fileId -> navController.navigate(Screen.PhotoEditor.buildRoute(fileId)) },
-                onNotification = { /* TODO: propagate to VaultScreen banner */ }
+                onOpenEditor   = { fileId -> navController.navigate(Screen.PhotoEditor.buildRoute(fileId)) }
             )
         }
 
@@ -673,5 +690,36 @@ fun AppNavigation(pinManager: PinManager) {
         UnmountAnimationOverlay(onComplete = { showUnmountOverlay = false })
     }
 
+    /*
+     * The one notification host in the app. It sits above every screen and below the
+     * full-screen mount and unmount overlays, which are the app talking about the same
+     * thing in a louder voice.
+     *
+     * Four screens used to host their own, each with its own copy of the state, so a
+     * notification raised on one screen died the moment the user left it and two raised
+     * together meant one was never seen.
+     */
+    InAppNotificationBanner(
+        notification = currentNotification,
+        onDismiss    = { notifications.dismiss() },
+        onAction     = { notif ->
+            when (notif) {
+                is InAppNotification.AppUpdated -> {
+                    settingsViewModel.markUpdateSeen()
+                    navController.navigate(Screen.WhatsNew.route)
+                }
+                is InAppNotification.SupportDeveloper -> navController.navigate(Screen.Donations.route)
+                is InAppNotification.GoPremium        -> navController.navigate(Screen.Premium.route)
+                else -> Unit
+            }
+            notifications.dismiss()
+        },
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .statusBarsPadding()
+            .zIndex(50f)
+    )
+
     } // outer Box
+    }
 }

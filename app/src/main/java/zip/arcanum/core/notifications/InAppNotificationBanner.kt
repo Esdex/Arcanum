@@ -1,6 +1,7 @@
 package zip.arcanum.core.notifications
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -20,21 +21,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
-import androidx.compose.material.icons.outlined.Link
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.ContentCut
-import androidx.compose.material.icons.outlined.Favorite
-import androidx.compose.material.icons.outlined.Star
-import androidx.compose.material.icons.outlined.FolderZip
-import androidx.compose.material.icons.outlined.AutoStories
-import androidx.compose.material.icons.outlined.LockOpen
-import androidx.compose.material.icons.outlined.NewReleases
-import androidx.compose.material.icons.outlined.Eject
-import androidx.compose.material.icons.outlined.NoEncryption
-import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -44,32 +30,39 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
-import android.content.Context
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
-import zip.arcanum.R
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-private data class NotificationDisplayConfig(
-    val backgroundColor: Color,
-    val icon: ImageVector,
-    val title: String,
-    val subtitle: String
-)
+/** How long the arrival takes, and how long it waits for the one before it to leave. */
+private const val ENTER_MS       = 400L
+private const val ENTER_DELAY_MS = 220L
 
+/**
+ * Draws whatever the [NotificationCenter] currently holds. One host, in AppNavigation.
+ *
+ * Everything that varies between notifications - colour, icon, wording, how long it stays -
+ * comes from [spec]. This composable decides nothing about them.
+ */
 @Composable
 fun InAppNotificationBanner(
     notification: InAppNotification?,
@@ -77,25 +70,51 @@ fun InAppNotificationBanner(
     onAction: (InAppNotification) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val visible = notification != null && notification !is InAppNotification.PanicExecuted
+    val context        = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val spec           = notification?.spec(context)
 
-    LaunchedEffect(notification) {
-        if (notification != null && !notification.persistent) {
-            delay(5_000)
+    var dragging by remember(notification) { mutableStateOf(false) }
+
+    /*
+     * Time on screen is time the user could have been reading it. The dwell therefore only
+     * runs while the app is actually in front of them - a five second banner raised as the
+     * app went to the background used to be spent and gone by the time they came back - and
+     * it starts again when a finger that was dragging it lets go.
+     */
+    LaunchedEffect(notification, dragging) {
+        val dwell = spec?.dwellMillis ?: 0L
+        if (notification == null || dwell <= 0L || dragging) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            // Plus the arrival, so a three second notification is three seconds of reading
+            // rather than three seconds counted from the top of its own slide.
+            delay(dwell + ENTER_MS + ENTER_DELAY_MS)
             onDismiss()
         }
     }
 
-    val context = LocalContext.current
-
-    AnimatedVisibility(
-        visible  = visible,
-        enter    = slideInVertically(initialOffsetY = { -it }, animationSpec = tween(400)) + fadeIn(tween(300)),
-        exit     = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(350)) + fadeOut(tween(250)),
+    /*
+     * AnimatedContent rather than AnimatedVisibility, because one notification following
+     * another is a change of content, not a change of visibility: with visibility alone the
+     * queue moved on by swapping the words in place, and a second notification looked like
+     * the first one rewriting itself. Now each leaves the way it came in and the next
+     * arrives from the top after it, whether it was dismissed by hand or timed out.
+     *
+     * The caller's modifier belongs here and ONLY here. It used to be applied a second time
+     * to the card inside, so the status bar inset and the padding were counted twice.
+     */
+    AnimatedContent(
+        targetState    = notification.takeIf { spec != null },
+        transitionSpec = {
+            (slideInVertically(tween(ENTER_MS.toInt(), delayMillis = ENTER_DELAY_MS.toInt())) { -it } +
+             fadeIn(tween(ENTER_MS.toInt(), delayMillis = ENTER_DELAY_MS.toInt()))) togetherWith
+            (slideOutHorizontally(tween(350)) { it } + fadeOut(tween(250)))
+        },
+        label    = "notification_swap",
         modifier = modifier
-    ) {
-        val notif = notification ?: return@AnimatedVisibility
-        val config = notif.toDisplayConfig(context) ?: return@AnimatedVisibility
+    ) { target ->
+        val notif  = target ?: return@AnimatedContent
+        val config = notif.spec(context)
 
         var offsetX by remember { mutableFloatStateOf(0f) }
         val animatedOffset by animateFloatAsState(
@@ -105,24 +124,32 @@ fun InAppNotificationBanner(
         )
 
         Box(
-            // The caller's modifier goes first and was being dropped entirely: NavGraph has
-            // been passing an alignment, a status-bar inset and a zIndex that never took
-            // effect. Honouring it is what lets a screen say where its banner belongs.
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp)
                 .offset { IntOffset(animatedOffset.roundToInt(), 0) }
                 .pointerInput(notif) {
                     detectHorizontalDragGestures(
-                        onDragEnd        = { if (abs(offsetX) > 150f) onDismiss() else offsetX = 0f },
+                        onDragStart      = { dragging = true },
+                        onDragCancel     = { dragging = false; offsetX = 0f },
+                        onDragEnd        = {
+                            dragging = false
+                            if (abs(offsetX) > 150f) onDismiss() else offsetX = 0f
+                        },
                         onHorizontalDrag = { _, dragAmount -> offsetX += dragAmount }
                     )
+                }
+                // A screen reader should say an error over whatever it was reading; a
+                // confirmation waits its turn.
+                .semantics {
+                    liveRegion = if (config.severity == NotificationSeverity.ERROR)
+                        LiveRegionMode.Assertive else LiveRegionMode.Polite
                 }
         ) {
             Card(
                 onClick   = { onAction(notif) },
                 shape     = RoundedCornerShape(16.dp),
-                colors    = CardDefaults.cardColors(containerColor = config.backgroundColor),
+                colors    = CardDefaults.cardColors(containerColor = config.color),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
                 modifier  = Modifier.fillMaxWidth()
             ) {
@@ -164,239 +191,4 @@ fun InAppNotificationBanner(
             }
         }
     }
-}
-
-private fun InAppNotification.toDisplayConfig(ctx: Context): NotificationDisplayConfig? = when (this) {
-    is InAppNotification.VaultMounted -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF16A34A),
-        icon            = Icons.Outlined.LockOpen,
-        title           = ctx.getString(R.string.notif_vault_mounted),
-        subtitle        = vaultName
-    )
-    is InAppNotification.VaultUnmounted -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF2563EB),
-        icon            = Icons.Outlined.NoEncryption,
-        title           = ctx.getString(R.string.notif_vault_unmounted),
-        subtitle        = vaultName
-    )
-    InAppNotification.VaultNeedsCheck -> NotificationDisplayConfig(
-        // Amber, not red: nothing is lost and nothing is broken, but it is worth
-        // knowing about - see InAppNotification.VaultNeedsCheck.
-        backgroundColor = Color(0xFFD97706),
-        icon            = Icons.Outlined.Warning,
-        title           = ctx.getString(R.string.notif_vault_needs_check),
-        subtitle        = ctx.getString(R.string.notif_vault_needs_check_body)
-    )
-    is InAppNotification.UsbSafeToRemove -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF16A34A),
-        icon            = Icons.Outlined.Eject,
-        title           = ctx.getString(R.string.notif_usb_safe_to_remove),
-        subtitle        = vaultName
-    )
-    InAppNotification.DetailsNeedMount -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFDC2626),
-        icon            = Icons.Outlined.Warning,
-        title           = ctx.getString(R.string.notif_details_need_mount),
-        subtitle        = ctx.getString(R.string.notif_details_need_mount_body)
-    )
-    InAppNotification.OperationRefusedLocked -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFDC2626),
-        icon            = Icons.Outlined.Warning,
-        title           = ctx.getString(R.string.notif_locked_refused),
-        subtitle        = ctx.getString(R.string.notif_locked_refused_body)
-    )
-    InAppNotification.MountNeedsCredentials -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFDC2626),
-        icon            = Icons.Outlined.Warning,
-        title           = ctx.getString(R.string.notif_mount_try_again),
-        subtitle        = ctx.getString(R.string.notif_mount_try_again_body)
-    )
-    is InAppNotification.VaultError -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFDC2626),
-        icon            = Icons.Outlined.Warning,
-        title           = ctx.getString(R.string.notif_vault_error),
-        subtitle        = message
-    )
-    is InAppNotification.ExportSuccess -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF16A34A),
-        icon            = Icons.Outlined.CheckCircle,
-        title           = ctx.getString(R.string.notif_export_success),
-        subtitle        = fileName
-    )
-    is InAppNotification.VaultAdded -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF16A34A),
-        icon            = Icons.Outlined.FolderZip,
-        title           = ctx.getString(R.string.notif_vault_added),
-        subtitle        = ctx.getString(R.string.notif_vault_added_subtitle, this.fileName)
-    )
-    is InAppNotification.VaultAlreadyExists -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFD97706),
-        icon            = Icons.Outlined.Warning,
-        title           = ctx.getString(R.string.notif_vault_already_exists),
-        subtitle        = this.fileName
-    )
-    InAppNotification.VaultInvalidFile -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFDC2626),
-        icon            = Icons.Outlined.Warning,
-        title           = ctx.getString(R.string.notif_vault_invalid_file),
-        subtitle        = ctx.getString(R.string.notif_vault_invalid_file_subtitle)
-    )
-    is InAppNotification.VaultAddError -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFDC2626),
-        icon            = Icons.Outlined.Warning,
-        title           = ctx.getString(R.string.notif_vault_add_error),
-        subtitle        = this.message
-    )
-    InAppNotification.DateUpdated -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF16A34A),
-        icon            = Icons.Outlined.CheckCircle,
-        title           = ctx.getString(R.string.notif_date_updated),
-        subtitle        = ctx.getString(R.string.notif_date_updated_subtitle)
-    )
-    is InAppNotification.FileRenamed -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF16A34A),
-        icon            = Icons.Outlined.CheckCircle,
-        title           = ctx.getString(R.string.notif_file_renamed),
-        subtitle        = this.newName
-    )
-    is InAppNotification.FilesPasted -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF16A34A),
-        icon            = Icons.Outlined.CheckCircle,
-        title           = ctx.resources.getQuantityString(R.plurals.notif_items_copied, this.count, this.count),
-        /* An item that could not travel outranks one the user chose to leave: the
-         * first is news, the second they already know. */
-        subtitle        = when {
-            this.leftBehind > 0 -> ctx.resources.getQuantityString(
-                R.plurals.notif_items_left_behind, this.leftBehind, this.leftBehind)
-            this.skipped > 0 -> ctx.resources.getQuantityString(
-                R.plurals.notif_files_skipped, this.skipped, this.skipped)
-            else -> ctx.getString(R.string.notif_files_pasted_subtitle)
-        }
-    )
-    is InAppNotification.FilesPasteFailed -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFDC2626),
-        icon            = Icons.Outlined.Warning,
-        title           = ctx.getString(R.string.notif_paste_failed, this.failed, this.total),
-        subtitle        = ctx.getString(R.string.notif_paste_failed_subtitle)
-    )
-    is InAppNotification.FilesLinked -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF6B7280),
-        icon            = Icons.Outlined.Link,
-        title           = ctx.resources.getQuantityString(R.plurals.notif_items_linked, this.count, this.count),
-        subtitle        = ctx.getString(when (this.kind) {
-            InAppNotification.LinkedKind.FILES   -> R.string.notif_linked_files
-            InAppNotification.LinkedKind.FOLDERS -> R.string.notif_linked_folders
-            InAppNotification.LinkedKind.MIXED   -> R.string.notif_linked_mixed
-        })
-    )
-    InAppNotification.FilesAlreadyHere -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF6B7280),
-        icon            = Icons.Outlined.CheckCircle,
-        title           = ctx.getString(R.string.notif_already_here),
-        subtitle        = ctx.getString(R.string.notif_already_here_subtitle)
-    )
-    is InAppNotification.FilesMoved -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF16A34A),
-        icon            = Icons.AutoMirrored.Outlined.DriveFileMove,
-        title           = ctx.resources.getQuantityString(R.plurals.notif_items_moved, this.count, this.count),
-        /* What stayed behind outranks where the rest went: the destination is on screen
-         * anyway, and an item that did not travel is the thing worth knowing. */
-        subtitle        = when {
-            this.leftBehind > 0 -> ctx.resources.getQuantityString(
-                R.plurals.notif_items_left_behind, this.leftBehind, this.leftBehind)
-            this.skipped > 0 -> ctx.resources.getQuantityString(
-                R.plurals.notif_files_skipped, this.skipped, this.skipped)
-            else -> ctx.getString(R.string.notif_files_moved_subtitle, this.destinationName)
-        }
-    )
-    is InAppNotification.FilesDeleted -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF6B7280),
-        icon            = Icons.Outlined.CheckCircle,
-        title           = ctx.resources.getQuantityString(R.plurals.notif_items_deleted, this.count, this.count),
-        subtitle        = ctx.getString(R.string.notif_files_deleted_subtitle)
-    )
-    is InAppNotification.FolderCreated -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF16A34A),
-        icon            = Icons.Outlined.CheckCircle,
-        title           = ctx.getString(R.string.notif_folder_created),
-        subtitle        = this.name
-    )
-    is InAppNotification.FilesImported -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF16A34A),
-        icon            = Icons.Outlined.CheckCircle,
-        title           = ctx.resources.getQuantityString(R.plurals.notif_files_imported, this.count, this.count),
-        /* When names were left alone, say how many rather than reporting only what landed:
-         * a count of 40 out of 112 is otherwise indistinguishable from a failure. */
-        subtitle        = if (this.skipped > 0)
-            ctx.resources.getQuantityString(R.plurals.notif_files_skipped, this.skipped, this.skipped)
-        else ctx.getString(R.string.notif_files_imported_subtitle)
-    )
-    is InAppNotification.FilesExported -> NotificationDisplayConfig(
-        /* A green tick over an export that lost part of a file is the whole of what #170
-         * was about, so anything that did not come out whole takes the banner with it. */
-        backgroundColor = if (this.failed > 0) Color(0xFFDC2626) else Color(0xFF16A34A),
-        icon            = if (this.failed > 0) Icons.Outlined.Warning
-                          else Icons.Outlined.CheckCircle,
-        title           = ctx.resources.getQuantityString(R.plurals.notif_files_exported, this.count, this.count),
-        /* The subtitle is one line, so when both are true the skipped items come
-         * first: something the user picked is not out there at all, which is worth
-         * more than knowing that something else went out twice. */
-        subtitle        = when {
-            this.failed > 0 -> ctx.resources.getQuantityString(
-                R.plurals.notif_files_exported_failed, this.failed, this.failed)
-            this.skipped > 0 && this.duplicates > 0 -> ctx.getString(
-                R.string.notif_files_exported_skipped_and_copies, this.skipped, this.duplicates)
-            this.skipped > 0 -> ctx.resources.getQuantityString(
-                R.plurals.notif_files_exported_skipped, this.skipped, this.skipped)
-            this.duplicates > 0 -> ctx.resources.getQuantityString(
-                R.plurals.notif_files_exported_copies, this.duplicates, this.duplicates)
-            else -> ctx.getString(R.string.notif_files_exported_subtitle)
-        }
-    )
-    InAppNotification.HiddenVolumeWriteProtection -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFDC2626),
-        icon            = Icons.Outlined.Warning,
-        title           = ctx.getString(R.string.notif_hidden_write_protection),
-        subtitle        = ctx.getString(R.string.notif_hidden_write_protection_subtitle)
-    )
-    is InAppNotification.ImportFailed -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFDC2626),
-        icon            = Icons.Outlined.Warning,
-        title           = ctx.getString(R.string.notif_import_failed),
-        subtitle        = ctx.getString(
-            when (this.reason) {
-                ImportFailureReason.DIRECTORY_FULL -> R.string.notif_import_failed_dir_full
-                ImportFailureReason.NO_SPACE       -> R.string.notif_import_failed_no_space
-                ImportFailureReason.TOO_FRAGMENTED -> R.string.notif_import_failed_fragmented
-                ImportFailureReason.READ_ONLY      -> R.string.notif_import_failed_read_only
-                ImportFailureReason.UNKNOWN        -> R.string.notif_import_failed_unknown
-            }
-        )
-    )
-    InAppNotification.ReadOnlyError -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFDC2626),
-        icon            = Icons.Outlined.AutoStories,
-        title           = ctx.getString(R.string.notif_read_only_error),
-        subtitle        = ctx.getString(R.string.notif_read_only_error_subtitle)
-    )
-    InAppNotification.AppUpdated -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF7C3AED),
-        icon            = Icons.Outlined.NewReleases,
-        title           = ctx.getString(R.string.notif_app_updated),
-        subtitle        = ctx.getString(R.string.notif_app_updated_subtitle)
-    )
-    InAppNotification.PanicExecuted -> null
-    InAppNotification.SupportDeveloper -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFF7C3AED),
-        icon            = Icons.Outlined.Favorite,
-        title           = ctx.getString(R.string.notif_support_developer),
-        subtitle        = ctx.getString(R.string.notif_support_developer_subtitle)
-    )
-
-    InAppNotification.GoPremium -> NotificationDisplayConfig(
-        backgroundColor = Color(0xFFF5B301),
-        icon            = Icons.Outlined.Star,
-        title           = ctx.getString(R.string.notif_go_premium),
-        subtitle        = ctx.getString(R.string.notif_go_premium_subtitle)
-    )
 }

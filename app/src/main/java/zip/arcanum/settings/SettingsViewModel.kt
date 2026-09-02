@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import zip.arcanum.BuildConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.StateFlow
@@ -45,6 +46,15 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
 
     val isPro = billingManager.isPro
+
+    /**
+     * The "what's new" notification is answered rather than dismissed: it keeps coming back
+     * until the user opens the release notes. Lives here because the notification host in
+     * AppNavigation is what handles the tap, and it cannot reach VaultViewModel.
+     */
+    fun markUpdateSeen() {
+        viewModelScope.launch { prefs.setLastSeenVersionCode(BuildConfig.VERSION_CODE) }
+    }
 
     val receiveShares = prefs.receiveShares.stateIn(
         scope        = viewModelScope,
