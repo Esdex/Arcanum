@@ -29,6 +29,19 @@ object ShareReceiver {
         }
     }
 
+    /**
+     * Whether the alias is enabled right now, which is what the system acts on. The setting
+     * that drives it lives in DataStore and the two can come apart - a wipe that clears the
+     * preference cannot clear a component state, and the app would then sit in every share
+     * sheet while its own settings said it did not (#134). See the reconciliation in
+     * MainActivity.
+     *
+     * DEFAULT means the manifest's value, and the alias is declared disabled.
+     */
+    fun isEnabled(context: Context): Boolean =
+        context.packageManager.getComponentEnabledSetting(aliasComponent(context)) ==
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+
     /** Pulls the shared content URIs out of an ACTION_SEND / ACTION_SEND_MULTIPLE intent. */
     fun extractSharedUris(intent: Intent): List<Uri> = when (intent.action) {
         Intent.ACTION_SEND ->

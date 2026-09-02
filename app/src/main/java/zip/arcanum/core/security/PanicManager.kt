@@ -166,7 +166,7 @@ class PanicManager @Inject constructor(
          * none.
          */
         if (settings.clearSettings) {
-            appPreferences.clearAllExceptDisguise()
+            appPreferences.clearSettingsForPanic()
             traceCleaner.clearCrashLogs()
             traceCleaner.clearMountLog()
             traceCleaner.clearAllWaveforms()

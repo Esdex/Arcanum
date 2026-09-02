@@ -55,22 +55,50 @@ class AppPreferences @Inject constructor(
         val RECEIVE_SHARES            = booleanPreferencesKey("receive_shares")
         val FIRST_SEEN_AT             = longPreferencesKey("first_seen_at")
         val LAST_SUPPORT_PROMPT_AT    = longPreferencesKey("last_support_prompt_at")
+
+        /** Survives panic mode's "Clear app settings" - see [clearSettingsForPanic]. */
+        val PANIC_KEEP: List<Preferences.Key<*>> = listOf(
+            CALCULATOR_ENABLED, DISGUISE_PROMPT_SHOWN, RECEIVE_SHARES,
+            THEME_MODE, AMOLED_GLASS, DYNAMIC_COLOR,
+            FIRST_LOGIN_DONE, MOUNT_HINT_SHOWN, MEDIA_LOC_PROMPT_SHOWN,
+            LAST_SEEN_VERSION_CODE, FIRST_SEEN_AT, LAST_SUPPORT_PROMPT_AT
+        )
     }
 
     /**
      * Wipes the app's settings, for panic mode's "Clear app settings" (#134).
      *
-     * [Keys.CALCULATOR_ENABLED] is carried over rather than cleared, and that is not a
-     * detail: the launcher icon is a component alias and does not come back with a
-     * preference, so clearing this one would leave an icon that says Calculator over an app
-     * that opens at the PIN screen. The point of a panic wipe is that nothing looks unusual
-     * afterwards.
+     * Everything in [PANIC_KEEP] is carried over, and the reason is the whole point of a
+     * panic wipe: what the person opposite you notices is not what was removed but that
+     * something changed. An app that looked one way this morning and another way now is the
+     * first thing to ask about.
+     *
+     * Three kinds of thing are kept:
+     *
+     * - **the two preferences that are paired with a component alias.** Neither the launcher
+     *   icon nor the entry in the system share sheet comes back with a preference: clearing
+     *   [Keys.CALCULATOR_ENABLED] would leave an icon that says Calculator over an app that
+     *   opens at a PIN screen, and clearing [Keys.RECEIVE_SHARES] would leave the app in
+     *   every share sheet while its own setting said it was not.
+     * - **the way it looks.** A dark, AMOLED app that comes back on the system theme has
+     *   announced itself, which is what Esdex reported: "иначе это сразу становится главным
+     *   подозрением".
+     * - **what has already been seen.** Clear these and the app behaves like a fresh
+     *   install: it offers the camouflage it is already wearing, shows the mount hint again,
+     *   and puts up "what's new" for a version that was installed weeks ago.
+     *
+     * Anything added to [Keys] later is cleared unless it is put on this list. That is the
+     * safer default for a wipe - but if resetting it would SHOW, it belongs here.
      */
-    suspend fun clearAllExceptDisguise() {
-        val keepCalculator = context.appPrefsDataStore.data.first()[Keys.CALCULATOR_ENABLED]
+    suspend fun clearSettingsForPanic() {
+        val before = context.appPrefsDataStore.data.first()
         context.appPrefsDataStore.edit { prefs ->
             prefs.clear()
-            if (keepCalculator != null) prefs[Keys.CALCULATOR_ENABLED] = keepCalculator
+            Keys.PANIC_KEEP.forEach { key ->
+                @Suppress("UNCHECKED_CAST")
+                val typed = key as Preferences.Key<Any>
+                before[typed]?.let { prefs[typed] = it }
+            }
         }
     }
 

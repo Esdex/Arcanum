@@ -11,6 +11,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import android.content.Intent
 import zip.arcanum.arcanum.containers.data.ContainerRepository
@@ -19,6 +20,7 @@ import zip.arcanum.arcanum.share.ShareReceiver
 import zip.arcanum.core.navigation.AppNavigation
 import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.security.IdleMonitor
+import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.security.VaultTraceCleaner
 import zip.arcanum.core.theme.AppTheme
@@ -37,6 +39,7 @@ class MainActivity : AppCompatActivity() {
     @Inject lateinit var shareIntake: ShareIntake
     @Inject lateinit var notifications: NotificationCenter
     @Inject lateinit var traceCleaner: VaultTraceCleaner
+    @Inject lateinit var appPrefs: AppPreferences
 
     private val settingsViewModel: SettingsViewModel by viewModels()
 
@@ -61,6 +64,16 @@ class MainActivity : AppCompatActivity() {
             // Traces of vaults that stopped existing before the app learned to clean up
             // after them (#134). One query and one directory listing.
             traceCleaner.purgeOrphans()
+
+            /*
+             * "Receive shared files" is a preference paired with a component alias, and the
+             * two can come apart: a settings wipe cannot clear a component state, so the app
+             * could sit in every share sheet while its own setting read off. The system's
+             * state is the truth - it is what other apps see - so the preference is brought
+             * to it rather than the other way round.
+             */
+            val aliasOn = ShareReceiver.isEnabled(this@MainActivity)
+            if (aliasOn != appPrefs.receiveShares.first()) appPrefs.setReceiveShares(aliasOn)
         }
 
         setContent {
