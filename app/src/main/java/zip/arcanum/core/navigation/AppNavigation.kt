@@ -227,18 +227,27 @@ fun AppNavigation(pinManager: PinManager) {
         }
     }
 
-    // Navigate to ContainerScreen when scan completes, then let the overlay fade out
-    LaunchedEffect(mountPhase) {
-        if (mountPhase is MountCoordinator.Phase.ScanComplete) {
-            val containerId = (mountPhase as MountCoordinator.Phase.ScanComplete).containerId
-            /*
-             * Single top, because two of the same vault must never be able to stack,
-             * whatever calls this. It WAS called twice for one mount: the effects here
-             * are disposed and recreated with their keys unchanged, so this one ran a
-             * second time for a state that had not moved (#176). The second copy is what
-             * made Back look broken - the first press removed a screen indistinguishable
-             * from the one beneath it.
-             */
+    // The phase this composition saw, captured - see the effect below for why.
+    val phase = mountPhase
+
+    /*
+     * Navigate to ContainerScreen when the scan completes, then let the overlay fade out.
+     *
+     * The phase is captured into a local first, and the body branches on THAT rather than
+     * on `mountPhase`. `mountPhase` is a `by collectAsState()` delegate, so every mention
+     * of it inside the coroutine is a read of the live state at the moment the coroutine
+     * wakes - and a LaunchedEffect starts its coroutine after the composition that created
+     * it. The scanner sets ScanComplete a few milliseconds after its last Indexing update,
+     * so the effect keyed on that last Indexing woke up already seeing ScanComplete and
+     * navigated, and the effect keyed on ScanComplete then navigated again. Two identical
+     * screens, and the first Back looked ignored because it removed a copy of the one
+     * beneath it (#176).
+     */
+    LaunchedEffect(phase) {
+        if (phase is MountCoordinator.Phase.ScanComplete) {
+            val containerId = phase.containerId
+            // Single top as well, so that two of the same vault cannot stack whatever
+            // else calls this - the guard put in when only the symptom was understood.
             navController.navigate(Screen.ContainerScreen.buildRoute(containerId)) {
                 launchSingleTop = true
             }
