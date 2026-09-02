@@ -28,7 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** Must match the `version` in the @Database annotation above - the debug screen reports it. */
-        const val VERSION = 13
+        const val VERSION = 14
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
