@@ -55,6 +55,7 @@ class AppPreferences @Inject constructor(
         val RECEIVE_SHARES            = booleanPreferencesKey("receive_shares")
         val FIRST_SEEN_AT             = longPreferencesKey("first_seen_at")
         val LAST_SUPPORT_PROMPT_AT    = longPreferencesKey("last_support_prompt_at")
+        val MEDIA_SESSION_CONTENT     = booleanPreferencesKey("media_session_content")
 
         /** Survives panic mode's "Clear app settings" - see [clearSettingsForPanic]. */
         val PANIC_KEEP: List<Preferences.Key<*>> = listOf(
@@ -262,6 +263,23 @@ class AppPreferences @Inject constructor(
 
     suspend fun setUnmountOnAutoLock(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.UNMOUNT_ON_AUTO_LOCK] = enabled }
+    }
+
+    /**
+     * Whether what is playing may be named outside the app - the system notification, the
+     * lock screen, a car head unit, a watch.
+     *
+     * Off by default, and that default is the one the app is built around: anything the
+     * shared MediaSession carries is mirrored past the PIN, past biometrics, past the
+     * calculator disguise and past FLAG_SECURE. On is a real choice for someone who wants
+     * the track and the cover on their lock screen and does not need the app to hide what
+     * it is playing.
+     */
+    val mediaSessionContent: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.MEDIA_SESSION_CONTENT] ?: false }
+
+    suspend fun setMediaSessionContent(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.MEDIA_SESSION_CONTENT] = enabled }
     }
 
     val receiveShares: Flow<Boolean> = context.appPrefsDataStore.data

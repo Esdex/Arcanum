@@ -15,6 +15,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -72,6 +73,10 @@ class PhotoViewerViewModel @Inject constructor(
         val isExifLoading: Boolean = false,
         val isReadOnly: Boolean = false
     )
+
+    /** Whether what is playing may be named outside the app - see AppPreferences. */
+    val mediaSessionContent = prefs.mediaSessionContent
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, false)
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState = _uiState.asStateFlow()

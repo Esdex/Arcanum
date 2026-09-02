@@ -598,6 +598,8 @@
     <string name="settings_auto_lock_hour">hour</string>
     <string name="settings_security_unmount_on_auto_lock">Unmount all vaults on auto-lock</string>
     <string name="settings_security_unmount_on_auto_lock_desc">All mounted vaults will be locked when auto-lock triggers</string>
+    <string name="settings_security_media_content">Show what is playing outside the app</string>
+    <string name="settings_security_media_content_desc">Lets the notification, the lock screen and connected devices show the name of the track or video and its cover. Off by default: what a media session carries is shown past the PIN, the fingerprint and the calculator disguise, and screenshot protection does not reach it.</string>
     <string name="settings_security_receive_shares">Receive shared files</string>
     <string name="settings_security_receive_shares_desc">Add Arcanum to the Android share sheet so other apps can send files into a mounted vault. Off by default - while off, Arcanum never appears as a share target.</string>
     <string name="share_target_title">Save to vault</string>

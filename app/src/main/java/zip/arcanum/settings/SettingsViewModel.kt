@@ -62,6 +62,14 @@ class SettingsViewModel @Inject constructor(
         initialValue = false
     )
 
+    val mediaSessionContent = prefs.mediaSessionContent.stateIn(
+        viewModelScope, SharingStarted.Eagerly, false
+    )
+
+    fun setMediaSessionContent(enabled: Boolean) {
+        viewModelScope.launch { prefs.setMediaSessionContent(enabled) }
+    }
+
     fun setReceiveShares(enabled: Boolean) {
         viewModelScope.launch { prefs.setReceiveShares(enabled) }
         // Enable/disable the disabled-by-default share-sheet alias so Arcanum only appears as a

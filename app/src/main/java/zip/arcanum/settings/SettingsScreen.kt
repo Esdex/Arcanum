@@ -592,6 +592,7 @@ private fun SecuritySubScreen(
     val context     = LocalContext.current
     var showWarning by remember { mutableStateOf(false) }
     val receiveShares by viewModel.receiveShares.collectAsState()
+    val mediaSessionContent by viewModel.mediaSessionContent.collectAsState()
     val notifications = LocalNotifications.current
 
     SubScreenScaffold(title = stringResource(R.string.settings_security_title), onBack = onBack) { innerPadding ->
@@ -696,6 +697,12 @@ private fun SecuritySubScreen(
                     subtitle        = stringResource(R.string.settings_security_receive_shares_desc),
                     checked         = receiveShares,
                     onCheckedChange = { viewModel.setReceiveShares(it) }
+                )
+                SettingsSwitch(
+                    title           = stringResource(R.string.settings_security_media_content),
+                    subtitle        = stringResource(R.string.settings_security_media_content_desc),
+                    checked         = mediaSessionContent,
+                    onCheckedChange = { viewModel.setMediaSessionContent(it) }
                 )
             }
         }

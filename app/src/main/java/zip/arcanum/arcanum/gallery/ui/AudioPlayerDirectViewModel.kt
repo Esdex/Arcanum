@@ -38,15 +38,12 @@ import zip.arcanum.arcanum.gallery.JniMediaDataSource
 import zip.arcanum.arcanum.gallery.ServiceEncryptedDataSource
 import zip.arcanum.arcanum.gallery.domain.AudioMetadata
 import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
+import zip.arcanum.arcanum.gallery.service.NEUTRAL_METADATA
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
 import kotlin.math.sqrt
-
-// Neutral title exposed to the shared MediaSession (notification / lockscreen / controllers).
-// Real tags stay in-app only — see loadTrackAt().
-private const val SESSION_TITLE = "Arcanum"
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @HiltViewModel
@@ -56,6 +53,7 @@ class AudioPlayerDirectViewModel @Inject constructor(
     private val repo: ContainerRepository,
     private val queue: AudioPlayerQueue,
     private val idleMonitor: IdleMonitor,
+    private val prefs: zip.arcanum.core.security.AppPreferences,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
@@ -117,6 +115,18 @@ class AudioPlayerDirectViewModel @Inject constructor(
 
     init {
         val token = SessionToken(appContext, ComponentName(appContext, ArcanumMediaService::class.java))
+        /* Applied to what is already playing rather than only to the next track: a setting
+           that takes effect later looks broken. */
+        viewModelScope.launch {
+            prefs.mediaSessionContent.collect { on ->
+                showContent = on
+                val mc = mediaController ?: return@collect
+                val index = mc.currentMediaItemIndex
+                val item  = mc.currentMediaItem ?: return@collect
+                mc.replaceMediaItem(index, item.buildUpon().setMediaMetadata(sessionMetadata()).build())
+            }
+        }
+
         controllerFuture = MediaController.Builder(appContext, token).buildAsync()
         controllerFuture!!.addListener({
             val mc = runCatching { controllerFuture!!.get() }.getOrElse { e ->
@@ -129,6 +139,34 @@ class AudioPlayerDirectViewModel @Inject constructor(
             viewModelScope.launch(Dispatchers.IO) { loadTrackAt(posInOrder) }
         }, ContextCompat.getMainExecutor(appContext))
     }
+
+    /**
+     * What the shared MediaSession is allowed to say about this track.
+     *
+     * Off by default, and then the session gets a fixed neutral title: whatever it carries is
+     * mirrored to the system notification, the lock screen and every connected controller,
+     * which is past the PIN, past biometrics, past the disguise and past FLAG_SECURE. Turned
+     * on, the track and its cover appear out there like any other player - a choice that
+     * belongs to the person using it, not to us.
+     */
+    private fun sessionMetadata(): MediaMetadata {
+        if (!showContent) return NEUTRAL_METADATA
+        val m = _state.value.metadata ?: return NEUTRAL_METADATA
+        return MediaMetadata.Builder()
+            .setTitle(m.title)
+            .setArtist(m.artist)
+            .setAlbumTitle(m.album)
+            .apply {
+                m.artwork?.let { bmp ->
+                    val out = java.io.ByteArrayOutputStream()
+                    if (bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out))
+                        setArtworkData(out.toByteArray(), MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                }
+            }
+            .build()
+    }
+
+    @Volatile private var showContent = false
 
     // ── Track loading ─────────────────────────────────────────────────────
 
@@ -174,9 +212,7 @@ class AudioPlayerDirectViewModel @Inject constructor(
             // metadata from _state.metadata, populated separately above.
             mc.setMediaItem(MediaItem.Builder()
                 .setUri(uri)
-                .setMediaMetadata(MediaMetadata.Builder()
-                    .setTitle(SESSION_TITLE)
-                    .build())
+                .setMediaMetadata(sessionMetadata())
                 .build())
             mc.prepare()
             mc.playWhenReady = true

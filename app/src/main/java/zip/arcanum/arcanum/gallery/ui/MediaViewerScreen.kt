@@ -26,6 +26,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.media3.ui.PlayerView
 import zip.arcanum.arcanum.gallery.ServiceEncryptedDataSource
+import zip.arcanum.arcanum.gallery.service.NEUTRAL_METADATA
 import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
 import zip.arcanum.core.database.entities.MediaFileType
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -386,7 +387,9 @@ fun MediaViewerScreen(
     // file often lands before it is ready. Without mc as a key the effect would run once
     // with mc == null, bail early, and never reconfigure - leaving a black, non-playing
     // video until the user swiped to another item and back (#100).
-    LaunchedEffect(uiState.currentFile?.id, mc) {
+    val showMediaContent by viewModel.mediaSessionContent.collectAsState()
+
+    LaunchedEffect(uiState.currentFile?.id, mc, showMediaContent) {
         userInteracted = false
         showBars = true
         playbackError = null
@@ -411,29 +414,41 @@ fun MediaViewerScreen(
                 .build()
             controller.stop()
             controller.clearMediaItems()
+            /* Neutral unless the user asked for the opposite: the name of a file inside a
+               vault on a lock screen is a decision, not a default. The session refuses
+               anything else while the setting is off anyway - see NeutralMetadataPlayer -
+               and this keeps both ends saying the same thing. */
             controller.setMediaItem(
                 MediaItem.Builder()
                     .setUri(serviceUri)
-                    .setMediaMetadata(MediaMetadata.Builder().setTitle(file.fileName).build())
+                    .setMediaMetadata(
+                        if (showMediaContent)
+                            MediaMetadata.Builder().setTitle(file.fileName).build()
+                        else NEUTRAL_METADATA
+                    )
                     .build()
             )
             controller.prepare()
             controller.playWhenReady = true
 
-            // Extract thumbnail on IO and update metadata once ready
-            val h = viewModel.getHandleForContainer(file.containerId)
-            if (h != null) {
-                val thumb = withContext(Dispatchers.IO) {
-                    extractVideoThumb(viewModel.engine, h, "/" + file.relativePath.trimStart('/'), file.size)
-                }
-                if (thumb != null && controller.mediaItemCount > 0) {
-                    controller.replaceMediaItem(0, MediaItem.Builder()
-                        .setUri(serviceUri)
-                        .setMediaMetadata(MediaMetadata.Builder()
-                            .setTitle(file.fileName)
-                            .setArtworkData(thumb, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+            /* The cover for the notification is a frame from the video itself, so it is only
+               taken when the user has asked for what is playing to be shown outside the app.
+               With the setting off nothing is extracted and nothing is published. */
+            if (showMediaContent) {
+                val h = viewModel.getHandleForContainer(file.containerId)
+                if (h != null) {
+                    val thumb = withContext(Dispatchers.IO) {
+                        extractVideoThumb(viewModel.engine, h, "/" + file.relativePath.trimStart('/'), file.size)
+                    }
+                    if (thumb != null && controller.mediaItemCount > 0) {
+                        controller.replaceMediaItem(0, MediaItem.Builder()
+                            .setUri(serviceUri)
+                            .setMediaMetadata(MediaMetadata.Builder()
+                                .setTitle(file.fileName)
+                                .setArtworkData(thumb, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                                .build())
                             .build())
-                        .build())
+                    }
                 }
             }
         } else if (file.fileType != MediaFileType.VIDEO) {
@@ -1623,6 +1638,7 @@ private fun Double.formatCoord(isLat: Boolean): String {
     return "%.4f° %s".format(abs(this), dir)
 }
 
+
 private fun extractVideoThumb(
     engine: zip.arcanum.crypto.VeraCryptEngine,
     handle: Long,
@@ -1647,8 +1663,6 @@ private fun extractVideoThumb(
         baos.toByteArray()
     } catch (_: Exception) { null }
 }
-
-
 
 /**
  * One of the small round glyphs that sit over the picture. The scrim is not decoration: a
