@@ -100,6 +100,15 @@ class ThumbnailManager @Inject constructor(
         fileSize: Long,
         cacheFile: File
     ): Bitmap? { return try {
+        /* HEIF refuses a stream and wants the file in one piece; ImageDecoder also applies
+           the orientation itself, so this branch skips the correction below. */
+        if (StillDecoder.needsWholeFile(relativePath)) {
+            val whole = engine.readWholeFile(handle, relativePath, fileSize, StillDecoder.MAX_BYTES)
+                ?: return null
+            val decoded = StillDecoder.decode(whole, 512) ?: return null
+            return centerCrop(decoded, 256).also { saveToCacheFile(it, cacheFile) }
+        }
+
         val stream = NativeFileInputStream(engine, handle, relativePath, fileSize)
 
         // Pass 1: bounds-only scan. BitmapFactory stops as soon as it finds the SOF marker,

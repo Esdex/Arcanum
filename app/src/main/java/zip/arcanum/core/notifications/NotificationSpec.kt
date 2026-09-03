@@ -3,6 +3,7 @@ package zip.arcanum.core.notifications
 import android.content.Context
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.SaveAs
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.Cancel
@@ -86,6 +87,7 @@ val InAppNotification.severity: NotificationSeverity
         is InAppNotification.VaultAlreadyExists,
         is InAppNotification.UsbSafeToRemove,
         is InAppNotification.HiddenVolumeWriteProtection,
+        is InAppNotification.SavedAs,
         is InAppNotification.OperationRefusedLocked  -> NotificationSeverity.WARNING
 
         /* Prompts, not failures. All three used to be red, which put "no vault is open" in
@@ -183,6 +185,7 @@ private val InAppNotification.icon: ImageVector
         is InAppNotification.ImportCancelled         -> Icons.Outlined.Cancel
         is InAppNotification.DisguiseAlreadyApplied  -> Icons.Outlined.Calculate
         is InAppNotification.FilesLinked             -> Icons.Outlined.Link
+        is InAppNotification.SavedAs                 -> Icons.Outlined.SaveAs
         is InAppNotification.FilesMoved              -> Icons.AutoMirrored.Outlined.DriveFileMove
         is InAppNotification.ReadOnlyError           -> Icons.Outlined.AutoStories
         is InAppNotification.AppUpdated              -> Icons.Outlined.NewReleases
@@ -207,6 +210,7 @@ private fun InAppNotification.title(ctx: Context): String = when (this) {
     is InAppNotification.AddressCopied          -> ctx.getString(R.string.donations_copied, label)
     is InAppNotification.DisguiseAlreadyApplied -> ctx.getString(R.string.settings_security_disguise_toast)
     is InAppNotification.FileRenamed            -> ctx.getString(R.string.notif_file_renamed)
+    is InAppNotification.SavedAs                -> ctx.getString(R.string.notif_saved_as)
     is InAppNotification.FilesAlreadyHere       -> ctx.getString(R.string.notif_already_here)
     is InAppNotification.FolderCreated          -> ctx.getString(R.string.notif_folder_created)
     is InAppNotification.HiddenVolumeWriteProtection -> ctx.getString(R.string.notif_hidden_write_protection)
@@ -241,6 +245,7 @@ private fun InAppNotification.subtitle(ctx: Context): String = when (this) {
     is InAppNotification.AddressCopied          -> ctx.getString(R.string.notif_address_copied_subtitle)
     is InAppNotification.DisguiseAlreadyApplied -> ctx.getString(R.string.notif_disguise_applied_subtitle)
     is InAppNotification.FileRenamed            -> newName
+    is InAppNotification.SavedAs                -> newName
     is InAppNotification.FilesAlreadyHere       -> ctx.getString(R.string.notif_already_here_subtitle)
     is InAppNotification.FolderCreated          -> name
     is InAppNotification.FilesDeleted           -> ctx.getString(R.string.notif_files_deleted_subtitle)

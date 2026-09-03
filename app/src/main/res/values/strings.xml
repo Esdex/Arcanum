@@ -130,6 +130,7 @@
     <string name="notif_date_updated">Date updated</string>
     <string name="notif_date_updated_subtitle">EXIF and timeline updated</string>
     <string name="notif_file_renamed">File renamed</string>
+    <string name="notif_saved_as">Saved in another format</string>
     <string name="notif_files_pasted_subtitle">Operation completed</string>
     <string name="notif_files_moved_subtitle">→ %1$s</string>
     <string name="notif_files_deleted_subtitle">Removed permanently</string>

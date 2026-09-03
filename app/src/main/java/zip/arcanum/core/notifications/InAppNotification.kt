@@ -139,6 +139,12 @@ sealed class InAppNotification {
     data class FileRenamed(val newName: String) : InAppNotification()
 
     /**
+     * The photo editor could not write the format the file was in and saved it as another
+     * one, under a name that matches what is actually inside it.
+     */
+    data class SavedAs(val newName: String) : InAppNotification()
+
+    /**
      * [leftBehind] counts items a copy or a move could not take with it and did not
      * turn into something else: a special file, or a link going where nothing can hold
      * one - into another vault, or onto FAT (#168).

@@ -31,6 +31,8 @@ import zip.arcanum.arcanum.gallery.ExifJpegPatcher
 import zip.arcanum.arcanum.gallery.ExifReader
 import zip.arcanum.arcanum.gallery.MediaExifData
 import zip.arcanum.arcanum.gallery.NativeFileInputStream
+import zip.arcanum.arcanum.gallery.StillDecoder
+import zip.arcanum.arcanum.gallery.readWholeFile
 import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileEntity
@@ -207,7 +209,9 @@ class PhotoViewerViewModel @Inject constructor(
         if (allowAnimated && AnimatedImages.mayAnimate(file.fileName, file.size)) {
             val head = engine.readFile(handle, file.relativePath, 0L, AnimatedImages.HEADER_BYTES)
             if (AnimatedImages.headerAnimates(file.fileName, head)) {
-                val bytes = readWhole(file, handle)
+                val bytes = engine.readWholeFile(
+                    handle, file.relativePath, file.size, AnimatedImages.MAX_BYTES
+                )
                 when (val drawable = bytes?.let { AnimatedImages.decode(it) }) {
                     is AnimatedImageDrawable -> return Decoded.Animated(drawable)
                     // A GIF with a single frame: keep the frame this decode already
@@ -220,33 +224,14 @@ class PhotoViewerViewModel @Inject constructor(
         return loadBitmapForFile(file, handle)?.let { Decoded.Still(it) }
     }
 
-    /**
-     * The whole file in one array, sized up front, which is what ImageDecoder needs.
-     *
-     * It cannot be one JNI call: both filesystems refuse a single read over 16 MB, so the
-     * bytes arrive in the stream's chunks. They go straight into a buffer of exactly the
-     * file's size rather than a growing one, which for a file near the animation cap would
-     * otherwise peak at several times its length.
-     */
-    private fun readWhole(file: MediaFileEntity, handle: Long): ByteArray? = try {
-        val size   = file.size.toInt()          // bounded by AnimatedImages.MAX_BYTES
-        val out    = ByteArray(size)
-        val stream = NativeFileInputStream(engine, handle, file.relativePath, file.size)
-        var off = 0
-        while (off < size) {
-            val n = stream.read(out, off, size - off)
-            if (n <= 0) break
-            off += n
-        }
-        // A short read means the file is not what the index says it is; the still path
-        // below gets its own chance rather than the decoder being handed a truncated GIF.
-        if (off == size) out else null
-    } catch (_: Throwable) {
-        null
-    }
-
     // Loads the bitmap for a single image file. Returns null on error. Must be called on IO dispatcher.
     private fun loadBitmapForFile(file: MediaFileEntity, handle: Long): Bitmap? { return try {
+        /* HEIF will not decode from a stream, so it is read whole and left to ImageDecoder,
+           which turns it the right way up itself - hence no orientation step here. */
+        if (StillDecoder.needsWholeFile(file.fileName)) {
+            val whole = engine.readWholeFile(handle, file.relativePath, file.size, StillDecoder.MAX_BYTES)
+            return whole?.let { StillDecoder.decode(it, 4096) }
+        }
         val stream = NativeFileInputStream(engine, handle, file.relativePath, file.size)
         stream.mark(0)
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }

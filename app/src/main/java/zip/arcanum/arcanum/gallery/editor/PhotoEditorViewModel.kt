@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.os.Build
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ColorMatrix
@@ -26,6 +27,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.gallery.ExifReader
+import zip.arcanum.arcanum.gallery.readWholeFile
+import zip.arcanum.arcanum.gallery.ExifTransfer
 import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.arcanum.gallery.editor.adjustments.applyBorders
 import zip.arcanum.arcanum.gallery.editor.adjustments.applyColorMatrix
@@ -45,7 +49,10 @@ import zip.arcanum.arcanum.gallery.editor.model.DrawMode
 import zip.arcanum.arcanum.gallery.editor.model.EditorTab
 import zip.arcanum.arcanum.gallery.editor.model.PathProperties
 import zip.arcanum.core.database.dao.MediaFileDao
+import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.navigation.Screen
+import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.crypto.VeraCryptEngine
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -58,10 +65,15 @@ class PhotoEditorViewModel @Inject constructor(
     private val mediaFileDao: MediaFileDao,
     private val repo: ContainerRepository,
     private val engine: VeraCryptEngine,
-    private val thumbnailManager: ThumbnailManager
+    private val thumbnailManager: ThumbnailManager,
+    private val exifReader: ExifReader,
+    private val notifications: NotificationCenter
 ) : ViewModel() {
 
     private val mediaId: String = savedStateHandle[Screen.PhotoEditor.ARG] ?: ""
+
+    /** The largest original the editor will hold in memory to work on. */
+    private val MAX_EDITABLE_BYTES = 50L * 1024 * 1024
 
     data class UiState(
         // Loading
@@ -137,11 +149,18 @@ class PhotoEditorViewModel @Inject constructor(
                     _state.update { it.copy(isLoading = false, error = "Vault not mounted") }
                     return@launch
                 }
-                val readSize = minOf(file.size, 50L * 1024 * 1024).toInt()
-                val bytes = engine.readFile(handle, file.relativePath, 0L, readSize) ?: run {
-                    _state.update { it.copy(isLoading = false, error = "Failed to read file") }
-                    return@launch
-                }
+                /* In chunks, because one JNI read is refused above 16 MB and comes back
+                   empty - which is why a large picture used to reach the decoder as nothing
+                   at all and open as "Cannot decode image". */
+                val bytes = engine.readWholeFile(handle, file.relativePath, file.size, MAX_EDITABLE_BYTES)
+                    ?: run {
+                        _state.update { it.copy(
+                            isLoading = false,
+                            error = if (file.size > MAX_EDITABLE_BYTES) "This picture is too large to edit"
+                                    else "Failed to read file"
+                        ) }
+                        return@launch
+                    }
                 // Pre-pass: check dimensions and choose inSampleSize to stay within 4096×4096
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -437,11 +456,100 @@ class PhotoEditorViewModel @Inject constructor(
         return bmp
     }
 
-    private fun Bitmap.compress(fileName: String): ByteArray {
-        val ext = fileName.substringAfterLast('.', "").lowercase()
-        val format = if (ext == "png") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
-        val quality = if (format == Bitmap.CompressFormat.PNG) 100 else 92
-        return ByteArrayOutputStream().also { compress(format, quality, it) }.toByteArray()
+    /** How an edit can be written back, and the name those bytes have a right to. */
+    private data class Encoding(
+        val format: Bitmap.CompressFormat,
+        val quality: Int,
+        val fileName: String
+    )
+
+    /**
+     * A Bitmap can be encoded as JPEG, PNG or WebP, and as nothing else. Everything the
+     * editor opens used to be written as JPEG regardless and kept its old name, so an
+     * edited .webp, .heic or .bmp was a JPEG wearing another format's extension - a file
+     * that lies about its content to anything trusting the name, and to every program it
+     * is exported to.
+     *
+     * Now the format follows what can actually be written, and where that cannot be the
+     * original format, the name follows the format instead of the other way round: a
+     * lossless source becomes a PNG, a camera format becomes the JPEG it would have been.
+     */
+    private fun encodingFor(fileName: String): Encoding {
+        val ext  = fileName.substringAfterLast('.', "").lowercase()
+        val base = fileName.substringBeforeLast('.', fileName)
+        return when (ext) {
+            "png"          -> Encoding(Bitmap.CompressFormat.PNG,  100, fileName)
+            "jpg", "jpeg"  -> Encoding(Bitmap.CompressFormat.JPEG,  92, fileName)
+            "webp"         -> Encoding(webpFormat(),                92, fileName)
+            "bmp", "gif"   -> Encoding(Bitmap.CompressFormat.PNG,  100, "$base.png")
+            "heic", "heif" -> Encoding(Bitmap.CompressFormat.JPEG,  92, "$base.jpg")
+            // A name with no extension at all lands here too, and gets one.
+            else           -> Encoding(Bitmap.CompressFormat.JPEG,  92, "$base.jpg")
+        }
+    }
+
+    // WEBP_LOSSY arrived in API 30; below that the deprecated WEBP is the same encoder.
+    @Suppress("DEPRECATION")
+    private fun webpFormat(): Bitmap.CompressFormat =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
+        else Bitmap.CompressFormat.WEBP
+
+    private fun Bitmap.compress(encoding: Encoding): ByteArray =
+        ByteArrayOutputStream().also { compress(encoding.format, encoding.quality, it) }.toByteArray()
+
+    /**
+     * The edit encoded, with the original's EXIF carried into it.
+     *
+     * `Bitmap.compress` writes pixels only, so without this an edited photo comes out of the
+     * editor with no date taken and no location - invisible inside the app, where the index
+     * keeps both, and gone the moment the file is exported or the index is built again.
+     *
+     * Anything that cannot be carried leaves the picture itself untouched: a failure here
+     * costs metadata, never the edit.
+     */
+    private suspend fun encodeWithExif(handle: Long, file: MediaFileEntity, bmp: Bitmap, enc: Encoding): ByteArray {
+        val bytes = bmp.compress(enc)
+        val tiff  = sourceTiff(handle, file) ?: return bytes
+        val ready = ExifTransfer.retarget(tiff, bmp.width, bmp.height)
+        return when (enc.format) {
+            Bitmap.CompressFormat.JPEG -> ExifTransfer.intoJpeg(bytes, ready)
+            Bitmap.CompressFormat.PNG  -> ExifTransfer.intoPng(bytes, ready)
+            else                       -> ExifTransfer.intoWebp(bytes, ready, bmp.width, bmp.height)
+        }
+    }
+
+    /**
+     * The original's EXIF as a TIFF block: lifted whole out of a JPEG, so that camera,
+     * exposure and everything else comes along; rebuilt from the date and the place for a
+     * HEIC, whose block sits inside the ISO container where lifting it is another parser.
+     */
+    private suspend fun sourceTiff(handle: Long, file: MediaFileEntity): ByteArray? {
+        val headSize = minOf(file.size, 512L * 1024).toInt()
+        val head = try {
+            engine.readFile(handle, file.relativePath, 0L, headSize)
+        } catch (_: Throwable) { null } ?: return null
+        ExifTransfer.tiffFromJpeg(head)?.let { return it }
+        val exif = exifReader.readExif(head)
+        return ExifTransfer.buildTiff(exif.dateTimeOriginal, exif.gpsLatitude, exif.gpsLongitude)
+    }
+
+    /**
+     * The first free "name_N.ext" in [dir], as name to full path, or null when a thousand
+     * of them are taken.
+     */
+    private fun nextFreeName(handle: Long, dir: String, base: String, ext: String): Pair<String, String>? {
+        val cleanBase = base.replace(Regex("_\\d+$"), "")
+        for (suffix in 1..999) {
+            val name = if (ext.isEmpty()) "${cleanBase}_$suffix" else "${cleanBase}_$suffix.$ext"
+            val path = if (dir.isEmpty()) name else "$dir/$name"
+            if (isFree(handle, path)) return name to path
+        }
+        return null
+    }
+
+    private fun isFree(handle: Long, path: String): Boolean {
+        val probe = engine.readFile(handle, path, 0L, 1)
+        return probe == null || probe.isEmpty()
     }
 
     private suspend fun writeChunked(handle: Long, path: String, bytes: ByteArray) {
@@ -463,7 +571,26 @@ class PhotoEditorViewModel @Inject constructor(
                 val handle = repo.getContainerHandle(file.containerId) ?: return@launch
 
                 val bmp = bakeEdits() ?: return@launch
-                val bytes = bmp.compress(file.fileName)
+                val enc = encodingFor(file.fileName)
+                val bytes = encodeWithExif(handle, file, bmp, enc)
+
+                /* Where the bytes land. The name only moves when the original format cannot
+                   be written back, and even then it must not land on a file that is already
+                   there - replacing the user's other photo is not what Overwrite promised. */
+                val dir = file.relativePath.substringBeforeLast('/', "")
+                val wanted = if (dir.isEmpty()) enc.fileName else "$dir/${enc.fileName}"
+                val (targetName, targetPath) = when {
+                    enc.fileName == file.fileName -> file.fileName to file.relativePath
+                    isFree(handle, wanted)        -> enc.fileName to wanted
+                    else -> nextFreeName(
+                        handle, dir,
+                        enc.fileName.substringBeforeLast('.', enc.fileName),
+                        enc.fileName.substringAfterLast('.', "")
+                    ) ?: run {
+                        _state.update { it.copy(isSaving = false, error = "Too many copies of this file") }
+                        return@launch
+                    }
+                }
 
                 // Backup-swap: write tmp → rename original to .bak → swap tmp → delete .bak
                 // Crash at any step leaves either original or .bak intact; never leaves both gone.
@@ -474,15 +601,25 @@ class PhotoEditorViewModel @Inject constructor(
                 engine.deleteFile(handle, bakPath)
                 val bakResult = engine.renameFile(handle, file.relativePath, bakPath)
                 if (bakResult != 0) throw IOException("Backup rename failed (error $bakResult)")
-                val swapResult = engine.renameFile(handle, tmpPath, file.relativePath)
+                val swapResult = engine.renameFile(handle, tmpPath, targetPath)
                 if (swapResult != 0) {
                     engine.renameFile(handle, bakPath, file.relativePath)
                     throw IOException("Swap rename failed (error $swapResult)")
                 }
                 engine.deleteFile(handle, bakPath)
 
-                mediaFileDao.updateMediaFile(file.copy(size = bytes.size.toLong(), width = bmp.width, height = bmp.height))
+                mediaFileDao.updateMediaFile(file.copy(
+                    fileName     = targetName,
+                    relativePath = targetPath,
+                    size         = bytes.size.toLong(),
+                    width        = bmp.width,
+                    height       = bmp.height
+                ))
+                // Keyed on the path the thumbnail was made from, so it is the old one.
                 thumbnailManager.clearFileCache(file.containerId, file.relativePath, file.id)
+                if (targetName != file.fileName) {
+                    notifications.notify(InAppNotification.SavedAs(targetName))
+                }
                 _state.update { it.copy(isSaving = false, saveSuccess = true, savedFileId = mediaId) }
             } catch (e: Exception) {
                 _state.update { it.copy(isSaving = false, error = "Save failed: ${e.message}") }
@@ -499,29 +636,20 @@ class PhotoEditorViewModel @Inject constructor(
 
                 val bmp = bakeEdits() ?: return@launch
 
-                // Build next available _N filename
-                val rawExt = file.fileName.substringAfterLast('.', "").lowercase()
-                val hasExt = rawExt.isNotEmpty()
-                val base = if (hasExt) file.fileName.substringBeforeLast('.') else file.fileName
-                val cleanBase = base.replace(Regex("_\\d+$"), "")
+                // The copy is named after the format it is actually saved in, not after
+                // the format of the file it was made from.
+                val enc = encodingFor(file.fileName)
                 val dir = file.relativePath.substringBeforeLast('/', "")
-
-                var suffix = 1
-                var newFileName: String
-                var newPath: String
-                while (true) {
-                    newFileName = if (hasExt) "${cleanBase}_$suffix.$rawExt" else "${cleanBase}_$suffix"
-                    newPath = if (dir.isEmpty()) newFileName else "$dir/$newFileName"
-                    val probe = engine.readFile(handle, newPath, 0L, 1)
-                    if (probe == null || probe.isEmpty()) break
-                    suffix++
-                    if (suffix > 999) {
-                        _state.update { it.copy(isSaving = false, error = "Too many copies of this file") }
-                        return@launch
-                    }
+                val (newFileName, newPath) = nextFreeName(
+                    handle, dir,
+                    enc.fileName.substringBeforeLast('.', enc.fileName),
+                    enc.fileName.substringAfterLast('.', "")
+                ) ?: run {
+                    _state.update { it.copy(isSaving = false, error = "Too many copies of this file") }
+                    return@launch
                 }
 
-                val bytes = bmp.compress(newFileName)
+                val bytes = encodeWithExif(handle, file, bmp, enc)
                 writeChunked(handle, newPath, bytes)
 
                 val copyEntity = file.copy(
