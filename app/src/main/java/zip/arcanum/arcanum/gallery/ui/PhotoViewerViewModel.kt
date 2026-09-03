@@ -4,6 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.graphics.drawable.AnimatedImageDrawable
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,6 +26,7 @@ import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.crypto.NativeFileInfo
 import zip.arcanum.arcanum.files.data.FileBrowserPrefs
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.gallery.AnimatedImages
 import zip.arcanum.arcanum.gallery.ExifJpegPatcher
 import zip.arcanum.arcanum.gallery.ExifReader
 import zip.arcanum.arcanum.gallery.MediaExifData
@@ -64,6 +68,7 @@ class PhotoViewerViewModel @Inject constructor(
         val siblings: List<MediaFileEntity> = emptyList(),
         val currentIndex: Int = 0,
         val bitmapCache: Map<String, Bitmap> = emptyMap(),  // fileId -> Bitmap
+        val animatedCache: Map<String, Drawable> = emptyMap(),  // fileId -> a GIF or animated WebP
         val isLoading: Boolean = true,
         val error: String? = null,
         val showBars: Boolean = true,
@@ -185,6 +190,61 @@ class PhotoViewerViewModel @Inject constructor(
         return result + media.filter { it.id !in seen }
     }
 
+    /** What a decode produced: one frame, or something that plays. */
+    private sealed interface Decoded {
+        data class Still(val bitmap: Bitmap) : Decoded
+        data class Animated(val drawable: Drawable) : Decoded
+    }
+
+    /**
+     * Reads one image out of the vault. With [allowAnimated], a GIF or an animated WebP
+     * goes through ImageDecoder so that it plays (#159); everything else, and anything that
+     * decoder refuses, goes through the BitmapFactory path below.
+     *
+     * Must be called on the IO dispatcher.
+     */
+    private fun loadImageForFile(file: MediaFileEntity, handle: Long, allowAnimated: Boolean): Decoded? {
+        if (allowAnimated && AnimatedImages.mayAnimate(file.fileName, file.size)) {
+            val head = engine.readFile(handle, file.relativePath, 0L, AnimatedImages.HEADER_BYTES)
+            if (AnimatedImages.headerAnimates(file.fileName, head)) {
+                val bytes = readWhole(file, handle)
+                when (val drawable = bytes?.let { AnimatedImages.decode(it) }) {
+                    is AnimatedImageDrawable -> return Decoded.Animated(drawable)
+                    // A GIF with a single frame: keep the frame this decode already
+                    // produced instead of reading and decoding the file a second time.
+                    is BitmapDrawable        -> return Decoded.Still(drawable.bitmap)
+                    else                     -> Unit
+                }
+            }
+        }
+        return loadBitmapForFile(file, handle)?.let { Decoded.Still(it) }
+    }
+
+    /**
+     * The whole file in one array, sized up front, which is what ImageDecoder needs.
+     *
+     * It cannot be one JNI call: both filesystems refuse a single read over 16 MB, so the
+     * bytes arrive in the stream's chunks. They go straight into a buffer of exactly the
+     * file's size rather than a growing one, which for a file near the animation cap would
+     * otherwise peak at several times its length.
+     */
+    private fun readWhole(file: MediaFileEntity, handle: Long): ByteArray? = try {
+        val size   = file.size.toInt()          // bounded by AnimatedImages.MAX_BYTES
+        val out    = ByteArray(size)
+        val stream = NativeFileInputStream(engine, handle, file.relativePath, file.size)
+        var off = 0
+        while (off < size) {
+            val n = stream.read(out, off, size - off)
+            if (n <= 0) break
+            off += n
+        }
+        // A short read means the file is not what the index says it is; the still path
+        // below gets its own chance rather than the decoder being handed a truncated GIF.
+        if (off == size) out else null
+    } catch (_: Throwable) {
+        null
+    }
+
     // Loads the bitmap for a single image file. Returns null on error. Must be called on IO dispatcher.
     private fun loadBitmapForFile(file: MediaFileEntity, handle: Long): Bitmap? { return try {
         val stream = NativeFileInputStream(engine, handle, file.relativePath, file.size)
@@ -219,6 +279,8 @@ class PhotoViewerViewModel @Inject constructor(
             val lo = (centerIndex - 1).coerceAtLeast(0)
             val hi = (centerIndex + 1).coerceAtMost(siblings.lastIndex)
             val order = listOf(centerIndex) + (lo until centerIndex).toList() + ((centerIndex + 1)..hi).toList()
+            // The one file allowed to hold a playing drawable.
+            val keepAnimated = centerFile.id
 
             for (idx in order) {
                 ensureActive()
@@ -227,26 +289,48 @@ class PhotoViewerViewModel @Inject constructor(
                     if (idx == centerIndex) _uiState.update { it.copy(isLoading = false) }
                     continue
                 }
-                if (_uiState.value.bitmapCache.containsKey(file.id)) {
+                /* Only the page on screen is decoded as an animation. A neighbour would
+                   not play anyway - it is stopped until it is swiped to - and the encoded
+                   file stays in memory for as long as its drawable does, so preloading the
+                   neighbours would hold three files near the cap at once. Measured on a
+                   30 MB GIF: 69 MB of Java heap allocated while it was on screen. */
+                val wantsAnimated = idx == centerIndex &&
+                                    AnimatedImages.mayAnimate(file.fileName, file.size)
+                // A drawable the eviction below is about to drop does not count as loaded:
+                // its still frame is decoded here, before it goes, so the page never blinks.
+                val haveAnimated  = file.id == keepAnimated &&
+                                    _uiState.value.animatedCache.containsKey(file.id)
+                val haveStill     = _uiState.value.bitmapCache.containsKey(file.id)
+                if (haveAnimated || (haveStill && !wantsAnimated)) {
                     if (idx == centerIndex) _uiState.update { it.copy(isLoading = false) }
                     continue
                 }
-                val bitmap = loadBitmapForFile(file, handle)
+                val decoded = loadImageForFile(file, handle, wantsAnimated)
                 _uiState.update { state ->
                     state.copy(
-                        bitmapCache = if (bitmap != null) state.bitmapCache + (file.id to bitmap)
-                                      else state.bitmapCache,
-                        isLoading   = if (idx == centerIndex) false else state.isLoading
+                        bitmapCache   = if (decoded is Decoded.Still)
+                                            state.bitmapCache + (file.id to decoded.bitmap)
+                                        else state.bitmapCache,
+                        animatedCache = if (decoded is Decoded.Animated)
+                                            state.animatedCache + (file.id to decoded.drawable)
+                                        else state.animatedCache,
+                        isLoading     = if (idx == centerIndex) false else state.isLoading
                     )
                 }
             }
 
-            // Evict bitmaps outside the ±1 window
+            // Evict what is outside the ±1 window
             val keepIds = (lo..hi).map { siblings[it].id }.toSet()
+            // A dropped drawable is stopped first: while it runs it keeps posting its next
+            // frame to the main looper, and nothing is left to draw it.
+            _uiState.value.animatedCache
+                .filterKeys { it != keepAnimated }
+                .forEach { (_, drawable) -> AnimatedImages.stop(drawable) }
             _uiState.update { state ->
-                val evicted = state.bitmapCache.filterKeys { it in keepIds }
-                if (evicted.size == state.bitmapCache.size) state
-                else state.copy(bitmapCache = evicted)
+                val bitmaps  = state.bitmapCache.filterKeys { it in keepIds }
+                val animated = state.animatedCache.filterKeys { it == keepAnimated }
+                if (bitmaps.size == state.bitmapCache.size && animated.size == state.animatedCache.size) state
+                else state.copy(bitmapCache = bitmaps, animatedCache = animated)
             }
         }
     }
@@ -276,7 +360,8 @@ class PhotoViewerViewModel @Inject constructor(
         val siblings = _uiState.value.siblings
         if (index < 0 || index >= siblings.size) return
         val file = siblings[index]
-        val cached = _uiState.value.bitmapCache.containsKey(file.id)
+        val cached = _uiState.value.bitmapCache.containsKey(file.id) ||
+                     _uiState.value.animatedCache.containsKey(file.id)
         val needsLoad = file.fileType == MediaFileType.IMAGE && !cached
         _uiState.update { it.copy(currentFile = file, currentIndex = index, isLoading = needsLoad, exifData = null) }
         loadBitmapRange(index)
@@ -446,6 +531,11 @@ class PhotoViewerViewModel @Inject constructor(
     }
 
     fun getHandleForContainer(id: String): Long? = repo.getContainerHandle(id)
+
+    override fun onCleared() {
+        _uiState.value.animatedCache.values.forEach { AnimatedImages.stop(it) }
+        super.onCleared()
+    }
 
     // Refresh the idle auto-lock baseline. Called periodically by the viewer while a video is
     // actively playing so watching (which produces no touch events) doesn't trip the idle timer.

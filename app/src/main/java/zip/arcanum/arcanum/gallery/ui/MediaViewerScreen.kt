@@ -3,6 +3,7 @@ package zip.arcanum.arcanum.gallery.ui
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.drawable.Drawable
 import android.media.MediaMetadataRetriever
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -164,6 +165,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import zip.arcanum.R
+import zip.arcanum.arcanum.gallery.AnimatedImages
 import zip.arcanum.arcanum.gallery.ExifTag
 import zip.arcanum.arcanum.gallery.MediaExifData
 import zip.arcanum.core.components.AppDialog
@@ -173,6 +175,7 @@ import zip.arcanum.core.components.WheelDateTimePicker
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.LocalNotifications
+import zip.arcanum.core.utils.MediaExtensions
 import java.text.DecimalFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -490,9 +493,12 @@ fun MediaViewerScreen(
                 val isCurrent = page == pagerState.currentPage
                 val pageFile  = uiState.siblings.getOrNull(page)
                 val bitmap    = pageFile?.let { uiState.bitmapCache[it.id] }
+                val animated  = pageFile?.let { uiState.animatedCache[it.id] }
                 when (pageFile?.fileType) {
                     MediaFileType.IMAGE -> ZoomableImagePage(
                         bitmap         = bitmap,
+                        animated       = animated,
+                        isCurrent      = isCurrent,
                         isLoading      = uiState.isLoading && isCurrent,
                         onTap          = { showBars = !showBars },
                         onScaleChanged = { isImageZoomed = it > 1.05f }
@@ -749,12 +755,22 @@ fun MediaViewerScreen(
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment     = Alignment.CenterVertically
                         ) {
+                            /* The editor bakes its result into a single frame and writes it over
+                               the original, so it is closed for anything that plays: editing a GIF
+                               would replace it with one still and there would be no way back (#159).
+                               Judged by name as well as by what was decoded, because the decode of
+                               the file on screen may not have finished yet. */
+                            val editable = uiState.currentFile?.let { f ->
+                                !uiState.animatedCache.containsKey(f.id) &&
+                                MediaExtensions.of(f.fileName) != "gif"
+                            } ?: false
                             IconButton(
-                                enabled = !uiState.isReadOnly,
+                                enabled = !uiState.isReadOnly && editable,
                                 onClick = { uiState.currentFile?.id?.let { onOpenEditor(it) } }
                             ) {
                                 Icon(Icons.Outlined.Edit, "Edit",
-                                    tint = if (uiState.isReadOnly) Color.White.copy(alpha = 0.38f) else Color.White)
+                                    tint = if (uiState.isReadOnly || !editable) Color.White.copy(alpha = 0.38f)
+                                           else Color.White)
                             }
                             IconButton(onClick = {
                                 exportLauncher.launch(uiState.currentFile?.fileName ?: "export")
@@ -1125,10 +1141,20 @@ private fun launchMaps(context: Context, lat: Double, lng: Double) {
 @Composable
 private fun ZoomableImagePage(
     bitmap: Bitmap?,
+    animated: Drawable?,
+    isCurrent: Boolean,
     isLoading: Boolean,
     onTap: () -> Unit,
     onScaleChanged: (Float) -> Unit
 ) {
+    /* Only the page being looked at runs. A drawable off to the side would go on decoding
+       frames and posting the next one for as long as the pager keeps it composed. */
+    if (animated != null) {
+        DisposableEffect(animated, isCurrent) {
+            if (isCurrent) AnimatedImages.playForever(animated) else AnimatedImages.stop(animated)
+            onDispose { AnimatedImages.stop(animated) }
+        }
+    }
     val scale         = remember { Animatable(1f) }
     val panX          = remember { Animatable(0f) }
     val panY          = remember { Animatable(0f) }
@@ -1137,9 +1163,9 @@ private fun ZoomableImagePage(
     val decaySpec     = rememberSplineBasedDecay<Float>()
 
     // Actual rendered size of the image inside the container (ContentScale.Fit may letterbox).
-    val renderedSize = remember(bitmap, containerSize) {
-        val bw = bitmap?.width  ?: 0
-        val bh = bitmap?.height ?: 0
+    val renderedSize = remember(bitmap, animated, containerSize) {
+        val bw = bitmap?.width  ?: animated?.intrinsicWidth  ?: 0
+        val bh = bitmap?.height ?: animated?.intrinsicHeight ?: 0
         if (bw == 0 || bh == 0 || containerSize == IntSize.Zero) containerSize
         else {
             val fitScale = minOf(
@@ -1231,6 +1257,8 @@ private fun ZoomableImagePage(
             }
     ) {
         when {
+            animated != null -> Image(rememberDrawablePainter(animated), null,
+                contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
             isLoading    -> CircularProgressIndicator(color = Color.White, modifier = Modifier.size(48.dp))
             bitmap != null -> Image(bitmap.asImageBitmap(), null,
                 contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
