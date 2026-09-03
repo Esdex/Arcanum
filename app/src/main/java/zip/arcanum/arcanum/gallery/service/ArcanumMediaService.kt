@@ -2,16 +2,23 @@ package zip.arcanum.arcanum.gallery.service
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.Bundle
 import android.os.Process
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ShuffleOrder
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import androidx.media3.session.MediaSessionService
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +38,9 @@ val NEUTRAL_METADATA: MediaMetadata = MediaMetadata.Builder()
 
 /** The one title the shared MediaSession may carry. */
 const val SESSION_TITLE = "Arcanum"
+
+/** Asks the service to lay the shuffled order out again, starting from what is playing. */
+const val COMMAND_RESHUFFLE = "zip.arcanum.RESHUFFLE"
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @AndroidEntryPoint
@@ -87,20 +97,50 @@ class ArcanumMediaService : MediaSessionService() {
          * tags it parses out of the file itself into the metadata it reports.
          */
         mediaSession = MediaSession.Builder(this, NeutralMetadataPlayer(player) { publishContent })
+            .setCallback(object : MediaSession.Callback {
+                override fun onConnect(
+                    session: MediaSession,
+                    controller: MediaSession.ControllerInfo
+                ): MediaSession.ConnectionResult {
+                    val commands = MediaSession.ConnectionResult
+                        .DEFAULT_SESSION_COMMANDS.buildUpon()
+                        .add(SessionCommand(COMMAND_RESHUFFLE, Bundle.EMPTY))
+                        .build()
+                    return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                        .setAvailableSessionCommands(commands)
+                        .build()
+                }
+
+                override fun onCustomCommand(
+                    session: MediaSession,
+                    controller: MediaSession.ControllerInfo,
+                    customCommand: SessionCommand,
+                    args: Bundle
+                ): ListenableFuture<SessionResult> {
+                    if (customCommand.customAction == COMMAND_RESHUFFLE) reshuffleFromCurrent()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+            })
             .apply { sessionActivity?.let { setSessionActivity(it) } }
             .build()
 
         serviceScope.launch { prefs.mediaSessionContent.collect { publishContent = it } }
 
-        // Stop playback if the container holding the current track is unmounted
+        /*
+         * Nothing from an unmounted vault may stay in the queue. Checking only the item that
+         * happens to be playing was enough while the player was handed one track at a time;
+         * with the real playlist on it (#139) the rest of the list is just as much a way back
+         * into a vault the user has closed, so every item belonging to it goes.
+         */
         serviceScope.launch {
             repo.mountedContainerIds.collect { mounted ->
-                val cid = player.currentMediaItem
-                    ?.localConfiguration?.uri
-                    ?.getQueryParameter("cid")
-                if (cid != null && cid !in mounted) {
-                    player.stop()
-                    player.clearMediaItems()
+                val playingGone = player.currentMediaItem?.containerId()
+                    ?.let { it !in mounted } == true
+                if (playingGone) player.stop()
+
+                for (i in player.mediaItemCount - 1 downTo 0) {
+                    val cid = player.getMediaItemAt(i).containerId()
+                    if (cid != null && cid !in mounted) player.removeMediaItem(i)
                 }
             }
         }
@@ -116,6 +156,29 @@ class ArcanumMediaService : MediaSessionService() {
         val isSystem = controllerInfo.uid == Process.SYSTEM_UID
         return if (isSelf || isSystem) mediaSession else null
     }
+
+    /**
+     * Lays the shuffled order out again with the track that is playing at the front.
+     *
+     * Two things go wrong without it. The order is drawn once, when the queue is set, so
+     * turning shuffle off and on again replays the same order - and turning it on while the
+     * track that is playing happens to sit last in that order leaves nothing after it, so the
+     * notification correctly, and confusingly, drops its next button.
+     *
+     * `setShuffleOrder` belongs to ExoPlayer rather than to a controller, which is why the
+     * screen asks for it through a session command instead of doing it itself.
+     */
+    private fun reshuffleFromCurrent() {
+        val count = player.mediaItemCount
+        if (count <= 1) return
+        val current = player.currentMediaItemIndex
+        val rest = (0 until count).filter { it != current }.shuffled()
+        val order = (listOf(current) + rest).toIntArray()
+        player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(order, System.nanoTime()))
+    }
+
+    private fun MediaItem.containerId(): String? =
+        localConfiguration?.uri?.getQueryParameter("cid")
 
     /**
      * The last thing between a vault's contents and the world outside the app.

@@ -38,6 +38,7 @@ import zip.arcanum.arcanum.gallery.JniMediaDataSource
 import zip.arcanum.arcanum.gallery.ServiceEncryptedDataSource
 import zip.arcanum.arcanum.gallery.domain.AudioMetadata
 import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
+import zip.arcanum.arcanum.gallery.service.COMMAND_RESHUFFLE
 import zip.arcanum.arcanum.gallery.service.NEUTRAL_METADATA
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.core.security.IdleMonitor
@@ -85,9 +86,20 @@ class AudioPlayerDirectViewModel @Inject constructor(
     ))
     val state = _state.asStateFlow()
 
-    // play order: indices into queue.playlist; empty = single-file mode
-    private var playOrder: List<Int> = buildDefaultOrder()
-    private var posInOrder: Int = queue.currentIndex.coerceIn(0, (playOrder.size - 1).coerceAtLeast(0))
+    /*
+     * The whole playlist goes to the player, and the player owns the order, the shuffle and
+     * the repeat (#139). It used to be handed one track at a time, and a timeline of one item
+     * has no next to offer: the notification could not show a next button and its previous
+     * degraded to a seek back to zero. Skipping worked inside the app only because the app
+     * kept the list itself.
+     *
+     * Which track is playing is therefore `mediaController.currentMediaItemIndex` and not a
+     * field here - two places holding that would be one place too many.
+     */
+    private val playlist: List<zip.arcanum.crypto.NativeFileInfo> get() = queue.playlist
+
+    private val currentIndex: Int
+        get() = mediaController?.currentMediaItemIndex ?: queue.currentIndex
 
     val handle: Long get() = repo.getContainerHandle(containerId) ?: 0L
 
@@ -97,13 +109,19 @@ class AudioPlayerDirectViewModel @Inject constructor(
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
     private var progressJob: Job? = null
-    private var waveformJob: Job? = null
+    private var loadJob: Job? = null
+
+    /** Which index the metadata and the waveform in [_state] belong to. */
+    private var loadedIndex: Int = -1
 
     private val playerListener = object : Player.Listener {
-        override fun onPlaybackStateChanged(playbackState: Int) {
-            if (playbackState == Player.STATE_ENDED) {
-                viewModelScope.launch(Dispatchers.Main) { handleTrackEnd() }
-            }
+        /*
+         * Every move between tracks arrives here, whoever caused it: the buttons in the app,
+         * the ones in the notification, a headset, a car, or the player reaching the end of a
+         * track on its own.
+         */
+        override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
+            onTrackChanged()
         }
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _state.update { it.copy(isPlaying = isPlaying) }
@@ -121,9 +139,14 @@ class AudioPlayerDirectViewModel @Inject constructor(
             prefs.mediaSessionContent.collect { on ->
                 showContent = on
                 val mc = mediaController ?: return@collect
-                val index = mc.currentMediaItemIndex
-                val item  = mc.currentMediaItem ?: return@collect
-                mc.replaceMediaItem(index, item.buildUpon().setMediaMetadata(sessionMetadata()).build())
+                val item = mc.currentMediaItem ?: return@collect
+                val wanted = sessionMetadata()
+                if (item.mediaMetadata != wanted) {
+                    mc.replaceMediaItem(
+                        mc.currentMediaItemIndex,
+                        item.buildUpon().setMediaMetadata(wanted).build()
+                    )
+                }
             }
         }
 
@@ -136,7 +159,7 @@ class AudioPlayerDirectViewModel @Inject constructor(
             mediaController = mc
             mc.addListener(playerListener)
             startProgressTracking()
-            viewModelScope.launch(Dispatchers.IO) { loadTrackAt(posInOrder) }
+            startQueue(mc, queue.currentIndex)
         }, ContextCompat.getMainExecutor(appContext))
     }
 
@@ -170,56 +193,95 @@ class AudioPlayerDirectViewModel @Inject constructor(
 
     // ── Track loading ─────────────────────────────────────────────────────
 
-    private suspend fun loadTrackAt(position: Int) {
-        val path = currentPath()
-        val size = currentSize()
-        val name = currentName()
-        val h = handle
-
-        // Keep old metadata visible until new one arrives — avoids blank flash during transition
-        _state.update { it.copy(waveformBars = null, error = null) }
-
-        val headerBytes = runCatching {
-            engine.readFile(h, path, 0L, minOf(size, 524288L).toInt())
-        }.getOrNull()
-
-        val metadata = parseMetadata(headerBytes, name)
-        val dominantColor = metadata.artwork?.let { bmp ->
-            runCatching { Palette.from(bmp).generate().getDominantColor(0) }.getOrNull()
+    /**
+     * Puts the whole playlist on the player and starts at [startIndex].
+     *
+     * Every item carries metadata, because an item without it makes the notification show
+     * nothing when the player moves to it. What that metadata may say is a separate question
+     * - see [sessionMetadata].
+     */
+    private fun startQueue(mc: MediaController, startIndex: Int) {
+        val files = playlist
+        val items = if (files.isEmpty()) {
+            // Opened straight at one file, without a list behind it.
+            listOf(mediaItemFor(navPath, navSize))
+        } else {
+            files.map { mediaItemFor("/" + it.path.trimStart('/'), it.size) }
         }
+        val index = startIndex.coerceIn(0, items.size - 1)
+        mc.setMediaItems(items, index, androidx.media3.common.C.TIME_UNSET)
+        mc.shuffleModeEnabled = _state.value.isShuffled
+        mc.repeatMode = _state.value.repeatMode.toPlayerRepeatMode()
+        mc.prepare()
+        mc.playWhenReady = true
+        // A fresh queue: whatever was loaded before belongs to the old one.
+        loadedIndex = -1
+        onTrackChanged()
+    }
 
-        _state.update { it.copy(
-            metadata = metadata,
-            dominantColor = dominantColor,
-            currentIndex = playOrder.getOrElse(position) { 0 }
-        )}
+    private fun mediaItemFor(path: String, size: Long): MediaItem {
+        val uri = Uri.Builder()
+            .scheme(ServiceEncryptedDataSource.URI_SCHEME)
+            .authority("media")
+            .appendQueryParameter("cid", containerId)
+            .appendQueryParameter("path", path)
+            .appendQueryParameter("size", size.toString())
+            .build()
+        return MediaItem.Builder()
+            .setUri(uri)
+            .setMediaMetadata(NEUTRAL_METADATA)
+            .build()
+    }
 
-        withContext(Dispatchers.Main) {
-            val mc = mediaController ?: return@withContext
-            val uri = Uri.Builder()
-                .scheme(ServiceEncryptedDataSource.URI_SCHEME)
-                .authority("media")
-                .appendQueryParameter("cid", containerId)
-                .appendQueryParameter("path", path)
-                .appendQueryParameter("size", size.toString())
-                .build()
-            mc.stop()
-            mc.clearMediaItems()
-            // Generic session metadata ONLY. Real title/artist (from the file's tags) must not
-            // enter the shared MediaSession — Media3 mirrors it to the system notification, the
-            // lockscreen, any NotificationListenerService and every connected MediaController,
-            // bypassing the PIN/biometric/disguise/FLAG_SECURE. The in-app player shows the real
-            // metadata from _state.metadata, populated separately above.
-            mc.setMediaItem(MediaItem.Builder()
-                .setUri(uri)
-                .setMediaMetadata(sessionMetadata())
-                .build())
-            mc.prepare()
-            mc.playWhenReady = true
-        }
+    /**
+     * A different track is playing. Reads its tags for the in-app screen, redraws the
+     * waveform, and - only when the user has asked for it - puts the real name on the item so
+     * the notification can show it too.
+     */
+    private fun onTrackChanged() {
+        val index = currentIndex
+        /*
+         * Replacing an item to give it metadata is itself a transition, and that transition
+         * arrives back here: without this the track would be read, replaced, read again and
+         * replaced again for as long as it played, and the cover flickered the whole time.
+         * The index is the thing that says a different track is playing; a replacement of the
+         * same one is not news.
+         */
+        if (index == loadedIndex) return
+        loadedIndex = index
+        _state.update { it.copy(waveformBars = null, error = null, currentIndex = index) }
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch(Dispatchers.IO) {
+            val path = pathAt(index)
+            val size = sizeAt(index)
+            val name = nameAt(index)
+            val h    = handle
 
-        waveformJob?.cancel()
-        waveformJob = viewModelScope.launch(Dispatchers.IO) {
+            val headerBytes = runCatching {
+                engine.readFile(h, path, 0L, minOf(size, 524288L).toInt())
+            }.getOrNull()
+
+            val metadata = parseMetadata(headerBytes, name)
+            val dominantColor = metadata.artwork?.let { bmp ->
+                runCatching { Palette.from(bmp).generate().getDominantColor(0) }.getOrNull()
+            }
+            _state.update { it.copy(metadata = metadata, dominantColor = dominantColor) }
+
+            withContext(Dispatchers.Main) {
+                if (!showContent) return@withContext
+                val mc = mediaController ?: return@withContext
+                // Tags are read for the track that is playing, not for the whole list: the
+                // list can be long, and each one costs half a megabyte read out of the vault.
+                val item = mc.currentMediaItem ?: return@withContext
+                val wanted = sessionMetadata()
+                if (item.mediaMetadata != wanted) {
+                    mc.replaceMediaItem(
+                        mc.currentMediaItemIndex,
+                        item.buildUpon().setMediaMetadata(wanted).build()
+                    )
+                }
+            }
+
             val bars = generateWaveform(h, path, size)
             _state.update { it.copy(waveformBars = bars) }
         }
@@ -443,8 +505,9 @@ class AudioPlayerDirectViewModel @Inject constructor(
     fun togglePlayPause() = viewModelScope.launch(Dispatchers.Main) {
         val mc = mediaController ?: return@launch
         if (mc.mediaItemCount == 0) {
-            // Service queue was cleared by another screen (e.g. video player); reload current track
-            viewModelScope.launch(Dispatchers.IO) { loadTrackAt(posInOrder) }
+            // The video player shares this service and clears the queue when it takes over.
+            // Coming back rebuilds the whole list, not just the track that was playing.
+            startQueue(mc, _state.value.currentIndex)
             return@launch
         }
         if (mc.isPlaying) mc.pause() else mc.play()
@@ -456,54 +519,52 @@ class AudioPlayerDirectViewModel @Inject constructor(
         mc.seekTo((progress * dur).toLong())
     }
 
-    fun playNext() { advanceTrack(+1, _state.value.repeatMode == RepeatMode.ALL) }
-
-    fun playPrevious() {
-        if ((mediaController?.currentPosition ?: 0L) > 3_000L) {
-            viewModelScope.launch(Dispatchers.Main) { mediaController?.seekTo(0L) }
-        } else {
-            advanceTrack(-1, _state.value.repeatMode == RepeatMode.ALL)
-        }
+    fun playNext() = viewModelScope.launch(Dispatchers.Main) {
+        mediaController?.seekToNextMediaItem()
     }
 
+    /* Media3's own rule, and the one the app already had: past the first few seconds the
+       button restarts the track instead of leaving it. */
+    fun playPrevious() = viewModelScope.launch(Dispatchers.Main) {
+        mediaController?.seekToPrevious()
+    }
+
+    /* Shuffle and repeat are the player's, not ours. Reordering the list by hand was what
+       kept the notification from being able to offer either. */
     fun toggleShuffle() {
-        val newShuffled = !_state.value.isShuffled
-        if (newShuffled) {
-            val cur = playOrder.getOrElse(posInOrder) { 0 }
-            val rest = (0 until queue.playlist.size).filter { it != cur }.shuffled()
-            playOrder = listOf(cur) + rest
-            posInOrder = 0
-        } else {
-            val cur = playOrder.getOrElse(posInOrder) { 0 }
-            playOrder = buildDefaultOrder()
-            posInOrder = cur.coerceIn(0, (playOrder.size - 1).coerceAtLeast(0))
+        val on = !_state.value.isShuffled
+        _state.update { it.copy(isShuffled = on) }
+        viewModelScope.launch(Dispatchers.Main) {
+            val mc = mediaController ?: return@launch
+            mc.shuffleModeEnabled = on
+            /* Turning it on lays the order out again with the current track first. Without
+               that, the order drawn when the queue was built is reused - so switching shuffle
+               off and on gives the same order back, and switching it on while the current
+               track happens to sit last in that order leaves nothing after it, which takes
+               the next button out of the notification. */
+            if (on) mc.sendCustomCommand(
+                androidx.media3.session.SessionCommand(COMMAND_RESHUFFLE, android.os.Bundle.EMPTY),
+                android.os.Bundle.EMPTY
+            )
         }
-        _state.update { it.copy(isShuffled = newShuffled) }
     }
 
     fun cycleRepeat() {
-        _state.update { it.copy(repeatMode = when (it.repeatMode) {
+        val next = when (_state.value.repeatMode) {
             RepeatMode.NONE -> RepeatMode.ALL
             RepeatMode.ALL  -> RepeatMode.ONE
             RepeatMode.ONE  -> RepeatMode.NONE
-        })}
-    }
-
-    private fun handleTrackEnd() {
-        val mc = mediaController ?: return
-        when (_state.value.repeatMode) {
-            RepeatMode.ONE  -> { mc.seekTo(0L); mc.play() }
-            RepeatMode.ALL  -> advanceTrack(+1, wraparound = true)
-            RepeatMode.NONE -> if (posInOrder < playOrder.size - 1) advanceTrack(+1, wraparound = false)
+        }
+        _state.update { it.copy(repeatMode = next) }
+        viewModelScope.launch(Dispatchers.Main) {
+            mediaController?.repeatMode = next.toPlayerRepeatMode()
         }
     }
 
-    private fun advanceTrack(delta: Int, wraparound: Boolean) {
-        if (playOrder.isEmpty()) return
-        val next = posInOrder + delta
-        posInOrder = if (wraparound) ((next % playOrder.size) + playOrder.size) % playOrder.size
-                     else next.coerceIn(0, playOrder.size - 1)
-        viewModelScope.launch(Dispatchers.IO) { loadTrackAt(posInOrder) }
+    private fun RepeatMode.toPlayerRepeatMode(): Int = when (this) {
+        RepeatMode.NONE -> Player.REPEAT_MODE_OFF
+        RepeatMode.ALL  -> Player.REPEAT_MODE_ALL
+        RepeatMode.ONE  -> Player.REPEAT_MODE_ONE
     }
 
     // ── Progress tracking ─────────────────────────────────────────────────
@@ -527,21 +588,14 @@ class AudioPlayerDirectViewModel @Inject constructor(
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
-    private fun buildDefaultOrder(): List<Int> {
-        val size = queue.playlist.size
-        return if (size == 0) emptyList() else (0 until size).toList()
-    }
+    private fun pathAt(index: Int): String =
+        playlist.getOrNull(index)?.path?.let { "/" + it.trimStart('/') } ?: navPath
 
-    private fun currentPath(): String =
-        queue.playlist.getOrNull(playOrder.getOrElse(posInOrder) { 0 })
-            ?.path?.let { "/" + it.trimStart('/') } ?: navPath
+    private fun nameAt(index: Int): String =
+        playlist.getOrNull(index)?.name ?: navName
 
-    private fun currentName(): String =
-        queue.playlist.getOrNull(playOrder.getOrElse(posInOrder) { 0 })?.name ?: navName
-
-    private fun currentSize(): Long =
-        queue.playlist.getOrNull(playOrder.getOrElse(posInOrder) { 0 })
-            ?.size?.takeIf { it > 0L } ?: navSize
+    private fun sizeAt(index: Int): Long =
+        playlist.getOrNull(index)?.size?.takeIf { it > 0L } ?: navSize
 
     private fun stripExtension(name: String) = name.substringBeforeLast(".", name)
 
@@ -551,7 +605,7 @@ class AudioPlayerDirectViewModel @Inject constructor(
 
     override fun onCleared() {
         progressJob?.cancel()
-        waveformJob?.cancel()
+        loadJob?.cancel()
         mediaController?.removeListener(playerListener)
         controllerFuture?.let { MediaController.releaseFuture(it) }
     }
