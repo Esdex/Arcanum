@@ -11,16 +11,14 @@ import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.CalculationEntity
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.database.entities.MediaFileEntity
-import zip.arcanum.core.database.entities.MountPointEntity
 
 @Database(
     entities = [
         ContainerEntity::class,
         MediaFileEntity::class,
-        CalculationEntity::class,
-        MountPointEntity::class
+        CalculationEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -28,7 +26,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** Must match the `version` in the @Database annotation above - the debug screen reports it. */
-        const val VERSION = 14
+        const val VERSION = 15
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -126,6 +124,22 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE containers ADD COLUMN mountAlgorithmId INTEGER NOT NULL DEFAULT -1")
                 db.execSQL("ALTER TABLE containers ADD COLUMN mountReadOnly INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE containers ADD COLUMN mountProtectHidden INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /**
+         * Drops `mount_points` (#178). The table was declared from early on and never had a
+         * DAO: nothing ever wrote a row to it or read one, so there is no data to carry and
+         * nothing to lose.
+         *
+         * It is not coming back in another form either. A mount is a JNI handle held by the
+         * running process and it does not survive a background kill (#101, #150), so a row
+         * saying where something is mounted would describe a state the process cannot vouch
+         * for - which is the bug those two issues were.
+         */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS mount_points")
             }
         }
     }
