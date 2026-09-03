@@ -593,6 +593,7 @@ private fun SecuritySubScreen(
     var showWarning by remember { mutableStateOf(false) }
     val receiveShares by viewModel.receiveShares.collectAsState()
     val mediaSessionContent by viewModel.mediaSessionContent.collectAsState()
+    val argon2Offer         by viewModel.argon2Offer.collectAsState()
     val notifications = LocalNotifications.current
 
     SubScreenScaffold(title = stringResource(R.string.settings_security_title), onBack = onBack) { innerPadding ->
@@ -703,6 +704,12 @@ private fun SecuritySubScreen(
                     subtitle        = stringResource(R.string.settings_security_media_content_desc),
                     checked         = mediaSessionContent,
                     onCheckedChange = { viewModel.setMediaSessionContent(it) }
+                )
+                SettingsSwitch(
+                    title           = stringResource(R.string.settings_security_argon2_offer),
+                    subtitle        = stringResource(R.string.settings_security_argon2_offer_desc),
+                    checked         = argon2Offer,
+                    onCheckedChange = { viewModel.setArgon2Offer(it) }
                 )
             }
         }

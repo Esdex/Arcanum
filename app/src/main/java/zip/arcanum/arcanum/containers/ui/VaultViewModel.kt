@@ -264,7 +264,18 @@ class VaultViewModel @Inject constructor(
         /** credentialHint = true keeps the generic "check password/PIM/PRF/..." reason list
          *  (a failed decryption); false shows [message] verbatim (a specific, self-explanatory
          *  failure such as a read-only storage location or a too-many-mounted limit). */
-        data class Error(val message: String, val credentialHint: Boolean = false) : MountState
+        /** [argon2Offer] marks a failure that Argon2id has not been tried against: the
+         *  scan never reaches that PRF on its own, so the only way into such a vault is
+         *  to ask for it by name (#177). Set only when the attempt was an auto-detect
+         *  and the setting that governs the offer is on. */
+        data class Error(
+            val message: String,
+            val credentialHint: Boolean = false,
+            val argon2Offer: Boolean = false,
+            /** The refusal was the memory guard's headroom, not a shortage the device
+             *  cannot cover: the same attempt can be repeated with allowLowMemory. */
+            val argon2LowMemoryRetry: Boolean = false
+        ) : MountState
     }
 
     private val _mountState = MutableStateFlow<MountState>(MountState.Idle)
@@ -296,6 +307,9 @@ class VaultViewModel @Inject constructor(
         protectHiddenPim: Int = 0,
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         readOnly: Boolean = false,
+        /** Set by the second offer on an Argon2id refusal: go ahead on a device whose
+         *  free memory is below the guard's headroom but above what is needed (#177). */
+        allowLowMemory: Boolean = false,
         onSuccess: (containerId: String) -> Unit
     ) {
         mountJob = viewModelScope.launch {
@@ -431,7 +445,7 @@ class VaultViewModel @Inject constructor(
                         protectHiddenKeyfileData = protectHiddenKeyfileData,
                         protectHiddenPim = protectHiddenPim,
                         mountProgressListener = progressListener,
-                        readOnly = readOnly
+                        readOnly = readOnly, allowLowMemory = allowLowMemory
                     )
                 } else {
                     cryptoEngine.mountContainer(
@@ -442,7 +456,7 @@ class VaultViewModel @Inject constructor(
                         protectHiddenKeyfileData = protectHiddenKeyfileData,
                         protectHiddenPim = protectHiddenPim,
                         mountProgressListener = progressListener,
-                        readOnly = readOnly
+                        readOnly = readOnly, allowLowMemory = allowLowMemory
                     )
                 }
                 when (result) {
@@ -511,12 +525,43 @@ class VaultViewModel @Inject constructor(
                     }
                     is CryptoResult.Failure -> {
                         mountLogger.log("ERROR: ${result.error.name}")
+                        /* Argon2id is never part of the scan, so a failed auto-detect has
+                           not ruled it out - it has not tried it. Offering is gated on a
+                           setting so that someone with no such vault is not asked about
+                           one on every mistyped password (#177). */
+                        val couldBeArgon2 = result.error == CryptoError.WRONG_PASSWORD &&
+                                            hashAlgorithm == VeraCryptEngine.HASH_AUTO &&
+                                            runCatching { prefs.argon2Offer.first() }.getOrDefault(true)
                         _mountState.value = when (result.error) {
                             CryptoError.IO_ERROR             -> MountState.Error("Cannot open container file")
                             CryptoError.UNSUPPORTED_ALGORITHM -> MountState.Error("Unsupported container format")
                             CryptoError.TOO_MANY_MOUNTED      -> MountState.Error("Too many containers mounted — unmount one and try again")
                             CryptoError.CORRUPTED_CONTAINER   -> MountState.Error("Container filesystem could not be mounted")
-                            else -> MountState.Error("Wrong password", credentialHint = true)
+                            CryptoError.ARGON2_MEMORY         -> {
+                                val cost = cryptoEngine.argon2Cost(pim)
+                                mountLogger.log("Argon2id needs ${cost.memoryMib} MB, ${cost.availableMib} MB free.")
+                                /* Below what it needs, nothing can be done here. Above that but
+                                   inside the guard's headroom, it can be insisted on: the
+                                   derivation happens before anything is mounted, so the worst
+                                   case is this app being killed with no vault open. */
+                                val canInsist = !allowLowMemory && cost.availableMib >= cost.memoryMib
+                                MountState.Error(
+                                    if (canInsist)
+                                        "Argon2id needs ${cost.memoryMib} MB of memory and only " +
+                                        "${cost.availableMib} MB are free. Closing other apps makes room; " +
+                                        "you can also try anyway, which risks nothing in the vault but may " +
+                                        "close other apps, or open this vault on a device with more memory."
+                                    else
+                                        "Argon2id needs ${cost.memoryMib} MB of memory and this device has " +
+                                        "${cost.availableMib} MB to spare. Close some apps and try again, or " +
+                                        "open this vault where there is more memory. A vault can also be " +
+                                        "changed to a cheaper PIM through Change password, on a device that " +
+                                        "can open it.",
+                                    argon2LowMemoryRetry = canInsist
+                                )
+                            }
+                            else -> MountState.Error("Wrong password", credentialHint = true,
+                                                     argon2Offer = couldBeArgon2)
                         }
                     }
                 }

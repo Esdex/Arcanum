@@ -31,6 +31,18 @@ object NativeKatBridge {
     /** Routes through the production `hmac_generic()` via the debug-only bridge in kdf.cpp. */
     external fun nativeKatHmac(hashId: Int, key: ByteArray, data: ByteArray): ByteArray?
 
+    /** argon2id_hash_raw with a parallelism of 1 - the call the header derivation makes. */
+    external fun nativeKatArgon2id(
+        tCost: Int,
+        mCostKiB: Int,
+        password: ByteArray,
+        salt: ByteArray,
+        outLen: Int
+    ): ByteArray?
+
+    /** VeraCrypt's PIM formulas: returns [passes, memory in MiB]. */
+    external fun nativeKatArgon2Params(pim: Int): IntArray?
+
     /** Calls the production `pbkdf2_generic()` with the production hash traits. */
     external fun nativeKatPbkdf2(
         hashId: Int,

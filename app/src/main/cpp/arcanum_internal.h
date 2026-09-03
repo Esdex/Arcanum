@@ -329,10 +329,28 @@ void pbkdf2_generic(const HashTraits *t, const uint8_t *pwd, int plen,
  * default iteration count table. */
 uint32_t vc_get_iterations(int hashId, int pim);
 
-/* hi outside [0,4] leaves `out` untouched (matches the original per-hash
- * switch's default: break — callers zero-initialize `out` before calling). */
-void derive_header_key(int hi, const uint8_t *password, int pwd_len,
-                        const uint8_t *salt, int pim, uint8_t out[192]);
+/* PRF ids as this app numbers them: 0..4 are the PBKDF2 hashes that auto-detect
+ * walks, 5 is Argon2id (#177). Argon2id is never part of that walk: one attempt
+ * costs hundreds of megabytes, so it runs only when it is asked for by name. */
+#define VC_HASH_ARGON2ID 5
+
+/* VeraCrypt's get_argon2_params: the PIM decides both costs, and a pim of 0
+ * means 12 - which is 416 MiB and 6 passes. */
+void vc_argon2_params(int pim, uint32_t *tCost, uint32_t *mCostKiB);
+
+/* What a derivation at this PIM would have to allocate, in bytes. Zero for
+ * every PRF but Argon2id. */
+uint64_t vc_argon2_memory_bytes(int hashId, int pim);
+
+/* What the kernel says it can still hand out, in bytes; 0 when it will not say. */
+uint64_t vc_memory_available_bytes(void);
+
+/* ERR_OK, ERR_UNSUPPORTED for a PRF id that is not one of ours, or
+ * ERR_ARGON2_MEMORY when Argon2id cannot have the memory it needs. `out` is
+ * left untouched on the first, zeroed on the last. */
+int derive_header_key(int hi, const uint8_t *password, int pwd_len,
+                        const uint8_t *salt, int pim, uint8_t out[192],
+                        bool allowLowMemory = false);
 
 /* ─── vc_header.cpp exports ──────────────────────────────────────────── */
 
@@ -375,7 +393,11 @@ int read_vc_header(const BlockBackend &be, uint64_t fileOff,
                     int pim = 0,
                     uint64_t *outHiddenVolSize = nullptr,
                     int hintAlgId = -1, int hintHashId = -1,
-                    MountCb *mountCb = nullptr);
+                    MountCb *mountCb = nullptr,
+                    /* Argon2id only: go ahead even when the memory left is below the
+                     * headroom the guard wants. Never lets an allocation that cannot
+                     * succeed be attempted - only one that is tight (#177). */
+                    bool allowLowMemory = false);
 
 /* Overwrites the 512-byte header at fileOff with random data for wipeCount
  * passes, then writes the new header encrypted with the new credentials.

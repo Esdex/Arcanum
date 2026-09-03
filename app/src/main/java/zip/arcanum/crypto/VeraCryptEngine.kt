@@ -126,7 +126,9 @@ class VeraCryptEngine @Inject constructor(
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         protectHiddenPim: Int = 0,
         mountProgressListener: MountProgressListener? = null,
-        readOnly: Boolean = false
+        readOnly: Boolean = false,
+        /** Argon2id only: proceed even when free memory is below the guard's headroom (#177). */
+        allowLowMemory: Boolean = false
     ): CryptoResult<Long> = onIo {
         val handle = usePasswordBytes(password) { passwordBytes ->
             usePasswordBytesOrNull(protectHiddenPassword) { hiddenBytes ->
@@ -138,7 +140,8 @@ class VeraCryptEngine @Inject constructor(
                     protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
                     protectHiddenPim,
                     mountProgressListener,
-                    readOnly
+                    readOnly,
+                    allowLowMemory
                 )
             }
         }
@@ -193,7 +196,9 @@ class VeraCryptEngine @Inject constructor(
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         protectHiddenPim: Int = 0,
         mountProgressListener: MountProgressListener? = null,
-        readOnly: Boolean = false
+        readOnly: Boolean = false,
+        /** Argon2id only: proceed even when free memory is below the guard's headroom (#177). */
+        allowLowMemory: Boolean = false
     ): CryptoResult<Long> = onIo {
         val handle = usePasswordBytes(password) { passwordBytes ->
             usePasswordBytesOrNull(protectHiddenPassword) { hiddenBytes ->
@@ -205,7 +210,8 @@ class VeraCryptEngine @Inject constructor(
                     protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
                     protectHiddenPim,
                     mountProgressListener,
-                    readOnly
+                    readOnly,
+                    allowLowMemory
                 )
             }
         }
@@ -224,7 +230,9 @@ class VeraCryptEngine @Inject constructor(
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         protectHiddenPim: Int = 0,
         mountProgressListener: MountProgressListener? = null,
-        readOnly: Boolean = false
+        readOnly: Boolean = false,
+        /** Argon2id only: proceed even when free memory is below the guard's headroom (#177). */
+        allowLowMemory: Boolean = false
     ): CryptoResult<Long> = onIo {
         val handle = usePasswordBytes(password) { passwordBytes ->
             usePasswordBytesOrNull(protectHiddenPassword) { hiddenBytes ->
@@ -236,7 +244,8 @@ class VeraCryptEngine @Inject constructor(
                     protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
                     protectHiddenPim,
                     mountProgressListener,
-                    readOnly
+                    readOnly,
+                    allowLowMemory
                 )
             }
         }
@@ -476,6 +485,18 @@ class VeraCryptEngine @Inject constructor(
         }.toResult()
     }
 
+    /**
+     * What an Argon2id derivation at [pim] would cost, and what the phone has left.
+     *
+     * The numbers come from the same native code the derivation uses, so the wizard
+     * and the mount screen cannot quote a formula that has drifted from the one that
+     * runs (#177).
+     */
+    fun argon2Cost(pim: Int): Argon2Cost {
+        val v = nativeArgon2Cost(pim) ?: return Argon2Cost(0, 0, 0)
+        return Argon2Cost(passes = v[0], memoryMib = v[1], availableMib = v[2])
+    }
+
     fun getVolumeType(handle: Long): Int = nativeGetVolumeType(handle)
     fun hasHiddenVolume(handle: Long): Boolean = nativeHasHiddenVolume(handle)
 
@@ -656,7 +677,8 @@ class VeraCryptEngine @Inject constructor(
         protectHiddenKeyfileData: Array<ByteArray>?,
         protectHiddenPim: Int,
         mountProgressListener: MountProgressListener?,
-        readOnly: Boolean
+        readOnly: Boolean,
+        allowLowMemory: Boolean
     ): Long
 
 
@@ -816,6 +838,8 @@ class VeraCryptEngine @Inject constructor(
     suspend fun formatFatPartition(transport: Any, sizeBytes: Long): CryptoResult<Unit> =
         onIo { nativeFormatFatPartition(transport, sizeBytes).toResult() }
 
+    private external fun nativeArgon2Cost(pim: Int): IntArray?
+
     private external fun nativeFlushContainer(handle: Long): Int
 
     private external fun nativeFormatFatPartition(transport: Any, sizeBytes: Long): Int
@@ -843,7 +867,8 @@ class VeraCryptEngine @Inject constructor(
         protectHiddenKeyfileData: Array<ByteArray>?,
         protectHiddenPim: Int,
         mountProgressListener: MountProgressListener?,
-        readOnly: Boolean
+        readOnly: Boolean,
+        allowLowMemory: Boolean
     ): Long
 
     private external fun nativeOpenContainerFd(
@@ -857,7 +882,8 @@ class VeraCryptEngine @Inject constructor(
         protectHiddenKeyfileData: Array<ByteArray>?,
         protectHiddenPim: Int,
         mountProgressListener: MountProgressListener?,
-        readOnly: Boolean
+        readOnly: Boolean,
+        allowLowMemory: Boolean
     ): Long
 
     private external fun nativeListFiles(
@@ -1134,6 +1160,17 @@ class VeraCryptEngine @Inject constructor(
         const val ERR_BUSY             = -14
 
         /**
+         * Native ERR_ARGON2_MEMORY: an Argon2id derivation was refused because the
+         * device cannot spare what the PIM asks for, or the allocation itself failed.
+         *
+         * Unlike every other failure on the mount path this one is not about the
+         * password: the same password on a phone with more memory free would open the
+         * volume. [argon2Cost] says what it would take, so the message can name the
+         * number rather than blaming the vault (#177).
+         */
+        const val ERR_ARGON2_MEMORY    = -15
+
+        /**
          * Keyfile generator size bounds — must match VC_KEYFILE_MIN_SIZE /
          * VC_KEYFILE_MAX_SIZE in `app/src/main/cpp/arcanum_internal.h`, which
          * rejects anything outside this range with [ERR_UNSUPPORTED].
@@ -1163,12 +1200,21 @@ class VeraCryptEngine @Inject constructor(
 
         const val HASH_BLAKE2S = 4
 
+        /**
+         * Argon2id, VeraCrypt's sixth PRF. Never part of auto-detect: one attempt
+         * allocates hundreds of megabytes and takes seconds, so it is used only when
+         * it is named - by the user in the mount options, or by what the vault
+         * remembered of its last successful mount (#177).
+         */
+        const val HASH_ARGON2ID = 5
+
         fun hashIdToString(hashId: Int): String = when (hashId) {
             0 -> "SHA-512"
             1 -> "SHA-256"
             2 -> "Whirlpool"
             3 -> "Streebog"
             4 -> "BLAKE2s-256"
+            5 -> "Argon2id"
             else -> "SHA-512"
         }
 
@@ -1217,6 +1263,7 @@ private fun Int.toError(): CryptoError = when (this) {
     VeraCryptEngine.ERR_HIDDEN_BOUNDARY -> CryptoError.HIDDEN_BOUNDARY_PROTECTED
     VeraCryptEngine.ERR_NO_SLOT         -> CryptoError.TOO_MANY_MOUNTED
     VeraCryptEngine.ERR_BUSY            -> CryptoError.BUSY
+    VeraCryptEngine.ERR_ARGON2_MEMORY   -> CryptoError.ARGON2_MEMORY
     else                                -> CryptoError.UNKNOWN
 }
 

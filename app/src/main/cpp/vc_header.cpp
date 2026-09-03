@@ -195,11 +195,22 @@ static int build_vc_header(uint8_t outHeader[VC_HEADER_SIZE],
     int n    = ALGORITHMS[algId].n;
     int mkLen = n * 64;
 
-    /* Derive header key (mkLen bytes) using the chosen hash */
-    uint32_t iters = vc_get_iterations(hashAlg, pim);
+    /* Derive the header key with the chosen PRF.
+     *
+     * PBKDF2 is asked for exactly the mkLen bytes the cascade needs, as it
+     * always was. Argon2id is asked for 192 whatever the cascade is: its output
+     * length is an input to the function, so deriving fewer bytes would derive
+     * different ones, and no other VeraCrypt would find the same key (#177). */
     SecureBuffer<192> derivedKey;
-    pbkdf2_generic(hash_traits_for(hashAlg), (const uint8_t*)password, pwd_len,
-                   salt, VC_HEADER_SALT_SIZE, iters, derivedKey.data(), mkLen);
+    if (hashAlg == VC_HASH_ARGON2ID) {
+        int derivationStatus = derive_header_key(hashAlg, (const uint8_t*)password, pwd_len,
+                                                 salt, pim, derivedKey.data());
+        if (derivationStatus != ERR_OK) return derivationStatus;
+    } else {
+        uint32_t iters = vc_get_iterations(hashAlg, pim);
+        pbkdf2_generic(hash_traits_for(hashAlg), (const uint8_t*)password, pwd_len,
+                       salt, VC_HEADER_SALT_SIZE, iters, derivedKey.data(), mkLen);
+    }
 
     /* Build decrypted header body (448 bytes) */
     SecureBuffer<VC_HEADER_BODY_SIZE> body;
@@ -331,17 +342,23 @@ int read_vc_header(const BlockBackend &be, uint64_t fileOff,
                     int pim,
                     uint64_t *outHiddenVolSize,
                     int hintAlgId, int hintHashId,
-                    MountCb *mountCb) {
+                    MountCb *mountCb,
+                    bool allowLowMemory) {
     uint8_t rawHeader[VC_HEADER_SIZE];
     if (!be.read(be.self, rawHeader, VC_HEADER_SIZE, fileOff)) return ERR_READ;
 
     const uint8_t *salt = rawHeader;          /* first 64 bytes */
     const uint8_t *rawBody = rawHeader + VC_HEADER_BODY_OFFSET;
 
+    /* The PBKDF2 hashes, and the only ones auto-detect walks. Argon2id is the
+     * sixth PRF and is never guessed at: one attempt allocates hundreds of
+     * megabytes and takes seconds, so it runs only when it is named - by the
+     * user, or by what the vault remembered of its last successful mount. */
     static const int NUM_HASHES = 5;
+    static const int NUM_PRFS   = 6;
 
     /* Progress denominator: a hash hint restricts the scan to one hash's ciphers. */
-    bool hashHinted = (hintHashId >= 0 && hintHashId < NUM_HASHES);
+    bool hashHinted = (hintHashId >= 0 && hintHashId < NUM_PRFS);
     if (mountCb) { mountCb->attempt = 1; mountCb->total = hashHinted ? NUM_ALGORITHMS : NUM_HASHES * NUM_ALGORITHMS; }
 
     /* allDerivedKeys is declared up front (rather than after the hint attempt,
@@ -350,23 +367,27 @@ int read_vc_header(const BlockBackend &be, uint64_t fileOff,
      * follows a failed hint then reuses that derivation instead of redoing
      * the same 500k-iteration PBKDF2 a second time. derivedFlags tracks which
      * hash slots are already populated. */
-    uint8_t allDerivedKeys[NUM_HASHES][192];
+    uint8_t allDerivedKeys[NUM_PRFS][192];
     memset(allDerivedKeys, 0, sizeof(allDerivedKeys));
     /* Wipes the whole 2D array at every return point below (hint-path,
      * full-scan success/unsupported, and the final wrong-password fallback)
      * — replaces the four manual secure_memset(allDerivedKeys, ...) calls
      * that used to be repeated on each of those exit paths. */
-    SecureWipe<uint8_t[NUM_HASHES][192]> _wipeAllKeys(allDerivedKeys);
-    bool derivedFlags[NUM_HASHES] = { false, false, false, false, false };
+    SecureWipe<uint8_t[NUM_PRFS][192]> _wipeAllKeys(allDerivedKeys);
+    bool derivedFlags[NUM_PRFS] = { false, false, false, false, false, false };
 
     /* ── Fast path: try hinted (hash, algorithm) combination first ── */
     bool hintTried = false;
-    if (hintHashId >= 0 && hintHashId < NUM_HASHES &&
+    if (hintHashId >= 0 && hintHashId < NUM_PRFS &&
         hintAlgId  >= 0 && hintAlgId  < NUM_ALGORITHMS) {
         hintTried = true;
         report_trying(mountCb, hintAlgId, hintHashId);
-        derive_header_key(hintHashId, (const uint8_t*)password, pwd_len, salt, pim,
-                          allDerivedKeys[hintHashId]);
+        /* Argon2id can refuse before it starts, when the device cannot spare
+         * what this PIM asks for. That is its own answer, not a wrong
+         * password, and the scan below must not bury it. */
+        int derivationStatus = derive_header_key(hintHashId, (const uint8_t*)password, pwd_len,
+                                                 salt, pim, allDerivedKeys[hintHashId], allowLowMemory);
+        if (derivationStatus != ERR_OK) return derivationStatus;
         derivedFlags[hintHashId] = true;
 
         SecureBuffer<VC_HEADER_BODY_SIZE> body;
@@ -398,8 +419,9 @@ int read_vc_header(const BlockBackend &be, uint64_t fileOff,
          * Skip if the hint fast-path already derived this exact hash (hintAlgId
          * was valid too, so derivedFlags[hintHashId] is already true). */
         if (!derivedFlags[hintHashId]) {
-            derive_header_key(hintHashId, (const uint8_t*)password, pwd_len,
-                              salt, pim, allDerivedKeys[hintHashId]);
+            int derivationStatus = derive_header_key(hintHashId, (const uint8_t*)password, pwd_len,
+                                                     salt, pim, allDerivedKeys[hintHashId], allowLowMemory);
+            if (derivationStatus != ERR_OK) return derivationStatus;
             derivedFlags[hintHashId] = true;
         }
     } else {
@@ -412,6 +434,8 @@ int read_vc_header(const BlockBackend &be, uint64_t fileOff,
          * sequential derivation, so allDerivedKeys is always fully populated. */
         std::thread kdfThreads[NUM_HASHES];
         bool threadStarted[NUM_HASHES] = { false, false, false, false, false };
+        /* Only the PBKDF2 hashes get here, and those never fail, so their
+         * status is not carried back out of the threads. */
         try {
             for (int hi = 0; hi < NUM_HASHES; hi++) {
                 if (derivedFlags[hi]) continue;

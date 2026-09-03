@@ -262,7 +262,9 @@ private fun MountScreenContent(
     /* The PRF the volume turned out to be last time, not a guess: mounting with it named
      * skips the auto-detect that costs seconds on every unlock. */
     var selectedHash by rememberSaveable(mountId) { mutableIntStateOf(container.mountHashId) }
-    val hashes = remember { listOf(-1 to "Auto") + (0..4).map { it to VeraCryptEngine.hashIdToString(it) } }
+    /* Argon2id is in the list even though auto-detect never reaches it: naming it
+       here is the only way to open such a volume the first time (#177). */
+    val hashes = remember { listOf(-1 to "Auto") + (0..5).map { it to VeraCryptEngine.hashIdToString(it) } }
 
     // ── Biometric state ───────────────────────────────────────────────────
     val hasBiometricSaved  = remember(mountId) { viewModel.hasBiometricCredentials(mountId) }
@@ -279,8 +281,19 @@ private fun MountScreenContent(
     // ── Biometric prompt setup ────────────────────────────────────────────
     val activity = LocalContext.current as FragmentActivity
 
+    /* What the last attempt was made with, so that the Argon2id offer on a failed
+       mount can repeat it with that PRF named instead of asking for everything again
+       (#177). Cleared when the error is dismissed. */
+    var lastAttempt by remember { mutableStateOf<MountAttempt?>(null) }
+    /* Set only by the "try anyway" action on a memory refusal, and cleared by the
+       attempt it belongs to, so it can never leak into a later unlock (#177). */
+    var allowLowMemoryOnce by remember { mutableStateOf(false) }
+
     val onUnlock: (String, Int, Int, String?, Int, List<ByteArray>) -> Unit = { pw, pim, hash, protectPw, protectPim, protectKeyfileData ->
         isMounting = true
+        lastAttempt = MountAttempt(pw, pim, protectPw, protectPim, protectKeyfileData)
+        /* Read by the call below and immediately dropped: the exception the user made
+           for one attempt must not quietly apply to the next one. */
         viewModel.mountContainer(
             container                 = container,
             password                  = pw,
@@ -292,6 +305,7 @@ private fun MountScreenContent(
             protectHiddenPim          = protectPim,
             protectHiddenKeyfileData  = protectKeyfileData,
             readOnly                  = readOnly,
+            allowLowMemory            = allowLowMemoryOnce.also { allowLowMemoryOnce = false },
             onSuccess = { id ->
                 keyfiles.forEach { it.zero() }
                 hiddenKeyfiles.forEach { it.zero() }
@@ -1006,7 +1020,26 @@ private fun MountScreenContent(
                     showCredentialHints = errorState?.credentialHint ?: true,
                     logs                = mountLogs,
                     onCancel            = { viewModel.cancelMount(); onBack() },
-                    onDismissError      = { viewModel.resetMountState(); isMounting = false }
+                    onDismissError      = {
+                        viewModel.resetMountState(); isMounting = false
+                        lastAttempt = null; allowLowMemoryOnce = false
+                    },
+                    onTryArgon2         = lastAttempt?.takeIf { errorState?.argon2Offer == true }?.let { a ->
+                        {
+                            viewModel.resetMountState()
+                            allowLowMemoryOnce = false
+                            onUnlock(a.password, a.pim, VeraCryptEngine.HASH_ARGON2ID,
+                                     a.protectPassword, a.protectPim, a.protectKeyfiles)
+                        }
+                    },
+                    onTryAnyway         = lastAttempt?.takeIf { errorState?.argon2LowMemoryRetry == true }?.let { a ->
+                        {
+                            viewModel.resetMountState()
+                            allowLowMemoryOnce = true
+                            onUnlock(a.password, a.pim, VeraCryptEngine.HASH_ARGON2ID,
+                                     a.protectPassword, a.protectPim, a.protectKeyfiles)
+                        }
+                    }
                 )
             }
         }
@@ -1126,3 +1159,17 @@ private fun MountScreenContent(
         }
     }
 }
+
+/**
+ * The credentials of the attempt just made, kept only so a failed mount can be repeated
+ * with Argon2id named (#177). The password is already in the field the user typed it
+ * into for as long as this screen is up, so this holds nothing that was not there
+ * anyway, and it is dropped as soon as the error is dismissed.
+ */
+private data class MountAttempt(
+    val password: String,
+    val pim: Int,
+    val protectPassword: String?,
+    val protectPim: Int,
+    val protectKeyfiles: List<ByteArray>
+)

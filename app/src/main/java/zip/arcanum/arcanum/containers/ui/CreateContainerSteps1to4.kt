@@ -37,6 +37,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -279,6 +280,30 @@ fun StepEncryptionAlgorithm(state: CreateContainerState, onUpdate: (CreateContai
                     onClick  = { onUpdate { copy(hashAlgorithm = hash) } },
                     label    = { Text(hash.displayName) }
                 )
+            }
+        }
+        /* Argon2id is not one more hash in the row: it costs memory rather than
+           iterations, no older VeraCrypt can open what it makes, and nothing finds
+           it by guessing. All three belong here, where the choice is made (#177). */
+        if (state.hashAlgorithm == HashAlgorithm.ARGON2ID) {
+            Spacer(Modifier.height(12.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(
+                        stringResource(R.string.create_step3_argon2_title),
+                        style      = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.create_step3_argon2_body),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

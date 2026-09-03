@@ -111,6 +111,77 @@ class NativeKatTest {
         assertEquals(label, hexToBytes(expectedHex).hex(), actual!!.hex())
     }
 
+    // ── Argon2id (#177) ──────────────────────────────────────────────────────
+
+    /**
+     * The canonical vector from the Argon2 reference package, and the one the
+     * `argon2` command-line tool of libargon2 prints for the same inputs - two
+     * implementations that are not this one. 64 MiB, so it is the slow test here.
+     */
+    @Test
+    fun argon2id_referenceVector_64MiB() {
+        requireHooks()
+        assertHex(
+            "Argon2id t=2 m=64MiB p=1",
+            "09316115d5cf24ed5a15a31a3ba326e5cf32edc24702987c02b6566f61913cf7",
+            NativeKatBridge.nativeKatArgon2id(2, 65536, "password".toByteArray(), "somesalt".toByteArray(), 32)
+        )
+    }
+
+    /** The same two outside implementations, at a cost cheap enough to run anywhere. */
+    @Test
+    fun argon2id_referenceVector_256KiB() {
+        requireHooks()
+        assertHex(
+            "Argon2id t=1 m=256KiB p=1",
+            "024ec0c1ac65d08d95f1e46fcc33801dc5dcee045470e74765b7f7381b50ecd5",
+            NativeKatBridge.nativeKatArgon2id(1, 256, "password".toByteArray(), "somesalt".toByteArray(), 32)
+        )
+    }
+
+    /**
+     * A 64-byte salt and a 64-byte output, the shape a volume header derivation
+     * has, checked against the same outside tool. The header itself asks for 192
+     * bytes, which is only more of the same call.
+     */
+    @Test
+    fun argon2id_headerShapedVector() {
+        requireHooks()
+        val salt = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".toByteArray()
+        assertEquals("salt is header-sized", 64, salt.size)
+        assertHex(
+            "Argon2id t=3 m=64KiB p=1, 64-byte salt",
+            "f9007da292576663e7cdcc7a1a06a5cd4df88d0c219a26ed1b013d8a79f85d22" +
+            "0a7c97777be07a874b821e810fc8a50220f12e12b7121c856ac5778518b37de9",
+            NativeKatBridge.nativeKatArgon2id(3, 64, "test1234".toByteArray(), salt, 64)
+        )
+    }
+
+    /**
+     * The PIM formulas, against the worked examples in VeraCrypt's own
+     * `get_argon2_params` documentation. A volume is only openable by the other
+     * side if both sides read the same cost out of the same PIM.
+     */
+    @Test
+    fun argon2Params_matchVeraCryptTable() {
+        requireHooks()
+        val cases = listOf(
+            //  pim   passes   MiB
+            Triple(0,     6,  416),   // empty PIM means 12
+            Triple(1,     3,   64),
+            Triple(12,    6,  416),
+            Triple(31,   13, 1024),   // the cap is reached here
+            Triple(32,   14, 1024),   // past it, only the passes grow
+            Triple(100,  82, 1024)
+        )
+        for ((pim, passes, mib) in cases) {
+            val got = NativeKatBridge.nativeKatArgon2Params(pim)
+            assertNotNull("params for pim=$pim", got)
+            assertEquals("passes at pim=$pim", passes, got!![0])
+            assertEquals("memory MiB at pim=$pim", mib, got[1])
+        }
+    }
+
     // ── AES-256 ──────────────────────────────────────────────────────────────
 
     /**

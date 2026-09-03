@@ -91,6 +91,7 @@ fun StepPassword(
     onAddKeyfile: () -> Unit = {},
     onGenerateKeyfile: () -> Unit = {},
     onRemoveKeyfile: (index: Int) -> Unit = {},
+    argon2Cost: (Int) -> zip.arcanum.crypto.Argon2Cost = { zip.arcanum.crypto.Argon2Cost(0, 0, 0) },
 ) {
     val context                = LocalContext.current
     val focusManager           = LocalFocusManager.current
@@ -207,7 +208,15 @@ fun StepPassword(
         val pimStatusBelow    = stringResource(R.string.create_pim_status_below)
         val pimStatusSimilar  = stringResource(R.string.create_pim_status_similar)
         val pimStatusEnhanced = stringResource(R.string.create_pim_status_enhanced)
+        /* Argon2id's PIM buys memory rather than iterations, so the usual scale of
+           "below 485 is weaker than the default" says nothing about it (#177). */
+        val isArgon2 = state.hashAlgorithm == HashAlgorithm.ARGON2ID
+        val cost     = if (isArgon2) argon2Cost(pimInt) else null
         val (pimIcon, pimMsg) = when {
+            isArgon2 && cost != null -> "🧠" to stringResource(
+                if (pimText.isEmpty()) R.string.create_pim_argon2_default else R.string.create_pim_argon2_cost,
+                cost.memoryMib, cost.passes
+            )
             pimText.isEmpty() -> "ℹ️" to pimStatusDefault
             pimInt < 486      -> "⚠️" to pimStatusBelow
             pimInt <= 500     -> "✅" to pimStatusSimilar
@@ -242,16 +251,32 @@ fun StepPassword(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        if (pimInt > 0) {
+        if (isArgon2 && cost != null && cost.availableMib > 0) {
+            /* Every unlock of this vault needs that memory, on whatever device it is
+               opened - which is worth knowing before the vault exists, not after. */
+            val tight = cost.availableMib < cost.memoryMib + 256
+            Text(
+                stringResource(
+                    if (tight) R.string.create_pim_argon2_tight else R.string.create_pim_argon2_free,
+                    cost.availableMib
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (tight) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else if (pimInt > 0) {
             Text(
                 stringResource(R.string.create_pim_unlock_est, estSecs),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        if (pimInt in 1..484 && state.password.length < 20) {
+        if (pimInt in 1 until minPimFor(state) && state.password.length < 20) {
             Text(
-                stringResource(R.string.create_pim_short_pwd_error),
+                stringResource(
+                    if (isArgon2) R.string.create_pim_argon2_short_pwd_error
+                    else R.string.create_pim_short_pwd_error
+                ),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.error
             )
@@ -611,3 +636,13 @@ fun StepEntropy(state: CreateContainerState, onAddPoint: (Int, Int) -> Unit) {
         )
     }
 }
+
+/**
+ * The smallest PIM this PRF accepts with a password under 20 characters, matching
+ * VeraCrypt's own rule: 12 for Argon2id, 485 for the PBKDF2 hashes. A shorter
+ * password with a cheaper derivation is what the rule exists to prevent (#177).
+ */
+internal fun minPimFor(state: CreateContainerState): Int = minPimForHash(state.hashAlgorithm)
+
+internal fun minPimForHash(hash: HashAlgorithm): Int =
+    if (hash == HashAlgorithm.ARGON2ID) 12 else 485

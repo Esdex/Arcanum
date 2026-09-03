@@ -603,6 +603,7 @@ const char* algo_name(int algId) {
 }
 
 const char* hash_name(int hashId) {
-    static const char* const N[] = { "SHA-512", "SHA-256", "Whirlpool", "Streebog", "BLAKE2s-256" };
-    return (hashId >= 0 && hashId <= 4) ? N[hashId] : "?";
+    static const char* const N[] = { "SHA-512", "SHA-256", "Whirlpool", "Streebog", "BLAKE2s-256",
+                                     "Argon2id" };
+    return (hashId >= 0 && hashId <= VC_HASH_ARGON2ID) ? N[hashId] : "?";
 }

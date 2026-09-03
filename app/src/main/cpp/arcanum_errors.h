@@ -36,3 +36,4 @@
 #define ERR_EXISTS          -12  /* target name already exists (rename/move) */
 #define ERR_TOO_FRAGMENTED  -13  /* ext4: the file's extent tree cannot grow further */
 #define ERR_BUSY            -14  /* that volume is mounted right now */
+#define ERR_ARGON2_MEMORY   -15  /* Argon2id needs more memory than the device can spare */

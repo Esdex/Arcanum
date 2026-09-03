@@ -299,7 +299,8 @@ fun CreateContainerScreen(
                                     onUpdate          = viewModel::update,
                                     onAddKeyfile      = { keyfilePickerLauncher.launch("*/*") },
                                     onGenerateKeyfile = { keyfileFolderLauncher.launch(null) },
-                                    onRemoveKeyfile   = viewModel::removeKeyfile
+                                    onRemoveKeyfile   = viewModel::removeKeyfile,
+                                    argon2Cost        = viewModel::argon2Cost
                                 )
                         7    -> StepFormatMode(state, viewModel::update)
                         8    -> StepFilesystem(state, viewModel::update)
@@ -473,7 +474,7 @@ private fun isStepValid(state: CreateContainerState, availableSpaceMb: Long = Lo
     4    -> true
     5    -> state.sizeMb > 0L && state.sizeMb <= availableSpaceMb
     6    -> state.password.length >= 4 && state.password == state.confirmPassword &&
-            !(state.pim in 1..484 && state.password.length < 20)
+            !(state.pim in 1 until minPimFor(state) && state.password.length < 20)
     7    -> true
     8    -> true
     9    -> state.entropyPoints >= 500

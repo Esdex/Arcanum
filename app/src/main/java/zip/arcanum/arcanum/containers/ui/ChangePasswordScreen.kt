@@ -263,8 +263,15 @@ fun ChangePasswordScreen(
                 if (state.currentStep < 5) {
                     val canProceed = when (state.currentStep) {
                         1    -> state.oldPassword.isNotEmpty()
+                        /* The same floor the create wizard applies, and VeraCrypt with it:
+                           a password under 20 characters may not be paired with a PIM below
+                           the PRF's default - 12 for Argon2id, 485 for the rest. This screen
+                           never had the rule, so until now it could set a combination the
+                           wizard refuses (#177). */
                         2    -> state.newPassword.isNotEmpty() &&
-                                state.newPassword == state.newConfirmPassword
+                                state.newPassword == state.newConfirmPassword &&
+                                !(state.newPim in 1 until minPimForHash(state.newHashAlgorithm) &&
+                                  state.newPassword.length < 20)
                         3    -> state.entropyProgress >= 1f
                         4    -> true
                         else -> false
@@ -474,6 +481,19 @@ private fun ChPwdStep2(
                     label    = { Text(hash.displayName) }
                 )
             }
+        }
+        if (state.newPim in 1 until minPimForHash(state.newHashAlgorithm) &&
+            state.newPassword.length < 20) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                stringResource(
+                    if (state.newHashAlgorithm == HashAlgorithm.ARGON2ID)
+                        R.string.create_pim_argon2_short_pwd_error
+                    else R.string.create_pim_short_pwd_error
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error
+            )
         }
     }
 }

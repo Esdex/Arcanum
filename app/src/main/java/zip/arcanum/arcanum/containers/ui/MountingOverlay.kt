@@ -68,7 +68,11 @@ fun MountingOverlay(
     showCredentialHints: Boolean = true,
     logs: List<String>? = null,
     onCancel: () -> Unit,
-    onDismissError: () -> Unit = {}
+    onDismissError: () -> Unit = {},
+    /** Non-null when this failure is one Argon2id has not been tried against (#177). */
+    onTryArgon2: (() -> Unit)? = null,
+    /** Non-null when the refusal was the memory guard's headroom and can be insisted on. */
+    onTryAnyway: (() -> Unit)? = null
 ) {
     BackHandler(enabled = true) {
         if (isError) onDismissError()
@@ -234,14 +238,51 @@ fun MountingOverlay(
 
         // Bottom action — anchored to the bottom
         if (isError) {
-            Button(
-                onClick  = onDismissError,
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(bottom = 24.dp)
+                    .padding(bottom = 24.dp, start = 24.dp, end = 24.dp)
             ) {
-                Text(stringResource(R.string.common_ok), style = MaterialTheme.typography.labelLarge)
+                /* The whole point of the offer is that the cost is visible before it is
+                   paid: a derivation of this kind takes hundreds of megabytes and
+                   seconds, so it is never spent on a guess. */
+                if (onTryAnyway != null) {
+                    Button(onClick = onTryAnyway) {
+                        Text(stringResource(R.string.mount_argon2_try_anyway),
+                             style = MaterialTheme.typography.labelLarge)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(onClick = onDismissError) {
+                        Text(stringResource(R.string.common_ok),
+                             color = Color.White.copy(alpha = 0.7f),
+                             style = MaterialTheme.typography.labelLarge)
+                    }
+                } else if (onTryArgon2 != null) {
+                    Text(
+                        text      = stringResource(R.string.mount_argon2_offer),
+                        style     = MaterialTheme.typography.bodyMedium,
+                        color     = Color.White.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = onTryArgon2) {
+                        Text(stringResource(R.string.mount_argon2_try),
+                             style = MaterialTheme.typography.labelLarge)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(onClick = onDismissError) {
+                        Text(stringResource(R.string.common_ok),
+                             color = Color.White.copy(alpha = 0.7f),
+                             style = MaterialTheme.typography.labelLarge)
+                    }
+                } else {
+                    Button(onClick = onDismissError) {
+                        Text(stringResource(R.string.common_ok),
+                             style = MaterialTheme.typography.labelLarge)
+                    }
+                }
             }
         } else {
             TextButton(

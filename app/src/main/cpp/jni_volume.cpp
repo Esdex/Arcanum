@@ -877,7 +877,7 @@ static jlong do_open_container(
         const uint8_t *pwd, int pwdLen, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
         const uint8_t *hiddenPwd, int hiddenPwdLen, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
-        jobject mountProgressListener, jboolean readOnly)
+        jobject mountProgressListener, jboolean readOnly, jboolean allowLowMemory)
 {
     /* Owns fd on every failure path (closed by the destructor). On success
      * the fd is handed to the registry via ContainerCtx — release() right
@@ -960,8 +960,12 @@ static jlong do_open_container(
             uint64_t hvSz = 0;
             rc = read_vc_header(be, tryOffsets[ti], (const char*)effPwd.data(), effPwdLen,
                                 masterKey.data(), &mkLen, &dataSz, &dataOff, &algId, &hashId,
-                                (int)pim, &hvSz, (int)algorithm, (int)hashAlgorithm, pMountCb);
+                                (int)pim, &hvSz, (int)algorithm, (int)hashAlgorithm, pMountCb,
+                                allowLowMemory == JNI_TRUE);
             if (rc == ERR_OK) { authIsHidden = tryIsHidden[ti]; hiddenVolSize = hvSz; }
+            /* A refusal for want of memory is about the device, not the credentials:
+               trying the other header offset would only repeat it (#177). */
+            if (rc == ERR_ARGON2_MEMORY) break;
         }
     }
 
@@ -1099,7 +1103,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
         jint safFd, jbyteArray jPassword, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
         jbyteArray jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
-        jobject mountProgressListener, jboolean readOnly)
+        jobject mountProgressListener, jboolean readOnly, jboolean allowLowMemory)
 {
     SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
     int pwdLen = get_password_bytes(env, jPassword, pwdBuf);
@@ -1112,7 +1116,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     return do_open_container(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, "fd/open",
                              pwdBuf.data(), pwdLen, jKeyfileData, pim, algorithm, hashAlgorithm,
                              hidPwdBuf.data(), hidPwdLen, jProtectHiddenKeyfileData, protectHiddenPim,
-                             mountProgressListener, readOnly);
+                             mountProgressListener, readOnly, allowLowMemory);
 }
 
 /* ─── JNI: nativeOpenContainer ──────────────────────────────────────── */
@@ -1123,7 +1127,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
         jstring jPath, jbyteArray jPassword, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
         jbyteArray jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
-        jobject mountProgressListener, jboolean readOnly)
+        jobject mountProgressListener, jboolean readOnly, jboolean allowLowMemory)
 {
     std::string path = jstring_to_string(env, jPath);
     SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
@@ -1140,7 +1144,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     return do_open_container(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, "open",
                              pwdBuf.data(), pwdLen, jKeyfileData, pim, algorithm, hashAlgorithm,
                              hidPwdBuf.data(), hidPwdLen, jProtectHiddenKeyfileData, protectHiddenPim,
-                             mountProgressListener, readOnly);
+                             mountProgressListener, readOnly, allowLowMemory);
 }
 
 /* ─── JNI: nativeOpenContainerUsb ───────────────────────────────────── */
@@ -1164,7 +1168,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerUsb(
         jbyteArray jPassword, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
         jbyteArray jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
-        jobject mountProgressListener, jboolean readOnly)
+        jobject mountProgressListener, jboolean readOnly, jboolean allowLowMemory)
 {
     if (!transport || deviceSize <= 0) return (jlong)ERR_FILE;
 
@@ -1182,7 +1186,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerUsb(
     return do_open_container(env, /*fdIn=*/-1, &be, (uint64_t)deviceSize, "usb/open",
                              pwdBuf.data(), pwdLen, jKeyfileData, pim, algorithm, hashAlgorithm,
                              hidPwdBuf.data(), hidPwdLen, jProtectHiddenKeyfileData, protectHiddenPim,
-                             mountProgressListener, readOnly);
+                             mountProgressListener, readOnly, allowLowMemory);
 }
 
 
@@ -1210,6 +1214,32 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeFlushContainer(
     if (g_drives[pdrv].backend.sync)
         g_drives[pdrv].backend.sync(g_drives[pdrv].backend.self);
     return ERR_OK;
+}
+
+/* ─── JNI: nativeArgon2Cost ─────────────────────────────────────────── */
+/*
+ * What an Argon2id derivation at this PIM would cost, and what the device has
+ * to spare, so the UI can say it in numbers before anyone commits to it:
+ *   [0] passes, [1] memory in MiB, [2] memory the kernel says is available, MiB.
+ *
+ * Reads from the same functions the derivation itself uses, rather than the
+ * formula being written a second time in Kotlin where it could drift (#177).
+ */
+extern "C" JNIEXPORT jintArray JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeArgon2Cost(
+        JNIEnv *env, jobject /*thiz*/, jint pim)
+{
+    uint32_t tCost = 0, mCostKiB = 0;
+    vc_argon2_params((int)pim, &tCost, &mCostKiB);
+    jint values[3] = {
+        (jint)tCost,
+        (jint)(mCostKiB / 1024u),
+        (jint)(vc_memory_available_bytes() >> 20)
+    };
+    jintArray out = env->NewIntArray(3);
+    if (!out) return nullptr;
+    env->SetIntArrayRegion(out, 0, 3, values);
+    return out;
 }
 
 /* ─── JNI: nativeCloseContainer ─────────────────────────────────────── */

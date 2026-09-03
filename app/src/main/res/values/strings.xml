@@ -601,6 +601,8 @@
     <string name="settings_security_unmount_on_auto_lock_desc">All mounted vaults will be locked when auto-lock triggers</string>
     <string name="settings_security_media_content">Show what is playing outside the app</string>
     <string name="settings_security_media_content_desc">Lets the notification, the lock screen and connected devices show the name of the track or video and its cover. Off by default: what a media session carries is shown past the PIN, the fingerprint and the calculator disguise, and screenshot protection does not reach it.</string>
+    <string name="settings_security_argon2_offer">Offer Argon2id after a failed unlock</string>
+    <string name="settings_security_argon2_offer_desc">A vault made with Argon2id cannot be found by the automatic search: it is never tried on a guess, because one attempt takes hundreds of megabytes of memory. With this on, an unlock that fails offers to try it. Turn it off if you have no such vault.</string>
     <string name="settings_security_receive_shares">Receive shared files</string>
     <string name="settings_security_receive_shares_desc">Add Arcanum to the Android share sheet so other apps can send files into a mounted vault. Off by default - while off, Arcanum never appears as a share target.</string>
     <string name="share_target_title">Save to vault</string>
@@ -817,6 +819,13 @@
     <string name="create_pim_status_enhanced">Enhanced security, slower to open</string>
     <string name="create_pim_unlock_est">Estimated unlock time: ~%1$d seconds</string>
     <string name="create_pim_short_pwd_error">PIM below 485 requires a password of at least 20 characters</string>
+    <string name="create_pim_argon2_short_pwd_error">With a password shorter than 20 characters the PIM must be 12 or more, or left empty. A short password with a cheap derivation is what this rule exists to prevent.</string>
+    <string name="create_pim_argon2_default">Empty means PIM 12: %1$d MB of memory, %2$d passes</string>
+    <string name="create_pim_argon2_cost">%1$d MB of memory, %2$d passes</string>
+    <string name="create_pim_argon2_free">This device has %1$d MB free right now</string>
+    <string name="create_pim_argon2_tight">This device has only %1$d MB free. Every unlock of this vault needs that memory again, on whatever device it is opened - this one may not manage it. A lower PIM costs less, and a password of 20 characters or more allows any PIM.</string>
+    <string name="create_step3_argon2_title">What Argon2id changes</string>
+    <string name="create_step3_argon2_body">It is memory-hard: an attacker guessing at the header needs that memory for every guess, which is what a graphics card cannot cheaply supply. The cost is set by the PIM on the next step, and the same PIM is needed to open the vault again. A vault made with it cannot be opened by VeraCrypt older than 1.26.20, and nothing looks for it by guessing - Arcanum tries this only when it is asked to, and remembers it after the first unlock.</string>
     <string name="vault_mount_pim_short_pwd_error">PIM below 485 requires a password of at least 20 characters</string>
     <string name="create_pwd_warning">There is no way to recover your password. Write it down and keep it safe.</string>
     <string name="create_step6_title">Format Mode</string>
@@ -880,6 +889,9 @@
 
     <!-- Mounting overlay -->
     <string name="mount_unlocking">Unlocking vault…</string>
+    <string name="mount_argon2_offer">This vault may use Argon2id, which is never tried automatically. One attempt needs a few hundred MB of memory and several seconds.</string>
+    <string name="mount_argon2_try">Try Argon2id</string>
+    <string name="mount_argon2_try_anyway">Try anyway</string>
     <string name="mount_subtitle_1">This may take a moment.\nPlease don\'t close the app.</string>
     <string name="mount_subtitle_2">Almost there — some vaults take a bit longer.</string>
     <string name="mount_subtitle_3">Deriving decryption keys — this is intentionally slow.</string>

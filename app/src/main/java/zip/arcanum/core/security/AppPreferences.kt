@@ -56,6 +56,7 @@ class AppPreferences @Inject constructor(
         val FIRST_SEEN_AT             = longPreferencesKey("first_seen_at")
         val LAST_SUPPORT_PROMPT_AT    = longPreferencesKey("last_support_prompt_at")
         val MEDIA_SESSION_CONTENT     = booleanPreferencesKey("media_session_content")
+        val ARGON2_OFFER              = booleanPreferencesKey("argon2_offer")
 
         /** Survives panic mode's "Clear app settings" - see [clearSettingsForPanic]. */
         val PANIC_KEEP: List<Preferences.Key<*>> = listOf(
@@ -275,6 +276,21 @@ class AppPreferences @Inject constructor(
      * the track and the cover on their lock screen and does not need the app to hide what
      * it is playing.
      */
+    /**
+     * Whether a mount that failed may offer to try Argon2id (#177).
+     *
+     * On by default, because a vault made with Argon2id opens no other way and
+     * nothing in the header says which PRF it is. Off for someone who has no such
+     * vault and does not want to be asked about one every time a password is
+     * mistyped.
+     */
+    val argon2Offer: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.ARGON2_OFFER] ?: true }
+
+    suspend fun setArgon2Offer(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.ARGON2_OFFER] = enabled }
+    }
+
     val mediaSessionContent: Flow<Boolean> = context.appPrefsDataStore.data
         .map { it[Keys.MEDIA_SESSION_CONTENT] ?: false }
 

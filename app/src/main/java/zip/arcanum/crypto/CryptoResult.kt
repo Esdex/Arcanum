@@ -5,6 +5,13 @@ sealed class CryptoResult<out T> {
     data class Failure(val error: CryptoError) : CryptoResult<Nothing>()
 }
 
+/**
+ * What an Argon2id derivation would cost at a given PIM, against what the device has
+ * left. [memoryMib] is what it must allocate, [availableMib] what the kernel says it
+ * can still hand out - zero when it would not say (#177).
+ */
+data class Argon2Cost(val passes: Int, val memoryMib: Int, val availableMib: Int)
+
 enum class CryptoError {
     WRONG_PASSWORD,
     CORRUPTED_CONTAINER,
@@ -31,6 +38,12 @@ enum class CryptoError {
      * into a fresh vault lays the files out in one piece again and clears it.
      */
     TOO_FRAGMENTED,
+    /**
+     * Native ERR_ARGON2_MEMORY: Argon2id needs more memory than the device can spare.
+     * Not a wrong password and not a damaged vault - the same password would open it
+     * on a phone with more room, and a lower PIM asks for less (#177).
+     */
+    ARGON2_MEMORY,
     /** Native ERR_HIDDEN_BOUNDARY: write blocked by hidden-volume protection. */
     HIDDEN_BOUNDARY_PROTECTED,
     /**

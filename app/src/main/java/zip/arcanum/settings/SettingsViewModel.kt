@@ -70,6 +70,15 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.setMediaSessionContent(enabled) }
     }
 
+    /** On by default - see AppPreferences.argon2Offer (#177). */
+    val argon2Offer = prefs.argon2Offer.stateIn(
+        viewModelScope, SharingStarted.Eagerly, true
+    )
+
+    fun setArgon2Offer(enabled: Boolean) {
+        viewModelScope.launch { prefs.setArgon2Offer(enabled) }
+    }
+
     fun setReceiveShares(enabled: Boolean) {
         viewModelScope.launch { prefs.setReceiveShares(enabled) }
         // Enable/disable the disabled-by-default share-sheet alias so Arcanum only appears as a

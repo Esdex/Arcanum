@@ -43,6 +43,7 @@
 #include <cstring>
 
 extern "C" {
+#include "argon2.h"
 #include "Crypto/Aes.h"
 #include "Crypto/Twofish.h"
 #include "Crypto/Serpent.h"
@@ -94,6 +95,41 @@ int hash_oneshot(int hashId, const uint8_t *data, size_t len, uint8_t *out) {
 }
 
 } // namespace
+
+/* ─── Argon2id ───────────────────────────────────────────────────────── */
+/*
+ * Straight to argon2id_hash_raw, the same call derive_header_key makes, so what
+ * the test compares against the reference vectors is the library this build
+ * actually links (#177). Caller keeps the cost small: this runs on a phone.
+ */
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_zip_arcanum_crypto_NativeKatBridge_nativeKatArgon2id(
+        JNIEnv *env, jobject /*thiz*/, jint tCost, jint mCostKiB,
+        jbyteArray jPwd, jbyteArray jSalt, jint outLen)
+{
+    auto pwd = to_vec(env, jPwd), salt = to_vec(env, jSalt);
+    if (outLen <= 0 || outLen > 256 || tCost <= 0 || mCostKiB <= 0) return nullptr;
+    std::vector<uint8_t> out((size_t)outLen);
+    int rc = argon2id_hash_raw((uint32_t)tCost, (uint32_t)mCostKiB, 1,
+                               pwd.data(), pwd.size(), salt.data(), salt.size(),
+                               out.data(), out.size(), nullptr);
+    if (rc != ARGON2_OK) return nullptr;
+    return to_jarray(env, out.data(), out.size());
+}
+
+/* The PIM formulas, so the test can hold them to VeraCrypt's published table. */
+extern "C" JNIEXPORT jintArray JNICALL
+Java_zip_arcanum_crypto_NativeKatBridge_nativeKatArgon2Params(
+        JNIEnv *env, jobject /*thiz*/, jint pim)
+{
+    uint32_t tCost = 0, mCostKiB = 0;
+    vc_argon2_params((int)pim, &tCost, &mCostKiB);
+    jint values[2] = { (jint)tCost, (jint)(mCostKiB / 1024u) };
+    jintArray out = env->NewIntArray(2);
+    if (!out) return nullptr;
+    env->SetIntArrayRegion(out, 0, 2, values);
+    return out;
+}
 
 /* ─── Block ciphers: single-block ECB encrypt ────────────────────────── */
 

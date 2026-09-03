@@ -12,12 +12,16 @@
 #include "arcanum_internal.h"
 
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
 
 extern "C" {
 #include "Crypto/Sha2.h"
 #include "Crypto/Whirlpool.h"
 #include "Crypto/Streebog.h"
 #include "Crypto/blake2.h"
+#include "argon2.h"
 }
 
 /* Per-hash iteration counts for non-system VeraCrypt volumes.
@@ -175,11 +179,108 @@ void kat_hmac(int hashId, const uint8_t *key, int klen,
 
 /* ─── VeraCrypt header authenticate ─────────────────────────────────── */
 
-/* hi outside [0,4] leaves `out` untouched (matches the original per-hash
- * switch's default: break — callers zero-initialize `out` before calling). */
-void derive_header_key(int hi, const uint8_t *password, int pwd_len,
-                        const uint8_t *salt, int pim, uint8_t out[192]) {
-    if (hi < 0 || hi > 4) return;
+/* ─── Argon2id (#177) ────────────────────────────────────────────────── */
+
+/*
+ * VeraCrypt's get_argon2_params, formula for formula: the PIM is the cost dial
+ * and nothing about it is stored in the volume, so the same PIM has to be given
+ * again to open it. A pim of 0 means 12, which is 416 MiB and 6 passes - a
+ * desktop's number, and the reason the PRF is never tried on a guess here.
+ *
+ *   memory = min(64 + (pim - 1) * 32, 1024) MiB
+ *   passes = pim <= 31 ? 3 + (pim - 1) / 3 : 13 + (pim - 31)
+ */
+void vc_argon2_params(int pim, uint32_t *tCost, uint32_t *mCostKiB) {
+    if (pim < 0) pim = 0;
+    if (pim == 0) pim = 12;
+    int mib = 64 + (pim - 1) * 32;
+    if (mib > 1024) mib = 1024;
+    if (mCostKiB) *mCostKiB = (uint32_t)mib * 1024u;
+    if (tCost)    *tCost    = (pim <= 31) ? (uint32_t)(3 + (pim - 1) / 3)
+                                          : (uint32_t)(13 + (pim - 31));
+}
+
+uint64_t vc_argon2_memory_bytes(int hashId, int pim) {
+    if (hashId != VC_HASH_ARGON2ID) return 0;
+    uint32_t mCostKiB = 0;
+    vc_argon2_params(pim, nullptr, &mCostKiB);
+    return (uint64_t)mCostKiB * 1024ull;
+}
+
+uint64_t vc_memory_available_bytes(void) {
+    FILE *f = fopen("/proc/meminfo", "r");
+    if (!f) return 0;
+    char line[256];
+    unsigned long long kib = 0;
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "MemAvailable:", 13) == 0) {
+            kib = strtoull(line + 13, nullptr, 10);
+            break;
+        }
+    }
+    fclose(f);
+    return (uint64_t)kib * 1024ull;
+}
+
+/*
+ * Room left for the rest of the phone once the derivation has taken its share.
+ * Without it the allocation can succeed and the system then kills something -
+ * possibly this app, mid-mount - to pay for it. Refusing up front with a number
+ * the user can read beats being killed.
+ */
+static const uint64_t ARGON2_HEADROOM_BYTES = 256ull * 1024 * 1024;
+
+static int derive_header_key_argon2(const uint8_t *password, int pwd_len,
+                                    const uint8_t *salt, int pim, uint8_t out[192],
+                                    bool allowLowMemory) {
+    uint32_t tCost = 0, mCostKiB = 0;
+    vc_argon2_params(pim, &tCost, &mCostKiB);
+    const uint64_t need = (uint64_t)mCostKiB * 1024ull;
+    const uint64_t have = vc_memory_available_bytes();
+
+    /* Two different situations, and only one of them is arguable. Below `need`
+     * the allocation cannot succeed at all and there is nothing to insist on.
+     * Between `need` and `need + headroom` it can succeed, at the risk of the
+     * system killing something to pay for it - which is the user's call to make,
+     * so it is refused by default and can be repeated with [allowLowMemory]. */
+    if (have != 0 && (have < need || (!allowLowMemory && have < need + ARGON2_HEADROOM_BYTES))) {
+        LOGE("[argon2] not attempted: needs %llu MiB, the device has %llu MiB to spare%s",
+             (unsigned long long)(need >> 20), (unsigned long long)(have >> 20),
+             (have < need) ? "" : " (can be insisted on)");
+        return ERR_ARGON2_MEMORY;
+    }
+
+    /* 192 bytes exactly, whatever the cipher cascade needs of them: unlike
+     * PBKDF2, the output length is an input to Argon2, so deriving fewer would
+     * derive something else entirely. */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    int rc = argon2id_hash_raw(tCost, mCostKiB, 1,
+                               password, (size_t)pwd_len,
+                               salt, (size_t)VC_HEADER_SALT_SIZE,
+                               out, 192, nullptr);
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    /* What it actually cost on this device. Names no path and no secret, and is
+     * debug-only like every other line here (#174). */
+    LOGI("[argon2] %u MiB, %u passes: %ld ms",
+         mCostKiB / 1024u, tCost,
+         (long)((t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_nsec - t0.tv_nsec) / 1000000));
+    if (rc != ARGON2_OK) {
+        secure_memset((volatile uint8_t *)out, 0, 192);
+        LOGE("[argon2] derivation failed: %d", rc);
+        return (rc == ARGON2_MEMORY_ALLOCATION_ERROR) ? ERR_ARGON2_MEMORY : ERR_UNSUPPORTED;
+    }
+    return ERR_OK;
+}
+
+/* A PRF id outside [0,5] leaves `out` untouched (callers zero-initialize it). */
+int derive_header_key(int hi, const uint8_t *password, int pwd_len,
+                       const uint8_t *salt, int pim, uint8_t out[192],
+                       bool allowLowMemory) {
+    if (hi == VC_HASH_ARGON2ID)
+        return derive_header_key_argon2(password, pwd_len, salt, pim, out, allowLowMemory);
+    if (hi < 0 || hi > 4) return ERR_UNSUPPORTED;
     uint32_t iters = vc_get_iterations(hi, pim);
     pbkdf2_generic(&HASH_TRAITS[hi], password, pwd_len, salt, VC_HEADER_SALT_SIZE, iters, out, 192);
+    return ERR_OK;
 }

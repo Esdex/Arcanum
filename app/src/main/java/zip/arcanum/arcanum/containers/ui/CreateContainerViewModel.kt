@@ -74,7 +74,15 @@ enum class HashAlgorithm(val displayName: String) {
     SHA256("SHA-256"),
     WHIRLPOOL("Whirlpool"),
     STREEBOG("Streebog"),
-    BLAKE2S("BLAKE2s-256")
+    BLAKE2S("BLAKE2s-256"),
+
+    /**
+     * Argon2id, and the only entry here that is not a PBKDF2 hash. Its cost comes
+     * from the PIM rather than from a fixed iteration count, it is memory-hard where
+     * the others are not, and a volume made with it cannot be opened by a VeraCrypt
+     * older than 1.26.20 (#177).
+     */
+    ARGON2ID("Argon2id")
 }
 enum class FilesystemType(
     val displayName: String,
@@ -185,6 +193,10 @@ class CreateContainerViewModel @Inject constructor(
     private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    /** What an Argon2id derivation at this PIM would cost, straight from the native
+     *  formulas, for the wizard to show before anything is created (#177). */
+    fun argon2Cost(pim: Int) = cryptoEngine.argon2Cost(pim)
 
     private val _state = MutableStateFlow(CreateContainerState())
     val state = _state.asStateFlow()
