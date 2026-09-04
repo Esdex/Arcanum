@@ -307,6 +307,42 @@ class VeraCryptEngine @Inject constructor(
         rc.toResult()
     }
 
+    /**
+     * Adds a hidden volume to a vault that occupies a USB device or a partition on one
+     * (#95, #131).
+     *
+     * [transport] must already be a view of the span holding the vault, so the hidden
+     * volume is placed relative to the vault rather than to the drive. The caller keeps
+     * ownership of it, as everywhere else on the USB path.
+     */
+    suspend fun createHiddenVolumeUsb(
+        transport: Any,
+        deviceSize: Long,
+        hiddenSizeBytes: Long,
+        outerPassword: String,
+        outerKeyfileData: List<ByteArray> = emptyList(),
+        outerPim: Int = 0,
+        hiddenPassword: String,
+        hiddenKeyfileData: List<ByteArray> = emptyList(),
+        hiddenPim: Int = 0,
+        hiddenAlgorithm: Int = 0,
+        hiddenHashAlgorithm: Int = 0,
+        quickFormat: Boolean = true,
+        entropyBytes: ByteArray = ByteArray(0),
+        progressListener: CreationProgressListener? = null
+    ): CryptoResult<Unit> = onIo {
+        val rc = usePasswordBytes(outerPassword, hiddenPassword) { outerBytes, hiddenBytes ->
+            nativeCreateHiddenVolumeUsb(
+                transport, deviceSize, hiddenSizeBytes,
+                outerBytes, outerKeyfileData.toTypedArray().ifEmpty { null }, outerPim,
+                hiddenBytes, hiddenKeyfileData.toTypedArray().ifEmpty { null }, hiddenPim,
+                hiddenAlgorithm, hiddenHashAlgorithm,
+                quickFormat, entropyBytes, progressListener
+            )
+        }
+        rc.toResult()
+    }
+
     suspend fun unmountContainer(handle: Long): CryptoResult<Unit> =
         onIo {
             nativeCloseContainer(handle).toResult()
@@ -878,6 +914,16 @@ class VeraCryptEngine @Inject constructor(
         newPassword: ByteArray, newKeyfileData: Array<ByteArray>?,
         newHashAlgorithm: Int, newPim: Int, wipePassCount: Int, extraEntropy: ByteArray,
         oldHashAlgorithm: Int
+    ): Int
+
+    private external fun nativeCreateHiddenVolumeUsb(
+        transport: Any, deviceSize: Long,
+        hiddenSizeBytes: Long,
+        outerPassword: ByteArray, outerKeyfileData: Array<ByteArray>?, outerPim: Int,
+        hiddenPassword: ByteArray, hiddenKeyfileData: Array<ByteArray>?, hiddenPim: Int,
+        hiddenAlgorithm: Int, hiddenHashAlgorithm: Int,
+        quickFormat: Boolean, entropyBytes: ByteArray,
+        progressListener: CreationProgressListener?
     ): Int
 
     private external fun nativeChangeKeyfileUsb(

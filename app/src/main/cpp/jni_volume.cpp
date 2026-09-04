@@ -1382,8 +1382,14 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCloseContainer(
  * where they are written below. */
 
 /* Shared by the path and SAF-fd JNI wrappers below. Takes ownership of fd. */
+/*
+ * `beIn` null means the container is a file and `fdIn` owns it. Non-null means it is not a
+ * file - a whole USB drive or a partition on one (#95, #131): `fdIn` is -1, `sizeIn` is the
+ * span's size, and the backend belongs to the caller. Same shape as do_open_container and
+ * do_change_password; a hidden volume needs no more from its host than they do.
+ */
 static jint do_create_hidden_volume(
-        JNIEnv *env, int fdIn, const char *logTag,
+        JNIEnv *env, int fdIn, const BlockBackend *beIn, uint64_t sizeIn, const char *logTag,
         jlong hiddenSizeBytes,
         const uint8_t *outerPwd, int outerPwdLen, jobjectArray jOuterKeyfileData, jint outerPim,
         const uint8_t *hiddenPwd, int hiddenPwdLen, jobjectArray jHiddenKeyfileData, jint hiddenPim,
@@ -1394,11 +1400,18 @@ static jint do_create_hidden_volume(
     /* fd is always closed by this function on every path (never stored
      * beyond it), so a single UniqueFd covers the whole function. */
     UniqueFd fd(fdIn);
+    const BlockBackend vol = beIn ? *beIn : fd_be(fd.get());
     jmethodID progressMid = resolve_progress_mid(env, progressListener);
 
-    off_t fileSzOff = lseek(fd.get(), 0, SEEK_END);
-    if (fileSzOff < 0) return ERR_FILE;
-    uint64_t fileSize = (uint64_t)fileSzOff;
+    uint64_t fileSize;
+    if (beIn) {
+        /* Not a file: the size was measured by whoever opened the device. */
+        fileSize = sizeIn;
+    } else {
+        off_t fileSzOff = lseek(fd.get(), 0, SEEK_END);
+        if (fileSzOff < 0) return ERR_FILE;
+        fileSize = (uint64_t)fileSzOff;
+    }
 
     uint64_t hidSz = (uint64_t)hiddenSizeBytes;
     /* Need room for both header regions + data offset + hidden data */
@@ -1427,7 +1440,7 @@ static jint do_create_hidden_volume(
     SecureBuffer<192> outerMasterKey;
     int outerMkLen = 0, outerAlgId = 0, outerHashId = 0;
     uint64_t outerDataSz = 0, outerDataOff = 0;
-    int rc = read_vc_header(fd_be(fd.get()), 0,
+    int rc = read_vc_header(vol, 0,
                             (const char*)outerEffPwd.data(), outerEffPwdLen,
                             outerMasterKey.data(), &outerMkLen,
                             &outerDataSz, &outerDataOff,
@@ -1491,7 +1504,7 @@ static jint do_create_hidden_volume(
      * outright when it is zero. Written as 0, as it was until now, an Arcanum hidden volume
      * could not be opened by VeraCrypt on Windows at all, and hidden-volume protection there
      * would have guarded a range of zero bytes. */
-    if (write_vc_header(fd_be(fd.get()), VC_HIDDEN_HEADER_OFFSET,
+    if (write_vc_header(vol, VC_HIDDEN_HEADER_OFFSET,
                         hidSz, hiddenDataOff,
                         hiddenMasterKey.data(), hiddenAlgId, (int)hiddenHashAlg,
                         (const char*)hiddenEffPwd.data(), hiddenEffPwdLen,
@@ -1499,7 +1512,7 @@ static jint do_create_hidden_volume(
         return ERR_FILE;
     }
     /* Backup hidden header at fileSize - VC_HIDDEN_HEADER_OFFSET */
-    if (write_vc_header(fd_be(fd.get()), fileSize - VC_HIDDEN_HEADER_OFFSET,
+    if (write_vc_header(vol, fileSize - VC_HIDDEN_HEADER_OFFSET,
                         hidSz, hiddenDataOff,
                         hiddenMasterKey.data(), hiddenAlgId, (int)hiddenHashAlg,
                         (const char*)hiddenEffPwd.data(), hiddenEffPwdLen,
@@ -1524,7 +1537,15 @@ static jint do_create_hidden_volume(
     FRESULT fr = FR_DISK_ERR;
     {
         std::lock_guard<std::mutex> lock(g_fatfs_mutex);
-        int pdrv = alloc_drive(fd_be(fd.get()), hiddenDataOff, hidSz / VC_SECTOR_SIZE,
+        /* The drive borrows the backend for this format and must not close it: ownership
+         * stays with the caller, and free_drive below would otherwise call close on it.
+         * For a file that close is a deliberate no-op, which is why this path was safe
+         * until a USB transport came through it - there close deletes the transport's
+         * global references and frees the object, and everything after free_drive then
+         * touches freed memory. Same idiom as the partition formatter further down. */
+        BlockBackend forDrive = vol;
+        forDrive.close = nullptr;
+        int pdrv = alloc_drive(forDrive, hiddenDataOff, hidSz / VC_SECTOR_SIZE,
                                hiddenMasterKey.data(), hiddenAlgId, (int)hiddenHashAlg,
                                true, 0);
         /* Deliberate early wipe: alloc_drive already consumed hiddenMasterKey
@@ -1579,7 +1600,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
         }
     }
 
-    return do_create_hidden_volume(env, fd, "hidden", hiddenSizeBytes,
+    return do_create_hidden_volume(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, "hidden", hiddenSizeBytes,
                                    outerPwdBuf.data(), outerPwdLen, jOuterKeyfileData, outerPim,
                                    hiddenPwdBuf.data(), hiddenPwdLen, jHiddenKeyfileData, hiddenPim,
                                    hiddenAlgorithm, hiddenHashAlg, progressListener,
@@ -1624,7 +1645,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeFd(
         }
     }
 
-    return do_create_hidden_volume(env, fd, "fd/hidden", hiddenSizeBytes,
+    return do_create_hidden_volume(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, "fd/hidden", hiddenSizeBytes,
                                    outerPwdBuf.data(), outerPwdLen, jOuterKeyfileData, outerPim,
                                    hiddenPwdBuf.data(), hiddenPwdLen, jHiddenKeyfileData, hiddenPim,
                                    hiddenAlgorithm, hiddenHashAlg, progressListener,
@@ -2429,6 +2450,68 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeFormatFatPartition(
     }
     if (be.be.sync) be.be.sync(be.be.self);
     return ERR_OK;
+}
+
+/* ─── JNI: nativeCreateHiddenVolumeUsb ──────────────────────────────── */
+/*
+ * Adds a hidden volume to a vault that occupies a USB device or a partition on one.
+ *
+ * The wizard offered hidden volumes for a USB destination and then had nothing to call:
+ * only the path and fd variants existed, so the outer volume was created and the hidden
+ * phase failed at the last step. Desktop VeraCrypt makes no such distinction - "a hidden
+ * volume can be created within any type of VeraCrypt volume, i.e., within a file-hosted
+ * volume or partition/device-hosted volume" - and neither does the code below it: the
+ * geometry comes from the span's size either way.
+ *
+ * [transport] must already be a view of the span holding the vault (#131), so offset 0
+ * here is the vault's first sector, not the drive's. Ownership follows the other USB
+ * entry points: Kotlin opened the drive and Kotlin closes it.
+ */
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeUsb(
+        JNIEnv *env, jobject /*thiz*/,
+        jobject transport, jlong deviceSize,
+        jlong hiddenSizeBytes,
+        jbyteArray jOuterPassword, jobjectArray jOuterKeyfileData, jint outerPim,
+        jbyteArray jHiddenPassword, jobjectArray jHiddenKeyfileData, jint hiddenPim,
+        jint hiddenAlgorithm, jint hiddenHashAlg,
+        jboolean /*quickFormat*/,
+        jbyteArray jEntropyBytes,
+        jobject progressListener)
+{
+    if (!transport || deviceSize <= 0) return ERR_FILE;
+    if (hiddenAlgorithm < 0 || hiddenAlgorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
+    if (hiddenSizeBytes < (jlong)(4 * 1024 * 1024)) return ERR_NO_SPACE;
+
+    SecureBuffer<VC_MAX_PWD_LEN> outerPwdBuf;
+    int outerPwdLen = get_password_bytes(env, jOuterPassword, outerPwdBuf);
+    SecureBuffer<VC_MAX_PWD_LEN> hiddenPwdBuf;
+    int hiddenPwdLen = get_password_bytes(env, jHiddenPassword, hiddenPwdBuf);
+    if (outerPwdLen == 0 || hiddenPwdLen == 0) return ERR_FILE;
+
+    ScopedUsbBackend be(env, transport, /*readOnly=*/false);
+    if (!be.ok) return ERR_FILE;
+
+    SecureVector entropy;
+    if (jEntropyBytes) {
+        jsize elen = env->GetArrayLength(jEntropyBytes);
+        if (elen > 0) {
+            entropy.resize((size_t)elen);
+            env->GetByteArrayRegion(jEntropyBytes, 0, elen, (jbyte*)entropy.data());
+        }
+    }
+
+    jint rc = do_create_hidden_volume(env, /*fdIn=*/-1, &be.be, (uint64_t)deviceSize,
+                                      "usb/hidden", hiddenSizeBytes,
+                                      outerPwdBuf.data(), outerPwdLen, jOuterKeyfileData, outerPim,
+                                      hiddenPwdBuf.data(), hiddenPwdLen, jHiddenKeyfileData, hiddenPim,
+                                      hiddenAlgorithm, hiddenHashAlg, progressListener,
+                                      entropy.empty() ? nullptr : entropy.data(), entropy.size());
+    /* A drive holds writes back for a while (usb_backend's chunk cache), and the wizard
+     * moves straight on to registering the vault - so the headers and the formatted
+     * hidden area have to reach the medium before this returns. */
+    if (be.be.sync) be.be.sync(be.be.self);
+    return rc;
 }
 
 extern "C" JNIEXPORT jint JNICALL

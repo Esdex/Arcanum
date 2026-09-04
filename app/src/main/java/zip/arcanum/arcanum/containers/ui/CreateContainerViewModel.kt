@@ -417,14 +417,53 @@ class CreateContainerViewModel @Inject constructor(
         _state.update { it.copy(hiddenEntropyPoints = it.hiddenEntropyPoints + 1) }
     }
 
+    /** Carried out of the launch below, because CryptoError has no value for "no drive". */
+    private var usbHiddenNoDrive = false
+
     fun startHiddenCreation() {
         val s = _state.value
+        usbHiddenNoDrive = false
         _state.update { it.copy(isCreating = true, creationProgress = 0f, error = null) }
         val fullPath = if (s.safUri.isEmpty()) "${s.filePath.trimEnd('/')}/${s.fileName}" else ""
         viewModelScope.launch {
             val pfd = safParcelFd
             val result = try {
-                if (pfd != null) {
+                if (s.location == StorageLocation.USB_DRIVE) {
+                    /* The outer volume was written to this drive minutes ago and the wizard
+                       has not left the screen since, so the drive to write into is whichever
+                       one is attached - and the native side authenticates the outer header
+                       before it writes anything, so a swapped drive ends as a wrong password
+                       rather than as damage. The vault is not in the database yet: it is
+                       registered only once both volumes exist, which is why there is no salt
+                       hash to match against here. */
+                    val dev = usbVolumes.openAnyDrive(readOnly = false)
+                    if (dev == null) {
+                        usbHiddenNoDrive = true
+                        CryptoResult.Failure(zip.arcanum.crypto.CryptoError.IO_ERROR)
+                    } else try {
+                        val spanStart = s.usbTargetStart
+                        val spanSize  = if (s.usbTargetSize > 0L) s.usbTargetSize
+                                        else dev.sizeBytes - spanStart
+                        cryptoEngine.createHiddenVolumeUsb(
+                            transport           = zip.arcanum.usb.UsbPartitionView(dev, spanStart, spanSize),
+                            deviceSize          = spanSize,
+                            hiddenSizeBytes     = s.hiddenSizeMb * 1024L * 1024L,
+                            outerPassword       = s.password,
+                            outerKeyfileData   = s.keyfileData,
+                            outerPim            = s.pim,
+                            hiddenPassword      = s.hiddenPassword,
+                            hiddenKeyfileData  = s.hiddenKeyfileData,
+                            hiddenPim           = s.hiddenPim,
+                            hiddenAlgorithm     = s.hiddenAlgorithm.ordinal,
+                            hiddenHashAlgorithm = s.hiddenHashAlgorithm.ordinal,
+                            quickFormat         = true,
+                            entropyBytes        = hiddenEntropyBuffer.toByteArray(),
+                            progressListener    = null
+                        )
+                    } finally {
+                        dev.close()
+                    }
+                } else if (pfd != null) {
                     cryptoEngine.createHiddenVolumeFd(
                         fd                  = pfd.fd,
                         hiddenSizeBytes     = s.hiddenSizeMb * 1024L * 1024L,
@@ -480,7 +519,19 @@ class CreateContainerViewModel @Inject constructor(
                 }
                 is CryptoResult.Failure -> _state.update { it.copy(
                     isCreating = false,
-                    error      = "Hidden volume creation failed: ${result.error}"
+                    /* On the USB path a wrong password means the drive, not the password:
+                       the outer credentials came from this same wizard a minute ago, so the
+                       header that refused them belongs to a different volume. */
+                    error      = when {
+                        usbHiddenNoDrive ->
+                            "USB drive not connected. Connect the drive holding this vault and " +
+                            "try again - the outer volume is already on it."
+                        s.location == StorageLocation.USB_DRIVE &&
+                            result.error == zip.arcanum.crypto.CryptoError.WRONG_PASSWORD ->
+                            "The connected drive does not hold this vault. Connect the drive the " +
+                            "outer volume was just created on."
+                        else -> "Hidden volume creation failed: ${result.error}"
+                    }
                 ) }
             }
         }

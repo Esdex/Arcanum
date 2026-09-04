@@ -380,16 +380,28 @@ bool flush_owned_env(UsbBackend *be) {
     return ok;
 }
 
-/* Straight to the transport, in command-sized pieces. No cache, no flushing. */
-bool device_read(UsbBackend *be, JNIEnv *env, uint64_t off, size_t len, uint8_t *dst) {
+/* Straight to the transport, in command-sized pieces. No cache, no flushing.
+ *
+ * `speculative` marks a read nobody asked for - the cache filling a chunk around a small
+ * write. Failing one of those is ordinary: the last chunk of a volume runs into the end of
+ * the device, and every mount would otherwise log an error for it. The caller falls back to
+ * going straight to the device, so a read that genuinely matters still fails loudly, from
+ * that path rather than this one. */
+bool device_read(UsbBackend *be, JNIEnv *env, uint64_t off, size_t len, uint8_t *dst,
+                 bool speculative = false) {
     size_t done = 0;
     while (done < len) {
         jint chunk = (jint)((len - done > USB_SCRATCH_BYTES) ? USB_SCRATCH_BYTES : (len - done));
         jboolean r = env->CallBooleanMethod(be->transport, be->readMid,
                                             (jlong)(off + done), chunk, be->scratch, (jint)0);
         if (check_exception(env, "read") || r == JNI_FALSE) {
-            LOGE("[usb] read failed at offset %llu (%d bytes)",
-                 (unsigned long long)(off + done), (int)chunk);
+            if (speculative)
+                LOGI("[usb] cache read-ahead declined at offset %llu (%d bytes) - writing "
+                     "straight to the device from here on",
+                     (unsigned long long)(off + done), (int)chunk);
+            else
+                LOGE("[usb] read failed at offset %llu (%d bytes)",
+                     (unsigned long long)(off + done), (int)chunk);
             return false;
         }
         env->GetByteArrayRegion(be->scratch, 0, chunk, reinterpret_cast<jbyte *>(dst + done));
@@ -412,7 +424,7 @@ CacheChunk *cache_fill(UsbBackend *be, JNIEnv *env, uint64_t aligned) {
     }
     c->off = CHUNK_EMPTY;   /* a failed read must not leave this slot looking valid */
     c->len = 0;
-    if (!device_read(be, env, aligned, USB_CACHE_CHUNK, c->data)) {
+    if (!device_read(be, env, aligned, USB_CACHE_CHUNK, c->data, /*speculative=*/true)) {
         be->noCacheFrom = aligned;
         return nullptr;
     }

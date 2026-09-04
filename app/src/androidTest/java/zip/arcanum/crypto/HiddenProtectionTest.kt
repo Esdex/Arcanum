@@ -272,6 +272,56 @@ class HiddenProtectionTest {
         assertEquals(MARKER_TEXT, readMarkerFromHiddenVolume(volume))
     }
 
+    @Test
+    fun protectionHoldsOnAnExfatOuterVolume() = protectionHoldsWith(EXFAT)
+
+    @Test
+    fun protectionHoldsOnAnExt4OuterVolume() {
+        /* The one filesystem with its own write path: FAT and exFAT are both FatFs and share
+           disk_write, ext4 has the check again in ext4_device.cpp. And where FatFs is handed
+           a shortened sector count, so it never even tries to allocate past the boundary, an
+           ext4 superblock describes the whole outer area - so here the block layer is the
+           only thing standing between a fill and the hidden volume. */
+        protectionHoldsWith(EXT4)
+    }
+
+    /**
+     * Creates an outer volume on [filesystem] with a hidden volume inside it, seeds the
+     * hidden volume, fills the outer one with protection on, and requires the hidden
+     * volume's ciphertext to come out unchanged.
+     */
+    private fun protectionHoldsWith(filesystem: Int) {
+        val volume = File(work, "outer-fs$filesystem.hc")
+        runBlocking {
+            val outer = engine.createContainer(
+                path = volume.absolutePath, sizeBytes = BIG_OUTER_BYTES,
+                password = OUTER_PASSWORD, algorithm = 0, hashAlgorithm = 0,
+                filesystem = filesystem, quickFormat = true,
+                entropyBytes = ByteArray(32) { it.toByte() }
+            )
+            assertTrue("outer volume not created: $outer", outer is CryptoResult.Success)
+            val hidden = engine.createHiddenVolume(
+                path = volume.absolutePath, hiddenSizeBytes = BIG_HIDDEN_BYTES,
+                outerPassword = OUTER_PASSWORD, hiddenPassword = HIDDEN_PASSWORD,
+                hiddenAlgorithm = 0, hiddenHashAlgorithm = 0, quickFormat = true,
+                entropyBytes = ByteArray(32) { (it + 1).toByte() }
+            )
+            assertTrue("hidden volume not created: $hidden", hidden is CryptoResult.Success)
+        }
+
+        writeMarkerIntoHiddenVolume(volume)
+        val before = hiddenRegionDigest(volume)
+
+        val outerHandle = mountOuter(volume, protectPassword = HIDDEN_PASSWORD).success()
+        assertTrue("no boundary on the mounted outer volume", engine.hasHiddenVolume(outerHandle))
+        val written = fillOuterVolume(outerHandle, BIG_FILL_MB)
+        unmountAll()
+
+        assertTrue("the fill of $BIG_FILL_MB MB was never stopped", written < BIG_FILL_MB)
+        assertEquals("the hidden volume's ciphertext changed", before, hiddenRegionDigest(volume))
+        assertEquals(MARKER_TEXT, readMarkerFromHiddenVolume(volume))
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private fun copyOf(fixture: File): File =
@@ -368,10 +418,10 @@ class HiddenProtectionTest {
     }
 
     /** Writes 1 MB files until one is refused; returns how many landed. */
-    private fun fillOuterVolume(handle: Long): Int {
+    private fun fillOuterVolume(handle: Long, limitMb: Int = FILL_MB): Int {
         val block = ByteArray(1024 * 1024) { (it and 0xFF).toByte() }
         var written = 0
-        while (written < FILL_MB) {
+        while (written < limitMb) {
             if (engine.writeFile(handle, "/fill$written.bin", block, 0L) != VeraCryptEngine.ERR_OK) break
             written++
         }
@@ -414,5 +464,15 @@ class HiddenProtectionTest {
 
         /** The backup header group at the end of every VeraCrypt volume. */
         const val BACKUP_AREA_BYTES = 131072L
+
+        /** Filesystem ids as nativeCreateContainer numbers them. */
+        const val EXFAT = 1
+        const val EXT4 = 2
+
+        /* Roomy enough for an ext4 superblock and its bookkeeping, with a hidden volume
+           that still leaves the fill something to cross. */
+        const val BIG_OUTER_BYTES = 96L * 1024 * 1024
+        const val BIG_HIDDEN_BYTES = 24L * 1024 * 1024
+        const val BIG_FILL_MB = 80
     }
 }
