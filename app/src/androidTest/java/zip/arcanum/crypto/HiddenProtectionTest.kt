@@ -233,6 +233,45 @@ class HiddenProtectionTest {
         assertEquals(MARKER_TEXT, readMarkerFromHiddenVolume(volume))
     }
 
+    // ── The same, on a volume Arcanum made itself ────────────────────────────
+
+    @Test
+    fun arcanumMadeHiddenVolume_isProtectedTheSameWay() {
+        /* Everything above runs against volumes desktop VeraCrypt built. This one is ours
+           end to end - our creator's geometry read back by our own boundary code, which is
+           the pair that could agree with each other about a wrong layout. The independent
+           check on what it writes is vcheader.py on the host (see HiddenVolumeCreateTest). */
+        val volume = File(work, "arcanum-made.hc")
+        runBlocking {
+            val outer = engine.createContainer(
+                path = volume.absolutePath, sizeBytes = 40L * 1024 * 1024,
+                password = OUTER_PASSWORD, algorithm = 0, hashAlgorithm = 0,
+                filesystem = 0, quickFormat = true,
+                entropyBytes = ByteArray(32) { it.toByte() }
+            )
+            assertTrue("outer not created: $outer", outer is CryptoResult.Success)
+            val hidden = engine.createHiddenVolume(
+                path = volume.absolutePath, hiddenSizeBytes = 10L * 1024 * 1024,
+                outerPassword = OUTER_PASSWORD, hiddenPassword = HIDDEN_PASSWORD,
+                hiddenAlgorithm = 0, hiddenHashAlgorithm = 0, quickFormat = true,
+                entropyBytes = ByteArray(32) { (it + 1).toByte() }
+            )
+            assertTrue("hidden not created: $hidden", hidden is CryptoResult.Success)
+        }
+
+        writeMarkerIntoHiddenVolume(volume)
+        val before = hiddenRegionDigest(volume)
+
+        val outerHandle = mountOuter(volume, protectPassword = HIDDEN_PASSWORD).success()
+        assertTrue(engine.hasHiddenVolume(outerHandle))
+        val written = fillOuterVolume(outerHandle)
+        unmountAll()
+
+        assertTrue("the fill was not stopped by the boundary", written < FILL_MB)
+        assertEquals("the hidden volume's ciphertext changed", before, hiddenRegionDigest(volume))
+        assertEquals(MARKER_TEXT, readMarkerFromHiddenVolume(volume))
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private fun copyOf(fixture: File): File =
@@ -308,6 +347,10 @@ class HiddenProtectionTest {
         val handle = mountHidden(volume)
         val hiddenSize = engine.getDataSize(handle)
         unmountAll()
+        /* Both layouts place the hidden data area to end one backup-header group before
+           the end of the file, so its start is the file size less that group and its own
+           size. VeraCrypt leaves a further 128 KB of slack at the end of the outer data
+           area; measuring from the file's end covers both. */
         val start = volume.length() - BACKUP_AREA_BYTES - hiddenSize
         val digest = java.security.MessageDigest.getInstance("SHA-256")
         java.io.RandomAccessFile(volume, "r").use { raf ->

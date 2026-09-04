@@ -1375,7 +1375,11 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCloseContainer(
  * by decrypting the hidden header with the protection password (see
  * hiddenBoundary there). field28 on the outer header stays 0, exactly like a
  * container with no hidden volume. Reading field28 on mount is kept only for
- * backward compatibility with containers created before this fix. */
+ * backward compatibility with containers created before this fix.
+ *
+ * The hidden volume's own headers are the opposite case: they carry their size in
+ * field28, as VeraCrypt's do, and cannot be read without the hidden password. See
+ * where they are written below. */
 
 /* Shared by the path and SAF-fd JNI wrappers below. Takes ownership of fd. */
 static jint do_create_hidden_volume(
@@ -1475,12 +1479,23 @@ static jint do_create_hidden_volume(
         hiddenBackupSaltPtr  = hiddenBackupSalt.data();
     }
 
-    /* Primary hidden header at VC_HIDDEN_HEADER_OFFSET; field28 = 0 in hidden headers */
+    /* field28 carries the hidden volume's own size, in the hidden headers only.
+     *
+     * This is not the same field as the one the outer header must never carry (see the
+     * DENIABILITY note above): there it would prove a hidden volume exists to anyone
+     * holding the outer password, while here it sits inside a header that nothing can
+     * decrypt without the hidden password. VeraCrypt writes it (Volumes.c:1230) and reads
+     * it back as the volume's identity - `hiddenVolume = (hiddenVolumeSize != 0)` - and its
+     * Windows driver takes the mounted volume's length straight from it
+     * (Ntvol.c:775, `DiskLength = cryptoInfoPtr->hiddenVolumeSize`), refusing the mount
+     * outright when it is zero. Written as 0, as it was until now, an Arcanum hidden volume
+     * could not be opened by VeraCrypt on Windows at all, and hidden-volume protection there
+     * would have guarded a range of zero bytes. */
     if (write_vc_header(fd_be(fd.get()), VC_HIDDEN_HEADER_OFFSET,
                         hidSz, hiddenDataOff,
                         hiddenMasterKey.data(), hiddenAlgId, (int)hiddenHashAlg,
                         (const char*)hiddenEffPwd.data(), hiddenEffPwdLen,
-                        (int)hiddenPim, 0, hiddenPrimarySaltPtr) != 0) {
+                        (int)hiddenPim, hidSz, hiddenPrimarySaltPtr) != 0) {
         return ERR_FILE;
     }
     /* Backup hidden header at fileSize - VC_HIDDEN_HEADER_OFFSET */
@@ -1488,7 +1503,7 @@ static jint do_create_hidden_volume(
                         hidSz, hiddenDataOff,
                         hiddenMasterKey.data(), hiddenAlgId, (int)hiddenHashAlg,
                         (const char*)hiddenEffPwd.data(), hiddenEffPwdLen,
-                        (int)hiddenPim, 0, hiddenBackupSaltPtr) != 0) {
+                        (int)hiddenPim, hidSz, hiddenBackupSaltPtr) != 0) {
         return ERR_FILE;
     }
     /* Deliberate early wipe: hiddenEffPwd/hiddenPrimarySalt/hiddenBackupSalt
