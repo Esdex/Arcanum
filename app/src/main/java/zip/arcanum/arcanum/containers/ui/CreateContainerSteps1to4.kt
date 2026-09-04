@@ -41,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -254,7 +255,13 @@ fun StepVolumeLocation(
 
 @Composable
 fun StepEncryptionAlgorithm(state: CreateContainerState, onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit) {
-    StepContent(title = stringResource(R.string.create_step3_title), subtitle = stringResource(R.string.create_step3_subtitle)) {
+    StepContent(
+        title    = stringResource(R.string.create_step3_title),
+        subtitle = stringResource(R.string.create_step3_subtitle),
+        /* Picking Argon2id unfolds an explanation below the hash row, and the row is
+           already near the bottom of the step - so the step follows it down. */
+        revealOn = state.hashAlgorithm.takeIf { it == HashAlgorithm.ARGON2ID }
+    ) {
         Text(stringResource(R.string.create_step3_cipher), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         CipherAlgorithm.entries.forEach { algo ->
@@ -510,14 +517,30 @@ internal fun formatSecs(secs: Long) = if (secs < 60) "$secs seconds" else "${sec
 fun StepContent(
     title: String,
     subtitle: String? = null,
+    /**
+     * A key for content that unfolds below the fold - pass a non-null value while it is
+     * showing, null while it is not. Each change into a non-null value rides the step down
+     * to it, so a choice that reveals an explanation does not leave that explanation off
+     * the screen. Null throughout, which is the default, never scrolls anything.
+     */
+    revealOn: Any? = null,
     content: @Composable () -> Unit
 ) {
+    val scroll = rememberScrollState()
+    /* Seeded with the current value so arriving on a step that already shows the unfolded
+     * content does not scroll: only a change made here does. */
+    var previousReveal by remember { mutableStateOf(revealOn) }
+    LaunchedEffect(revealOn) {
+        val changed = revealOn != previousReveal
+        previousReveal = revealOn
+        if (changed && revealOn != null) scroll.rideToBottom()
+    }
     // No imePadding() here. It used to sit in front of verticalScroll, which
     // shrank this viewport by the keyboard's height and left an empty band of
     // background sitting above the keyboard. The keyboard is handled once, at
     // each screen's container, so the whole layout - including the wizard's
     // bottom button - lifts together.
-    Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(top = 28.dp, bottom = 24.dp)) {
+    Column(modifier = Modifier.verticalScroll(scroll).padding(top = 28.dp, bottom = 24.dp)) {
         Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         if (subtitle != null) {
             Spacer(Modifier.height(4.dp))

@@ -521,6 +521,26 @@ private fun MountScreenContent(
                                  protectedKeyfileData, protectedHash)
         }
     }
+    /* Turning protection on unfolds a section that starts below the fold, so the screen
+       follows it down - the fields it asks for should be where the eye already is. Turning
+       it off puts the screen back exactly where it was before, rather than leaving it
+       hanging at the bottom of a form that just got shorter. */
+    val formScroll = rememberScrollState()
+    var scrollBeforeProtect by remember { mutableIntStateOf(0) }
+    val setProtectHidden: (Boolean) -> Unit = { on ->
+        if (!readOnly) {
+            if (on && !protectHidden) scrollBeforeProtect = formScroll.value
+            protectHidden = on
+        }
+    }
+    LaunchedEffect(protectHidden) {
+        if (protectHidden) {
+            formScroll.rideToBottom()
+        } else if (scrollBeforeProtect != formScroll.value) {
+            formScroll.animateScrollTo(scrollBeforeProtect.coerceAtMost(formScroll.maxValue))
+        }
+    }
+
     /* Protection on with an empty hidden password used to mount the vault with no
        protection at all - the toggle was read, the empty field was not. Nothing is sent
        to the engine in that state, so the refusal has to happen here. */
@@ -582,7 +602,7 @@ private fun MountScreenContent(
                     .fillMaxSize()
                     .padding(top = innerPadding.calculateTopPadding())
                     .imePadding()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(formScroll)
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -885,7 +905,7 @@ private fun MountScreenContent(
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .then(if (!readOnly) Modifier.clickable { protectHidden = !protectHidden } else Modifier)
+                                            .then(if (!readOnly) Modifier.clickable { setProtectHidden(!protectHidden) } else Modifier)
                                             .alpha(if (readOnly) 0.38f else 1f)
                                             .padding(vertical = 4.dp),
                                         verticalAlignment = Alignment.CenterVertically
@@ -907,7 +927,7 @@ private fun MountScreenContent(
                                         }
                                         Switch(
                                             checked         = protectHidden,
-                                            onCheckedChange = { if (!readOnly) protectHidden = it },
+                                            onCheckedChange = setProtectHidden,
                                             enabled         = !readOnly
                                         )
                                     }
