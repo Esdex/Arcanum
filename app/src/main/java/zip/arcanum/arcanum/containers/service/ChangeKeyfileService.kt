@@ -78,7 +78,8 @@ class ChangeKeyfileService : Service() {
                                 pim              = p.pim,
                                 newKeyfileData  = p.newKeyfileData,
                                 newHashAlgorithm = p.newHashAlgorithm,
-                                extraEntropy     = p.extraEntropy
+                                extraEntropy     = p.extraEntropy,
+                                oldHashAlgorithm = p.oldHashAlgorithm
                             )
                         }) {
                             is zip.arcanum.usb.UsbVolumeManager.VolumeOp.Done -> {
@@ -112,7 +113,8 @@ class ChangeKeyfileService : Service() {
                             pim              = p.pim,
                             newKeyfileData  = p.newKeyfileData,
                             newHashAlgorithm = p.newHashAlgorithm,
-                            extraEntropy     = p.extraEntropy
+                            extraEntropy     = p.extraEntropy,
+                            oldHashAlgorithm = p.oldHashAlgorithm
                         )
                     } else {
                         cryptoEngine.changeKeyfile(
@@ -122,7 +124,8 @@ class ChangeKeyfileService : Service() {
                             pim              = p.pim,
                             newKeyfileData  = p.newKeyfileData,
                             newHashAlgorithm = p.newHashAlgorithm,
-                            extraEntropy     = p.extraEntropy
+                            extraEntropy     = p.extraEntropy,
+                            oldHashAlgorithm = p.oldHashAlgorithm
                         )
                     }
                 } finally {

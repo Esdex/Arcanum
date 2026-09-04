@@ -333,6 +333,9 @@ uint32_t vc_get_iterations(int hashId, int pim);
  * walks, 5 is Argon2id (#177). Argon2id is never part of that walk: one attempt
  * costs hundreds of megabytes, so it runs only when it is asked for by name. */
 #define VC_HASH_ARGON2ID 5
+/* How many PRFs exist, Argon2id included - the bound on a valid PRF id. Auto-detect
+ * still walks only the first five; see read_vc_header. */
+#define VC_NUM_PRFS      6
 
 /* VeraCrypt's get_argon2_params: the PIM decides both costs, and a pim of 0
  * means 12 - which is 416 MiB and 6 passes. */

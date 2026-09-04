@@ -359,6 +359,18 @@ private fun ChPwdStep1(
         )
         Spacer(Modifier.height(8.dp))
 
+        /* Auto walks the five PBKDF2 hashes, exactly as unlocking does, and for the same
+           reason never reaches Argon2id: a vault made with it has to be named here. The
+           hidden volume inside a container has its own PRF, which is not the outer
+           volume's, so this is asked rather than taken from what the vault remembers. */
+        PrfPicker(
+            hashes   = rememberPrfOptions(),
+            selected = state.oldHashAlgorithm,
+            label    = stringResource(R.string.chpwd_current_prf_label),
+            onSelect = { hash -> onUpdate { copy(oldHashAlgorithm = hash) } }
+        )
+        Spacer(Modifier.height(8.dp))
+
         KeyfileSection(
             displayNames = state.oldKeyfileDisplayNames,
             onAdd        = onAddKeyfile,

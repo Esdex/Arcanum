@@ -1067,6 +1067,7 @@
     <string name="chpwd_current_pwd_label">Current Password</string>
     <string name="chpwd_new_pwd_label">New Password</string>
     <string name="chpwd_new_pwd_confirm_label">Confirm New Password</string>
+    <string name="chpwd_current_prf_label">Current hash (Auto for anything but Argon2id)</string>
     <string name="chpwd_pkcs5_label">PKCS-5 PRF (Hash)</string>
     <string name="chpwd_wipe_1pass">1 pass — random data</string>
     <string name="chpwd_wipe_1pass_desc">Fastest. Overwrites the old header once with random data.</string>
@@ -1095,6 +1096,7 @@
     <string name="chkeyfile_no_keyfiles_warning_title">Remove All Keyfiles?</string>
     <string name="chkeyfile_no_keyfiles_warning_body">Add Keyfiles is disabled. If this container currently uses keyfiles, they will all be removed. The container will be accessible by password alone.</string>
     <string name="chkeyfile_step3_title">Random Pool Enrichment</string>
+    <string name="chkeyfile_step4_title">Changing Keyfiles…</string>
     <string name="chkeyfile_step3_subtitle">Move your finger across the canvas to collect entropy for the new header salt</string>
     <string name="chkeyfile_entropy_label">Entropy collected</string>
     <string name="chkeyfile_btn_change">Change Keyfiles</string>

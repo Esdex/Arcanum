@@ -15,6 +15,8 @@ class ChangePasswordParams @Inject constructor() {
         val oldPassword: String,
         val oldKeyfileData: List<ByteArray>,
         val oldPim: Int,
+        /** PRF of the volume as it is now; -1 scans the five PBKDF2 hashes (never Argon2id). */
+        val oldHashAlgorithm: Int,
         val newPassword: String,
         val newKeyfileData: List<ByteArray>,
         val newHashAlgorithm: Int,

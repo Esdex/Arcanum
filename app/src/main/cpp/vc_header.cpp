@@ -355,7 +355,7 @@ int read_vc_header(const BlockBackend &be, uint64_t fileOff,
      * megabytes and takes seconds, so it runs only when it is named - by the
      * user, or by what the vault remembered of its last successful mount. */
     static const int NUM_HASHES = 5;
-    static const int NUM_PRFS   = 6;
+    static const int NUM_PRFS   = VC_NUM_PRFS;
 
     /* Progress denominator: a hash hint restricts the scan to one hash's ciphers. */
     bool hashHinted = (hintHashId >= 0 && hintHashId < NUM_PRFS);

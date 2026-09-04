@@ -349,7 +349,13 @@ class VeraCryptEngine @Inject constructor(
         newHashAlgorithm: Int = HASH_AUTO,
         newPim: Int = 0,
         wipePassCount: Int = 3,
-        extraEntropy: ByteArray = ByteArray(0)
+        extraEntropy: ByteArray = ByteArray(0),
+        /**
+         * PRF of the volume being changed, for the credentials given. [HASH_AUTO] scans the
+         * five PBKDF2 hashes and, exactly as on the mount path, never tries Argon2id - a
+         * volume made with it has to name it here (#177).
+         */
+        oldHashAlgorithm: Int = HASH_AUTO
     ): CryptoResult<Unit> = onIo {
         usePasswordBytes(oldPassword, newPassword) { oldBytes, newBytes ->
             nativeChangePassword(
@@ -357,7 +363,7 @@ class VeraCryptEngine @Inject constructor(
                 oldKeyfileData.toTypedArray().ifEmpty { null }, oldPim,
                 newBytes,
                 newKeyfileData.toTypedArray().ifEmpty { null }, newHashAlgorithm, newPim,
-                wipePassCount, extraEntropy
+                wipePassCount, extraEntropy, oldHashAlgorithm
             )
         }.toResult()
     }
@@ -372,7 +378,13 @@ class VeraCryptEngine @Inject constructor(
         newHashAlgorithm: Int = HASH_AUTO,
         newPim: Int = 0,
         wipePassCount: Int = 3,
-        extraEntropy: ByteArray = ByteArray(0)
+        extraEntropy: ByteArray = ByteArray(0),
+        /**
+         * PRF of the volume being changed, for the credentials given. [HASH_AUTO] scans the
+         * five PBKDF2 hashes and, exactly as on the mount path, never tries Argon2id - a
+         * volume made with it has to name it here (#177).
+         */
+        oldHashAlgorithm: Int = HASH_AUTO
     ): CryptoResult<Unit> = onIo {
         usePasswordBytes(oldPassword, newPassword) { oldBytes, newBytes ->
             nativeChangePasswordFd(
@@ -380,7 +392,7 @@ class VeraCryptEngine @Inject constructor(
                 oldKeyfileData.toTypedArray().ifEmpty { null }, oldPim,
                 newBytes,
                 newKeyfileData.toTypedArray().ifEmpty { null }, newHashAlgorithm, newPim,
-                wipePassCount, extraEntropy
+                wipePassCount, extraEntropy, oldHashAlgorithm
             )
         }.toResult()
     }
@@ -392,14 +404,20 @@ class VeraCryptEngine @Inject constructor(
         pim: Int = 0,
         newKeyfileData: List<ByteArray> = emptyList(),
         newHashAlgorithm: Int = HASH_AUTO,
-        extraEntropy: ByteArray = ByteArray(0)
+        extraEntropy: ByteArray = ByteArray(0),
+        /**
+         * PRF of the volume being changed, for the credentials given. [HASH_AUTO] scans the
+         * five PBKDF2 hashes and, exactly as on the mount path, never tries Argon2id - a
+         * volume made with it has to name it here (#177).
+         */
+        oldHashAlgorithm: Int = HASH_AUTO
     ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeChangeKeyfile(
                 path, passwordBytes,
                 oldKeyfileData.toTypedArray().ifEmpty { null }, pim,
                 newKeyfileData.toTypedArray().ifEmpty { null }, newHashAlgorithm,
-                extraEntropy
+                extraEntropy, oldHashAlgorithm
             )
         }.toResult()
     }
@@ -411,14 +429,20 @@ class VeraCryptEngine @Inject constructor(
         pim: Int = 0,
         newKeyfileData: List<ByteArray> = emptyList(),
         newHashAlgorithm: Int = HASH_AUTO,
-        extraEntropy: ByteArray = ByteArray(0)
+        extraEntropy: ByteArray = ByteArray(0),
+        /**
+         * PRF of the volume being changed, for the credentials given. [HASH_AUTO] scans the
+         * five PBKDF2 hashes and, exactly as on the mount path, never tries Argon2id - a
+         * volume made with it has to name it here (#177).
+         */
+        oldHashAlgorithm: Int = HASH_AUTO
     ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeChangeKeyfileFd(
                 fd, passwordBytes,
                 oldKeyfileData.toTypedArray().ifEmpty { null }, pim,
                 newKeyfileData.toTypedArray().ifEmpty { null }, newHashAlgorithm,
-                extraEntropy
+                extraEntropy, oldHashAlgorithm
             )
         }.toResult()
     }
@@ -728,14 +752,20 @@ class VeraCryptEngine @Inject constructor(
         newHashAlgorithm: Int = HASH_AUTO,
         newPim: Int = 0,
         wipePassCount: Int = 3,
-        extraEntropy: ByteArray = ByteArray(0)
+        extraEntropy: ByteArray = ByteArray(0),
+        /**
+         * PRF of the volume being changed, for the credentials given. [HASH_AUTO] scans the
+         * five PBKDF2 hashes and, exactly as on the mount path, never tries Argon2id - a
+         * volume made with it has to name it here (#177).
+         */
+        oldHashAlgorithm: Int = HASH_AUTO
     ): CryptoResult<Unit> = onIo {
         usePasswordBytes(oldPassword, newPassword) { oldBytes, newBytes ->
             nativeChangePasswordUsb(
                 transport, deviceSize, oldBytes,
                 oldKeyfileData.toTypedArray().ifEmpty { null }, oldPim,
                 newBytes, newKeyfileData.toTypedArray().ifEmpty { null },
-                newHashAlgorithm, newPim, wipePassCount, extraEntropy
+                newHashAlgorithm, newPim, wipePassCount, extraEntropy, oldHashAlgorithm
             )
         }.toResult()
     }
@@ -748,14 +778,20 @@ class VeraCryptEngine @Inject constructor(
         pim: Int = 0,
         newKeyfileData: List<ByteArray> = emptyList(),
         newHashAlgorithm: Int = HASH_AUTO,
-        extraEntropy: ByteArray = ByteArray(0)
+        extraEntropy: ByteArray = ByteArray(0),
+        /**
+         * PRF of the volume being changed, for the credentials given. [HASH_AUTO] scans the
+         * five PBKDF2 hashes and, exactly as on the mount path, never tries Argon2id - a
+         * volume made with it has to name it here (#177).
+         */
+        oldHashAlgorithm: Int = HASH_AUTO
     ): CryptoResult<Unit> = onIo {
         usePasswordBytes(password) { passwordBytes ->
             nativeChangeKeyfileUsb(
                 transport, deviceSize, passwordBytes,
                 oldKeyfileData.toTypedArray().ifEmpty { null }, pim,
                 newKeyfileData.toTypedArray().ifEmpty { null }, newHashAlgorithm,
-                extraEntropy
+                extraEntropy, oldHashAlgorithm
             )
         }.toResult()
     }
@@ -840,13 +876,15 @@ class VeraCryptEngine @Inject constructor(
         transport: Any, deviceSize: Long,
         oldPassword: ByteArray, oldKeyfileData: Array<ByteArray>?, oldPim: Int,
         newPassword: ByteArray, newKeyfileData: Array<ByteArray>?,
-        newHashAlgorithm: Int, newPim: Int, wipePassCount: Int, extraEntropy: ByteArray
+        newHashAlgorithm: Int, newPim: Int, wipePassCount: Int, extraEntropy: ByteArray,
+        oldHashAlgorithm: Int
     ): Int
 
     private external fun nativeChangeKeyfileUsb(
         transport: Any, deviceSize: Long,
         password: ByteArray, oldKeyfileData: Array<ByteArray>?, pim: Int,
-        newKeyfileData: Array<ByteArray>?, newHashAlgorithm: Int, extraEntropy: ByteArray
+        newKeyfileData: Array<ByteArray>?, newHashAlgorithm: Int, extraEntropy: ByteArray,
+        oldHashAlgorithm: Int
     ): Int
 
     /**
@@ -1011,7 +1049,8 @@ class VeraCryptEngine @Inject constructor(
         newHashAlgorithm: Int,
         newPim: Int,
         wipePassCount: Int,
-        extraEntropy: ByteArray
+        extraEntropy: ByteArray,
+        oldHashAlgorithm: Int
     ): Int
 
     private external fun nativeChangePasswordFd(
@@ -1024,7 +1063,8 @@ class VeraCryptEngine @Inject constructor(
         newHashAlgorithm: Int,
         newPim: Int,
         wipePassCount: Int,
-        extraEntropy: ByteArray
+        extraEntropy: ByteArray,
+        oldHashAlgorithm: Int
     ): Int
 
     private external fun nativeChangeKeyfile(
@@ -1034,7 +1074,8 @@ class VeraCryptEngine @Inject constructor(
         pim: Int,
         newKeyfileData: Array<ByteArray>?,
         newHashAlgorithm: Int,
-        extraEntropy: ByteArray
+        extraEntropy: ByteArray,
+        oldHashAlgorithm: Int
     ): Int
 
     private external fun nativeChangeKeyfileFd(
@@ -1044,7 +1085,8 @@ class VeraCryptEngine @Inject constructor(
         pim: Int,
         newKeyfileData: Array<ByteArray>?,
         newHashAlgorithm: Int,
-        extraEntropy: ByteArray
+        extraEntropy: ByteArray,
+        oldHashAlgorithm: Int
     ): Int
 
     private external fun nativeBackupVolumeHeader(

@@ -1631,6 +1631,47 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeFd(
                                    entropy.empty() ? nullptr : entropy.data(), entropy.size());
 }
 
+/* ─── Which header a change operation is about ──────────────────────── */
+/*
+ * A container holds up to two independent volumes, each with its own pair of headers, and
+ * a password only opens one of them. Change password and change keyfile used to read
+ * offset 0 and nothing else, so the hidden volume's own password was answered with "wrong
+ * password" - the operation could not reach a hidden volume at all. VeraCrypt opens the
+ * volume by trying every layout and then rewrites the header of the layout that opened
+ * (Volume.cpp: ReEncryptHeader at Layout->GetHeaderOffset), which is what this reproduces.
+ *
+ * On success `outHeaderOff` / `outBackupOff` name the pair to rewrite: the volume's own
+ * headers at 0 and fileSize - 0x20000, or the hidden volume's at 0x10000 and
+ * fileSize - 0x10000.
+ */
+static int auth_volume_or_hidden(const BlockBackend &vol, uint64_t fileSize,
+                                 const uint8_t *eff, int effLen, int pim, int hintHashId,
+                                 uint8_t *masterKey, int *mkLen, uint64_t *dataSz,
+                                 uint64_t *dataOff, int *algId, int *hashId,
+                                 uint64_t *hiddenVolSize,
+                                 uint64_t *outHeaderOff, uint64_t *outBackupOff)
+{
+    int rc = read_vc_header(vol, 0, (const char*)eff, effLen, masterKey, mkLen, dataSz, dataOff,
+                            algId, hashId, pim, hiddenVolSize, -1, hintHashId);
+    if (rc == ERR_OK) {
+        *outHeaderOff = 0;
+        *outBackupOff = fileSize - VC_BACKUP_AREA_SIZE;
+        return rc;
+    }
+    /* A refusal for want of memory is about the device, not the credentials (#177). */
+    if (rc == ERR_ARGON2_MEMORY) return rc;
+    if (VC_HIDDEN_HEADER_OFFSET + VC_HEADER_SIZE > fileSize) return rc;
+
+    int hrc = read_vc_header(vol, VC_HIDDEN_HEADER_OFFSET, (const char*)eff, effLen,
+                             masterKey, mkLen, dataSz, dataOff, algId, hashId, pim,
+                             hiddenVolSize, -1, hintHashId);
+    if (hrc == ERR_OK) {
+        *outHeaderOff = VC_HIDDEN_HEADER_OFFSET;
+        *outBackupOff = fileSize - VC_HIDDEN_HEADER_OFFSET;
+    }
+    return hrc;
+}
+
 /* ─── Change-password core ──────────────────────────────────────────── */
 /* Shared by the path and SAF-fd JNI wrappers below. Takes ownership of fd. */
 /*
@@ -1642,7 +1683,8 @@ static jint do_change_password(
         JNIEnv *env, int fdIn, const BlockBackend *beIn, uint64_t sizeIn,
         const uint8_t *oldPwd, int oldPwdLen, jobjectArray jOldKeyfileData, jint oldPim,
         const uint8_t *newPwd, int newPwdLen, jobjectArray jNewKeyfileData,
-        jint newHashAlg, jint newPim, jint wipePassCount, jbyteArray jExtraEntropy)
+        jint newHashAlg, jint newPim, jint wipePassCount, jbyteArray jExtraEntropy,
+        jint oldHashAlg)
 {
     /* fd is always closed by this function on every path. */
     UniqueFd fd(fdIn);
@@ -1676,13 +1718,15 @@ static jint do_change_password(
     int mkLen = 0, algId = 0, hashId = 0;
     uint64_t dataSz = 0, dataOff = 0;
     uint64_t hiddenVolSize = 0;
+    uint64_t headerOff = 0, backupHeaderOff = fileSize - VC_BACKUP_AREA_SIZE;
     int rc = auth_with_legacy_pool_retry(
         env, jOldKeyfileData, oldPwd, oldPwdLen, oldEffPwd.data(), &oldEffPwdLen, "chpwd",
         /*usedLegacyPool=*/nullptr,   /* writes use newEffPwd, always standard */
         [&](const uint8_t *eff, int effLen) {
-            return read_vc_header(vol, 0, (const char*)eff, effLen,
-                                  masterKey.data(), &mkLen, &dataSz, &dataOff,
-                                  &algId, &hashId, (int)oldPim, &hiddenVolSize);
+            return auth_volume_or_hidden(vol, fileSize, eff, effLen, (int)oldPim,
+                                         (int)oldHashAlg, masterKey.data(), &mkLen,
+                                         &dataSz, &dataOff, &algId, &hashId, &hiddenVolSize,
+                                         &headerOff, &backupHeaderOff);
         });
     /* Deliberate early wipe: oldEffPwd is never needed again regardless of
      * outcome. The new credential above was built with the correct pool, so a
@@ -1694,10 +1738,10 @@ static jint do_change_password(
 
     int passes = (int)wipePassCount;
     if (passes < 1) passes = 1;
+    /* VC_NUM_PRFS, not the five PBKDF2 hashes: Argon2id is a legal choice here, and
+     * clamping it away meant the app reported a changed PRF and wrote the old one (#177). */
     int newHash = (int)newHashAlg;
-    if (newHash < 0 || newHash > 4) newHash = hashId; /* keep old hash if invalid */
-
-    uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
+    if (newHash < 0 || newHash >= VC_NUM_PRFS) newHash = hashId; /* keep old hash if invalid */
 
     /* oldPwd/newPwd contents are now in effPwd buffers; the wrappers' own
      * SecureBuffers (holding the jbyteArray copies) are wiped by their
@@ -1711,7 +1755,7 @@ static jint do_change_password(
     /* Wipe + rewrite primary header.
      * If this fails the backup header is still intact with old credentials — container
      * is recoverable. Bail immediately so we never touch the backup. */
-    int r1 = wipe_and_rewrite_header(vol, 0,
+    int r1 = wipe_and_rewrite_header(vol, headerOff,
                                       dataSz, dataOff, masterKey.data(), algId, newHash,
                                       (const char*)newEffPwd.data(), newEffPwdLen,
                                       (int)newPim, hiddenVolSize, passes,
@@ -1720,7 +1764,7 @@ static jint do_change_password(
         return ERR_FILE;
     }
 
-    int r2 = wipe_and_rewrite_header(vol, backupAreaOff,
+    int r2 = wipe_and_rewrite_header(vol, backupHeaderOff,
                                       dataSz, dataOff, masterKey.data(), algId, newHash,
                                       (const char*)newEffPwd.data(), newEffPwdLen,
                                       (int)newPim, hiddenVolSize, passes,
@@ -1739,7 +1783,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePassword(
         jstring jPath,
         jbyteArray jOldPassword, jobjectArray jOldKeyfileData, jint oldPim,
         jbyteArray jNewPassword, jobjectArray jNewKeyfileData, jint newHashAlg, jint newPim,
-        jint wipePassCount, jbyteArray jExtraEntropy)
+        jint wipePassCount, jbyteArray jExtraEntropy, jint oldHashAlg)
 {
     std::string path = jstring_to_string(env, jPath);
     SecureBuffer<VC_MAX_PWD_LEN> oldPwdBuf;
@@ -1755,7 +1799,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePassword(
     return do_change_password(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0,
                               oldPwdBuf.data(), oldPwdLen, jOldKeyfileData, oldPim,
                               newPwdBuf.data(), newPwdLen, jNewKeyfileData,
-                              newHashAlg, newPim, wipePassCount, jExtraEntropy);
+                              newHashAlg, newPim, wipePassCount, jExtraEntropy, oldHashAlg);
 }
 
 /* ─── JNI: nativeChangePasswordFd ───────────────────────────────────── */
@@ -1767,7 +1811,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePasswordFd(
         jint safFd,
         jbyteArray jOldPassword, jobjectArray jOldKeyfileData, jint oldPim,
         jbyteArray jNewPassword, jobjectArray jNewKeyfileData, jint newHashAlg, jint newPim,
-        jint wipePassCount, jbyteArray jExtraEntropy)
+        jint wipePassCount, jbyteArray jExtraEntropy, jint oldHashAlg)
 {
     SecureBuffer<VC_MAX_PWD_LEN> oldPwdBuf;
     int oldPwdLen = get_password_bytes(env, jOldPassword, oldPwdBuf);
@@ -1782,7 +1826,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePasswordFd(
     return do_change_password(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0,
                               oldPwdBuf.data(), oldPwdLen, jOldKeyfileData, oldPim,
                               newPwdBuf.data(), newPwdLen, jNewKeyfileData,
-                              newHashAlg, newPim, wipePassCount, jExtraEntropy);
+                              newHashAlg, newPim, wipePassCount, jExtraEntropy, oldHashAlg);
 }
 
 
@@ -1794,7 +1838,7 @@ static jint do_change_keyfile(
         JNIEnv *env, int fdIn, const BlockBackend *beIn, uint64_t sizeIn,
         const uint8_t *pwd, int pwdLen, jobjectArray jOldKeyfileData, jint pim,
         jobjectArray jNewKeyfileData, jint newHashAlg,
-        jbyteArray jExtraEntropy)
+        jbyteArray jExtraEntropy, jint oldHashAlg)
 {
     /* fd is always closed by this function on every path. */
     UniqueFd fd(fdIn);
@@ -1822,13 +1866,15 @@ static jint do_change_keyfile(
     SecureBuffer<192> masterKey;
     int mkLen = 0, algId = 0, hashId = 0;
     uint64_t dataSz = 0, dataOff = 0, hiddenVolSize = 0;
+    uint64_t headerOff = 0, backupHeaderOff = fileSize - VC_BACKUP_AREA_SIZE;
     int rc = auth_with_legacy_pool_retry(
         env, jOldKeyfileData, pwd, pwdLen, oldEffPwd.data(), &oldEffPwdLen, "chkeyfile",
         /*usedLegacyPool=*/nullptr,   /* writes use newEffPwd, always standard */
         [&](const uint8_t *eff, int effLen) {
-            return read_vc_header(vol, 0, (const char*)eff, effLen,
-                                  masterKey.data(), &mkLen, &dataSz, &dataOff,
-                                  &algId, &hashId, (int)pim, &hiddenVolSize);
+            return auth_volume_or_hidden(vol, fileSize, eff, effLen, (int)pim,
+                                         (int)oldHashAlg, masterKey.data(), &mkLen,
+                                         &dataSz, &dataOff, &algId, &hashId, &hiddenVolSize,
+                                         &headerOff, &backupHeaderOff);
         });
     /* Deliberate early wipe: oldEffPwd is never needed again regardless of
      * outcome. The new credential above was built with the correct pool, so a
@@ -1838,10 +1884,10 @@ static jint do_change_keyfile(
         return ERR_WRONG_PASSWORD;
     }
 
-    int newHash = (int)newHashAlg; if (newHash < 0 || newHash > 4) newHash = hashId;
-    uint64_t backupAreaOff = fileSize - VC_BACKUP_AREA_SIZE;
+    int newHash = (int)newHashAlg;
+    if (newHash < 0 || newHash >= VC_NUM_PRFS) newHash = hashId;
 
-    int r1 = wipe_and_rewrite_header(vol, 0,
+    int r1 = wipe_and_rewrite_header(vol, headerOff,
                                       dataSz, dataOff, masterKey.data(), algId, newHash,
                                       (const char*)newEffPwd.data(), newEffPwdLen,
                                       (int)pim, hiddenVolSize, /*wipePassCount=*/3,
@@ -1850,7 +1896,7 @@ static jint do_change_keyfile(
         return ERR_FILE;
     }
 
-    int r2 = wipe_and_rewrite_header(vol, backupAreaOff,
+    int r2 = wipe_and_rewrite_header(vol, backupHeaderOff,
                                       dataSz, dataOff, masterKey.data(), algId, newHash,
                                       (const char*)newEffPwd.data(), newEffPwdLen,
                                       (int)pim, hiddenVolSize, /*wipePassCount=*/3,
@@ -1869,7 +1915,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfile(
         jstring jPath,
         jbyteArray jPassword, jobjectArray jOldKeyfileData, jint pim,
         jobjectArray jNewKeyfileData, jint newHashAlg,
-        jbyteArray jExtraEntropy)
+        jbyteArray jExtraEntropy, jint oldHashAlg)
 {
     std::string path = jstring_to_string(env, jPath);
     SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
@@ -1881,7 +1927,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfile(
     if (fd < 0) return ERR_FILE;
 
     return do_change_keyfile(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, pwdBuf.data(), pwdLen, jOldKeyfileData, pim,
-                             jNewKeyfileData, newHashAlg, jExtraEntropy);
+                             jNewKeyfileData, newHashAlg, jExtraEntropy, oldHashAlg);
 }
 
 /* ─── JNI: nativeChangeKeyfileFd ────────────────────────────────────── */
@@ -1892,7 +1938,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfileFd(
         jint safFd,
         jbyteArray jPassword, jobjectArray jOldKeyfileData, jint pim,
         jobjectArray jNewKeyfileData, jint newHashAlg,
-        jbyteArray jExtraEntropy)
+        jbyteArray jExtraEntropy, jint oldHashAlg)
 {
     SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
     int pwdLen = get_password_bytes(env, jPassword, pwdBuf);
@@ -1901,7 +1947,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfileFd(
     if (fd < 0) return ERR_FILE;
 
     return do_change_keyfile(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, pwdBuf.data(), pwdLen, jOldKeyfileData, pim,
-                             jNewKeyfileData, newHashAlg, jExtraEntropy);
+                             jNewKeyfileData, newHashAlg, jExtraEntropy, oldHashAlg);
 }
 
 /* ─── Backup-header core ────────────────────────────────────────────── */
@@ -2391,7 +2437,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePasswordUsb(
         jobject transport, jlong deviceSize,
         jbyteArray jOldPassword, jobjectArray jOldKeyfileData, jint oldPim,
         jbyteArray jNewPassword, jobjectArray jNewKeyfileData, jint newHashAlg, jint newPim,
-        jint wipePassCount, jbyteArray jExtraEntropy)
+        jint wipePassCount, jbyteArray jExtraEntropy, jint oldHashAlg)
 {
     if (!transport || deviceSize <= 0) return ERR_FILE;
     SecureBuffer<VC_MAX_PWD_LEN> oldPwdBuf;
@@ -2406,7 +2452,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangePasswordUsb(
     return do_change_password(env, /*fdIn=*/-1, &be.be, (uint64_t)deviceSize,
                               oldPwdBuf.data(), oldPwdLen, jOldKeyfileData, oldPim,
                               newPwdBuf.data(), newPwdLen, jNewKeyfileData,
-                              newHashAlg, newPim, wipePassCount, jExtraEntropy);
+                              newHashAlg, newPim, wipePassCount, jExtraEntropy, oldHashAlg);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -2414,7 +2460,8 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfileUsb(
         JNIEnv *env, jobject /*thiz*/,
         jobject transport, jlong deviceSize,
         jbyteArray jPassword, jobjectArray jOldKeyfileData, jint pim,
-        jobjectArray jNewKeyfileData, jint newHashAlg, jbyteArray jExtraEntropy)
+        jobjectArray jNewKeyfileData, jint newHashAlg, jbyteArray jExtraEntropy,
+        jint oldHashAlg)
 {
     if (!transport || deviceSize <= 0) return ERR_FILE;
     SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
@@ -2425,7 +2472,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeChangeKeyfileUsb(
 
     return do_change_keyfile(env, /*fdIn=*/-1, &be.be, (uint64_t)deviceSize,
                              pwdBuf.data(), pwdLen, jOldKeyfileData, pim,
-                             jNewKeyfileData, newHashAlg, jExtraEntropy);
+                             jNewKeyfileData, newHashAlg, jExtraEntropy, oldHashAlg);
 }
 
 extern "C" JNIEXPORT jint JNICALL

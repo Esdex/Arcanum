@@ -275,7 +275,7 @@ private fun MountScreenContent(
     var selectedHiddenHash by rememberSaveable(mountId) { mutableIntStateOf(VeraCryptEngine.HASH_AUTO) }
     /* Argon2id is in the list even though auto-detect never reaches it: naming it
        here is the only way to open such a volume the first time (#177). */
-    val hashes = remember { listOf(-1 to "Auto") + (0..5).map { it to VeraCryptEngine.hashIdToString(it) } }
+    val hashes = rememberPrfOptions()
 
     // ── Biometric state ───────────────────────────────────────────────────
     val hasBiometricSaved  = remember(mountId) { viewModel.hasBiometricCredentials(mountId) }
@@ -1205,65 +1205,3 @@ private data class MountAttempt(
     val protectKeyfiles: List<ByteArray>,
     val protectHash: Int
 )
-
-/**
- * The PRF dropdown, used for the vault itself and for the hidden volume being protected.
- * Both lists are the same six plus Auto - a hidden volume is a volume, and the one that
- * Auto cannot find is the same one in both places (Argon2id, #177).
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PrfPicker(
-    hashes: List<Pair<Int, String>>,
-    selected: Int,
-    label: String,
-    onSelect: (Int) -> Unit
-) {
-    var showSheet by remember { mutableStateOf(false) }
-    Box(modifier = Modifier.fillMaxWidth()) {
-        OutlinedTextField(
-            value         = hashes.first { it.first == selected }.second,
-            onValueChange = {},
-            readOnly      = true,
-            label         = { Text(label) },
-            trailingIcon  = { Icon(Icons.Outlined.ExpandMore, contentDescription = null) },
-            modifier      = Modifier.fillMaxWidth()
-        )
-        Box(Modifier.matchParentSize().clickable { showSheet = true })
-    }
-    if (showSheet) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        AppSheet(
-            onDismissRequest = { showSheet = false },
-            sheetState       = sheetState
-        ) {
-            Column(modifier = Modifier.padding(bottom = 32.dp)) {
-                Text(
-                    text       = label,
-                    style      = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier   = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                )
-                hashes.forEach { (id, itemLabel) ->
-                    Row(
-                        modifier          = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(id); showSheet = false }
-                            .padding(horizontal = 4.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = selected == id,
-                            onClick  = { onSelect(id); showSheet = false }
-                        )
-                        Text(
-                            text     = itemLabel,
-                            style    = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}

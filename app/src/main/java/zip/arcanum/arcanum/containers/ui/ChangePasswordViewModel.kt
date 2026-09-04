@@ -15,6 +15,7 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.service.ChangePasswordParams
 import zip.arcanum.arcanum.containers.service.ChangePasswordService
 import zip.arcanum.core.utils.FileUtils
+import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
 
 private const val ENTROPY_REQUIRED = 500
@@ -35,6 +36,12 @@ data class ChangePasswordState(
     val oldPim: Int = 0,
     val oldKeyfileData: List<ByteArray> = emptyList(),
     val oldKeyfileDisplayNames: List<String> = emptyList(),
+    /**
+     * Which PRF the volume uses now. Auto-detect walks the five PBKDF2 hashes and never
+     * Argon2id, so a vault made with that one cannot be opened for a change without being
+     * named here (#177) - and a hidden volume's PRF is its own, not the outer volume's.
+     */
+    val oldHashAlgorithm: Int = VeraCryptEngine.HASH_AUTO,
     // Step 2 - new credentials
     val newPassword: String = "",
     val newConfirmPassword: String = "",
@@ -157,6 +164,7 @@ class ChangePasswordViewModel @Inject constructor(
             // outlives this ViewModel and both zero what they hold.
             oldKeyfileData  = s.oldKeyfileData.map { it.copyOf() },
             oldPim           = s.oldPim,
+            oldHashAlgorithm = s.oldHashAlgorithm,
             newPassword      = s.newPassword,
             newKeyfileData  = s.newKeyfileData.map { it.copyOf() },
             newHashAlgorithm = s.newHashAlgorithm.ordinal,

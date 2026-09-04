@@ -17,6 +17,8 @@ class ChangeKeyfileParams @Inject constructor() {
         val pim: Int,
         val newKeyfileData: List<ByteArray>,
         val newHashAlgorithm: Int,
+        /** PRF of the volume as it is now; -1 scans the five PBKDF2 hashes (never Argon2id). */
+        val oldHashAlgorithm: Int,
         val extraEntropy: ByteArray,
         /** Non-empty when the volume is a whole USB device (#95); see ChangePasswordParams. */
         val usbSaltHash: String = "",

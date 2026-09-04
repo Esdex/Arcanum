@@ -81,7 +81,8 @@ class ChangePasswordService : Service() {
                                 newHashAlgorithm = p.newHashAlgorithm,
                                 newPim           = p.newPim,
                                 wipePassCount    = p.wipePassCount,
-                                extraEntropy     = p.extraEntropy
+                                extraEntropy     = p.extraEntropy,
+                                oldHashAlgorithm = p.oldHashAlgorithm
                             )
                         }) {
                             is zip.arcanum.usb.UsbVolumeManager.VolumeOp.Done -> {
@@ -118,7 +119,8 @@ class ChangePasswordService : Service() {
                             newHashAlgorithm = p.newHashAlgorithm,
                             newPim           = p.newPim,
                             wipePassCount    = p.wipePassCount,
-                            extraEntropy     = p.extraEntropy
+                            extraEntropy     = p.extraEntropy,
+                            oldHashAlgorithm = p.oldHashAlgorithm
                         )
                     } else {
                         cryptoEngine.changePassword(
@@ -131,7 +133,8 @@ class ChangePasswordService : Service() {
                             newHashAlgorithm = p.newHashAlgorithm,
                             newPim           = p.newPim,
                             wipePassCount    = p.wipePassCount,
-                            extraEntropy     = p.extraEntropy
+                            extraEntropy     = p.extraEntropy,
+                            oldHashAlgorithm = p.oldHashAlgorithm
                         )
                     }
                 } finally {

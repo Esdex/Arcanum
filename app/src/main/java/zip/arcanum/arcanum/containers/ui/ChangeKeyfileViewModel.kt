@@ -15,6 +15,7 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.service.ChangeKeyfileParams
 import zip.arcanum.arcanum.containers.service.ChangeKeyfileService
 import zip.arcanum.core.utils.FileUtils
+import zip.arcanum.crypto.VeraCryptEngine
 import zip.arcanum.crypto.KeyfileGenerator
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +31,8 @@ data class ChangeKeyfileState(
     val pim: Int = 0,
     val oldKeyfileData: List<ByteArray> = emptyList(),
     val oldKeyfileDisplayNames: List<String> = emptyList(),
+    /** Which PRF opens this volume now; Auto never tries Argon2id (#177). */
+    val oldHashAlgorithm: Int = VeraCryptEngine.HASH_AUTO,
     // Step 2 - new keyfiles
     val addKeyfilesEnabled: Boolean = true,
     val newKeyfileData: List<ByteArray> = emptyList(),
@@ -62,9 +65,6 @@ class ChangeKeyfileViewModel @Inject constructor(
     private var safUri: String = ""
     private var usbSaltHash: String = ""
     private var usbStartByte: Long = 0L
-    // PRF is always the existing volume's hash — user cannot change it (VeraCrypt: enablePkcs5Prf=false)
-    private var containerHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA512
-
     private val collectedEntropy: ByteArray = ByteArray(ENTROPY_REQUIRED * 2)
     private var entropyIndex: Int = 0
 
@@ -76,8 +76,6 @@ class ChangeKeyfileViewModel @Inject constructor(
             safUri                 = c.safUri
             usbSaltHash            = c.usbSaltHash
             usbStartByte           = c.usbStartByte
-            containerHashAlgorithm = HashAlgorithm.entries.firstOrNull { it.displayName == c.prf }
-                ?: HashAlgorithm.SHA512
         }
     }
 
@@ -197,7 +195,12 @@ class ChangeKeyfileViewModel @Inject constructor(
             oldKeyfileData  = s.oldKeyfileData.map { it.copyOf() },
             pim              = s.pim,
             newKeyfileData  = effectiveNewKeyfiles.map { it.copyOf() },
-            newHashAlgorithm = containerHashAlgorithm.ordinal,
+            /* Auto here means "whatever this header already says", which the native side
+               keeps. It used to pass the PRF the vault was recorded with, and that record is
+               SHA-512 for a vault never mounted in this install - changing a keyfile then
+               quietly rewrote a Whirlpool volume's header as SHA-512. */
+            newHashAlgorithm = VeraCryptEngine.HASH_AUTO,
+            oldHashAlgorithm = s.oldHashAlgorithm,
             extraEntropy     = collectedEntropy.copyOf(entropyIndex),
             usbSaltHash      = usbSaltHash,
             usbStartByte     = usbStartByte

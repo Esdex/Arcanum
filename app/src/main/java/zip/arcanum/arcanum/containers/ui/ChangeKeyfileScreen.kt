@@ -383,6 +383,16 @@ private fun ChKfStep1(
         )
         Spacer(Modifier.height(8.dp))
 
+        /* Same question the unlock screen asks: Auto walks the five PBKDF2 hashes and never
+           Argon2id, and a hidden volume's PRF is its own. */
+        PrfPicker(
+            hashes   = rememberPrfOptions(),
+            selected = state.oldHashAlgorithm,
+            label    = stringResource(R.string.chpwd_current_prf_label),
+            onSelect = { hash -> onUpdate { copy(oldHashAlgorithm = hash) } }
+        )
+        Spacer(Modifier.height(8.dp))
+
         KeyfileSection(
             displayNames = state.oldKeyfileDisplayNames,
             onAdd        = onAddKeyfile,
@@ -577,7 +587,7 @@ private fun ChKfStep4(state: ChangeKeyfileState, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ChKfStep4Loading() = OperationLoading(stringResource(R.string.chkeyfile_title))
+private fun ChKfStep4Loading() = OperationLoading(stringResource(R.string.chkeyfile_step4_title))
 
 @Composable
 private fun ChKfStep4Success(onBack: () -> Unit) = OperationSuccess(
