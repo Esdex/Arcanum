@@ -587,6 +587,7 @@ class UsbVolumeManager @Inject constructor(
         protectHiddenPassword: String? = null,
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         protectHiddenPim: Int = 0,
+        protectHiddenHash: Int = VeraCryptEngine.HASH_AUTO,
         mountProgressListener: VeraCryptEngine.MountProgressListener? = null,
         label: String = device.inquiry() ?: device.device.deviceName
     ): CryptoResult<Long> = lock.withLock {
@@ -618,6 +619,7 @@ class UsbVolumeManager @Inject constructor(
             protectHiddenPassword = protectHiddenPassword,
             protectHiddenKeyfileData = protectHiddenKeyfileData,
             protectHiddenPim = protectHiddenPim,
+            protectHiddenHash = protectHiddenHash,
             mountProgressListener = mountProgressListener,
             readOnly = readOnly
         )

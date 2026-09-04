@@ -37,3 +37,5 @@
 #define ERR_TOO_FRAGMENTED  -13  /* ext4: the file's extent tree cannot grow further */
 #define ERR_BUSY            -14  /* that volume is mounted right now */
 #define ERR_ARGON2_MEMORY   -15  /* Argon2id needs more memory than the device can spare */
+#define ERR_HIDDEN_PROTECTION -16 /* hidden-volume protection was asked for and could not be established */
+#define ERR_HIDDEN_IS_TARGET  -17 /* the credentials opened the hidden volume itself, so there is nothing to protect it from */

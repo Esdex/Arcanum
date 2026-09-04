@@ -272,6 +272,8 @@ class VaultViewModel @Inject constructor(
             val message: String,
             val credentialHint: Boolean = false,
             val argon2Offer: Boolean = false,
+            /** [argon2Offer] is about the hidden volume being protected, not this vault. */
+            val argon2OfferIsHidden: Boolean = false,
             /** The refusal was the memory guard's headroom, not a shortage the device
              *  cannot cover: the same attempt can be repeated with allowLowMemory. */
             val argon2LowMemoryRetry: Boolean = false
@@ -306,6 +308,8 @@ class VaultViewModel @Inject constructor(
         protectHiddenPassword: String? = null,
         protectHiddenPim: Int = 0,
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
+        /** PRF of the hidden volume being protected; auto-detect never tries Argon2id. */
+        protectHiddenHash: Int = VeraCryptEngine.HASH_AUTO,
         readOnly: Boolean = false,
         /** Set by the second offer on an Argon2id refusal: go ahead on a device whose
          *  free memory is below the guard's headroom but above what is needed (#177). */
@@ -406,7 +410,17 @@ class VaultViewModel @Inject constructor(
                                 else VeraCryptEngine.hashIdToString(hashAlgorithm)
                 mountLogger.log("Cipher: $algoLabel")
                 mountLogger.log("PRF: $hashLabel")
-                if (!protectHiddenPassword.isNullOrBlank()) mountLogger.log("Hidden volume protection: enabled")
+                if (!protectHiddenPassword.isNullOrBlank()) {
+                    /* "requested", not "enabled": at this point nothing has been derived and
+                       nothing is protected. The line used to claim protection was on from the
+                       fact that a password had been typed, which is exactly what it cannot
+                       prove. What it is worth saying here is which PRF the hidden header will
+                       be looked for with, since auto-detect does not include Argon2id. */
+                    val protectPrf = if (protectHiddenHash == VeraCryptEngine.HASH_AUTO)
+                                         "auto-detect (all PRFs)"
+                                     else VeraCryptEngine.hashIdToString(protectHiddenHash)
+                    mountLogger.log("Hidden volume protection: requested (hidden PRF: $protectPrf)")
+                }
                 if (readOnly) mountLogger.log("Mode: read-only")
                 mountLogger.log("Submitting credentials to crypto engine...")
                 mountLogger.log("Running PBKDF2 key derivation (may take several seconds)...")
@@ -433,6 +447,7 @@ class VaultViewModel @Inject constructor(
                         protectHiddenPassword = protectHiddenPassword,
                         protectHiddenKeyfileData = protectHiddenKeyfileData,
                         protectHiddenPim = protectHiddenPim,
+                        protectHiddenHash = protectHiddenHash,
                         mountProgressListener = progressListener,
                         label = container.name
                     )
@@ -444,6 +459,7 @@ class VaultViewModel @Inject constructor(
                         protectHiddenPassword = protectHiddenPassword,
                         protectHiddenKeyfileData = protectHiddenKeyfileData,
                         protectHiddenPim = protectHiddenPim,
+                        protectHiddenHash = protectHiddenHash,
                         mountProgressListener = progressListener,
                         readOnly = readOnly, allowLowMemory = allowLowMemory
                     )
@@ -455,6 +471,7 @@ class VaultViewModel @Inject constructor(
                         protectHiddenPassword = protectHiddenPassword,
                         protectHiddenKeyfileData = protectHiddenKeyfileData,
                         protectHiddenPim = protectHiddenPim,
+                        protectHiddenHash = protectHiddenHash,
                         mountProgressListener = progressListener,
                         readOnly = readOnly, allowLowMemory = allowLowMemory
                     )
@@ -471,8 +488,10 @@ class VaultViewModel @Inject constructor(
                         var keySize    = 0
                         var iterations = 0
                         var needsCheck = false
+                        var hasHidden  = false
                         withContext(Dispatchers.IO) {
                             isHidden   = cryptoEngine.getVolumeType(handle) == 1
+                            hasHidden  = cryptoEngine.hasHiddenVolume(handle)
                             dataSize   = cryptoEngine.getDataSize(handle).coerceAtLeast(0L)
                             algId      = cryptoEngine.getAlgorithmId(handle)
                             hashId     = cryptoEngine.getHashId(handle)
@@ -481,7 +500,21 @@ class VaultViewModel @Inject constructor(
                             iterations = cryptoEngine.getIterationCount(handle)
                             needsCheck = cryptoEngine.ext4NeedsCheck(handle)
                         }
-                        val hasHidden = !protectHiddenPassword.isNullOrBlank()
+                        /* hasHidden is the drive's own boundary (hiddenBoundary > 0), not the
+                           fact that a password was typed. The two used to be the same line of
+                           code, so a mount that had failed to find the hidden header still
+                           recorded the vault as an outer volume and told the user protection
+                           was on. The native side now refuses that mount outright; this is the
+                           second lock on the same door - if the boundary is somehow missing,
+                           the vault does not stay open with a promise it cannot keep. */
+                        if (!protectHiddenPassword.isNullOrBlank() && !hasHidden) {
+                            mountLogger.log("ERROR: protection was requested but the volume has no " +
+                                            "hidden-volume boundary - unmounting")
+                            withContext(Dispatchers.IO) { cryptoEngine.unmountContainer(handle) }
+                            _mountState.value = MountState.Error(HIDDEN_PROTECTION_FAILED_MESSAGE)
+                            return@launch
+                        }
+                        if (hasHidden) mountLogger.log("Hidden volume protection: active")
                         if (algId  >= 0) mountLogger.log("Cipher: ${VeraCryptEngine.algorithmIdToString(algId)}")
                         if (hashId >= 0) mountLogger.log("PRF: ${VeraCryptEngine.hashIdToString(hashId)}")
                         if (iterations > 0) mountLogger.log("PKCS-5 iterations: $iterations")
@@ -532,13 +565,28 @@ class VaultViewModel @Inject constructor(
                         val couldBeArgon2 = result.error == CryptoError.WRONG_PASSWORD &&
                                             hashAlgorithm == VeraCryptEngine.HASH_AUTO &&
                                             runCatching { prefs.argon2Offer.first() }.getOrDefault(true)
+                        /* The same reasoning one level down: the hidden header was searched for
+                           with the same five PBKDF2 hashes, so a hidden volume on Argon2id is a
+                           failure the scan could not have avoided. Offered under the same
+                           setting, and only when the PRF was not already named. */
+                        val hiddenCouldBeArgon2 =
+                            result.error == CryptoError.HIDDEN_PROTECTION_FAILED &&
+                            protectHiddenHash == VeraCryptEngine.HASH_AUTO &&
+                            runCatching { prefs.argon2Offer.first() }.getOrDefault(true)
                         _mountState.value = when (result.error) {
                             CryptoError.IO_ERROR             -> MountState.Error("Cannot open container file")
                             CryptoError.UNSUPPORTED_ALGORITHM -> MountState.Error("Unsupported container format")
                             CryptoError.TOO_MANY_MOUNTED      -> MountState.Error("Too many containers mounted — unmount one and try again")
                             CryptoError.CORRUPTED_CONTAINER   -> MountState.Error("Container filesystem could not be mounted")
                             CryptoError.ARGON2_MEMORY         -> {
-                                val cost = cryptoEngine.argon2Cost(pim)
+                                /* Either derivation can be the one that was refused, and they
+                                   have their own PIMs - so the numbers in the message come from
+                                   whichever one asked for Argon2id. With the vault itself on it,
+                                   that one runs first and is the one that failed. */
+                                val costPim = if (protectHiddenHash == VeraCryptEngine.HASH_ARGON2ID &&
+                                                  hashAlgorithm != VeraCryptEngine.HASH_ARGON2ID)
+                                                  protectHiddenPim else pim
+                                val cost = cryptoEngine.argon2Cost(costPim)
                                 mountLogger.log("Argon2id needs ${cost.memoryMib} MB, ${cost.availableMib} MB free.")
                                 /* Below what it needs, nothing can be done here. Above that but
                                    inside the guard's headroom, it can be insisted on: the
@@ -560,6 +608,13 @@ class VaultViewModel @Inject constructor(
                                     argon2LowMemoryRetry = canInsist
                                 )
                             }
+                            CryptoError.HIDDEN_PROTECTION_FAILED -> MountState.Error(
+                                HIDDEN_PROTECTION_FAILED_MESSAGE,
+                                argon2Offer         = hiddenCouldBeArgon2,
+                                argon2OfferIsHidden = true
+                            )
+                            CryptoError.HIDDEN_IS_PROTECTION_TARGET ->
+                                MountState.Error(HIDDEN_IS_TARGET_MESSAGE)
                             else -> MountState.Error("Wrong password", credentialHint = true,
                                                      argon2Offer = couldBeArgon2)
                         }
@@ -896,9 +951,24 @@ class VaultViewModel @Inject constructor(
         cipher: Cipher,
         onMissingKeyfiles: () -> Unit,
         onInvalidCredentials: () -> Unit,
+        /** The vault protects a hidden volume, which a fingerprint cannot unlock alone. */
+        onProtectionNeedsPassword: () -> Unit,
         onSuccess: (String) -> Unit
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            /*
+             * The hidden volume's password is deliberately never saved - not with the
+             * biometric credentials, not anywhere - so this path cannot supply it. It used
+             * to mount anyway, which handed back a writable outer volume for a vault whose
+             * own remembered options say a hidden volume is being protected: the silent
+             * unprotected mount, arrived at from the other side. Sending the user to the
+             * password screen is the only honest answer; they were typing the hidden
+             * password on every manual mount of this vault anyway.
+             */
+            if (container.mountProtectHidden) {
+                withContext(Dispatchers.Main) { onProtectionNeedsPassword() }
+                return@launch
+            }
             val creds = biometricCryptoManager.loadDecryptedCredentials(container.id, cipher)
             if (creds == null) {
                 withContext(Dispatchers.Main) { onInvalidCredentials() }
@@ -1023,5 +1093,23 @@ class VaultViewModel @Inject constructor(
             "Connect the USB drive holding this vault and try again."
         const val USB_WRONG_DEVICE =
             "Wrong USB device: the connected drive does not hold this vault."
+
+        /**
+         * Hidden-volume protection could not be established, so nothing was mounted.
+         * Says what did not happen before what to do about it: the outer volume being
+         * closed is the point, not a side effect.
+         */
+        const val HIDDEN_PROTECTION_FAILED_MESSAGE =
+            "The hidden volume could not be opened with the protection credentials, so this " +
+            "vault was not mounted - writing to the outer volume without knowing where the " +
+            "hidden one starts is what destroys it. Check the hidden volume's password, PIM " +
+            "and keyfiles. If it was made with Argon2id, choose that as its PRF: it is never " +
+            "tried automatically."
+
+        /** The credentials opened the hidden volume itself while protection was asked for. */
+        const val HIDDEN_IS_TARGET_MESSAGE =
+            "These credentials open the hidden volume itself, so there is no outer volume in " +
+            "this mount to protect. Turn hidden volume protection off to work inside the " +
+            "hidden volume, or unlock with the outer volume's password."
     }
 }

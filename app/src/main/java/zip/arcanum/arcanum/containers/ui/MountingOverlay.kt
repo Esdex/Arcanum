@@ -71,6 +71,8 @@ fun MountingOverlay(
     onDismissError: () -> Unit = {},
     /** Non-null when this failure is one Argon2id has not been tried against (#177). */
     onTryArgon2: (() -> Unit)? = null,
+    /** true when that offer is about the hidden volume being protected, not this vault. */
+    argon2OfferIsHidden: Boolean = false,
     /** Non-null when the refusal was the memory guard's headroom and can be insisted on. */
     onTryAnyway: (() -> Unit)? = null
 ) {
@@ -261,14 +263,19 @@ fun MountingOverlay(
                     }
                 } else if (onTryArgon2 != null) {
                     Text(
-                        text      = stringResource(R.string.mount_argon2_offer),
+                        text      = stringResource(
+                            if (argon2OfferIsHidden) R.string.mount_argon2_offer_hidden
+                            else R.string.mount_argon2_offer
+                        ),
                         style     = MaterialTheme.typography.bodyMedium,
                         color     = Color.White.copy(alpha = 0.7f),
                         textAlign = TextAlign.Center
                     )
                     Spacer(Modifier.height(12.dp))
                     Button(onClick = onTryArgon2) {
-                        Text(stringResource(R.string.mount_argon2_try),
+                        Text(stringResource(
+                                 if (argon2OfferIsHidden) R.string.mount_argon2_try_hidden
+                                 else R.string.mount_argon2_try),
                              style = MaterialTheme.typography.labelLarge)
                     }
                     Spacer(Modifier.height(4.dp))

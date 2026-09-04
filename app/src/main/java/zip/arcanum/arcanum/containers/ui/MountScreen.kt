@@ -135,7 +135,8 @@ private data class EncryptPending(
     val hash: Int,
     val protectHidden: String?,
     val protectHiddenPim: Int,
-    val protectHiddenKeyfileData: List<ByteArray>
+    val protectHiddenKeyfileData: List<ByteArray>,
+    val protectHiddenHash: Int
 )
 
 @Composable
@@ -190,6 +191,12 @@ private fun MountScreenContent(
 
     var isMounting                      by remember { mutableStateOf(false) }
     var biometricKeyfileMissing         by remember { mutableStateOf(false) }
+    /* Same overlay, different reason: this vault protects a hidden volume, so the
+       fingerprint alone cannot open it - the hidden password is not saved with it.
+       Which reason it is outlives the dismissal, so the text does not change under
+       the fade-out. */
+    var biometricNeedsHiddenPassword    by remember { mutableStateOf(false) }
+    var bioBailOutIsProtection          by remember { mutableStateOf(false) }
     var hiddenProtectionMountSuccessId  by remember { mutableStateOf<String?>(null) }
 
     // Close all open PFDs if the composable leaves composition without explicit cleanup.
@@ -228,7 +235,6 @@ private fun MountScreenContent(
         keyboardController?.show()
     }
     var showPassword   by remember { mutableStateOf(false) }
-    var showHashSheet  by remember { mutableStateOf(false) }
     /*
      * Opened when this vault is remembered as mounting a way the user chose, so read-only
      * or hidden-volume protection is visible rather than applied from behind a collapsed
@@ -262,6 +268,11 @@ private fun MountScreenContent(
     /* The PRF the volume turned out to be last time, not a guess: mounting with it named
      * skips the auto-detect that costs seconds on every unlock. */
     var selectedHash by rememberSaveable(mountId) { mutableIntStateOf(container.mountHashId) }
+    /* The hidden volume's PRF is a per-attempt choice, like its password and PIM: nothing
+       about the hidden volume is remembered between mounts. Auto here means the same five
+       PBKDF2 hashes the vault itself is scanned with - not Argon2id, which is why a hidden
+       volume made with it has to be named (#177). */
+    var selectedHiddenHash by rememberSaveable(mountId) { mutableIntStateOf(VeraCryptEngine.HASH_AUTO) }
     /* Argon2id is in the list even though auto-detect never reaches it: naming it
        here is the only way to open such a volume the first time (#177). */
     val hashes = remember { listOf(-1 to "Auto") + (0..5).map { it to VeraCryptEngine.hashIdToString(it) } }
@@ -289,9 +300,10 @@ private fun MountScreenContent(
        attempt it belongs to, so it can never leak into a later unlock (#177). */
     var allowLowMemoryOnce by remember { mutableStateOf(false) }
 
-    val onUnlock: (String, Int, Int, String?, Int, List<ByteArray>) -> Unit = { pw, pim, hash, protectPw, protectPim, protectKeyfileData ->
+    val onUnlock: (String, Int, Int, String?, Int, List<ByteArray>, Int) -> Unit =
+            { pw, pim, hash, protectPw, protectPim, protectKeyfileData, protectHash ->
         isMounting = true
-        lastAttempt = MountAttempt(pw, pim, protectPw, protectPim, protectKeyfileData)
+        lastAttempt = MountAttempt(pw, pim, hash, protectPw, protectPim, protectKeyfileData, protectHash)
         /* Read by the call below and immediately dropped: the exception the user made
            for one attempt must not quietly apply to the next one. */
         viewModel.mountContainer(
@@ -304,6 +316,7 @@ private fun MountScreenContent(
             protectHiddenPassword     = protectPw,
             protectHiddenPim          = protectPim,
             protectHiddenKeyfileData  = protectKeyfileData,
+            protectHiddenHash         = protectHash,
             readOnly                  = readOnly,
             allowLowMemory            = allowLowMemoryOnce.also { allowLowMemoryOnce = false },
             onSuccess = { id ->
@@ -312,6 +325,10 @@ private fun MountScreenContent(
                 keyfiles       = emptyList()
                 hiddenKeyfiles = emptyList()
                 isMounting     = false
+                /* Sound because a mount that could not establish the boundary no longer
+                   succeeds: the native side refuses it and the ViewModel unmounts anything
+                   that somehow got past. Before that, this shield was shown to everyone who
+                   typed a hidden password, protected or not. */
                 if (!protectPw.isNullOrBlank()) {
                     hiddenProtectionMountSuccessId = id
                 } else {
@@ -341,12 +358,20 @@ private fun MountScreenContent(
                             isMounting              = false
                             bioModeState.value      = BioUiMode.Cancelled
                             biometricEnabledState.value = false
+                            bioBailOutIsProtection  = false
                             biometricKeyfileMissing = true
                         },
                         onInvalidCredentials  = {
                             isMounting              = false
                             bioModeState.value      = BioUiMode.Cancelled
                             biometricEnabledState.value = false
+                        },
+                        onProtectionNeedsPassword = {
+                            isMounting              = false
+                            bioModeState.value      = BioUiMode.Cancelled
+                            biometricEnabledState.value = false
+                            bioBailOutIsProtection  = true
+                            biometricNeedsHiddenPassword = true
                         },
                         onSuccess             = { id ->
                             isMounting = false
@@ -356,7 +381,9 @@ private fun MountScreenContent(
                 } else {
                     val data = pendingEncryptState.value ?: return
                     latestOnSaveBio.value(cipher, data.password, data.pim)
-                    latestOnUnlock.value(data.password, data.pim, data.hash, data.protectHidden, data.protectHiddenPim, data.protectHiddenKeyfileData)
+                    latestOnUnlock.value(data.password, data.pim, data.hash, data.protectHidden,
+                                         data.protectHiddenPim, data.protectHiddenKeyfileData,
+                                         data.protectHiddenHash)
                     pendingEncryptState.value = null
                 }
             }
@@ -366,7 +393,9 @@ private fun MountScreenContent(
                     biometricEnabledState.value = false
                 } else {
                     pendingEncryptState.value?.let { data ->
-                        latestOnUnlock.value(data.password, data.pim, data.hash, data.protectHidden, data.protectHiddenPim, data.protectHiddenKeyfileData)
+                        latestOnUnlock.value(data.password, data.pim, data.hash, data.protectHidden,
+                                             data.protectHiddenPim, data.protectHiddenKeyfileData,
+                                             data.protectHiddenHash)
                     }
                     pendingEncryptState.value = null
                 }
@@ -461,6 +490,7 @@ private fun MountScreenContent(
         val protectedPassword = if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null
         val protectedPim = if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0
         val protectedKeyfileData = if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList()
+        val protectedHash = if (protectHidden) selectedHiddenHash else VeraCryptEngine.HASH_AUTO
         if (biometricEnabled) {
             val cryptoObj = viewModel.getBiometricCryptoObjectForEncrypt()
             if (cryptoObj != null) {
@@ -471,7 +501,8 @@ private fun MountScreenContent(
                     hash                      = selectedHash,
                     protectHidden             = protectedPassword,
                     protectHiddenPim          = protectedPim,
-                    protectHiddenKeyfileData  = protectedKeyfileData
+                    protectHiddenKeyfileData  = protectedKeyfileData,
+                    protectHiddenHash         = protectedHash
                 )
                 biometricPrompt.authenticate(
                     BiometricPrompt.PromptInfo.Builder()
@@ -482,13 +513,20 @@ private fun MountScreenContent(
                     cryptoObj
                 )
             } else {
-                latestOnUnlock.value(password, pim, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
+                latestOnUnlock.value(password, pim, selectedHash, protectedPassword, protectedPim,
+                                     protectedKeyfileData, protectedHash)
             }
         } else {
-            latestOnUnlock.value(password, pim, selectedHash, protectedPassword, protectedPim, protectedKeyfileData)
+            latestOnUnlock.value(password, pim, selectedHash, protectedPassword, protectedPim,
+                                 protectedKeyfileData, protectedHash)
         }
     }
-    val canUnlock = bioMode == BioUiMode.Form && (password.isNotEmpty() || keyfiles.isNotEmpty()) && !isLoading
+    /* Protection on with an empty hidden password used to mount the vault with no
+       protection at all - the toggle was read, the empty field was not. Nothing is sent
+       to the engine in that state, so the refusal has to happen here. */
+    val protectionIncomplete = protectHidden && hiddenPassword.isBlank()
+    val canUnlock = bioMode == BioUiMode.Form && (password.isNotEmpty() || keyfiles.isNotEmpty()) &&
+                    !isLoading && !protectionIncomplete
 
     BackHandler(enabled = !isMounting) {
         keyfiles.forEach { it.zero() }
@@ -713,62 +751,24 @@ private fun MountScreenContent(
                                 ),
                                 keyboardActions = KeyboardActions(
                                     onDone = {
-                                        if (canUnlock) latestOnUnlock.value(password, pim, selectedHash, if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null, if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0, if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList())
+                                        if (canUnlock) latestOnUnlock.value(
+                                            password, pim, selectedHash,
+                                            if (protectHidden && hiddenPassword.isNotBlank()) hiddenPassword else null,
+                                            if (protectHidden) (hiddenPimValue.toIntOrNull() ?: 0) else 0,
+                                            if (protectHidden) hiddenKeyfiles.map { it.content } else emptyList(),
+                                            if (protectHidden) selectedHiddenHash else VeraCryptEngine.HASH_AUTO)
                                     }
                                 ),
                                 singleLine = true,
                                 modifier   = Modifier.fillMaxWidth()
                             )
 
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                OutlinedTextField(
-                                    value         = hashes.first { it.first == selectedHash }.second,
-                                    onValueChange = {},
-                                    readOnly      = true,
-                                    label         = { Text(stringResource(R.string.vault_mount_hash)) },
-                                    trailingIcon  = {
-                                        Icon(Icons.Outlined.ExpandMore, contentDescription = null)
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Box(Modifier.matchParentSize().clickable { showHashSheet = true })
-                            }
-
-                            if (showHashSheet) {
-                                val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-                                AppSheet(
-                                    onDismissRequest = { showHashSheet = false },
-                                    sheetState       = sheetState
-                                ) {
-                                    Column(modifier = Modifier.padding(bottom = 32.dp)) {
-                                        Text(
-                                            text       = stringResource(R.string.vault_mount_hash),
-                                            style      = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            modifier   = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                                        )
-                                        hashes.forEach { (id, label) ->
-                                            Row(
-                                                modifier          = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable { selectedHash = id; showHashSheet = false }
-                                                    .padding(horizontal = 4.dp, vertical = 4.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                RadioButton(
-                                                    selected = selectedHash == id,
-                                                    onClick  = { selectedHash = id; showHashSheet = false }
-                                                )
-                                                Text(
-                                                    text     = label,
-                                                    style    = MaterialTheme.typography.bodyMedium,
-                                                    modifier = Modifier.padding(start = 8.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            PrfPicker(
+                                hashes   = hashes,
+                                selected = selectedHash,
+                                label    = stringResource(R.string.vault_mount_hash),
+                                onSelect = { selectedHash = it }
+                            )
 
                             keyfiles.forEachIndexed { index, entry ->
                                 Row(
@@ -917,6 +917,10 @@ private fun MountScreenContent(
                                                 value                = hiddenPassword,
                                                 onValueChange        = { hiddenPassword = it },
                                                 label                = { Text(stringResource(R.string.vault_mount_hidden_password)) },
+                                                isError              = protectionIncomplete,
+                                                supportingText       = if (protectionIncomplete) {
+                                                    { Text(stringResource(R.string.vault_mount_hidden_password_required)) }
+                                                } else null,
                                                 singleLine           = true,
                                                 visualTransformation = if (showHiddenPassword) VisualTransformation.None else PasswordVisualTransformation(),
                                                 trailingIcon         = {
@@ -954,6 +958,12 @@ private fun MountScreenContent(
                                                 ),
                                                 singleLine = true,
                                                 modifier   = Modifier.fillMaxWidth()
+                                            )
+                                            PrfPicker(
+                                                hashes   = hashes,
+                                                selected = selectedHiddenHash,
+                                                label    = stringResource(R.string.vault_mount_hidden_hash),
+                                                onSelect = { selectedHiddenHash = it }
                                             )
                                             hiddenKeyfiles.forEachIndexed { index, entry ->
                                                 Row(
@@ -1024,20 +1034,28 @@ private fun MountScreenContent(
                         viewModel.resetMountState(); isMounting = false
                         lastAttempt = null; allowLowMemoryOnce = false
                     },
+                    /* Whichever volume the offer is about, the other one's PRF is repeated as
+                       it was: naming Argon2id for the hidden volume must not turn the vault's
+                       own PRF into a second guess, and the other way round. */
                     onTryArgon2         = lastAttempt?.takeIf { errorState?.argon2Offer == true }?.let { a ->
                         {
                             viewModel.resetMountState()
                             allowLowMemoryOnce = false
-                            onUnlock(a.password, a.pim, VeraCryptEngine.HASH_ARGON2ID,
-                                     a.protectPassword, a.protectPim, a.protectKeyfiles)
+                            val forHidden = errorState?.argon2OfferIsHidden == true
+                            onUnlock(a.password, a.pim,
+                                     if (forHidden) a.hash else VeraCryptEngine.HASH_ARGON2ID,
+                                     a.protectPassword, a.protectPim, a.protectKeyfiles,
+                                     if (forHidden) VeraCryptEngine.HASH_ARGON2ID else a.protectHash)
                         }
                     },
+                    argon2OfferIsHidden = errorState?.argon2OfferIsHidden == true,
                     onTryAnyway         = lastAttempt?.takeIf { errorState?.argon2LowMemoryRetry == true }?.let { a ->
                         {
                             viewModel.resetMountState()
                             allowLowMemoryOnce = true
-                            onUnlock(a.password, a.pim, VeraCryptEngine.HASH_ARGON2ID,
-                                     a.protectPassword, a.protectPim, a.protectKeyfiles)
+                            onUnlock(a.password, a.pim, a.hash,
+                                     a.protectPassword, a.protectPim, a.protectKeyfiles,
+                                     a.protectHash)
                         }
                     }
                 )
@@ -1104,16 +1122,22 @@ private fun MountScreenContent(
             }
         }
 
-        // ── Keyfile missing overlay ───────────────────────────────────────────
+        // ── Biometric bail-out overlay (keyfiles gone, or protection needs the password) ──
+        val bioBailOut = biometricKeyfileMissing || biometricNeedsHiddenPassword
+        val dismissBioBailOut = {
+            biometricKeyfileMissing = false
+            biometricNeedsHiddenPassword = false
+            bioMode = BioUiMode.Form
+        }
         AnimatedVisibility(
-            visible  = biometricKeyfileMissing,
+            visible  = bioBailOut,
             enter    = fadeIn(animationSpec = tween(250)),
             exit     = fadeOut(animationSpec = tween(300)),
             modifier = Modifier.fillMaxSize().zIndex(99f)
         ) {
             val errorComposition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.error))
             val errorProgress    by animateLottieCompositionAsState(errorComposition, iterations = 1)
-            BackHandler(enabled = biometricKeyfileMissing) { biometricKeyfileMissing = false; bioMode = BioUiMode.Form }
+            BackHandler(enabled = bioBailOut) { dismissBioBailOut() }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1132,7 +1156,10 @@ private fun MountScreenContent(
                     LottieAnimation(errorComposition, { errorProgress }, modifier = Modifier.size(180.dp))
                     Spacer(Modifier.height(36.dp))
                     Text(
-                        text       = stringResource(R.string.vault_biometric_keyfile_missing_title),
+                        text       = stringResource(
+                            if (bioBailOutIsProtection) R.string.vault_biometric_protection_title
+                            else R.string.vault_biometric_keyfile_missing_title
+                        ),
                         style      = MaterialTheme.typography.titleLarge,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                         color      = androidx.compose.ui.graphics.Color.White,
@@ -1140,14 +1167,17 @@ private fun MountScreenContent(
                     )
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        text      = stringResource(R.string.vault_biometric_keyfile_missing_body),
+                        text      = stringResource(
+                            if (bioBailOutIsProtection) R.string.vault_biometric_protection_body
+                            else R.string.vault_biometric_keyfile_missing_body
+                        ),
                         style     = MaterialTheme.typography.bodyMedium,
                         color     = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.6f),
                         textAlign = TextAlign.Center
                     )
                 }
                 androidx.compose.material3.Button(
-                    onClick  = { biometricKeyfileMissing = false; bioMode = BioUiMode.Form },
+                    onClick  = dismissBioBailOut,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
@@ -1169,7 +1199,71 @@ private fun MountScreenContent(
 private data class MountAttempt(
     val password: String,
     val pim: Int,
+    val hash: Int,
     val protectPassword: String?,
     val protectPim: Int,
-    val protectKeyfiles: List<ByteArray>
+    val protectKeyfiles: List<ByteArray>,
+    val protectHash: Int
 )
+
+/**
+ * The PRF dropdown, used for the vault itself and for the hidden volume being protected.
+ * Both lists are the same six plus Auto - a hidden volume is a volume, and the one that
+ * Auto cannot find is the same one in both places (Argon2id, #177).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PrfPicker(
+    hashes: List<Pair<Int, String>>,
+    selected: Int,
+    label: String,
+    onSelect: (Int) -> Unit
+) {
+    var showSheet by remember { mutableStateOf(false) }
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value         = hashes.first { it.first == selected }.second,
+            onValueChange = {},
+            readOnly      = true,
+            label         = { Text(label) },
+            trailingIcon  = { Icon(Icons.Outlined.ExpandMore, contentDescription = null) },
+            modifier      = Modifier.fillMaxWidth()
+        )
+        Box(Modifier.matchParentSize().clickable { showSheet = true })
+    }
+    if (showSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        AppSheet(
+            onDismissRequest = { showSheet = false },
+            sheetState       = sheetState
+        ) {
+            Column(modifier = Modifier.padding(bottom = 32.dp)) {
+                Text(
+                    text       = label,
+                    style      = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier   = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+                hashes.forEach { (id, itemLabel) ->
+                    Row(
+                        modifier          = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(id); showSheet = false }
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selected == id,
+                            onClick  = { onSelect(id); showSheet = false }
+                        )
+                        Text(
+                            text     = itemLabel,
+                            style    = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

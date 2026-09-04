@@ -39,6 +39,8 @@ class ErrorCodeSyncTest {
         "ERR_TOO_FRAGMENTED" to VeraCryptEngine.ERR_TOO_FRAGMENTED,
         "ERR_BUSY" to VeraCryptEngine.ERR_BUSY,
         "ERR_ARGON2_MEMORY" to VeraCryptEngine.ERR_ARGON2_MEMORY,
+        "ERR_HIDDEN_PROTECTION" to VeraCryptEngine.ERR_HIDDEN_PROTECTION,
+        "ERR_HIDDEN_IS_TARGET" to VeraCryptEngine.ERR_HIDDEN_IS_TARGET,
     )
 
     @Test

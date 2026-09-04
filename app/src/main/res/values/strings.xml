@@ -532,6 +532,8 @@
     <string name="vault_mount_protect_hidden">Protect hidden volume</string>
     <string name="vault_mount_protect_hidden_desc">Prevents outer volume writes from reaching the hidden area</string>
     <string name="vault_mount_hidden_password">Hidden Volume Password</string>
+    <string name="vault_mount_hidden_hash">Hidden Volume Hash</string>
+    <string name="vault_mount_hidden_password_required">Required while protection is on - without it the outer volume would be mounted unprotected.</string>
     <string name="vault_mount_hidden_pim_label">Hidden Volume PIM (optional)</string>
     <string name="vault_mount_add_hidden_keyfile">Add Hidden Volume Keyfile (optional)</string>
     <string name="vault_biometric_unlock_title">Unlock %1$s</string>
@@ -544,6 +546,8 @@
     <string name="vault_biometric_failed">Biometric authentication failed</string>
     <string name="vault_outer_protected_title">Hidden volume protection active</string>
     <string name="vault_outer_protected_body">The outer volume is mounted. The hidden volume is protected from accidental overwriting.</string>
+    <string name="vault_biometric_protection_title">Unlock with the password</string>
+    <string name="vault_biometric_protection_body">This vault is set to protect a hidden volume, and the hidden volume\'s password is not saved with your fingerprint. Unlock with the password so it can be entered - otherwise the outer volume would be mounted with no protection.</string>
     <string name="vault_biometric_keyfile_missing_title">One or more keyfiles not accessible</string>
     <string name="vault_biometric_keyfile_missing_body">The keyfiles saved for this container could not be read — they may have been moved or deleted. Mount manually to select them again.</string>
     <string name="vault_biometric_try_again">Try Again</string>
@@ -892,6 +896,8 @@
     <string name="mount_argon2_offer">This vault may use Argon2id, which is never tried automatically. One attempt needs a few hundred MB of memory and several seconds.</string>
     <string name="mount_argon2_try">Try Argon2id</string>
     <string name="mount_argon2_try_anyway">Try anyway</string>
+    <string name="mount_argon2_offer_hidden">The hidden volume may use Argon2id, which is never tried automatically. One attempt needs a few hundred MB of memory and several seconds.</string>
+    <string name="mount_argon2_try_hidden">Try Argon2id for the hidden volume</string>
     <string name="mount_subtitle_1">This may take a moment.\nPlease don\'t close the app.</string>
     <string name="mount_subtitle_2">Almost there — some vaults take a bit longer.</string>
     <string name="mount_subtitle_3">Deriving decryption keys — this is intentionally slow.</string>

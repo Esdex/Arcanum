@@ -47,6 +47,18 @@ enum class CryptoError {
     /** Native ERR_HIDDEN_BOUNDARY: write blocked by hidden-volume protection. */
     HIDDEN_BOUNDARY_PROTECTED,
     /**
+     * Native ERR_HIDDEN_PROTECTION: protection was requested and the hidden header could
+     * not be opened, so the mount was refused rather than carried out unprotected. Either
+     * the hidden credentials are wrong or the hidden volume uses a PRF the scan does not
+     * try - Argon2id has to be named.
+     */
+    HIDDEN_PROTECTION_FAILED,
+    /**
+     * Native ERR_HIDDEN_IS_TARGET: the credentials opened the hidden volume itself, so
+     * there is no outer volume in this mount for protection to guard.
+     */
+    HIDDEN_IS_PROTECTION_TARGET,
+    /**
      * Native ERR_BUSY: refused because the volume is mounted. Raised by header
      * restore only - a restored header may name a different master key, and a
      * mounted drive would keep writing with the keys it already holds.

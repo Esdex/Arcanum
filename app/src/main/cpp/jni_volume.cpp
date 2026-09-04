@@ -877,6 +877,7 @@ static jlong do_open_container(
         const uint8_t *pwd, int pwdLen, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
         const uint8_t *hiddenPwd, int hiddenPwdLen, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
+        jint protectHiddenHash,
         jobject mountProgressListener, jboolean readOnly, jboolean allowLowMemory)
 {
     /* Owns fd on every failure path (closed by the destructor). On success
@@ -945,7 +946,9 @@ static jlong do_open_container(
     const bool legacyPoolRetry =
         keyfile_pool_has_legacy_variant(pwdLen, jni_has_keyfiles(env, jKeyfileData));
 
-    for (int variant = 0; variant <= (legacyPoolRetry ? 1 : 0) && rc != ERR_OK; variant++) {
+    for (int variant = 0;
+         variant <= (legacyPoolRetry ? 1 : 0) && rc != ERR_OK && rc != ERR_ARGON2_MEMORY;
+         variant++) {
         if (variant == 1) {
             LOGI("[%s] auth failed with the standard keyfile pool - retrying with the "
                  "pre-#112 legacy 64-byte pool", logTag);
@@ -994,23 +997,46 @@ static jlong do_open_container(
 
     /* Only enforce boundary when protection is explicitly requested — never auto-detect from
        the outer header's hiddenVolSize, because that would reveal the hidden volume's existence
-       to an adversary who forces the user to open the outer vault without protection. */
+       to an adversary who forces the user to open the outer vault without protection.
+     *
+     * Protection either holds or the mount fails: every path out of this block that does not
+     * set hiddenBoundary returns an error. It used to leave the boundary at 0 and carry on
+     * mounting read-write, under a UI that states protection is active - the hidden volume was
+     * then one copy away from being overwritten. VeraCrypt refuses the same cases
+     * (Volume.cpp: ProtectionPasswordIncorrect / ProtectionPasswordKeyfilesIncorrect). */
     uint64_t hiddenBoundary = 0;
-    if (!authIsHidden && hidEffPwdLen > 0) {
+    if (hidEffPwdLen > 0) {
+        /* The credentials opened the hidden volume itself, so there is no outer volume in
+         * this mount to keep away from it. VeraCrypt treats it as an error too. */
+        if (authIsHidden) {
+            LOGE("[%s] protect-hidden: these credentials open the hidden volume itself", logTag);
+            return (jlong)ERR_HIDDEN_IS_TARGET;
+        }
+        int hidRc = ERR_WRONG_PASSWORD;
+        uint64_t hidDataSz = 0, hidHeaderDataOff = 0;
         if (hiddenVolSize > 0) {
-            hiddenBoundary = dataOff + dataSz - hiddenVolSize;
+            /* Legacy containers only: field28 in an outer header is 0 for VeraCrypt volumes
+             * and for everything Arcanum has written since the deniability fix, so nothing
+             * made after it comes through here. No hidden header is read on this path, so
+             * the start has to be reconstructed - and it is measured from the end of the
+             * file, where a hidden volume is placed (see do_create_hidden_volume), not from
+             * the outer volume's own size. */
+            hidDataSz = hiddenVolSize;
+            hidHeaderDataOff = fileSize - VC_BACKUP_AREA_SIZE - hiddenVolSize;
+            hidRc = ERR_OK;
         } else {
             uint64_t hidOffsets[2] = { VC_HIDDEN_HEADER_OFFSET, fileSize - VC_HIDDEN_HEADER_OFFSET };
             SecureBuffer<192> hidMasterKey;
             int hidMkLen = 0, hidAlgId = 0, hidHashId = 0;
-            uint64_t hidDataSz = 0, hidDataOff = 0, hidHvSz = 0;
-            /* Same legacy-pool fallback as the main credential, and it matters
-             * more here: failing to locate the hidden header does not fail the
-             * mount, it silently leaves hiddenBoundary at 0 and writes go
-             * through unprotected. */
+            uint64_t hidHvSz = 0;
+            /* Same legacy-pool fallback as the main credential. */
             const bool hidLegacyRetry = keyfile_pool_has_legacy_variant(
                 hiddenPwdLen, jni_has_keyfiles(env, jProtectHiddenKeyfileData));
-            for (int variant = 0; variant <= (hidLegacyRetry ? 1 : 0) && hiddenBoundary == 0; variant++) {
+            /* ERR_ARGON2_MEMORY ends it as well: the legacy-pool variant would pay for the
+             * same refused derivation a second time. */
+            for (int variant = 0;
+                 variant <= (hidLegacyRetry ? 1 : 0) && hidRc != ERR_OK && hidRc != ERR_ARGON2_MEMORY;
+                 variant++) {
                 if (variant == 1) {
                     hidEffPwdLen = hiddenPwdLen;
                     memcpy(hidEffPwd.data(), hiddenPwd, (size_t)hidEffPwdLen);
@@ -1020,20 +1046,54 @@ static jlong do_open_container(
                 }
                 for (int ti = 0; ti < 2; ti++) {
                     if (hidOffsets[ti] + VC_HEADER_SIZE > fileSize) continue;
-                    int hrc = read_vc_header(be, hidOffsets[ti], (const char*)hidEffPwd.data(), hidEffPwdLen,
-                                             hidMasterKey.data(), &hidMkLen, &hidDataSz, &hidDataOff,
-                                             &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz, -1, -1);
-                    if (hrc == ERR_OK && hidDataSz > 0) {
-                        hiddenBoundary = dataOff + dataSz - hidDataSz;
-                        LOGE("[%s] protect-hidden: boundary set to 0x%llx from hidden header",
-                             logTag, (unsigned long long)hiddenBoundary);
-                        break;
-                    }
+                    hidRc = read_vc_header(be, hidOffsets[ti], (const char*)hidEffPwd.data(), hidEffPwdLen,
+                                           hidMasterKey.data(), &hidMkLen, &hidDataSz, &hidHeaderDataOff,
+                                           &hidAlgId, &hidHashId, (int)protectHiddenPim, &hidHvSz,
+                                           -1, (int)protectHiddenHash, nullptr,
+                                           allowLowMemory == JNI_TRUE);
+                    if (hidRc == ERR_OK) break;
+                    /* About the device, not the credentials: the other offset would only
+                     * repeat it (#177). */
+                    if (hidRc == ERR_ARGON2_MEMORY) break;
                 }
             }
             /* hidMasterKey wiped by its destructor here, at the end of this
              * inner scope — same timing as the manual wipe it replaces. */
         }
+        /* Geometry that could not describe a hidden volume inside this one: a header that
+         * decrypted but says something impossible. Refused rather than turned into a
+         * boundary that protects the wrong range. */
+        if (hidRc == ERR_OK &&
+            (hidDataSz == 0 || hidHeaderDataOff % VC_SECTOR_SIZE != 0 ||
+             hidHeaderDataOff <= dataOff || hidHeaderDataOff >= fileSize ||
+             hidDataSz > fileSize - hidHeaderDataOff)) {
+            LOGE("[%s] protect-hidden: hidden geometry out of range (start=%llu size=%llu "
+                 "outer=%llu+%llu file=%llu)",
+                 logTag, (unsigned long long)hidHeaderDataOff, (unsigned long long)hidDataSz,
+                 (unsigned long long)dataOff, (unsigned long long)dataSz,
+                 (unsigned long long)fileSize);
+            hidRc = ERR_UNSUPPORTED;
+        }
+        if (hidRc != ERR_OK) {
+            LOGE("[%s] protect-hidden: could not establish the boundary (rc=%d) - refusing the mount",
+                 logTag, hidRc);
+            /* Out of memory for Argon2id is worth saying as itself; anything else is
+             * indistinguishable from wrong hidden credentials and is reported as one. */
+            return (jlong)(hidRc == ERR_ARGON2_MEMORY ? ERR_ARGON2_MEMORY : ERR_HIDDEN_PROTECTION);
+        }
+        /* Where the hidden volume actually begins, as its own header states it - the same
+         * value VeraCrypt's driver protects from (Ntvol.c: hiddenVolumeOffset =
+         * cryptoInfo->EncryptedAreaStart).
+         *
+         * This used to be computed as dataOff + dataSz - hidDataSz, and that is 128 KB too
+         * high on every file-hosted volume: the outer header's own size runs to the end of
+         * the file, so subtracting the hidden size lands one backup-header group past the
+         * hidden volume's first sector. Protection was on, the boundary was wrong, and the
+         * outer volume could still write over the hidden volume's boot sector and FAT -
+         * measured at 0x1e00000 against a true start of 0x1de0000. */
+        hiddenBoundary = hidHeaderDataOff;
+        LOGI("[%s] protect-hidden: boundary set to 0x%llx (hidden volume %llu bytes)",
+             logTag, (unsigned long long)hiddenBoundary, (unsigned long long)hidDataSz);
     }
     /* Deliberate early wipe: hidEffPwd's only remaining use was computing
      * hiddenBoundary above. */
@@ -1103,6 +1163,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
         jint safFd, jbyteArray jPassword, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
         jbyteArray jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
+        jint protectHiddenHash,
         jobject mountProgressListener, jboolean readOnly, jboolean allowLowMemory)
 {
     SecureBuffer<VC_MAX_PWD_LEN> pwdBuf;
@@ -1116,6 +1177,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerFd(
     return do_open_container(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, "fd/open",
                              pwdBuf.data(), pwdLen, jKeyfileData, pim, algorithm, hashAlgorithm,
                              hidPwdBuf.data(), hidPwdLen, jProtectHiddenKeyfileData, protectHiddenPim,
+                             protectHiddenHash,
                              mountProgressListener, readOnly, allowLowMemory);
 }
 
@@ -1127,6 +1189,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
         jstring jPath, jbyteArray jPassword, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
         jbyteArray jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
+        jint protectHiddenHash,
         jobject mountProgressListener, jboolean readOnly, jboolean allowLowMemory)
 {
     std::string path = jstring_to_string(env, jPath);
@@ -1144,6 +1207,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainer(
     return do_open_container(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, "open",
                              pwdBuf.data(), pwdLen, jKeyfileData, pim, algorithm, hashAlgorithm,
                              hidPwdBuf.data(), hidPwdLen, jProtectHiddenKeyfileData, protectHiddenPim,
+                             protectHiddenHash,
                              mountProgressListener, readOnly, allowLowMemory);
 }
 
@@ -1168,6 +1232,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerUsb(
         jbyteArray jPassword, jobjectArray jKeyfileData,
         jint pim, jint algorithm, jint hashAlgorithm,
         jbyteArray jProtectHiddenPassword, jobjectArray jProtectHiddenKeyfileData, jint protectHiddenPim,
+        jint protectHiddenHash,
         jobject mountProgressListener, jboolean readOnly, jboolean allowLowMemory)
 {
     if (!transport || deviceSize <= 0) return (jlong)ERR_FILE;
@@ -1186,6 +1251,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeOpenContainerUsb(
     return do_open_container(env, /*fdIn=*/-1, &be, (uint64_t)deviceSize, "usb/open",
                              pwdBuf.data(), pwdLen, jKeyfileData, pim, algorithm, hashAlgorithm,
                              hidPwdBuf.data(), hidPwdLen, jProtectHiddenKeyfileData, protectHiddenPim,
+                             protectHiddenHash,
                              mountProgressListener, readOnly, allowLowMemory);
 }
 

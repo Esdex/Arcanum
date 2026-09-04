@@ -125,6 +125,14 @@ class VeraCryptEngine @Inject constructor(
         protectHiddenPassword: String? = null,
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         protectHiddenPim: Int = 0,
+        /**
+         * PRF of the hidden volume being protected. [HASH_AUTO] scans the five PBKDF2
+         * hashes, exactly as the outer volume does - and, exactly as there, never tries
+         * Argon2id, which has to be named (#177). A hidden volume on Argon2id therefore
+         * cannot be found by the scan, and the mount is refused rather than left
+         * unprotected, so this is how the user says which one it is.
+         */
+        protectHiddenHash: Int = HASH_AUTO,
         mountProgressListener: MountProgressListener? = null,
         readOnly: Boolean = false,
         /** Argon2id only: proceed even when free memory is below the guard's headroom (#177). */
@@ -139,6 +147,7 @@ class VeraCryptEngine @Inject constructor(
                     hiddenBytes,
                     protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
                     protectHiddenPim,
+                    protectHiddenHash,
                     mountProgressListener,
                     readOnly,
                     allowLowMemory
@@ -195,6 +204,14 @@ class VeraCryptEngine @Inject constructor(
         protectHiddenPassword: String? = null,
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         protectHiddenPim: Int = 0,
+        /**
+         * PRF of the hidden volume being protected. [HASH_AUTO] scans the five PBKDF2
+         * hashes, exactly as the outer volume does - and, exactly as there, never tries
+         * Argon2id, which has to be named (#177). A hidden volume on Argon2id therefore
+         * cannot be found by the scan, and the mount is refused rather than left
+         * unprotected, so this is how the user says which one it is.
+         */
+        protectHiddenHash: Int = HASH_AUTO,
         mountProgressListener: MountProgressListener? = null,
         readOnly: Boolean = false,
         /** Argon2id only: proceed even when free memory is below the guard's headroom (#177). */
@@ -209,6 +226,7 @@ class VeraCryptEngine @Inject constructor(
                     hiddenBytes,
                     protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
                     protectHiddenPim,
+                    protectHiddenHash,
                     mountProgressListener,
                     readOnly,
                     allowLowMemory
@@ -229,6 +247,14 @@ class VeraCryptEngine @Inject constructor(
         protectHiddenPassword: String? = null,
         protectHiddenKeyfileData: List<ByteArray> = emptyList(),
         protectHiddenPim: Int = 0,
+        /**
+         * PRF of the hidden volume being protected. [HASH_AUTO] scans the five PBKDF2
+         * hashes, exactly as the outer volume does - and, exactly as there, never tries
+         * Argon2id, which has to be named (#177). A hidden volume on Argon2id therefore
+         * cannot be found by the scan, and the mount is refused rather than left
+         * unprotected, so this is how the user says which one it is.
+         */
+        protectHiddenHash: Int = HASH_AUTO,
         mountProgressListener: MountProgressListener? = null,
         readOnly: Boolean = false,
         /** Argon2id only: proceed even when free memory is below the guard's headroom (#177). */
@@ -243,6 +269,7 @@ class VeraCryptEngine @Inject constructor(
                     hiddenBytes,
                     protectHiddenKeyfileData.toTypedArray().ifEmpty { null },
                     protectHiddenPim,
+                    protectHiddenHash,
                     mountProgressListener,
                     readOnly,
                     allowLowMemory
@@ -676,6 +703,7 @@ class VeraCryptEngine @Inject constructor(
         protectHiddenPassword: ByteArray?,
         protectHiddenKeyfileData: Array<ByteArray>?,
         protectHiddenPim: Int,
+        protectHiddenHash: Int,
         mountProgressListener: MountProgressListener?,
         readOnly: Boolean,
         allowLowMemory: Boolean
@@ -866,6 +894,7 @@ class VeraCryptEngine @Inject constructor(
         protectHiddenPassword: ByteArray?,
         protectHiddenKeyfileData: Array<ByteArray>?,
         protectHiddenPim: Int,
+        protectHiddenHash: Int,
         mountProgressListener: MountProgressListener?,
         readOnly: Boolean,
         allowLowMemory: Boolean
@@ -881,6 +910,7 @@ class VeraCryptEngine @Inject constructor(
         protectHiddenPassword: ByteArray?,
         protectHiddenKeyfileData: Array<ByteArray>?,
         protectHiddenPim: Int,
+        protectHiddenHash: Int,
         mountProgressListener: MountProgressListener?,
         readOnly: Boolean,
         allowLowMemory: Boolean
@@ -1171,6 +1201,31 @@ class VeraCryptEngine @Inject constructor(
         const val ERR_ARGON2_MEMORY    = -15
 
         /**
+         * Native ERR_HIDDEN_PROTECTION: hidden-volume protection was asked for and the
+         * hidden header could not be opened with the credentials given, so the boundary
+         * that keeps outer writes away from it is unknown.
+         *
+         * The mount is refused. Until this code existed it went ahead unprotected while
+         * the UI said protection was active, which is the one outcome that costs the
+         * user the data they were promised was safe. VeraCrypt refuses the same case
+         * (ProtectionPasswordIncorrect in Volume.cpp).
+         *
+         * Two causes are indistinguishable from here and the message has to name both:
+         * wrong hidden password / PIM / keyfiles, and a hidden volume whose PRF the scan
+         * never tried - Argon2id is never scanned, it has to be named through
+         * `protectHiddenHash`.
+         */
+        const val ERR_HIDDEN_PROTECTION = -16
+
+        /**
+         * Native ERR_HIDDEN_IS_TARGET: the credentials opened the hidden volume itself
+         * while protection was requested. There is no outer volume in this mount to keep
+         * away from it, so protection has nothing to do - VeraCrypt treats it as an error
+         * as well, and refusing is what keeps "protection active" from being a lie.
+         */
+        const val ERR_HIDDEN_IS_TARGET  = -17
+
+        /**
          * Keyfile generator size bounds — must match VC_KEYFILE_MIN_SIZE /
          * VC_KEYFILE_MAX_SIZE in `app/src/main/cpp/arcanum_internal.h`, which
          * rejects anything outside this range with [ERR_UNSUPPORTED].
@@ -1264,6 +1319,8 @@ private fun Int.toError(): CryptoError = when (this) {
     VeraCryptEngine.ERR_NO_SLOT         -> CryptoError.TOO_MANY_MOUNTED
     VeraCryptEngine.ERR_BUSY            -> CryptoError.BUSY
     VeraCryptEngine.ERR_ARGON2_MEMORY   -> CryptoError.ARGON2_MEMORY
+    VeraCryptEngine.ERR_HIDDEN_PROTECTION -> CryptoError.HIDDEN_PROTECTION_FAILED
+    VeraCryptEngine.ERR_HIDDEN_IS_TARGET  -> CryptoError.HIDDEN_IS_PROTECTION_TARGET
     else                                -> CryptoError.UNKNOWN
 }
 
