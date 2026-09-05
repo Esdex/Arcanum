@@ -860,7 +860,7 @@
     <string name="create_entropy_progress">Move your finger randomly until the bar is full (%1$d%%)</string>
     <string name="create_done_title">Vault Created!</string>
 
-    <!-- Create container steps 10–15 (hidden volume) -->
+    <!-- Create container steps 10–16 (hidden volume) -->
     <string name="create_hidden_intro_title">Hidden Volume</string>
     <string name="create_hidden_intro_body">Your outer volume has been created. Now set up the hidden volume inside it.</string>
     <string name="create_hidden_info_text">A hidden volume lives inside the outer volume. When you enter the outer password, only the outer data is visible. Enter the hidden password to reveal the hidden data.</string>
@@ -881,6 +881,8 @@
     <string name="create_hidden_pwd_mismatch">Passwords do not match</string>
     <string name="create_hidden_pim_label">PIM (optional)</string>
     <string name="create_hidden_pim_hint">PIM controls PBKDF2 iterations. Leave blank for default.</string>
+    <string name="create_hidden_fs_title">Hidden Volume Filesystem</string>
+    <string name="create_hidden_fs_subtitle">Choose how files are organized inside the hidden volume. It does not have to match the outer volume.</string>
     <string name="create_hidden_entropy_subtitle">Random movement increases the cryptographic strength of the hidden volume keys</string>
     <string name="create_hidden_creating_title">Creating Hidden Volume</string>
     <string name="create_hidden_creating_body">Formatting %1$d MB hidden area…</string>

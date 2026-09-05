@@ -5,7 +5,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -38,7 +36,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.input.KeyboardType
@@ -66,15 +63,12 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import zip.arcanum.core.components.AppDialog
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import zip.arcanum.core.utils.DotVisualTransformation
@@ -402,13 +396,7 @@ fun StepFilesystem(
     state: CreateContainerState,
     onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit
 ) {
-    // 4 GB is FAT's per-file limit, and the only number that makes this choice mean
-    // anything: a vault smaller than that cannot hold a file FAT would refuse, so exFAT
-    // buys nothing and costs compatibility. This read 2L * 1024L * 1024L MB - two
-    // terabytes - so exFAT was never recommended to anyone.
-    val recommended =
-        if (state.sizeMb > 4L * 1024L) FilesystemType.EXFAT else FilesystemType.FAT32
-    var infoFs by remember { mutableStateOf<FilesystemType?>(null) }
+    val recommended = recommendedFilesystemFor(state.sizeMb)
 
     // Only until the user picks for themselves: this step is destroyed on the way to any
     // other one and built again on the way back, so an unconditional effect here replaced
@@ -421,141 +409,10 @@ fun StepFilesystem(
         title    = stringResource(R.string.create_step7_title),
         subtitle = stringResource(R.string.create_fs_subtitle)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            FilesystemType.entries.forEach { fs ->
-                FilesystemCard(
-                    fs          = fs,
-                    selected    = state.filesystem == fs,
-                    recommended = fs == recommended,
-                    comingSoon  = false,
-                    onClick     = { onUpdate { copy(filesystem = fs, filesystemChosen = true) } },
-                    onInfo      = { infoFs = fs }
-                )
-            }
-        }
-    }
-
-    if (infoFs != null) {
-        AppDialog(
-            onDismissRequest = { infoFs = null },
-            title            = { Text(infoFs!!.displayName) },
-            text             = { Text(infoFs!!.info) },
-            confirmButton    = {
-                TextButton(onClick = { infoFs = null }) { Text(stringResource(R.string.create_fs_got_it)) }
-            }
-        )
-    }
-}
-
-@Composable
-private fun FilesystemCard(
-    fs: FilesystemType,
-    selected: Boolean,
-    recommended: Boolean,
-    comingSoon: Boolean = false,
-    onClick: () -> Unit,
-    onInfo: () -> Unit
-) {
-    val borderColor    = if (selected) MaterialTheme.colorScheme.primary
-                         else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
-    val containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-    val contentAlpha   = 1f
-
-    Card(
-        colors   = CardDefaults.cardColors(containerColor = containerColor),
-        border   = BorderStroke(if (selected) 2.dp else 1.dp, borderColor),
-        shape    = RoundedCornerShape(14.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-    ) {
-        Row(
-            modifier          = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text       = fs.displayName,
-                        style      = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color      = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
-                    )
-                    if (recommended && !comingSoon) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.primary,
-                            shape = RoundedCornerShape(99.dp)
-                        ) {
-                            Text(
-                                text     = stringResource(R.string.create_fs_recommended),
-                                style    = MaterialTheme.typography.labelSmall,
-                                color    = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text  = fs.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text  = stringResource(R.string.create_fs_max_file_size, fs.maxFileSize),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha * 0.8f)
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    when (fs) {
-                        FilesystemType.FAT32 -> {
-                            OsChip("Windows", true)
-                            OsChip("macOS", true)
-                            OsChip("Linux", true)
-                        }
-                        FilesystemType.EXFAT -> {
-                            OsChip("Windows", true)
-                            OsChip("macOS", true)
-                            OsChip("Linux", true)
-                        }
-                        FilesystemType.EXT4 -> {
-                            OsChip("Windows", false)
-                            OsChip("macOS", false)
-                            OsChip("Linux", true)
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.width(4.dp))
-            IconButton(onClick = onInfo, modifier = Modifier.size(32.dp)) {
-                Icon(
-                    Icons.Outlined.Info,
-                    contentDescription = stringResource(R.string.create_fs_info_cd),
-                    tint     = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun OsChip(os: String, support: Boolean?) {
-    val (icon, bg, fg) = when (support) {
-        true -> Triple("✅", Color(0xFF16A34A).copy(alpha = 0.12f), Color(0xFF16A34A))
-        null -> Triple("⚠️", Color(0xFFF59E0B).copy(alpha = 0.12f), Color(0xFFB45309))
-        else -> Triple("❌", MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f), MaterialTheme.colorScheme.error)
-    }
-    Surface(color = bg, shape = RoundedCornerShape(99.dp)) {
-        Text(
-            text     = "$icon $os${if (support == null) stringResource(R.string.create_fs_os_read_only) else ""}",
-            style    = MaterialTheme.typography.labelSmall,
-            fontSize = 10.sp,
-            color    = fg,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+        FilesystemPicker(
+            selected    = state.filesystem,
+            recommended = recommended,
+            onSelect    = { fs -> onUpdate { copy(filesystem = fs, filesystemChosen = true) } }
         )
     }
 }

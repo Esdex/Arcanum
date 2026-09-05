@@ -1364,7 +1364,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCloseContainer(
    Steps:
    1. Authenticates outer volume with outer password.
    2. Writes hidden primary + backup headers.
-   3. Formats the hidden area as FAT32.
+   3. Formats the hidden area with the filesystem the caller asked for.
  *
  * DENIABILITY: the outer headers are deliberately NOT touched here. VeraCrypt
  * never records the hidden volume's size (field28) in the outer header —
@@ -1393,7 +1393,7 @@ static jint do_create_hidden_volume(
         jlong hiddenSizeBytes,
         const uint8_t *outerPwd, int outerPwdLen, jobjectArray jOuterKeyfileData, jint outerPim,
         const uint8_t *hiddenPwd, int hiddenPwdLen, jobjectArray jHiddenKeyfileData, jint hiddenPim,
-        jint hiddenAlgorithm, jint hiddenHashAlg,
+        jint hiddenAlgorithm, jint hiddenHashAlg, jint hiddenFilesystem,
         jobject progressListener,
         const uint8_t *entropy, size_t entropyLen)
 {
@@ -1527,13 +1527,26 @@ static jint do_create_hidden_volume(
     hiddenBackupSalt.wipe();
 
     /* ── Format hidden area ──
-       The comment here used to claim FAT32, but with au_size left at 0 FatFs
-       started at FAT16 and stayed there for anything under ~2 GB, exactly as on
-       the outer-volume path (issue #115). Same fix: pass VeraCrypt's cluster
-       size and let the type follow from it. */
+       filesystem: 0 = FAT (FAT32), 1 = exFAT, 2 = ext4 - the same three ids the outer
+       volume uses (see do_create_container, which this mirrors). Until now the hidden
+       area was formatted FAT whatever the outer volume was, so no file over 4 GB could
+       be put in a hidden volume even inside a 20 GB exFAT vault, and none of what ext4
+       is chosen for was available there either. VeraCrypt asks for the hidden volume's
+       filesystem independently of the outer one ("Hidden Volume Format" in its wizard).
+
+       Nothing on the mount side had to change: do_open_container decides what a volume
+       holds by probing its own decrypted bytes, not by anything recorded about it.
+
+       The cluster size is passed rather than left at 0 for the same reason as on the
+       outer path: with au_size 0 FatFs starts at FAT16 and stays there for anything
+       under ~2 GB (issue #115). It is ignored by the exFAT and ext4 paths. */
+    const bool hiddenExt4 = (hiddenFilesystem == 2);
     char drvPath[8];
     BYTE work[4096];
-    MKFS_PARM opts = { (FM_FAT | FM_FAT32) | FM_SFD, 2, 0, 0, vc_fat_cluster_size(hidSz) };
+    BYTE  fmtFlag = (hiddenFilesystem == 1) ? (FM_EXFAT | FM_SFD) : ((FM_FAT | FM_FAT32) | FM_SFD);
+    BYTE  nFat    = (hiddenFilesystem == 1) ? 1 : 2;
+    DWORD auSize  = (hiddenFilesystem == 1) ? 0 : vc_fat_cluster_size(hidSz);
+    MKFS_PARM opts = { fmtFlag, nFat, 0, 0, auSize };
     FRESULT fr = FR_DISK_ERR;
     {
         std::lock_guard<std::mutex> lock(g_fatfs_mutex);
@@ -1555,11 +1568,18 @@ static jint do_create_hidden_volume(
             LOGE("[%s] No free drive slot", logTag);
             return ERR_NO_SLOT;
         }
-        snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
-        fr = f_mkfs(drvPath, &opts, work, sizeof(work));
+        if (hiddenExt4) {
+            fr = ext4jni_format(pdrv, hidSz) ? FR_OK : FR_DISK_ERR;
+        } else {
+            snprintf(drvPath, sizeof(drvPath), "%d:", pdrv);
+            fr = f_mkfs(drvPath, &opts, work, sizeof(work));
+        }
         free_drive(pdrv);
     }
 
+    if (fr != FR_OK)
+        LOGE("[%s] format of the hidden area failed: %d (filesystem %d)",
+             logTag, (int)fr, (int)hiddenFilesystem);
     report_progress(env, progressListener, progressMid, 1.0f, 0.f, (jlong)hidSz);
     return (fr == FR_OK) ? ERR_OK : ERR_FS;
     /* fd closed by UniqueFd's destructor here, on this and every path above. */
@@ -1572,7 +1592,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
         jlong hiddenSizeBytes,
         jbyteArray jOuterPassword, jobjectArray jOuterKeyfileData, jint outerPim,
         jbyteArray jHiddenPassword, jobjectArray jHiddenKeyfileData, jint hiddenPim,
-        jint hiddenAlgorithm, jint hiddenHashAlg,
+        jint hiddenAlgorithm, jint hiddenHashAlg, jint hiddenFilesystem,
         jboolean /*quickFormat*/,
         jbyteArray jEntropyBytes,
         jobject progressListener)
@@ -1603,7 +1623,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
     return do_create_hidden_volume(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, "hidden", hiddenSizeBytes,
                                    outerPwdBuf.data(), outerPwdLen, jOuterKeyfileData, outerPim,
                                    hiddenPwdBuf.data(), hiddenPwdLen, jHiddenKeyfileData, hiddenPim,
-                                   hiddenAlgorithm, hiddenHashAlg, progressListener,
+                                   hiddenAlgorithm, hiddenHashAlg, hiddenFilesystem, progressListener,
                                    entropy.empty() ? nullptr : entropy.data(), entropy.size());
 }
 
@@ -1618,7 +1638,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeFd(
         jlong hiddenSizeBytes,
         jbyteArray jOuterPassword, jobjectArray jOuterKeyfileData, jint outerPim,
         jbyteArray jHiddenPassword, jobjectArray jHiddenKeyfileData, jint hiddenPim,
-        jint hiddenAlgorithm, jint hiddenHashAlg,
+        jint hiddenAlgorithm, jint hiddenHashAlg, jint hiddenFilesystem,
         jboolean /*quickFormat*/,
         jbyteArray jEntropyBytes,
         jobject progressListener)
@@ -1648,7 +1668,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeFd(
     return do_create_hidden_volume(env, fd, /*beIn=*/nullptr, /*sizeIn=*/0, "fd/hidden", hiddenSizeBytes,
                                    outerPwdBuf.data(), outerPwdLen, jOuterKeyfileData, outerPim,
                                    hiddenPwdBuf.data(), hiddenPwdLen, jHiddenKeyfileData, hiddenPim,
-                                   hiddenAlgorithm, hiddenHashAlg, progressListener,
+                                   hiddenAlgorithm, hiddenHashAlg, hiddenFilesystem, progressListener,
                                    entropy.empty() ? nullptr : entropy.data(), entropy.size());
 }
 
@@ -2474,7 +2494,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeUsb(
         jlong hiddenSizeBytes,
         jbyteArray jOuterPassword, jobjectArray jOuterKeyfileData, jint outerPim,
         jbyteArray jHiddenPassword, jobjectArray jHiddenKeyfileData, jint hiddenPim,
-        jint hiddenAlgorithm, jint hiddenHashAlg,
+        jint hiddenAlgorithm, jint hiddenHashAlg, jint hiddenFilesystem,
         jboolean /*quickFormat*/,
         jbyteArray jEntropyBytes,
         jobject progressListener)
@@ -2505,7 +2525,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeUsb(
                                       "usb/hidden", hiddenSizeBytes,
                                       outerPwdBuf.data(), outerPwdLen, jOuterKeyfileData, outerPim,
                                       hiddenPwdBuf.data(), hiddenPwdLen, jHiddenKeyfileData, hiddenPim,
-                                      hiddenAlgorithm, hiddenHashAlg, progressListener,
+                                      hiddenAlgorithm, hiddenHashAlg, hiddenFilesystem, progressListener,
                                       entropy.empty() ? nullptr : entropy.data(), entropy.size());
     /* A drive holds writes back for a while (usb_backend's chunk cache), and the wizard
      * moves straight on to registering the vault - so the headers and the formatted

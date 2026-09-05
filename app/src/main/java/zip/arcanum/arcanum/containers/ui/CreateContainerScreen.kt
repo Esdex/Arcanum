@@ -148,12 +148,13 @@ fun CreateContainerScreen(
 
     BackHandler {
         when {
-            state.currentStep in listOf(10, 16) && state.isCreating -> showCancelDialog = true
+            state.currentStep in listOf(STEP_CREATING, STEP_CREATING_HIDDEN) && state.isCreating ->
+                showCancelDialog = true
             state.currentStep == 11 && state.volumeType == VolumeType.STANDARD -> onBack()
             state.currentStep == 11 && state.volumeType == VolumeType.HIDDEN   -> { /* locked: outer already created */ }
-            state.currentStep in 12..15 -> viewModel.prevStep()
+            state.currentStep in 12..16 -> viewModel.prevStep()
             state.currentStep == 3 && state.usbNewPartitionStep -> viewModel.cancelUsbNewPartition()
-            state.currentStep in listOf(16, 17) -> { /* locked after hidden creation starts */ }
+            state.currentStep in listOf(17, 18) -> { /* locked after hidden creation starts */ }
             state.currentStep > 1   -> viewModel.prevStep()
             else                    -> onBack()
         }
@@ -171,10 +172,10 @@ fun CreateContainerScreen(
     }
 
     LaunchedEffect(state.currentStep) {
-        if (state.currentStep == 10 && !state.isCreating && !state.isCreated) {
+        if (state.currentStep == STEP_CREATING && !state.isCreating && !state.isCreated) {
             viewModel.startCreation()
         }
-        if (state.currentStep == 16 && !state.isCreating && !state.isHiddenCreated) {
+        if (state.currentStep == STEP_CREATING_HIDDEN && !state.isCreating && !state.isHiddenCreated) {
             viewModel.startHiddenCreation()
         }
         prevStep = state.currentStep
@@ -195,7 +196,7 @@ fun CreateContainerScreen(
             Column(modifier = Modifier.fillMaxSize()) {
                 // ── Top bar ────────────────────────────────────────────────
                 val showTopBar = state.currentStep < 10 ||
-                    (state.volumeType == VolumeType.HIDDEN && state.currentStep in 11..15)
+                    (state.volumeType == VolumeType.HIDDEN && state.currentStep in 11..16)
                 if (showTopBar) {
                     Row(
                         modifier          = Modifier
@@ -206,10 +207,10 @@ fun CreateContainerScreen(
                         IconButton(
                             onClick = {
                                 when {
-                                    state.currentStep in 11..15 &&
+                                    state.currentStep in 11..16 &&
                                     state.volumeType == VolumeType.HIDDEN &&
                                     state.currentStep == 11 -> { /* locked */ }
-                                    state.currentStep in 12..15 -> viewModel.prevStep()
+                                    state.currentStep in 12..16 -> viewModel.prevStep()
                                     state.currentStep == 3 && state.usbNewPartitionStep -> viewModel.cancelUsbNewPartition()
                                     state.currentStep > 1 -> viewModel.prevStep()
                                     else                  -> onBack()
@@ -266,7 +267,7 @@ fun CreateContainerScreen(
                         .padding(horizontal = 20.dp)
                 ) { step ->
                     when (step) {
-                        1    -> StepVolumeType(state, viewModel::update)
+                        1    -> StepVolumeType(state, viewModel::setVolumeType)
                         2    -> StepVolumeLocation(
                                     state                    = state,
                                     appStoragePath           = viewModel.appStoragePath,
@@ -305,7 +306,7 @@ fun CreateContainerScreen(
                         7    -> StepFormatMode(state, viewModel::update)
                         8    -> StepFilesystem(state, viewModel::update)
                         9    -> StepEntropy(state, viewModel::addEntropyPoint)
-                        10   -> StepCreating(state)
+                        STEP_CREATING -> StepCreating(state)
                         11   -> if (state.volumeType == VolumeType.HIDDEN) {
                                     StepHiddenInfo(state)
                                 } else {
@@ -327,9 +328,10 @@ fun CreateContainerScreen(
                                     onGenerateKeyfile = { hiddenKeyfileFolderLauncher.launch(null) },
                                     onRemoveKeyfile   = viewModel::removeHiddenKeyfile
                                 )
-                        15   -> StepHiddenEntropy(state, viewModel::addHiddenEntropyPoint)
-                        16   -> StepCreatingHidden(state)
-                        17   -> StepSuccessHidden(
+                        15   -> StepHiddenFilesystem(state, viewModel::update)
+                        16   -> StepHiddenEntropy(state, viewModel::addHiddenEntropyPoint)
+                        STEP_CREATING_HIDDEN     -> StepCreatingHidden(state)
+                        STEP_CREATING_HIDDEN + 1 -> StepSuccessHidden(
                                     state,
                                     onDone      = onBack,
                                     onOpenVault = {
@@ -343,13 +345,13 @@ fun CreateContainerScreen(
 
                 // ── Next / Create button ──────────────────────────────────────
                 val showNextButton = state.currentStep < 10 ||
-                    (state.volumeType == VolumeType.HIDDEN && state.currentStep in 11..15)
+                    (state.volumeType == VolumeType.HIDDEN && state.currentStep in 11..16)
                 if (showNextButton) {
                     Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                         val buttonLabel = when {
                             state.currentStep == 9 && state.volumeType == VolumeType.HIDDEN   -> stringResource(R.string.create_btn_outer)
                             state.currentStep == 9 && state.volumeType == VolumeType.STANDARD -> stringResource(R.string.create_btn_create)
-                            state.currentStep == 15 -> stringResource(R.string.create_btn_hidden)
+                            state.currentStep == 16 -> stringResource(R.string.create_btn_hidden)
                             else                    -> stringResource(R.string.create_btn_next)
                         }
                         Button(
@@ -368,7 +370,7 @@ fun CreateContainerScreen(
                 }
 
                 // ── Cancel during creation ────────────────────────────────────
-                if (state.currentStep == 9 || state.currentStep == 15) {
+                if (state.currentStep == 9 || state.currentStep == 16) {
                     Box(
                         modifier         = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                         contentAlignment = Alignment.Center
@@ -485,7 +487,8 @@ private fun isStepValid(state: CreateContainerState, availableSpaceMb: Long = Lo
             state.hiddenPassword == state.hiddenConfirmPassword &&
             state.hiddenPassword != state.password &&
             !(state.hiddenPim in 1..484 && state.hiddenPassword.length < 20 && state.hiddenKeyfileData.isEmpty())
-    15   -> state.hiddenEntropyPoints >= 500
+    15   -> true   // HiddenFilesystem
+    16   -> state.hiddenEntropyPoints >= 500
     else -> true
 }
 

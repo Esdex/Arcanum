@@ -42,6 +42,16 @@ enum class StorageLocation { APP_STORAGE, INTERNAL_STORAGE, USB_DRIVE }
  */
 const val USB_STEP = 3
 
+/**
+ * The step that writes the volume, for each kind of wizard. It is the last one Next can
+ * reach, so it is also the wizard's length ([CreateContainerViewModel.setVolumeType]), and
+ * it is what arriving at starts the work. Naming it once is what keeps those three from
+ * drifting apart - they did, and the hidden wizard's last Next quietly did nothing.
+ * The screen that follows is reached by finishing, never by pressing anything.
+ */
+const val STEP_CREATING = 10
+const val STEP_CREATING_HIDDEN = 17
+
 private val CreateContainerState.usbStepShown: Boolean
     get() = location == StorageLocation.USB_DRIVE
 
@@ -112,7 +122,9 @@ enum class FilesystemType(
 
 data class CreateContainerState(
     val currentStep: Int = 1,
-    val totalSteps: Int = 11,
+    /** Standard's count, since [volumeType] starts there; [CreateContainerViewModel.setVolumeType]
+     *  is what keeps the two agreeing after that. */
+    val totalSteps: Int = STEP_CREATING,
     val volumeType: VolumeType = VolumeType.STANDARD,
     val location: StorageLocation = StorageLocation.INTERNAL_STORAGE,
     val filePath: String = "",
@@ -179,6 +191,11 @@ data class CreateContainerState(
     val hiddenKeyfileData: List<ByteArray> = emptyList(),
     val hiddenKeyfileDisplayNames: List<String> = emptyList(),
     val hiddenPim: Int = 0,
+    /** The hidden volume's own filesystem, independent of the outer volume's, as in
+     *  VeraCrypt. It was FAT for every hidden volume until now. */
+    val hiddenFilesystem: FilesystemType = FilesystemType.FAT32,
+    /** As [filesystemChosen], for the hidden volume's step. */
+    val hiddenFilesystemChosen: Boolean = false,
     val hiddenEntropyPoints: Int = 0,
     val isHiddenCreated: Boolean = false,
     val isExternalSd: Boolean = false
@@ -324,10 +341,22 @@ class CreateContainerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * How long the wizard is, which depends on what is being made.
+     *
+     * The count is the last step Next can reach - the one that does the creating. The
+     * screen after it is arrived at by finishing, not by pressing anything, so it lies
+     * one beyond and is deliberately not counted here (see [nextStep], which clamps).
+     *
+     * This lived in two places until the filesystem step was added: the step wrote the
+     * numbers into the state itself and this function held a second, different pair that
+     * nothing ever called. Adding a step to the pair nobody called left Next with nothing
+     * to do on the last step of the hidden half.
+     */
     fun setVolumeType(type: VolumeType) {
         _state.update { it.copy(
             volumeType = type,
-            totalSteps = if (type == VolumeType.HIDDEN) 17 else 11
+            totalSteps = if (type == VolumeType.HIDDEN) STEP_CREATING_HIDDEN else STEP_CREATING
         ) }
     }
 
@@ -456,6 +485,7 @@ class CreateContainerViewModel @Inject constructor(
                             hiddenPim           = s.hiddenPim,
                             hiddenAlgorithm     = s.hiddenAlgorithm.ordinal,
                             hiddenHashAlgorithm = s.hiddenHashAlgorithm.ordinal,
+                            hiddenFilesystem    = s.hiddenFilesystem.ordinal,
                             quickFormat         = true,
                             entropyBytes        = hiddenEntropyBuffer.toByteArray(),
                             progressListener    = null
@@ -475,6 +505,7 @@ class CreateContainerViewModel @Inject constructor(
                         hiddenPim           = s.hiddenPim,
                         hiddenAlgorithm     = s.hiddenAlgorithm.ordinal,
                         hiddenHashAlgorithm = s.hiddenHashAlgorithm.ordinal,
+                        hiddenFilesystem    = s.hiddenFilesystem.ordinal,
                         quickFormat         = true,
                         entropyBytes        = hiddenEntropyBuffer.toByteArray(),
                         progressListener    = null
@@ -491,6 +522,7 @@ class CreateContainerViewModel @Inject constructor(
                         hiddenPim           = s.hiddenPim,
                         hiddenAlgorithm     = s.hiddenAlgorithm.ordinal,
                         hiddenHashAlgorithm = s.hiddenHashAlgorithm.ordinal,
+                        hiddenFilesystem    = s.hiddenFilesystem.ordinal,
                         quickFormat         = true,
                         entropyBytes        = hiddenEntropyBuffer.toByteArray(),
                         progressListener    = null
@@ -514,7 +546,7 @@ class CreateContainerViewModel @Inject constructor(
                         isCreating       = false,
                         isHiddenCreated  = true,
                         creationProgress = 1f,
-                        currentStep      = 17
+                        currentStep      = STEP_CREATING_HIDDEN + 1
                     ) }
                 }
                 is CryptoResult.Failure -> _state.update { it.copy(

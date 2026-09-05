@@ -511,7 +511,39 @@ fun StepHiddenPassword(
     }
 }
 
-// ─── Step 14: Hidden Entropy ──────────────────────────────────────────────────
+// ─── Step 14: Hidden Filesystem ───────────────────────────────────────────────
+
+/**
+ * The hidden volume's filesystem, asked separately from the outer volume's - the two are
+ * independent, and VeraCrypt asks the same question twice for the same reason. The hidden
+ * area used to be formatted FAT whatever the outer volume was, which put a 4 GB ceiling on
+ * any file kept there.
+ */
+@Composable
+fun StepHiddenFilesystem(state: CreateContainerState, onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit) {
+    // The recommendation follows the HIDDEN volume's size, not the outer one's: this is a
+    // question about the volume being made now.
+    val recommended = recommendedFilesystemFor(state.hiddenSizeMb)
+
+    // Only until the user picks for themselves - the step is destroyed on the way to any
+    // other one and built again on the way back (same reason as on the outer step).
+    LaunchedEffect(recommended) {
+        if (!state.hiddenFilesystemChosen) onUpdate { copy(hiddenFilesystem = recommended) }
+    }
+
+    StepContent(
+        title    = stringResource(R.string.create_hidden_fs_title),
+        subtitle = stringResource(R.string.create_hidden_fs_subtitle)
+    ) {
+        FilesystemPicker(
+            selected    = state.hiddenFilesystem,
+            recommended = recommended,
+            onSelect    = { fs -> onUpdate { copy(hiddenFilesystem = fs, hiddenFilesystemChosen = true) } }
+        )
+    }
+}
+
+// ─── Step 15: Hidden Entropy ──────────────────────────────────────────────────
 
 private const val HIDDEN_ENTROPY_REQUIRED = 500
 private data class HiddenParticle(val offset: Offset, val birthMs: Long)
@@ -588,7 +620,7 @@ fun StepHiddenEntropy(state: CreateContainerState, onAddPoint: (Int, Int) -> Uni
     }
 }
 
-// ─── Step 15: Creating Hidden Volume ─────────────────────────────────────────
+// ─── Step 16: Creating Hidden Volume ─────────────────────────────────────────
 
 @Composable
 fun StepCreatingHidden(state: CreateContainerState) {
@@ -628,7 +660,7 @@ fun StepCreatingHidden(state: CreateContainerState) {
     }
 }
 
-// ─── Step 16: Hidden Volume Success ───────────────────────────────────────────
+// ─── Step 17: Hidden Volume Success ───────────────────────────────────────────
 
 @Composable
 fun StepSuccessHidden(state: CreateContainerState, onDone: () -> Unit, onOpenVault: () -> Unit) {

@@ -23,3 +23,7 @@ kf_pool_test.c
 test_xts.py
 vera_xts_test.py
 verify_keyfile.py
+
+# Python bytecode from the tools/ scripts
+__pycache__/
+*.pyc

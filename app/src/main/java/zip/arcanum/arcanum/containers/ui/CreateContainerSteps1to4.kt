@@ -59,14 +59,14 @@ import zip.arcanum.core.icons.ArcanumIcons
 // ─── Step 1: Volume Type ─────────────────────────────────────────────────────
 
 @Composable
-fun StepVolumeType(state: CreateContainerState, onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit) {
+fun StepVolumeType(state: CreateContainerState, onSelect: (VolumeType) -> Unit) {
     StepContent(title = stringResource(R.string.create_step1_title)) {
         SelectionCard(
             selected    = state.volumeType == VolumeType.STANDARD,
             icon        = ArcanumIcons.Encrypted,
             title       = stringResource(R.string.create_volume_standard),
             description = stringResource(R.string.create_volume_standard_desc),
-            onClick     = { onUpdate { copy(volumeType = VolumeType.STANDARD, totalSteps = 10) } }
+            onClick     = { onSelect(VolumeType.STANDARD) }
         )
         Spacer(Modifier.height(12.dp))
         SelectionCard(
@@ -74,7 +74,7 @@ fun StepVolumeType(state: CreateContainerState, onUpdate: (CreateContainerState.
             icon        = Icons.Outlined.VisibilityOff,
             title       = stringResource(R.string.create_volume_hidden),
             description = stringResource(R.string.create_volume_hidden_desc),
-            onClick     = { onUpdate { copy(volumeType = VolumeType.HIDDEN, totalSteps = 16) } }
+            onClick     = { onSelect(VolumeType.HIDDEN) }
         )
     }
 }

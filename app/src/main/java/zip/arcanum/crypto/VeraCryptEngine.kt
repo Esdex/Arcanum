@@ -291,6 +291,9 @@ class VeraCryptEngine @Inject constructor(
         hiddenPim: Int = 0,
         hiddenAlgorithm: Int = 0,
         hiddenHashAlgorithm: Int = 0,
+        /** 0 = FAT, 1 = exFAT, 2 = ext4, as for the outer volume. Its own choice, as in
+         *  VeraCrypt - it used to be FAT whatever the outer volume was. */
+        hiddenFilesystem: Int = 0,
         quickFormat: Boolean = true,
         entropyBytes: ByteArray = ByteArray(0),
         progressListener: CreationProgressListener? = null
@@ -300,7 +303,7 @@ class VeraCryptEngine @Inject constructor(
                 fd, hiddenSizeBytes,
                 outerBytes, outerKeyfileData.toTypedArray().ifEmpty { null }, outerPim,
                 hiddenBytes, hiddenKeyfileData.toTypedArray().ifEmpty { null }, hiddenPim,
-                hiddenAlgorithm, hiddenHashAlgorithm,
+                hiddenAlgorithm, hiddenHashAlgorithm, hiddenFilesystem,
                 quickFormat, entropyBytes, progressListener
             )
         }
@@ -327,6 +330,9 @@ class VeraCryptEngine @Inject constructor(
         hiddenPim: Int = 0,
         hiddenAlgorithm: Int = 0,
         hiddenHashAlgorithm: Int = 0,
+        /** 0 = FAT, 1 = exFAT, 2 = ext4, as for the outer volume. Its own choice, as in
+         *  VeraCrypt - it used to be FAT whatever the outer volume was. */
+        hiddenFilesystem: Int = 0,
         quickFormat: Boolean = true,
         entropyBytes: ByteArray = ByteArray(0),
         progressListener: CreationProgressListener? = null
@@ -336,7 +342,7 @@ class VeraCryptEngine @Inject constructor(
                 transport, deviceSize, hiddenSizeBytes,
                 outerBytes, outerKeyfileData.toTypedArray().ifEmpty { null }, outerPim,
                 hiddenBytes, hiddenKeyfileData.toTypedArray().ifEmpty { null }, hiddenPim,
-                hiddenAlgorithm, hiddenHashAlgorithm,
+                hiddenAlgorithm, hiddenHashAlgorithm, hiddenFilesystem,
                 quickFormat, entropyBytes, progressListener
             )
         }
@@ -359,6 +365,9 @@ class VeraCryptEngine @Inject constructor(
         hiddenPim: Int = 0,
         hiddenAlgorithm: Int = 0,
         hiddenHashAlgorithm: Int = 0,
+        /** 0 = FAT, 1 = exFAT, 2 = ext4, as for the outer volume. Its own choice, as in
+         *  VeraCrypt - it used to be FAT whatever the outer volume was. */
+        hiddenFilesystem: Int = 0,
         quickFormat: Boolean = true,
         entropyBytes: ByteArray = ByteArray(0),
         progressListener: CreationProgressListener? = null
@@ -368,7 +377,7 @@ class VeraCryptEngine @Inject constructor(
                 path, hiddenSizeBytes,
                 outerBytes, outerKeyfileData.toTypedArray().ifEmpty { null }, outerPim,
                 hiddenBytes, hiddenKeyfileData.toTypedArray().ifEmpty { null }, hiddenPim,
-                hiddenAlgorithm, hiddenHashAlgorithm,
+                hiddenAlgorithm, hiddenHashAlgorithm, hiddenFilesystem,
                 quickFormat, entropyBytes, progressListener
             )
         }
@@ -921,7 +930,7 @@ class VeraCryptEngine @Inject constructor(
         hiddenSizeBytes: Long,
         outerPassword: ByteArray, outerKeyfileData: Array<ByteArray>?, outerPim: Int,
         hiddenPassword: ByteArray, hiddenKeyfileData: Array<ByteArray>?, hiddenPim: Int,
-        hiddenAlgorithm: Int, hiddenHashAlgorithm: Int,
+        hiddenAlgorithm: Int, hiddenHashAlgorithm: Int, hiddenFilesystem: Int,
         quickFormat: Boolean, entropyBytes: ByteArray,
         progressListener: CreationProgressListener?
     ): Int
@@ -1064,6 +1073,7 @@ class VeraCryptEngine @Inject constructor(
         hiddenPim: Int,
         hiddenAlgorithm: Int,
         hiddenHashAlgorithm: Int,
+        hiddenFilesystem: Int,
         quickFormat: Boolean,
         entropyBytes: ByteArray,
         progressListener: CreationProgressListener?
@@ -1080,6 +1090,7 @@ class VeraCryptEngine @Inject constructor(
         hiddenPim: Int,
         hiddenAlgorithm: Int,
         hiddenHashAlgorithm: Int,
+        hiddenFilesystem: Int,
         quickFormat: Boolean,
         entropyBytes: ByteArray,
         progressListener: CreationProgressListener?
