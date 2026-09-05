@@ -249,9 +249,6 @@
     <string name="files_move_here">여기로 이동</string>
     <string name="files_copy_here">여기에 복사</string>
 
-    <plurals name="files_paste_clipboard">
-        <item quantity="other">붙여넣기 (%1$d개 항목)</item>
-    </plurals>
     <plurals name="files_delete_count">
         <item quantity="other">%1$d개 항목을 삭제하시겠습니까?</item>
     </plurals>

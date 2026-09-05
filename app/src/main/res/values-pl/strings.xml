@@ -264,12 +264,6 @@
     <string name="files_move_here">Przenieś tutaj</string>
     <string name="files_copy_here">Kopiuj tutaj</string>
 
-    <plurals name="files_paste_clipboard">
-        <item quantity="one">Wklej (%1$d element)</item>
-        <item quantity="few">Wklej (%1$d elementy)</item>
-        <item quantity="many">Wklej (%1$d elementów)</item>
-        <item quantity="other">Wklej (%1$d elementów)</item>
-    </plurals>
     <plurals name="files_delete_count">
         <item quantity="one">Usunąć %1$d element?</item>
         <item quantity="few">Usunąć %1$d elementy?</item>

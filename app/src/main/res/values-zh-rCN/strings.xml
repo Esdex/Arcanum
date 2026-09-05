@@ -249,9 +249,6 @@
     <string name="files_move_here">移动到此处</string>
     <string name="files_copy_here">复制到此处</string>
 
-    <plurals name="files_paste_clipboard">
-        <item quantity="other">粘贴（%1$d 个项目）</item>
-    </plurals>
     <plurals name="files_delete_count">
         <item quantity="other">删除 %1$d 个项目？</item>
     </plurals>

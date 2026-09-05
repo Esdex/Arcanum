@@ -254,10 +254,6 @@
     <string name="files_move_here">Sposta qui</string>
     <string name="files_copy_here">Copia qui</string>
 
-    <plurals name="files_paste_clipboard">
-        <item quantity="one">Incolla (%1$d elemento)</item>
-        <item quantity="other">Incolla (%1$d elementi)</item>
-    </plurals>
     <plurals name="files_delete_count">
         <item quantity="one">Eliminare %1$d elemento?</item>
         <item quantity="other">Eliminare %1$d elementi?</item>

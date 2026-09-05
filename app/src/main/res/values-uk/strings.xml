@@ -264,12 +264,6 @@
     <string name="files_move_here">Перемістити сюди</string>
     <string name="files_copy_here">Копіювати сюди</string>
 
-    <plurals name="files_paste_clipboard">
-        <item quantity="one">Вставити (%1$d елемент)</item>
-        <item quantity="few">Вставити (%1$d елементи)</item>
-        <item quantity="many">Вставити (%1$d елементів)</item>
-        <item quantity="other">Вставити (%1$d елемента)</item>
-    </plurals>
     <plurals name="files_delete_count">
         <item quantity="one">Видалити %1$d елемент?</item>
         <item quantity="few">Видалити %1$d елементи?</item>

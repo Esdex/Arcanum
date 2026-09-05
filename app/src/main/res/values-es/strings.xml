@@ -254,10 +254,6 @@
     <string name="files_move_here">Mover aquí</string>
     <string name="files_copy_here">Copiar aquí</string>
 
-    <plurals name="files_paste_clipboard">
-        <item quantity="one">Pegar (%1$d elemento)</item>
-        <item quantity="other">Pegar (%1$d elementos)</item>
-    </plurals>
     <plurals name="files_delete_count">
         <item quantity="one">¿Eliminar %1$d elemento?</item>
         <item quantity="other">¿Eliminar %1$d elementos?</item>

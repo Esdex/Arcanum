@@ -254,10 +254,6 @@
     <string name="files_move_here">Buraya taşı</string>
     <string name="files_copy_here">Buraya kopyala</string>
 
-    <plurals name="files_paste_clipboard">
-        <item quantity="one">Yapıştır (%1$d öğe)</item>
-        <item quantity="other">Yapıştır (%1$d öğe)</item>
-    </plurals>
     <plurals name="files_delete_count">
         <item quantity="one">%1$d öğe silinsin mi?</item>
         <item quantity="other">%1$d öğe silinsin mi?</item>

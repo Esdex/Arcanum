@@ -254,10 +254,6 @@
     <string name="files_move_here">Hierher verschieben</string>
     <string name="files_copy_here">Hierher kopieren</string>
 
-    <plurals name="files_paste_clipboard">
-        <item quantity="one">Einfügen (%1$d Element)</item>
-        <item quantity="other">Einfügen (%1$d Elemente)</item>
-    </plurals>
     <plurals name="files_delete_count">
         <item quantity="one">%1$d Element löschen?</item>
         <item quantity="other">%1$d Elemente löschen?</item>
