@@ -28,10 +28,11 @@ import java.io.File
  * a container (`TC_MIN_VOLUME_SIZE`) and 40 KB for a hidden volume. So volumes below ours
  * exist, and refusing to open them would be a compatibility break rather than a limit.
  *
- * Reading has a floor of its own, further down and not ours: FatFs will not recognise a FAT
+ * Reading used to have a floor of its own, further down and not ours: FatFs refused a FAT
  * volume of fewer than 128 sectors (ff.c, "Properness of volume size"), which is 64 KB of
- * data area. [theSmallestVolumesVeraCryptMakesDoNotOpen] is where that is measured; it
- * records where the limit is, not that it ought to stay there.
+ * data area - so the smallest volumes VeraCrypt makes could not be opened here at all. That
+ * number is a plausibility heuristic rather than a layout rule, and it is lowered to 16 in
+ * our copy of ff.c. These fixtures are what says so: the smallest of them is 72 sectors.
  *
  * The fixtures are made by VeraCrypt 1.26.29 and pushed to the app's own external files
  * directory (see HiddenProtectionTest for why that directory). Their size is the whole
@@ -89,34 +90,21 @@ class SmallVolumeCompatTest {
                 VeraCryptEngine.ERR_OK,
                 engine.writeFile(handle, "/hello.txt", MARKER.toByteArray(), 0L)
             )
-            val read = engine.readFile(handle, "/hello.txt", 0L, MARKER.length)
             runBlocking { engine.unmountContainer(handle) }
+
+            /* Read after a remount rather than from the same mount: what is being checked
+               is that the write reached the volume, not that FatFs remembers it. */
+            val back = runBlocking {
+                when (val r = engine.mountContainer(path = volume.absolutePath, password = PASSWORD)) {
+                    is CryptoResult.Success -> r.value
+                    is CryptoResult.Failure -> throw AssertionError("$name would not reopen: ${r.error}")
+                }
+            }
+            val read = engine.readFile(back, "/hello.txt", 0L, MARKER.length)
+            runBlocking { engine.unmountContainer(back) }
             assertEquals("$name did not give the file back", MARKER, read?.decodeToString())
         }
         assertEquals("volumes that would not open", emptyList<String>(), failures)
-    }
-
-    @Test
-    fun theSmallestVolumesVeraCryptMakesDoNotOpen() {
-        /* Measured, not assumed: 65536 bytes of data area opens, 65024 does not, and the
-           two fixtures differ by that one sector. The cause is FatFs's own check on the
-           volume's sector count, which happens after the header has been authenticated -
-           so this is a limit on what our FAT driver recognises, not on what the crypto
-           can reach. VeraCrypt's own smallest volume, 36 KB of data, is below it too. */
-        for (name in TOO_SMALL_TO_READ) {
-            val volume = File(dir, name)
-            assumeTrue("$name is not on the device", volume.isFile)
-            val opened = runBlocking {
-                engine.mountContainer(path = volume.absolutePath, password = PASSWORD)
-            }
-            if (opened is CryptoResult.Success) {
-                runBlocking { engine.unmountContainer(opened.value) }
-                throw AssertionError(
-                    "$name opened - FatFs's 128-sector floor has moved, so the note in " +
-                        "this class and in SmallVolumeCompatTest's other test needs redoing"
-                )
-            }
-        }
     }
 
     @Test
@@ -139,11 +127,15 @@ class SmallVolumeCompatTest {
     }
 
     private companion object {
-        /** Below the 5 MB we will make, above the 128 sectors FatFs will read. */
-        val OPENABLE = listOf("vc-b327680.hc", "vc-small-1m.hc", "vc-small-4m.hc")
-
-        /** Below FatFs's floor as well: 127 sectors of data, and VeraCrypt's own minimum. */
-        val TOO_SMALL_TO_READ = listOf("vc-b327168.hc", "vc-small-292k.hc")
+        /**
+         * All below the 5 MB we will make. In order: VeraCrypt's own smallest container
+         * (36 KB of data, 72 sectors), then the two that straddle the 128-sector line
+         * FatFs used to insist on, then two ordinary small ones.
+         */
+        val OPENABLE = listOf(
+            "vc-small-292k.hc", "vc-b327168.hc", "vc-b327680.hc",
+            "vc-small-1m.hc", "vc-small-4m.hc"
+        )
         const val PASSWORD = "test1234"
         const val MARKER = "a volume smaller than we will make"
     }

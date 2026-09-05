@@ -3392,7 +3392,21 @@ static UINT check_fs (	/* 0:FAT/FAT32 VBR, 1:exFAT VBR, 2:Not FAT and valid BS, 
 			&& ld_16(fs->win + BPB_RsvdSecCnt) != 0		/* Properness of number of reserved sectors (MNBZ) */
 			&& (UINT)fs->win[BPB_NumFATs] - 1 <= 1		/* Properness of number of FATs (1 or 2) */
 			&& ld_16(fs->win + BPB_RootEntCnt) != 0		/* Properness of root dir size (MNBZ) */
-			&& (ld_16(fs->win + BPB_TotSec16) >= 128 || ld_32(fs->win + BPB_TotSec32) >= 0x10000)	/* Properness of volume size (>=128) */
+			/* Arcanum: 128 sectors here was refusing volumes VeraCrypt itself makes.
+			 * Its smallest container is 292 KB, of which 36 KB is the filesystem -
+			 * 72 sectors - and its smallest hidden volume is 40 KB; both are legal
+			 * FAT12 and both were answered with "not a filesystem". The number is a
+			 * plausibility heuristic, not a layout rule: everything a FAT volume
+			 * actually needs is checked by the lines around this one and by the
+			 * geometry mount_volume computes afterwards. Lowered to 16, which is below
+			 * any layout that can hold a reserved sector, two FATs, a root directory
+			 * and one cluster, and kept as a guard against a sector of noise passing
+			 * every other test. Nothing reaches here unauthenticated in Arcanum: the
+			 * volume header has been decrypted and its CRCs checked first, and exFAT
+			 * and ext4 are recognised by their own signatures. f_mkfs still refuses to
+			 * CREATE below 128 sectors, which is untouched - we do not make volumes
+			 * that small either (VC_MIN_VOLUME_SIZE). */
+			&& (ld_16(fs->win + BPB_TotSec16) >= 16 || ld_32(fs->win + BPB_TotSec32) >= 0x10000)	/* Properness of volume size */
 			&& ld_16(fs->win + BPB_FATSz16) != 0) {		/* Properness of FAT size (MNBZ) */
 				return 0;	/* It can be presumed an FAT VBR */
 		}
