@@ -15,7 +15,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -40,6 +42,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -135,6 +138,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -1888,6 +1892,23 @@ private fun DestinationPickerSheetContent(
     var browsePath        by remember { mutableStateOf("/") }
     var browseDirs        by remember { mutableStateOf<List<NativeFileInfo>>(emptyList()) }
     var isLoadingDirs     by remember { mutableStateOf(false) }
+    var filter            by remember { mutableStateOf("") }
+    var searchOpen        by remember { mutableStateOf(false) }
+    val searchFocus       = remember { FocusRequester() }
+
+    /*
+     * The list has to be BOUNDED, and this is the whole reason the sheet was unusable in a
+     * folder with many subfolders: AppSheet lays its content out in a plain Column and adds
+     * no scrolling of its own, so the rows simply ran past the bottom of the screen - and
+     * the confirm button, which sits under them, went with them. Nothing could be moved
+     * into such a folder at all (#179).
+     *
+     * A fraction of the screen rather than weight(): the sheet's content is measured with
+     * unbounded height, so weight has nothing to divide. What is left over is for the
+     * header, the filter field and the button, which must stay reachable with the keyboard
+     * up as well.
+     */
+    val listMaxHeight = (LocalConfiguration.current.screenHeightDp * 0.45f).dp
 
     fun loadDirs(container: Container, path: String) {
         isLoadingDirs = true
@@ -1923,7 +1944,8 @@ private fun DestinationPickerSheetContent(
                     Text(stringResource(R.string.files_no_mounted_vaults), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
-                sortedContainers.forEach { c ->
+                LazyColumn(modifier = Modifier.heightIn(max = listMaxHeight)) {
+                items(sortedContainers, key = { it.id }) { c ->
                     val isCurrent   = c.id == currentContainerId
                     val displayName = if (isCurrent) stringResource(R.string.files_this_vault) else c.name
                     val iconTint    = if (isCurrent) Color(0xFF16A34A) else Color(0xFFF59E0B)
@@ -1959,6 +1981,7 @@ private fun DestinationPickerSheetContent(
                         color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                     )
                 }
+                }
             }
         } else {
             // ── Directory browser ─────────────────────────────────────────
@@ -1966,19 +1989,70 @@ private fun DestinationPickerSheetContent(
                inside the only mounted vault, nothing has tapped anything, so the root has
                to be asked for here. */
             LaunchedEffect(container) { loadDirs(container, browsePath) }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (sortedContainers.size > 1) {
-                    IconButton(onClick = { selectedContainer = null }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack,
-                             contentDescription = stringResource(R.string.files_cd_back_to_vaults))
+
+            /*
+             * The vault's name with a magnifier beside it, and the magnifier opens into the
+             * field rather than sitting above the list as a permanent row: the sheet is short,
+             * and a field that is only there when it is wanted leaves that space to the folders.
+             * The field collapses again on the cross, and on entering a folder - having found
+             * what you were looking for, the query has done its work.
+             */
+            AnimatedContent(
+                targetState    = searchOpen,
+                transitionSpec = {
+                    /* The two directions are not mirror images: the field opens out from
+                     * the left edge and folds back into it, while the name only fades.
+                     * Making the name expand as well would read as two things moving at once. */
+                    if (targetState) {
+                        (fadeIn(tween(120)) + expandHorizontally(expandFrom = Alignment.Start)) togetherWith
+                            fadeOut(tween(90))
+                    } else {
+                        fadeIn(tween(120)) togetherWith
+                            (fadeOut(tween(90)) + shrinkHorizontally(shrinkTowards = Alignment.Start))
+                    }
+                },
+                label = "dest_search"
+            ) { open ->
+                if (open) {
+                    OutlinedTextField(
+                        value         = filter,
+                        onValueChange = { filter = it },
+                        singleLine    = true,
+                        leadingIcon   = { Icon(Icons.Outlined.Search, null, modifier = Modifier.size(20.dp)) },
+                        trailingIcon  = {
+                            IconButton(onClick = { filter = ""; searchOpen = false }) {
+                                Icon(Icons.Outlined.Close,
+                                     contentDescription = stringResource(R.string.files_search_close))
+                            }
+                        },
+                        placeholder   = { Text(stringResource(R.string.files_dest_filter_placeholder)) },
+                        shape         = RoundedCornerShape(50),
+                        modifier      = Modifier.fillMaxWidth().focusRequester(searchFocus)
+                    )
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (sortedContainers.size > 1) {
+                            IconButton(onClick = { selectedContainer = null; filter = "" }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack,
+                                     contentDescription = stringResource(R.string.files_cd_back_to_vaults))
+                            }
+                        }
+                        Text(
+                            container.name,
+                            style      = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier   = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { searchOpen = true }) {
+                            Icon(Icons.Outlined.Search,
+                                 contentDescription = stringResource(R.string.files_dest_filter_placeholder))
+                        }
                     }
                 }
-                Text(
-                    container.name,
-                    style      = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier   = Modifier.weight(1f)
-                )
+            }
+            /* Opening it without the keyboard would mean a second tap to type. */
+            LaunchedEffect(searchOpen) {
+                if (searchOpen) runCatching { searchFocus.requestFocus() }
             }
             if (browsePath != "/") {
                 Text(
@@ -1990,31 +2064,16 @@ private fun DestinationPickerSheetContent(
             }
             HorizontalDivider()
 
-            if (browsePath != "/") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            val parent = browsePath.substringBeforeLast("/").ifEmpty { "/" }
-                            browsePath = parent
-                            loadDirs(container, parent)
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack, null,
-                        modifier = Modifier.size(20.dp),
-                        tint     = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text("..", style = MaterialTheme.typography.bodyLarge,
-                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                HorizontalDivider(
-                    thickness = 0.5.dp,
-                    color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
+            /* Filters the folders of THIS level by name, which is what the file manager's
+             * own search does to a listing (#179). It is not a search of the vault: nothing
+             * here walks the tree. Both the query and the open field are dropped on every
+             * move between folders - carrying the query along would open the next folder
+             * already looking empty, and the field has served its purpose by then. */
+            LaunchedEffect(browsePath) { filter = ""; searchOpen = false }
+
+            val shownDirs = remember(browseDirs, filter) {
+                if (filter.isBlank()) browseDirs
+                else browseDirs.filter { it.name.contains(filter, ignoreCase = true) }
             }
 
             if (isLoadingDirs) {
@@ -2026,33 +2085,76 @@ private fun DestinationPickerSheetContent(
                 }
             }
 
-            browseDirs.forEach { dir ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            val newPath = if (browsePath == "/") "/${dir.name}" else "$browsePath/${dir.name}"
-                            browsePath = newPath
-                            loadDirs(container, newPath)
-                        }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Outlined.Folder, null,
-                        tint     = Color(0xFFF59E0B),
-                        modifier = Modifier.size(22.dp)
+            LazyColumn(modifier = Modifier.heightIn(max = listMaxHeight)) {
+                /* The way up is not a folder and is never filtered away: it is how you leave
+                 * a folder whose children do not match. */
+                if (browsePath != "/") item("..") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val parent = browsePath.substringBeforeLast("/").ifEmpty { "/" }
+                                browsePath = parent
+                                loadDirs(container, parent)
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack, null,
+                            modifier = Modifier.size(20.dp),
+                            tint     = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text("..", style = MaterialTheme.typography.bodyLarge,
+                             color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                     )
-                    Spacer(Modifier.width(12.dp))
-                    Text(dir.name, style = MaterialTheme.typography.bodyLarge,
-                         modifier = Modifier.weight(1f))
-                    Icon(Icons.Outlined.ChevronRight, null,
-                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                HorizontalDivider(
-                    thickness = 0.5.dp,
-                    color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
+
+                items(shownDirs, key = { it.name }) { dir ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val newPath = if (browsePath == "/") "/${dir.name}" else "$browsePath/${dir.name}"
+                                browsePath = newPath
+                                loadDirs(container, newPath)
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Outlined.Folder, null,
+                            tint     = Color(0xFFF59E0B),
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(dir.name, style = MaterialTheme.typography.bodyLarge,
+                             modifier = Modifier.weight(1f))
+                        Icon(Icons.Outlined.ChevronRight, null,
+                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
+                }
+
+                /* Without this a filter that matches nothing looks like a folder with
+                 * nothing in it, and the difference matters here. */
+                if (shownDirs.isEmpty() && !isLoadingDirs && filter.isNotBlank()) item("empty") {
+                    Text(
+                        stringResource(R.string.files_dest_filter_empty),
+                        style    = MaterialTheme.typography.bodyMedium,
+                        color    = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
             }
 
             Spacer(Modifier.height(16.dp))

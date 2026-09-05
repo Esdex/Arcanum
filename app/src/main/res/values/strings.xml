@@ -325,6 +325,8 @@
 
     <!-- File manager screen -->
     <string name="files_title">Files</string>
+    <string name="files_dest_filter_placeholder">Search folders</string>
+    <string name="files_dest_filter_empty">No folders match</string>
     <string name="files_search_placeholder">Search files…</string>
     <string name="files_search_close">Close search</string>
     <string name="files_search_open">Search</string>
