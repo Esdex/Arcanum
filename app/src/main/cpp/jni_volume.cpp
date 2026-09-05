@@ -535,6 +535,15 @@ static jint do_create_container(
     UniqueFd fd(fdIn);
     const BlockBackend vol = beIn ? *beIn : fd_be(fd.get());
 
+    /* Refused here rather than in each of the three entry points, because this is where
+     * the formatting happens - see VC_MIN_VOLUME_SIZE for why there is a floor at all.
+     * Nothing before this point has written anything, so there is no cleanup to do. */
+    if (sizeBytes < (jlong)VC_MIN_VOLUME_SIZE) {
+        LOGE("[%s] %lld bytes is below the smallest volume that can be formatted (%llu)",
+             logTag, (long long)sizeBytes, (unsigned long long)VC_MIN_VOLUME_SIZE);
+        return ERR_NO_SPACE;
+    }
+
     /* fail_cleanup() only performs the semantic action (unlink the freshly
      * created file / truncate the SAF file back to 0) — it does NOT close
      * fd anymore, since UniqueFd is the single owner of that close().
@@ -1598,7 +1607,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolume(
         jobject progressListener)
 {
     if (hiddenAlgorithm < 0 || hiddenAlgorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
-    if (hiddenSizeBytes < (jlong)(4 * 1024 * 1024)) return ERR_NO_SPACE;
+    if (hiddenSizeBytes < (jlong)VC_MIN_VOLUME_SIZE) return ERR_NO_SPACE;
 
     std::string path = jstring_to_string(env, jPath);
     SecureBuffer<VC_MAX_PWD_LEN> outerPwdBuf;
@@ -1644,7 +1653,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeFd(
         jobject progressListener)
 {
     if (hiddenAlgorithm < 0 || hiddenAlgorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
-    if (hiddenSizeBytes < (jlong)(4 * 1024 * 1024)) return ERR_NO_SPACE;
+    if (hiddenSizeBytes < (jlong)VC_MIN_VOLUME_SIZE) return ERR_NO_SPACE;
 
     SecureBuffer<VC_MAX_PWD_LEN> outerPwdBuf;
     int outerPwdLen = get_password_bytes(env, jOuterPassword, outerPwdBuf);
@@ -2501,7 +2510,7 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeCreateHiddenVolumeUsb(
 {
     if (!transport || deviceSize <= 0) return ERR_FILE;
     if (hiddenAlgorithm < 0 || hiddenAlgorithm >= NUM_ALGORITHMS) return ERR_UNSUPPORTED;
-    if (hiddenSizeBytes < (jlong)(4 * 1024 * 1024)) return ERR_NO_SPACE;
+    if (hiddenSizeBytes < (jlong)VC_MIN_VOLUME_SIZE) return ERR_NO_SPACE;
 
     SecureBuffer<VC_MAX_PWD_LEN> outerPwdBuf;
     int outerPwdLen = get_password_bytes(env, jOuterPassword, outerPwdBuf);

@@ -474,7 +474,7 @@ private fun isStepValid(state: CreateContainerState, availableSpaceMb: Long = Lo
             }
     3    -> state.usbDataSizeBytes > 0L   // a partition, or the whole drive, is chosen
     4    -> true
-    5    -> state.sizeMb > 0L && state.sizeMb <= availableSpaceMb
+    5    -> state.sizeMb >= MIN_VOLUME_MB && state.sizeMb <= availableSpaceMb
     6    -> state.password.length >= 4 && state.password == state.confirmPassword &&
             !(state.pim in 1 until minPimFor(state) && state.password.length < 20)
     7    -> true
@@ -482,7 +482,7 @@ private fun isStepValid(state: CreateContainerState, availableSpaceMb: Long = Lo
     9    -> state.entropyPoints >= 500
     11   -> true   // HiddenInfo — always can proceed
     12   -> true   // HiddenAlgorithm
-    13   -> state.hiddenSizeMb in 4L..(state.sizeMb - 4L)
+    13   -> state.hiddenSizeMb in MIN_VOLUME_MB..(state.sizeMb - 4L)
     14   -> state.hiddenPassword.length >= 4 &&
             state.hiddenPassword == state.hiddenConfirmPassword &&
             state.hiddenPassword != state.password &&

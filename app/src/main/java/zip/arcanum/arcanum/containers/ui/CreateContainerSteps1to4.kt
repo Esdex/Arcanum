@@ -374,6 +374,7 @@ fun StepVolumeSize(
     val hasKnownSpace = availableSpaceMb != Long.MAX_VALUE
     val availableGb   = if (hasKnownSpace) availableSpaceMb / 1024f else 0f
     val notEnoughSpace = hasKnownSpace && state.sizeMb > 0L && state.sizeMb > availableSpaceMb
+    val tooSmall = state.sizeMb in 1 until MIN_VOLUME_MB
 
     val quickSecs = (state.sizeMb / 500.0).toLong().coerceAtLeast(1)
     val secureSecs = (state.sizeMb / 80.0).toLong().coerceAtLeast(1)
@@ -474,6 +475,14 @@ fun StepVolumeSize(
             Spacer(Modifier.height(4.dp))
             Text(
                 stringResource(R.string.create_size_not_enough_space),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+        if (tooSmall) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.create_size_min_error, MIN_VOLUME_MB),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error
             )

@@ -57,6 +57,21 @@ extern "C" {
 #define VC_DATA_OFFSET           131072ULL
 #define VC_BACKUP_AREA_SIZE      131072ULL
 #define VC_HIDDEN_HEADER_OFFSET  65536ULL   /* hidden primary header offset within first VC_BACKUP_AREA_SIZE block */
+/*
+ * The smallest volume this will format, data area only. Desktop VeraCrypt goes far lower -
+ * its floor is 292 KB for a container and 40 KB for a hidden volume, and it writes FAT12
+ * down there. FatFs will not: f_mkfs fixes the FAT type on a first estimate of the cluster
+ * count, and a volume of about 4 MB estimates just above the FAT16 boundary and ends just
+ * below it once the reserved sector, the two tables and the root directory are taken out.
+ * With the cluster size passed explicitly - which it is, to match VeraCrypt's ladder (#115)
+ * - it cannot step down to FAT12 and gives up. Measured on a device: 4096 KB fails, 4160 KB
+ * and everything above works. The floor is 5 MB rather than 4160 KB because a round number
+ * is easier to state in a wizard than a boundary.
+ *
+ * Creating only. Volumes below this - VeraCrypt's own, or ours from before - mount and are
+ * written to exactly as any other; see SmallVolumeCompatTest.
+ */
+#define VC_MIN_VOLUME_SIZE       (5ULL * 1024 * 1024)
 #define VC_HEADER_SALT_SIZE      64
 #define VC_HEADER_BODY_OFFSET    64
 #define VC_HEADER_BODY_SIZE      448

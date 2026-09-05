@@ -198,8 +198,8 @@ private val hiddenPresets = listOf(50L, 100L, 250L, 512L, 1024L)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StepHiddenSize(state: CreateContainerState, onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit) {
-    val maxHiddenMb = (state.sizeMb - 4L).coerceAtLeast(4L)
-    val minHiddenMb = 4L
+    val maxHiddenMb = (state.sizeMb - 4L).coerceAtLeast(MIN_VOLUME_MB)
+    val minHiddenMb = MIN_VOLUME_MB
     var customInput by remember { mutableStateOf(if (state.hiddenSizeMb > 0L) state.hiddenSizeMb.toString() else "") }
     var unitGb      by remember { mutableStateOf(false) }
 

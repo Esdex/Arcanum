@@ -52,6 +52,13 @@ const val USB_STEP = 3
 const val STEP_CREATING = 10
 const val STEP_CREATING_HIDDEN = 17
 
+/**
+ * The smallest volume that can be made, outer or hidden, in megabytes - the wizard's half
+ * of the rule the native side enforces at VC_MIN_VOLUME_SIZE. It is a formatting limit, not
+ * a reading one: a smaller volume made elsewhere opens and is written to normally.
+ */
+const val MIN_VOLUME_MB = 5L
+
 private val CreateContainerState.usbStepShown: Boolean
     get() = location == StorageLocation.USB_DRIVE
 

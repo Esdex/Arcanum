@@ -872,6 +872,9 @@
     <string name="create_hidden_size_title">Hidden Volume Size</string>
     <string name="create_hidden_size_constraints">Hidden volume must be between %1$d MB and %2$d MB (outer: %3$d MB, 4 MB reserved for outer data)</string>
     <string name="create_hidden_size_min_error">Minimum size is %1$d MB</string>
+    <!-- The outer volume's floor says the same thing, and this way it says it in every
+         language the hidden one already does rather than in English alone. -->
+    <string name="create_size_min_error">@string/create_hidden_size_min_error</string>
     <string name="create_hidden_size_max_error">Maximum size is %1$d MB</string>
     <string name="create_hidden_pwd_title">Hidden Volume Password</string>
     <string name="create_hidden_pwd_subtitle">Must be different from your outer volume password</string>
