@@ -28,11 +28,9 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -62,6 +60,7 @@ import zip.arcanum.core.components.LocalHazeState
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import androidx.compose.runtime.CompositionLocalProvider
+import zip.arcanum.core.components.BackButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -188,8 +187,7 @@ fun CreateContainerScreen(
                             .padding(horizontal = 4.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = {
+                        BackButton(onClick = {
                                 when {
                                     state.currentStep in 11..16 &&
                                     state.volumeType == VolumeType.HIDDEN &&
@@ -199,10 +197,7 @@ fun CreateContainerScreen(
                                     state.currentStep > 1 -> viewModel.prevStep()
                                     else                  -> onBack()
                                 }
-                            }
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                        }
+                            })
                         Spacer(Modifier.width(4.dp))
                         Text(
                             text       = stringResource(R.string.create_title),

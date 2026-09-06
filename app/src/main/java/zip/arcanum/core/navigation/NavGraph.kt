@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Eject
@@ -83,6 +82,7 @@ import zip.arcanum.core.navigation_components.FloatingBottomBar
 import zip.arcanum.core.theme.LocalAmoledMode
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
+import zip.arcanum.core.components.BackButton
 
 private val containerTabs = listOf(
     BottomNavItem.ContainerFiles,
@@ -360,9 +360,7 @@ private fun GalleryTopBar(
         colors         = colors,
         scrollBehavior = scrollBehavior,
         navigationIcon = {
-            IconButton(onClick = if (selectionMode) onClearSelection else onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-            }
+            BackButton(onClick = if (selectionMode) onClearSelection else onBack)
         },
         title = {
             AnimatedContent(
@@ -469,7 +467,5 @@ private fun GalleryTopBar(
 
 @Composable
 private fun BackIconButton(onClick: () -> Unit) {
-    IconButton(onClick = onClick) {
-        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-    }
+    BackButton(onClick = onClick)
 }

@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Crop
@@ -88,6 +87,7 @@ import zip.arcanum.arcanum.gallery.editor.model.CropAspectRatio
 import zip.arcanum.arcanum.gallery.editor.model.DrawMode
 import zip.arcanum.arcanum.gallery.editor.model.EditorTab
 import zip.arcanum.arcanum.gallery.editor.model.PathProperties
+import zip.arcanum.core.components.BackButton
 
 @Composable
 fun PhotoEditorScreen(
@@ -136,9 +136,7 @@ fun PhotoEditorScreen(
                         .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { onBack(null) }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
-                    }
+                    BackButton(onClick = { onBack(null) }, overMedia = true)
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = { viewModel.undo() }, enabled = canUndo) {
                         Icon(Icons.AutoMirrored.Filled.Undo, "Undo",

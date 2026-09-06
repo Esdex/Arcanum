@@ -41,7 +41,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
@@ -118,6 +117,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import zip.arcanum.core.components.BackButton
 
 private class KeyfileEntry(val content: ByteArray, val displayName: String, val uriString: String) {
     fun zero() = content.fill(0)
@@ -583,16 +583,14 @@ private fun MountScreenContent(
                 TopAppBar(
                     title = { Text(stringResource(R.string.mount_screen_title), fontWeight = FontWeight.SemiBold) },
                     navigationIcon = {
-                        IconButton(onClick = {
+                        BackButton(onClick = {
                             keyfiles.forEach { it.zero() }
                             hiddenKeyfiles.forEach { it.zero() }
                             keyfiles       = emptyList()
                             hiddenKeyfiles = emptyList()
                             viewModel.resetMountState()
                             onBack()
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                        }
+                        })
                     },
                 )
             }

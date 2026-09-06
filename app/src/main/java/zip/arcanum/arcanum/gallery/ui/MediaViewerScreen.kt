@@ -77,7 +77,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForwardIos
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.Delete
@@ -182,6 +181,7 @@ import java.time.ZoneId
 import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.abs
+import zip.arcanum.core.components.BackButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -682,9 +682,7 @@ fun MediaViewerScreen(
                             .padding(horizontal = 4.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.viewer_cd_back), tint = Color.White)
-                        }
+                        BackButton(onClick = onBack, overMedia = true, contentDescription = stringResource(R.string.viewer_cd_back))
                         Text(
                             text     = uiState.currentFile?.fileName ?: "",
                             style    = MaterialTheme.typography.bodyMedium,

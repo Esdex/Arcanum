@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.Warning
@@ -81,6 +80,7 @@ import zip.arcanum.crypto.VeraCryptEngine
 import kotlin.math.roundToInt
 import zip.arcanum.core.components.OperationSuccess
 import zip.arcanum.core.components.OperationLoading
+import zip.arcanum.core.components.BackButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,14 +117,12 @@ fun GenerateKeyfileScreen(
                         modifier          = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = {
+                        BackButton(onClick = {
                             when {
                                 state.currentStep > 1 && !state.isSuccess && state.error == null -> viewModel.prevStep()
                                 else -> onBack()
                             }
-                        }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                        }
+                        })
                         Spacer(Modifier.width(4.dp))
                         Text(
                             text       = stringResource(R.string.genkeyfile_title),

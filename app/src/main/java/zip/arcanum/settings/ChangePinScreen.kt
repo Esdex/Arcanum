@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
@@ -57,6 +56,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.delay
 import zip.arcanum.R
+import zip.arcanum.core.components.BackButton
 
 @Composable
 fun ChangePinScreen(
@@ -194,13 +194,7 @@ private fun ChangePinEntry(
                 .padding(horizontal = 4.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.common_back),
-                    tint               = MaterialTheme.colorScheme.onBackground
-                )
-            }
+            BackButton(onClick = onBack)
             Text(
                 text      = stringResource(R.string.settings_security_change_pin),
                 style     = MaterialTheme.typography.titleMedium,

@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Repeat
@@ -98,6 +97,7 @@ import zip.arcanum.R
 import zip.arcanum.arcanum.gallery.EncryptedDataSourceFactory
 import zip.arcanum.arcanum.gallery.domain.AudioMetadata
 import kotlin.random.Random
+import zip.arcanum.core.components.BackButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -171,13 +171,7 @@ fun AudioPlayerDirectScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.common_back),
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
-                }
+                BackButton(onClick = onBack)
                 Text(
                     stringResource(R.string.audio_now_playing),
                     style = MaterialTheme.typography.labelMedium,
@@ -570,19 +564,11 @@ fun AudioPlayerScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        IconButton(
-            onClick  = onBack,
+        BackButton(onClick = onBack,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .statusBarsPadding()
-                .padding(4.dp)
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                stringResource(R.string.common_back),
-                tint = MaterialTheme.colorScheme.onBackground
-            )
-        }
+                .padding(4.dp))
 
         val currentFile = file
         if (currentFile == null || handle == null) {

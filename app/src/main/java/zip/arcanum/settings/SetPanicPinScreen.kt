@@ -32,7 +32,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.outlined.Warning
 import com.airbnb.lottie.compose.LottieAnimation
@@ -65,6 +64,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import zip.arcanum.core.components.BackButton
 
 @Composable
 fun SetPanicPinScreen(
@@ -236,13 +236,7 @@ private fun SetPanicPinEntry(
                 .padding(horizontal = 4.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.common_back),
-                    tint               = MaterialTheme.colorScheme.onBackground
-                )
-            }
+            BackButton(onClick = onBack)
             Text(
                 text       = stringResource(R.string.panic_pin_title),
                 style      = MaterialTheme.typography.titleMedium,

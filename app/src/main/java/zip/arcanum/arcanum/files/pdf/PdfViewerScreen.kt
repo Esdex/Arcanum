@@ -27,10 +27,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -65,6 +63,7 @@ import zip.arcanum.R
 import kotlinx.coroutines.launch
 import zip.arcanum.core.components.EmptyStateView
 import kotlin.math.roundToInt
+import zip.arcanum.core.components.BackButton
 
 /**
  * Reading a PDF without letting it out of the vault (#137).
@@ -127,13 +126,7 @@ fun PdfViewerScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.common_back),
-                    tint = MaterialTheme.colorScheme.onBackground
-                )
-            }
+            BackButton(onClick = onBack)
             Text(
                 text     = state.name,
                 style    = MaterialTheme.typography.titleMedium,

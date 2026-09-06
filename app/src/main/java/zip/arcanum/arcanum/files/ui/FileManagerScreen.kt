@@ -174,6 +174,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+import zip.arcanum.core.components.BackButton
 
 private val MEDIA_EXTENSIONS = setOf(
     "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif",
@@ -1005,9 +1006,7 @@ private fun FileManagerTopBar(
         colors       = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                        else TopAppBarDefaults.topAppBarColors(),
         navigationIcon = {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-            }
+            BackButton(onClick = onBack)
         },
         title = {
             if (isSearchActive) {

@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 
 import androidx.compose.material.icons.outlined.Close
 
@@ -93,6 +92,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import zip.arcanum.core.components.BackButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -183,17 +183,13 @@ fun ChangePasswordScreen(
                             .padding(horizontal = 4.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = {
+                        BackButton(onClick = {
                                 when {
                                     state.currentStep > 1 && !state.isRunning -> viewModel.prevStep()
                                     state.currentStep == 1                    -> onBack()
                                     state.isSuccess || state.error != null    -> onBack()
                                 }
-                            }
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                        }
+                            })
                         Spacer(Modifier.width(4.dp))
                         Text(
                             text       = stringResource(R.string.chpwd_title),

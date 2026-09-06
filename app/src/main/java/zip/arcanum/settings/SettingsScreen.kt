@@ -22,7 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -176,6 +175,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.core.os.LocaleListCompat
+import zip.arcanum.core.components.BackButton
 
 private data class AppLanguage(val tag: String, val nativeName: String)
 
@@ -335,9 +335,7 @@ private fun MainSettingsScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
+                    BackButton(onClick = onBack)
                 }
             )
         }
@@ -550,9 +548,7 @@ internal fun SubScreenScaffold(
                 TopAppBar(
                     title          = { Text(title) },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                        }
+                        BackButton(onClick = onBack)
                     },
                     colors   = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                                else TopAppBarDefaults.topAppBarColors(),
@@ -1488,9 +1484,7 @@ private fun AboutSubScreen(
             TopAppBar(
                 title          = { Text(stringResource(R.string.settings_about_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
+                    BackButton(onClick = onBack)
                 },
                 colors   = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                            else TopAppBarDefaults.topAppBarColors(),
@@ -2030,9 +2024,7 @@ private fun DebugSubScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.settings_debug_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
-                    }
+                    BackButton(onClick = onBack)
                 },
                 actions = {
                     if (debugMode) {
