@@ -64,6 +64,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import zip.arcanum.core.components.SettingsRow
 import zip.arcanum.core.components.SettingsSwitch
 import androidx.compose.material3.Slider
+import zip.arcanum.core.components.SettingsGroup
+import zip.arcanum.core.components.GroupedRow
+import zip.arcanum.core.components.GroupedSwitch
+import zip.arcanum.core.components.GroupedBox
 
 // Settings / Security: the PIN, biometrics, auto-lock, screenshots and the disguise.
 
@@ -95,116 +99,151 @@ internal fun SecuritySubScreen(
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding(), bottom = innerPadding.calculateBottomPadding())
                 .verticalScroll(rememberScrollState())
-                .padding(vertical = 8.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            SubScreenGroup {
-                SettingsRow(
-                    title   = stringResource(R.string.settings_security_change_pin),
-                    onClick = onChangePin
-                )
-                SettingsSwitch(
-                    title           = stringResource(R.string.settings_security_auto_lock),
-                    subtitle        = stringResource(R.string.settings_security_auto_lock_desc),
-                    checked         = autoLockEnabled,
-                    onCheckedChange = onAutoLockChange
-                )
-                AnimatedVisibility(visible = autoLockEnabled) {
-                    val delayLabels = listOf(
-                        stringResource(R.string.settings_auto_lock_immediately),
-                        "30 ${stringResource(R.string.settings_auto_lock_seconds)}",
-                        "1 ${stringResource(R.string.settings_auto_lock_minute)}",
-                        "2 ${stringResource(R.string.settings_auto_lock_minutes)}",
-                        "5 ${stringResource(R.string.settings_auto_lock_minutes)}",
-                        "10 ${stringResource(R.string.settings_auto_lock_minutes)}",
-                        "30 ${stringResource(R.string.settings_auto_lock_minutes)}",
-                        "1 ${stringResource(R.string.settings_auto_lock_hour)}"
+            // ── Getting in ───────────────────────────────────────────────
+            SettingsGroup(title = stringResource(R.string.settings_security_group_unlock)) {
+                row { shape ->
+                    GroupedRow(
+                        shape   = shape,
+                        title   = stringResource(R.string.settings_security_change_pin),
+                        onClick = onChangePin
                     )
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp)
-                    ) {
-                        Row(
-                            modifier              = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment     = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text  = stringResource(R.string.settings_auto_lock_delay),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                text  = delayLabels[autoLockDelayIndex],
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
+                }
+                row { shape ->
+                    GroupedSwitch(
+                        shape           = shape,
+                        title           = stringResource(R.string.settings_security_auto_lock),
+                        subtitle        = stringResource(R.string.settings_security_auto_lock_desc),
+                        checked         = autoLockEnabled,
+                        onCheckedChange = onAutoLockChange
+                    )
+                }
+                // The delay and what auto-lock does to a mounted vault only exist while it is
+                // on, so they are absent rather than greyed - a group counts the rows it has.
+                if (autoLockEnabled) {
+                    row { shape ->
+                        val delayLabels = listOf(
+                            stringResource(R.string.settings_auto_lock_immediately),
+                            "30 ${stringResource(R.string.settings_auto_lock_seconds)}",
+                            "1 ${stringResource(R.string.settings_auto_lock_minute)}",
+                            "2 ${stringResource(R.string.settings_auto_lock_minutes)}",
+                            "5 ${stringResource(R.string.settings_auto_lock_minutes)}",
+                            "10 ${stringResource(R.string.settings_auto_lock_minutes)}",
+                            "30 ${stringResource(R.string.settings_auto_lock_minutes)}",
+                            "1 ${stringResource(R.string.settings_auto_lock_hour)}"
+                        )
+                        GroupedBox(shape) {
+                            Row(
+                                modifier              = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment     = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text  = stringResource(R.string.settings_auto_lock_delay),
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    text  = delayLabels[autoLockDelayIndex],
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Slider(
+                                value         = autoLockDelayIndex.toFloat(),
+                                onValueChange = { onAutoLockDelayChange(it.toInt()) },
+                                valueRange    = 0f..7f,
+                                steps         = 6,
+                                modifier      = Modifier.fillMaxWidth()
                             )
                         }
-                        Slider(
-                            value         = autoLockDelayIndex.toFloat(),
-                            onValueChange = { onAutoLockDelayChange(it.toInt()) },
-                            valueRange    = 0f..7f,
-                            steps         = 6,
-                            modifier      = Modifier.fillMaxWidth()
+                    }
+                    row { shape ->
+                        GroupedSwitch(
+                            shape           = shape,
+                            title           = stringResource(R.string.settings_security_unmount_on_auto_lock),
+                            subtitle        = stringResource(R.string.settings_security_unmount_on_auto_lock_desc),
+                            checked         = unmountOnAutoLock,
+                            onCheckedChange = onUnmountOnAutoLockChange
                         )
                     }
                 }
-                AnimatedVisibility(visible = autoLockEnabled) {
-                    SettingsSwitch(
-                        title           = stringResource(R.string.settings_security_unmount_on_auto_lock),
-                        subtitle        = stringResource(R.string.settings_security_unmount_on_auto_lock_desc),
-                        checked         = unmountOnAutoLock,
-                        onCheckedChange = onUnmountOnAutoLockChange
+                row { shape ->
+                    GroupedSwitch(
+                        shape           = shape,
+                        title           = stringResource(R.string.settings_security_argon2_offer),
+                        subtitle        = stringResource(R.string.settings_security_argon2_offer_desc),
+                        checked         = argon2Offer,
+                        onCheckedChange = { viewModel.setArgon2Offer(it) }
                     )
                 }
-                SettingsSwitch(
-                    title           = stringResource(R.string.settings_security_screen_capture),
-                    subtitle        = stringResource(R.string.settings_security_screen_capture_desc),
-                    checked         = screenCaptureProtection,
-                    onCheckedChange = { enabled ->
-                        if (!enabled) showWarning = true
-                        else viewModel.setScreenCaptureProtection(true)
-                    }
-                )
-                Box {
-                    SettingsSwitch(
-                        title           = stringResource(R.string.settings_security_disguise_title),
-                        subtitle        = stringResource(R.string.settings_security_disguise_desc),
-                        checked         = disguiseApplied,
-                        enabled         = !disguiseApplied,
-                        onCheckedChange = { viewModel.requestDisguise() }
-                    )
-                    if (disguiseApplied) {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication        = null
-                                ) {
-                                    notifications.notify(InAppNotification.DisguiseAlreadyApplied)
-                                }
-                        )
-                    }
-                }
-                SettingsSwitch(
-                    title           = stringResource(R.string.settings_security_receive_shares),
-                    subtitle        = stringResource(R.string.settings_security_receive_shares_desc),
-                    checked         = receiveShares,
-                    onCheckedChange = { viewModel.setReceiveShares(it) }
-                )
-                SettingsSwitch(
-                    title           = stringResource(R.string.settings_security_media_content),
-                    subtitle        = stringResource(R.string.settings_security_media_content_desc),
-                    checked         = mediaSessionContent,
-                    onCheckedChange = { viewModel.setMediaSessionContent(it) }
-                )
-                SettingsSwitch(
-                    title           = stringResource(R.string.settings_security_argon2_offer),
-                    subtitle        = stringResource(R.string.settings_security_argon2_offer_desc),
-                    checked         = argon2Offer,
-                    onCheckedChange = { viewModel.setArgon2Offer(it) }
-                )
             }
+
+            // ── On this device ───────────────────────────────────────────
+            SettingsGroup(title = stringResource(R.string.settings_security_group_device)) {
+                row { shape ->
+                    GroupedSwitch(
+                        shape           = shape,
+                        title           = stringResource(R.string.settings_security_screen_capture),
+                        subtitle        = stringResource(R.string.settings_security_screen_capture_desc),
+                        checked         = screenCaptureProtection,
+                        onCheckedChange = { enabled ->
+                            if (!enabled) showWarning = true
+                            else viewModel.setScreenCaptureProtection(true)
+                        }
+                    )
+                }
+                row { shape ->
+                    // Applied once, it cannot be taken back without reinstalling - so the row
+                    // greys out, and a tap on it says why rather than doing nothing.
+                    Box {
+                        GroupedSwitch(
+                            shape           = shape,
+                            title           = stringResource(R.string.settings_security_disguise_title),
+                            subtitle        = stringResource(R.string.settings_security_disguise_desc),
+                            checked         = disguiseApplied,
+                            enabled         = !disguiseApplied,
+                            onCheckedChange = { viewModel.requestDisguise() }
+                        )
+                        if (disguiseApplied) {
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication        = null
+                                    ) {
+                                        notifications.notify(InAppNotification.DisguiseAlreadyApplied)
+                                    }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ── What other apps may see ──────────────────────────────────
+            SettingsGroup(title = stringResource(R.string.settings_security_group_apps)) {
+                row { shape ->
+                    GroupedSwitch(
+                        shape           = shape,
+                        title           = stringResource(R.string.settings_security_receive_shares),
+                        subtitle        = stringResource(R.string.settings_security_receive_shares_desc),
+                        checked         = receiveShares,
+                        onCheckedChange = { viewModel.setReceiveShares(it) }
+                    )
+                }
+                row { shape ->
+                    GroupedSwitch(
+                        shape           = shape,
+                        title           = stringResource(R.string.settings_security_media_content),
+                        subtitle        = stringResource(R.string.settings_security_media_content_desc),
+                        checked         = mediaSessionContent,
+                        onCheckedChange = { viewModel.setMediaSessionContent(it) }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
         }
     }
 

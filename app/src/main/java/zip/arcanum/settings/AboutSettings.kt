@@ -92,6 +92,10 @@ import zip.arcanum.core.theme.LocalAmoledMode
 import zip.arcanum.core.theme.LocalDarkMode
 import android.widget.Toast
 import zip.arcanum.core.components.BackButton
+import zip.arcanum.core.components.ActionCapsule
+import zip.arcanum.core.components.SettingsGroup
+import zip.arcanum.core.components.GroupedRow
+import zip.arcanum.core.components.GroupedBox
 
 // Settings / About: version, links, licences, what is new, and the premium page.
 
@@ -107,8 +111,6 @@ internal fun AboutSubScreen(
 ) {
     val context   = LocalContext.current
     val activity  = context as FragmentActivity
-    val isAmoled  = LocalAmoledMode.current
-    val hazeState = remember { HazeState() }
     val haptic       = LocalHapticFeedback.current
     val debugMode    by viewModel.debugMode.collectAsState()
     var tapCount     by remember { mutableIntStateOf(0) }
@@ -125,29 +127,14 @@ internal fun AboutSubScreen(
         }
     }
 
-    CompositionLocalProvider(LocalHazeState provides hazeState) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title          = { Text(stringResource(R.string.settings_about_title)) },
-                navigationIcon = {
-                    BackButton(onClick = onBack)
-                },
-                colors   = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                           else TopAppBarDefaults.topAppBarColors(),
-                modifier = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar)
-                           else Modifier
-            )
-        }
-    ) { innerPadding ->
+    SubScreenScaffold(title = stringResource(R.string.settings_about_title), onBack = onBack) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .hazeSource(hazeState)
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(
-                top    = innerPadding.calculateTopPadding() + 8.dp,
-                bottom = innerPadding.calculateBottomPadding() + 8.dp
+                top    = innerPadding.calculateTopPadding(),
+                bottom = innerPadding.calculateBottomPadding() + 24.dp
             )
         ) {
             // ── Hero ──────────────────────────────────────────────────────
@@ -209,43 +196,22 @@ internal fun AboutSubScreen(
                 }
             }
 
-            // ── About ─────────────────────────────────────────────────────
-            item { AboutSectionHeader(icon = Icons.Outlined.Info, title = stringResource(R.string.settings_about_title)) }
-
+            // ── The three actions ────────────────────────────────────────
+            // Donating in the middle, and marked out the way it was as a row: the gold
+            // sheen slides a repeating gradient by exactly one period, so the loop closes
+            // on itself with no visible jump. It opens the app's own Donations screen
+            // rather than a website - the wallet addresses have nowhere else to live, and
+            // the app has no network permission (#66).
             item {
-                val isDark        = LocalDarkMode.current
-                val isAmoledLocal = LocalAmoledMode.current
-                val sv            = MaterialTheme.colorScheme.surfaceVariant
-                val cardColor     = if (isDark && !isAmoledLocal)
-                    Color(red = sv.red * 0.65f, green = sv.green * 0.65f, blue = sv.blue * 0.65f)
-                else sv
-                Card(
-                    modifier  = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    colors    = CardDefaults.cardColors(containerColor = cardColor),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                ) {
-                    Text(
-                        text     = stringResource(R.string.settings_about_app_desc),
-                        style    = MaterialTheme.typography.bodyMedium,
-                        color    = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                }
-            }
-
-            item {
-                // Opens the in-app Donations screen rather than jumping straight to Ko-fi:
-                // the wallet addresses have nowhere else to live, and the app has no network
-                // permission, so paying is always finished in the user's own app (#66).
-                //
-                // The gold sheen travels across the border by sliding a repeating gradient
-                // by exactly one period, so the loop closes on itself with no visible jump.
+                // Donating is a capsule here only where it is not a row on the main list:
+                // the F-Droid build keeps it in Settings, the Play build keeps it here, and
+                // neither shows it twice.
                 val shimmer by rememberInfiniteTransition(label = "donate_border")
                     .animateFloat(
                         initialValue  = 0f,
                         targetValue   = 1f,
                         animationSpec = infiniteRepeatable(
-                            animation = tween(2600, easing = LinearEasing),
+                            animation  = tween(2600, easing = LinearEasing),
                             repeatMode = RepeatMode.Restart
                         ),
                         label = "donate_border_shift"
@@ -254,144 +220,112 @@ internal fun AboutSubScreen(
                 val sheen  = Color(0xFFFFF6C2)
                 val period = 640f
                 val head   = shimmer * period
-                AboutLinkCard(
-                    icon           = Icons.Filled.Star,
-                    iconBackground = gold,
-                    title          = stringResource(R.string.settings_about_donate),
-                    subtitle       = stringResource(R.string.settings_about_donate_desc),
-                    onClick        = onDonations,
-                    border         = BorderStroke(
-                        width = 1.5.dp,
-                        brush = Brush.linearGradient(
-                            colors   = listOf(gold, sheen, gold),
-                            start    = Offset(head - period, 0f),
-                            end      = Offset(head, 0f),
-                            // Tiled, so the gradient covers the card at any width without
-                            // needing to measure it.
-                            tileMode = TileMode.Repeated
-                        )
-                    ),
-                    trailing = {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                            null,
-                            modifier = Modifier.size(20.dp),
-                            tint     = MaterialTheme.colorScheme.onSurfaceVariant
+
+                Row(
+                    modifier              = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                ) {
+                    ActionCapsule(
+                        icon    = Icons.Outlined.Code,
+                        label   = stringResource(R.string.settings_about_capsule_github),
+                        onClick = {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Esdex/Arcanum"))
+                            )
+                        }
+                    )
+                    if (!BuildConfig.IS_FDROID) {
+                        ActionCapsule(
+                            icon       = Icons.Filled.Star,
+                            label      = stringResource(R.string.settings_about_capsule_donate),
+                            emphasised = true,
+                            onClick    = onDonations,
+                            border     = BorderStroke(
+                                width = 1.5.dp,
+                                brush = Brush.linearGradient(
+                                    colors   = listOf(gold, sheen, gold),
+                                    start    = Offset(head - period, 0f),
+                                    end      = Offset(head, 0f),
+                                    tileMode = TileMode.Repeated
+                                )
+                            )
                         )
                     }
-                )
+                    ActionCapsule(
+                        icon    = Icons.Outlined.Language,
+                        label   = stringResource(R.string.settings_about_capsule_website),
+                        onClick = {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://arcanum.zip"))
+                            )
+                        }
+                    )
+                }
             }
 
+            // ── About ─────────────────────────────────────────────────────
             item {
-                AboutLinkCard(
-                    icon           = Icons.Outlined.Description,
-                    iconBackground = Color(0xFF6B7280),
-                    title          = stringResource(R.string.settings_about_licenses),
-                    onClick        = onLicenses,
-                    trailing = {
-                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null,
-                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                SettingsGroup(title = stringResource(R.string.settings_about_title)) {
+                    row { shape ->
+                        GroupedBox(shape) {
+                            Text(
+                                text  = stringResource(R.string.settings_about_app_desc),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
-                )
-            }
-
-            item {
-                AboutLinkCard(
-                    icon           = Icons.Outlined.NewReleases,
-                    iconBackground = Color(0xFF2196F3),
-                    title          = stringResource(R.string.settings_about_whats_new),
-                    subtitle       = stringResource(R.string.settings_about_whats_new_desc),
-                    onClick        = onWhatsNew,
-                    trailing = {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                            null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    row { shape ->
+                        GroupedRow(
+                            shape   = shape,
+                            title   = stringResource(R.string.settings_about_licenses),
+                            onClick = onLicenses
                         )
                     }
-                )
+                    row { shape ->
+                        GroupedRow(
+                            shape    = shape,
+                            title    = stringResource(R.string.settings_about_whats_new),
+                            subtitle = stringResource(R.string.settings_about_whats_new_desc),
+                            onClick  = onWhatsNew
+                        )
+                    }
+                }
             }
 
             // ── Connect ───────────────────────────────────────────────────
-            item { AboutSectionHeader(icon = Icons.Outlined.Link, title = stringResource(R.string.settings_about_connect_section)) }
-
+            // Everything here leaves the app, which is what the arrow on the right says.
             item {
-                AboutLinkCard(
-                    icon           = Icons.Outlined.Code,
-                    iconBackground = Color(0xFF1F2937),
-                    title          = stringResource(R.string.settings_about_source_code),
-                    subtitle       = stringResource(R.string.settings_about_source_code_desc),
-                    onClick        = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Esdex/Arcanum"))
+                SettingsGroup(title = stringResource(R.string.settings_about_connect_section)) {
+                    row { shape ->
+                        GroupedRow(
+                            shape   = shape,
+                            title   = stringResource(R.string.settings_about_privacy),
+                            onClick = {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://arcanum.zip/privacy"))
+                                )
+                            },
+                            trailing = { ExternalLinkGlyph() }
                         )
-                    },
-                    trailing = {
-                        Icon(Icons.AutoMirrored.Outlined.OpenInNew, null,
-                             modifier = Modifier.size(16.dp),
-                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                )
-            }
-
-            item {
-                AboutLinkCard(
-                    icon           = Icons.Outlined.Language,
-                    iconBackground = Color(0xFF3B82F6),
-                    title          = stringResource(R.string.settings_about_website),
-                    subtitle       = stringResource(R.string.settings_about_website_desc),
-                    onClick        = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://arcanum.zip"))
+                    row { shape ->
+                        GroupedRow(
+                            shape    = shape,
+                            title    = stringResource(R.string.settings_about_bug_report),
+                            subtitle = stringResource(R.string.settings_about_bug_report_desc),
+                            onClick  = {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Esdex/Arcanum/issues/new"))
+                                )
+                            },
+                            trailing = { ExternalLinkGlyph() }
                         )
-                    },
-                    trailing = {
-                        Icon(Icons.AutoMirrored.Outlined.OpenInNew, null,
-                             modifier = Modifier.size(16.dp),
-                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                )
-            }
-
-            item {
-                AboutLinkCard(
-                    icon           = Icons.Outlined.Description,
-                    iconBackground = Color(0xFF6B7280),
-                    title          = stringResource(R.string.settings_about_privacy),
-                    onClick        = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://arcanum.zip/privacy"))
-                        )
-                    },
-                    trailing = {
-                        Icon(Icons.AutoMirrored.Outlined.OpenInNew, null,
-                             modifier = Modifier.size(16.dp),
-                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                )
-            }
-
-            item {
-                AboutLinkCard(
-                    icon           = Icons.Outlined.BugReport,
-                    iconBackground = Color(0xFFEF4444),
-                    title          = stringResource(R.string.settings_about_bug_report),
-                    subtitle       = stringResource(R.string.settings_about_bug_report_desc),
-                    onClick        = {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Esdex/Arcanum/issues/new"))
-                        )
-                    },
-                    trailing = {
-                        Icon(Icons.AutoMirrored.Outlined.OpenInNew, null,
-                             modifier = Modifier.size(16.dp),
-                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                )
+                }
             }
         }
     }
-    } // CompositionLocalProvider
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -586,75 +520,13 @@ private fun WhatsNewEntry(
 
 // ── Debug ─────────────────────────────────────────────────────────────────────
 
+/** The mark on a row that leaves the app for a browser. */
 @Composable
-private fun AboutSectionHeader(icon: ImageVector, title: String) {
-    Row(
-        modifier            = Modifier.padding(top = 16.dp, bottom = 8.dp),
-        verticalAlignment   = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Icon(
-            imageVector        = icon,
-            contentDescription = null,
-            modifier           = Modifier.size(14.dp),
-            tint               = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text          = title.uppercase(),
-            style         = MaterialTheme.typography.labelSmall,
-            color         = MaterialTheme.colorScheme.onSurfaceVariant,
-            letterSpacing = 0.8.sp
-        )
-    }
-}
-
-@Composable
-private fun AboutLinkCard(
-    icon: ImageVector,
-    iconBackground: Color,
-    iconTint: Color = Color.White,
-    title: String,
-    subtitle: String? = null,
-    onClick: () -> Unit,
-    trailing: (@Composable () -> Unit)? = null,
-    border: BorderStroke? = null
-) {
-    val isDark    = LocalDarkMode.current
-    val isAmoled  = LocalAmoledMode.current
-    val sv        = MaterialTheme.colorScheme.surfaceVariant
-    val cardColor = if (isDark && !isAmoled)
-        Color(red = sv.red * 0.65f, green = sv.green * 0.65f, blue = sv.blue * 0.65f)
-    else sv
-
-    Card(
-        onClick   = onClick,
-        modifier  = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-        colors    = CardDefaults.cardColors(containerColor = cardColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        border    = border
-    ) {
-        Row(
-            modifier              = Modifier.padding(12.dp),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Box(
-                modifier         = Modifier
-                    .size(32.dp)
-                    .background(color = iconBackground, shape = RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null,
-                     modifier = Modifier.size(18.dp), tint = iconTint)
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = title, style = MaterialTheme.typography.bodyMedium)
-                if (subtitle != null) {
-                    Text(text = subtitle, style = MaterialTheme.typography.labelSmall,
-                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            trailing?.invoke()
-        }
-    }
+private fun ExternalLinkGlyph() {
+    Icon(
+        imageVector        = Icons.AutoMirrored.Outlined.OpenInNew,
+        contentDescription = null,
+        modifier           = Modifier.size(16.dp),
+        tint               = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }

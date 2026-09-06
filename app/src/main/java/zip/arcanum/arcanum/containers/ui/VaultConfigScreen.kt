@@ -93,6 +93,7 @@ import zip.arcanum.R
 import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.components.AppDialog
+import zip.arcanum.core.components.ActionCapsule
 import zip.arcanum.core.components.BackButton
 import zip.arcanum.core.components.rememberCollapsedLargeTopBarBehavior
 import zip.arcanum.core.components.GroupedRow
@@ -258,13 +259,13 @@ fun VaultConfigScreen(
                         modifier              = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
                     ) {
-                        VaultActionCapsule(
+                        ActionCapsule(
                             icon    = Icons.Outlined.FolderOpen,
                             label   = stringResource(R.string.vault_config_op_open),
                             enabled = isMounted,
                             onClick = { onOpenVault(containerId) }
                         )
-                        VaultActionCapsule(
+                        ActionCapsule(
                             icon    = Icons.Outlined.DriveFileRenameOutline,
                             label   = stringResource(R.string.vault_config_rename),
                             enabled = !isMounted,
@@ -273,7 +274,7 @@ fun VaultConfigScreen(
                                 showRenameDialog = true
                             }
                         )
-                        VaultActionCapsule(
+                        ActionCapsule(
                             icon    = when {
                                 !isMounted        -> Icons.Outlined.PlayArrow
                                 isUsbVaultHeader  -> Icons.Outlined.Eject
@@ -764,58 +765,5 @@ private fun VaultConfigHero(
                 modifier = Modifier.padding(horizontal = 32.dp)
             )
         }
-    }
-}
-
-// ── The round actions under the vault's name ─────────────────────────────────
-
-/**
- * One of the three actions at the top, shaped after the ones on Android's own App info
- * screen: a wide rounded blob with the icon inside it and the word underneath.
- */
-@Composable
-private fun VaultActionCapsule(
-    icon: ImageVector,
-    label: String,
-    enabled: Boolean = true,
-    emphasised: Boolean = false,
-    onClick: () -> Unit
-) {
-    val container = when {
-        !enabled   -> MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.4f)
-        emphasised -> MaterialTheme.colorScheme.primaryContainer
-        else       -> MaterialTheme.colorScheme.secondaryContainer
-    }
-    val content = when {
-        !enabled   -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-        emphasised -> MaterialTheme.colorScheme.onPrimaryContainer
-        else       -> MaterialTheme.colorScheme.onSecondaryContainer
-    }
-
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .width(104.dp)
-                .height(60.dp)
-                .clip(RoundedCornerShape(30.dp))
-                .background(container)
-                .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector        = icon,
-                contentDescription = null,
-                tint               = content,
-                modifier           = Modifier.size(24.dp)
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text       = label,
-            style      = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Medium,
-            color      = if (enabled) MaterialTheme.colorScheme.onSurface
-                         else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-        )
     }
 }

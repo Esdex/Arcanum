@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Stars
 import androidx.compose.material.icons.outlined.Warning
@@ -83,6 +84,10 @@ fun SettingsScreen(
     openPremium:    Boolean = false
 ) {
     var subScreen by remember { mutableStateOf<SubScreen?>(null) }
+    // Where a screen with two entrances came from. Null means the main list, which is
+    // also where a notification's deep link belongs - it never passed through About.
+    var donationsFrom by remember { mutableStateOf<SubScreen?>(null) }
+    var whatsNewFrom  by remember { mutableStateOf<SubScreen?>(null) }
     LaunchedEffect(openWhatsNew)  { if (openWhatsNew)  subScreen = SubScreen.WHATS_NEW }
     LaunchedEffect(openDonations) { if (openDonations) subScreen = SubScreen.DONATIONS }
     LaunchedEffect(openPremium)   { if (openPremium)   subScreen = SubScreen.PREMIUM }
@@ -102,8 +107,11 @@ fun SettingsScreen(
             SubScreen.SET_PANIC_PIN -> SubScreen.PANIC_MODE
             SubScreen.CHANGE_PIN    -> SubScreen.SECURITY
             SubScreen.LICENSES      -> SubScreen.ABOUT
-            SubScreen.WHATS_NEW     -> SubScreen.ABOUT
-            SubScreen.DONATIONS     -> SubScreen.ABOUT
+            SubScreen.WHATS_NEW     -> whatsNewFrom
+            // Not always About: the F-Droid build reaches this from the main list, and a
+            // notification can reach it from nowhere at all. The button on the screen and
+            // the system's own back have to agree, so both read the same thing.
+            SubScreen.DONATIONS     -> donationsFrom
             else                    -> null
         }
     }
@@ -164,15 +172,17 @@ fun SettingsScreen(
             SubScreen.ABOUT     -> AboutSubScreen(
                 onBack          = { subScreen = null },
                 onLicenses      = { subScreen = SubScreen.LICENSES },
-                onWhatsNew      = { subScreen = SubScreen.WHATS_NEW },
-                onDonations     = { subScreen = SubScreen.DONATIONS },
+                onWhatsNew      = { whatsNewFrom = SubScreen.ABOUT; subScreen = SubScreen.WHATS_NEW },
+                onDonations     = { donationsFrom = SubScreen.ABOUT; subScreen = SubScreen.DONATIONS },
                 viewModel       = viewModel,
                 onDebugUnlocked = { subScreen = SubScreen.DEBUG }
             )
             SubScreen.LICENSES  -> LicensesScreen(onBack = { subScreen = SubScreen.ABOUT })
-            SubScreen.WHATS_NEW -> WhatsNewSubScreen(onBack = { subScreen = SubScreen.ABOUT })
+            SubScreen.WHATS_NEW -> WhatsNewSubScreen(onBack = { subScreen = whatsNewFrom })
 
-            SubScreen.DONATIONS -> DonationsSubScreen(onBack = { subScreen = SubScreen.ABOUT })
+            // Back from Donations goes wherever it was opened from: About, or the main
+            // list when the F-Droid row led here.
+            SubScreen.DONATIONS -> DonationsSubScreen(onBack = { subScreen = donationsFrom })
             SubScreen.PREMIUM -> PremiumSubScreen(onBack = { subScreen = null })
             SubScreen.DEBUG   -> DebugSubScreen(
                 viewModel = viewModel,
@@ -180,7 +190,10 @@ fun SettingsScreen(
             )
             null              -> MainSettingsScreen(
                 onBack     = onBack,
-                onNavigate = { subScreen = it },
+                onNavigate = { target ->
+                    if (target == SubScreen.DONATIONS) donationsFrom = null
+                    subScreen = target
+                },
                 debugMode  = debugMode,
                 isPro      = isPro
             )
@@ -212,6 +225,7 @@ private object SettingsHue {
     val Appearance = SectionHue(Color(0xFFFFB683), Color(0xFF753403))
     val About      = SectionHue(Color(0xFFC7C7C7), Color(0xFF474747))
     val Debug      = SectionHue(Color(0xFF80DA88), Color(0xFF00522C))
+    val Donate     = SectionHue(Color(0xFFFFC107), Color(0xFF5D4200))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -335,6 +349,34 @@ private fun MainSettingsScreen(
                                 )
                             },
                             onClick  = { onNavigate(SubScreen.DEBUG) }
+                        )
+                    }
+                }
+            }
+
+            // No gold border here: on a list this short the row is loud enough by itself,
+            // and the sheen is kept for the capsule on About, where it has neighbours to
+            // stand out from. Donating lives on the main list only in F-Droid. On Play, an app
+            // that collects donations outside Play Billing is a review risk unless it
+            // belongs to a registered charity, and the first screen a reviewer opens is
+            // not the place to test that - there it stays on About, as before.
+            if (BuildConfig.IS_FDROID) {
+                Spacer(Modifier.height(16.dp))
+
+                SettingsGroup {
+                    row { shape ->
+                        GroupedRow(
+                            shape    = shape,
+                            title    = stringResource(R.string.settings_about_donate),
+                            subtitle = stringResource(R.string.settings_about_donate_desc),
+                            leading  = {
+                                GroupedRoundIcon(
+                                    icon      = Icons.Filled.Star,
+                                    color     = SettingsHue.Donate.circle,
+                                    iconColor = SettingsHue.Donate.glyph
+                                )
+                            },
+                            onClick  = { onNavigate(SubScreen.DONATIONS) }
                         )
                     }
                 }

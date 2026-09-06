@@ -1,6 +1,8 @@
 package zip.arcanum.core.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,7 +16,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -90,6 +97,7 @@ fun GroupedRow(
     subtitle: String? = null,
     enabled: Boolean = true,
     titleColor: Color? = null,
+    border: BorderStroke? = null,
     onClick: (() -> Unit)? = null,
     leading: @Composable (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null
@@ -100,6 +108,7 @@ fun GroupedRow(
             .fillMaxWidth()
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .then(if (border != null) Modifier.border(border, shape) else Modifier)
             .then(
                 if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier
             )
@@ -130,6 +139,63 @@ fun GroupedRow(
             trailing()
         }
     }
+}
+
+/**
+ * A row of a group with a switch on its right.
+ *
+ * The switch carries a tick in its thumb when it is on, the way Android's own switches do -
+ * it is what tells the two states apart at a glance for anyone who reads position slower than
+ * colour - and a padlock when the setting cannot be moved at all. The whole row is the
+ * target, not just the switch.
+ */
+@Composable
+fun GroupedSwitch(
+    shape: Shape,
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    subtitle: String? = null,
+    enabled: Boolean = true
+) {
+    GroupedRow(
+        shape    = shape,
+        title    = title,
+        subtitle = subtitle,
+        enabled  = enabled,
+        onClick  = { onCheckedChange(!checked) },
+        trailing = {
+            Switch(
+                checked         = checked,
+                onCheckedChange = onCheckedChange,
+                enabled         = enabled,
+                // A tick when it is on, a padlock when it cannot be moved at all - the same
+                // two glyphs Android uses, and the only sign a greyed switch gives that it
+                // is locked rather than merely off.
+                thumbContent    = when {
+                    !enabled -> {
+                        {
+                            Icon(
+                                imageVector        = Icons.Filled.Lock,
+                                contentDescription = null,
+                                modifier           = Modifier.size(SwitchDefaults.IconSize)
+                            )
+                        }
+                    }
+                    checked  -> {
+                        {
+                            Icon(
+                                imageVector        = Icons.Filled.Check,
+                                contentDescription = null,
+                                modifier           = Modifier.size(SwitchDefaults.IconSize)
+                            )
+                        }
+                    }
+                    else     -> null
+                }
+            )
+        }
+    )
 }
 
 /** Room for something of its own inside a group, shaped like the rows around it. */

@@ -32,6 +32,11 @@ import zip.arcanum.core.components.SettingsRow
 import zip.arcanum.core.components.SettingsSwitch
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.security.VaultPanicAction
+import zip.arcanum.core.components.SettingsGroup
+import zip.arcanum.core.components.GroupedRow
+import zip.arcanum.core.components.GroupedSwitch
+import zip.arcanum.core.components.GroupedBox
+import androidx.compose.ui.graphics.Shape
 
 // Settings / Panic mode: what the duress PIN does, and to which vaults.
 
@@ -72,70 +77,95 @@ internal fun PanicModeSubScreen(
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding(), bottom = innerPadding.calculateBottomPadding())
                 .verticalScroll(rememberScrollState())
-                .padding(vertical = 8.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            SubScreenGroup {
-                SettingsSwitch(
-                    title           = stringResource(R.string.settings_panic_switch_title),
-                    subtitle        = if (settings.enabled) stringResource(R.string.settings_panic_switch_desc)
-                                      else stringResource(R.string.settings_panic_setup_hint),
-                    checked         = settings.enabled,
-                    onCheckedChange = { enabling ->
-                        if (enabling) onSetPanicPin()
-                        else showDisableDialog = true
-                    }
-                )
+            SettingsGroup {
+                row { shape ->
+                    GroupedSwitch(
+                        shape           = shape,
+                        title           = stringResource(R.string.settings_panic_switch_title),
+                        subtitle        = if (settings.enabled) stringResource(R.string.settings_panic_switch_desc)
+                                          else stringResource(R.string.settings_panic_setup_hint),
+                        checked         = settings.enabled,
+                        onCheckedChange = { enabling ->
+                            if (enabling) onSetPanicPin()
+                            else showDisableDialog = true
+                        }
+                    )
+                }
             }
 
-            // Everything below only visible when enabled
+            // Everything below only exists once the panic PIN does
             AnimatedVisibility(visible = settings.enabled) {
                 Column {
-                    PanicSectionLabel(stringResource(R.string.settings_panic_pin_section))
-                    SubScreenGroup {
-                        SettingsRow(title = stringResource(R.string.settings_panic_change_pin), onClick = onSetPanicPin)
+                    SettingsGroup(title = stringResource(R.string.settings_panic_pin_section)) {
+                        row { shape ->
+                            GroupedRow(
+                                shape   = shape,
+                                title   = stringResource(R.string.settings_panic_change_pin),
+                                onClick = onSetPanicPin
+                            )
+                        }
                     }
 
-                    PanicSectionLabel(stringResource(R.string.settings_panic_wipe_section))
-                    SubScreenGroup {
-                        SettingsSwitch(
-                            title           = stringResource(R.string.settings_panic_full_wipe),
-                            subtitle        = stringResource(R.string.settings_panic_full_wipe_desc),
-                            checked         = settings.fullWipe,
-                            onCheckedChange = { viewModel.setFullWipe(it) }
-                        )
+                    // Full wipe stands apart because it decides the three under it: with it
+                    // on they are locked, and the padlock in each switch says so.
+                    SettingsGroup(title = stringResource(R.string.settings_panic_wipe_section)) {
+                        row { shape ->
+                            GroupedSwitch(
+                                shape           = shape,
+                                title           = stringResource(R.string.settings_panic_full_wipe),
+                                subtitle        = stringResource(R.string.settings_panic_full_wipe_desc),
+                                checked         = settings.fullWipe,
+                                onCheckedChange = { viewModel.setFullWipe(it) }
+                            )
+                        }
                     }
 
-                    SubScreenGroup {
-                        SettingsSwitch(
-                            title           = stringResource(R.string.settings_panic_clear_settings),
-                            checked         = settings.clearSettings,
-                            onCheckedChange = { viewModel.setClearSettings(it) },
-                            enabled         = !settings.fullWipe
-                        )
-                        SettingsSwitch(
-                            title           = stringResource(R.string.settings_panic_clear_history),
-                            checked         = settings.clearCalculatorHistory,
-                            onCheckedChange = { viewModel.setClearHistory(it) },
-                            enabled         = !settings.fullWipe
-                        )
-                        SettingsSwitch(
-                            title           = stringResource(R.string.settings_panic_disable_biometric),
-                            subtitle        = stringResource(R.string.settings_panic_disable_biometric_desc),
-                            checked         = settings.disableBiometric,
-                            onCheckedChange = { viewModel.setDisableBiometric(it) },
-                            enabled         = !settings.fullWipe
-                        )
+                    Spacer(Modifier.height(8.dp))
+
+                    SettingsGroup {
+                        row { shape ->
+                            GroupedSwitch(
+                                shape           = shape,
+                                title           = stringResource(R.string.settings_panic_clear_settings),
+                                checked         = settings.clearSettings,
+                                onCheckedChange = { viewModel.setClearSettings(it) },
+                                enabled         = !settings.fullWipe
+                            )
+                        }
+                        row { shape ->
+                            GroupedSwitch(
+                                shape           = shape,
+                                title           = stringResource(R.string.settings_panic_clear_history),
+                                checked         = settings.clearCalculatorHistory,
+                                onCheckedChange = { viewModel.setClearHistory(it) },
+                                enabled         = !settings.fullWipe
+                            )
+                        }
+                        row { shape ->
+                            GroupedSwitch(
+                                shape           = shape,
+                                title           = stringResource(R.string.settings_panic_disable_biometric),
+                                subtitle        = stringResource(R.string.settings_panic_disable_biometric_desc),
+                                checked         = settings.disableBiometric,
+                                onCheckedChange = { viewModel.setDisableBiometric(it) },
+                                enabled         = !settings.fullWipe
+                            )
+                        }
                     }
 
                     if (containers.isNotEmpty() && !settings.fullWipe) {
-                        PanicSectionLabel(stringResource(R.string.settings_panic_vaults_section))
-                        SubScreenGroup {
+                        SettingsGroup(title = stringResource(R.string.settings_panic_vaults_section)) {
                             containers.forEach { container ->
-                                VaultPanicRow(
-                                    container = container,
-                                    action    = settings.vaultActions[container.id] ?: VaultPanicAction.KEEP,
-                                    onChange  = { viewModel.setVaultAction(container.id, it) }
-                                )
+                                row { shape ->
+                                    VaultPanicRow(
+                                        shape     = shape,
+                                        container = container,
+                                        action    = settings.vaultActions[container.id] ?: VaultPanicAction.KEEP,
+                                        onChange  = { viewModel.setVaultAction(container.id, it) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -144,7 +174,7 @@ internal fun PanicModeSubScreen(
                         text     = stringResource(R.string.settings_panic_warning),
                         style    = MaterialTheme.typography.bodySmall,
                         color    = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp)
                     )
                 }
             }
@@ -152,9 +182,9 @@ internal fun PanicModeSubScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VaultPanicRow(
+    shape: Shape,
     container: ContainerEntity,
     action: VaultPanicAction,
     onChange: (VaultPanicAction) -> Unit
@@ -166,11 +196,7 @@ private fun VaultPanicRow(
         stringResource(R.string.settings_panic_vault_keep)
     )
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-    ) {
+    GroupedBox(shape) {
         Text(
             text  = container.name,
             style = MaterialTheme.typography.bodyLarge,

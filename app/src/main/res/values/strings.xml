@@ -593,6 +593,9 @@
         <item quantity="one">Saved 1 file to the vault</item>
         <item quantity="other">Saved %d files to the vault</item>
     </plurals>
+    <string name="settings_security_group_unlock">Getting in</string>
+    <string name="settings_security_group_device">On this device</string>
+    <string name="settings_security_group_apps">Other apps</string>
     <string name="settings_security_title">Security</string>
     <string name="settings_security_change_pin">Change PIN</string>
     <string name="settings_security_auto_lock">Auto-lock</string>
@@ -636,16 +639,16 @@
     <string name="settings_panic_switch_title">Panic Mode</string>
     <string name="settings_panic_switch_desc">Entering Panic PIN silently wipes selected data</string>
     <string name="settings_panic_setup_hint">Tap to set up a Panic PIN</string>
-    <string name="settings_panic_pin_section">PANIC PIN</string>
+    <string name="settings_panic_pin_section">Panic PIN</string>
     <string name="settings_panic_change_pin">Change Panic PIN</string>
-    <string name="settings_panic_wipe_section">WHAT TO WIPE</string>
+    <string name="settings_panic_wipe_section">What to wipe</string>
     <string name="settings_panic_full_wipe">Full wipe</string>
     <string name="settings_panic_full_wipe_desc">Delete all vaults and reset app to factory state</string>
     <string name="settings_panic_clear_settings">Clear settings</string>
     <string name="settings_panic_clear_history">Clear calculator history</string>
     <string name="settings_panic_disable_biometric">Disable biometric</string>
     <string name="settings_panic_disable_biometric_desc">Remove biometric access from all vaults</string>
-    <string name="settings_panic_vaults_section">VAULTS</string>
+    <string name="settings_panic_vaults_section">Vaults</string>
     <string name="settings_panic_warning">Wiped data cannot be recovered. Test with a decoy vault first.</string>
     <string name="settings_panic_disable_title">Disable Panic Mode?</string>
     <string name="settings_panic_disable_body">Your Panic PIN and all wipe settings will be permanently deleted.</string>
@@ -654,16 +657,16 @@
     <string name="settings_panic_vault_forget">Forget</string>
     <string name="settings_panic_vault_keep">Keep</string>
     <string name="settings_appearance_title">Appearance</string>
-    <string name="settings_appearance_theme_section">THEME MODE</string>
-    <string name="settings_appearance_default_tab_section">DEFAULT VAULT TAB</string>
+    <string name="settings_appearance_theme_section">Theme mode</string>
+    <string name="settings_appearance_default_tab_section">Default vault tab</string>
     <string name="settings_appearance_default_tab_desc">Which tab a vault opens on after unlocking.</string>
-    <string name="settings_appearance_language_section">LANGUAGE</string>
+    <string name="settings_appearance_language_section">Language</string>
     <string name="settings_appearance_language">App Language</string>
     <string name="settings_appearance_language_system">System default</string>
     <string name="settings_appearance_theme_system">System</string>
     <string name="settings_appearance_theme_light">Light</string>
     <string name="settings_appearance_theme_dark">Dark</string>
-    <string name="settings_appearance_display_section">DISPLAY</string>
+    <string name="settings_appearance_display_section">Display</string>
     <string name="settings_appearance_amoled">AMOLED Glass</string>
     <string name="settings_appearance_amoled_desc">Pure black backgrounds with frosted glass</string>
     <string name="settings_appearance_dynamic_colors">Dynamic colors</string>
@@ -672,6 +675,9 @@
     <string name="settings_about_title">About</string>
     <string name="settings_about_app_desc">VeraCrypt-compatible encrypted vault manager for Android</string>
     <string name="settings_about_donate">Support the project</string>
+    <string name="settings_about_capsule_donate">Donate</string>
+    <string name="settings_about_capsule_github">GitHub</string>
+    <string name="settings_about_capsule_website">Website</string>
     <string name="settings_about_donate_desc">Donation links and wallet addresses</string>
 
     <!-- Donations screen -->
