@@ -94,6 +94,7 @@ import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.BackButton
+import zip.arcanum.core.components.rememberCollapsedLargeTopBarBehavior
 import zip.arcanum.core.components.GroupedRow
 import zip.arcanum.core.components.SettingsGroup
 import zip.arcanum.core.notifications.InAppNotification
@@ -179,7 +180,7 @@ fun VaultConfigScreen(
 
     // Big title on the left that shrinks into an ordinary bar as the page moves under it,
     // with the back arrow in a circle of its own - the shape of Android's own App info.
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollBehavior = rememberCollapsedLargeTopBarBehavior()
     val topBarColors  = if (isAmoled) TopAppBarDefaults.largeTopAppBarColors(
                             containerColor = Color.Transparent,
                             scrolledContainerColor = Color.Transparent
