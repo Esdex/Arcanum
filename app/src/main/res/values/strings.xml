@@ -757,6 +757,13 @@
     <string name="create_cd_back">Back</string>
 
     <!-- Create container steps 1–4 -->
+    <!-- PDF viewer (#137) -->
+    <string name="pdf_page_of">%1$d / %2$d</string>
+    <string name="pdf_cd_page">Page %1$d</string>
+    <string name="pdf_error_password">This PDF is protected by a password</string>
+    <string name="pdf_error_password_desc">Arcanum cannot open a password-protected PDF. Removing the password on a computer, inside the vault, makes it readable here.</string>
+    <string name="pdf_error_unreadable">This PDF cannot be opened</string>
+    <string name="pdf_error_vault_closed">The vault was closed</string>
     <string name="create_step1_title">Select Volume Type</string>
     <string name="create_volume_standard">Normal Volume</string>
     <string name="create_volume_standard_desc">A regular encrypted vault protected by a single password.</string>

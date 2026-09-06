@@ -25,13 +25,18 @@ import com.airbnb.lottie.compose.rememberLottieComposition
 /**
  * Animated empty-state placeholder. Pass a raw Lottie JSON resource ID via [lottieRes],
  * or null to show just the text (useful before Lottie assets are added).
+ *
+ * [loop] is what an empty screen wants and what a failed one does not: nothing is going to
+ * change while the message is up, and an error that keeps replaying its animation reads as
+ * something still happening.
  */
 @Composable
 fun EmptyStateView(
     title: String,
     modifier: Modifier = Modifier,
     lottieRes: Int? = null,
-    subtitle: String? = null
+    subtitle: String? = null,
+    loop: Boolean = true
 ) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Column(
@@ -42,7 +47,7 @@ fun EmptyStateView(
                 val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(lottieRes))
                 val progress    by animateLottieCompositionAsState(
                     composition = composition,
-                    iterations  = LottieConstants.IterateForever,
+                    iterations  = if (loop) LottieConstants.IterateForever else 1,
                     speed       = 0.8f
                 )
                 LottieAnimation(

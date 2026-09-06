@@ -48,6 +48,21 @@ sealed class Screen(val route: String) {
         }
     }
 
+    /** A PDF opened straight from the file browser, by path rather than by media id (#137). */
+    object PdfViewer : Screen("pdf_viewer?cid={cid}&path={path}&name={name}&size={size}") {
+        const val ARG_CONTAINER = "cid"
+        const val ARG_PATH      = "path"
+        const val ARG_NAME      = "name"
+        const val ARG_SIZE      = "size"
+
+        fun buildRoute(containerId: String, path: String, name: String, size: Long): String {
+            val encodedPath = android.net.Uri.encode(path)
+            val encodedName = android.net.Uri.encode(name)
+            // As AudioPlayerDirect: the size travels as a string, so nothing coerces it.
+            return "pdf_viewer?cid=$containerId&path=$encodedPath&name=$encodedName&size=$size"
+        }
+    }
+
     object FileManager : Screen("file_manager/{containerId}") {
         const val ARG = "containerId"
         fun buildRoute(containerId: String) = "file_manager/$containerId"

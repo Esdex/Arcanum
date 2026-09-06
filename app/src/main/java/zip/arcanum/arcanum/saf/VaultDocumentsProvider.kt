@@ -25,6 +25,7 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.core.database.dao.ContainerDao
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.crypto.VeraCryptEngine
+import zip.arcanum.crypto.readInto
 import kotlinx.coroutines.runBlocking
 import java.io.FileNotFoundException
 
@@ -277,17 +278,7 @@ class VaultDocumentsProvider : DocumentsProvider() {
     ): Int {
         val handle = repo.getContainerHandle(cid)
             ?: throw ErrnoException("onRead", OsConstants.EBADF)
-        if (offset >= fileSize) return 0
-        val want = minOf(requested.toLong(), fileSize - offset).toInt()
-        var read = 0
-        while (read < want) {
-            val chunk = engine.readFile(handle, path, offset + read, want - read)
-                ?: throw ErrnoException("onRead", OsConstants.EIO)
-            if (chunk.isEmpty()) break
-            chunk.copyInto(data, read)
-            read += chunk.size
-        }
-        return read
+        return engine.readInto(handle, path, offset, requested, fileSize, data)
     }
 
     private fun parentOf(path: String): String = path.substringBeforeLast('/').ifEmpty { "/" }

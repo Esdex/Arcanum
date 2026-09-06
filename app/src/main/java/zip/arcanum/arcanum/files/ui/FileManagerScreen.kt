@@ -63,6 +63,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -179,6 +180,9 @@ private val MEDIA_EXTENSIONS = setOf(
     "mp4", "mkv", "avi", "mov", "m4v", "webm", "3gp"
 )
 
+/** Opened by the app's own reader rather than handed to another app (#137). */
+private const val PDF_EXTENSION = "pdf"
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FileManagerScreen(
@@ -186,6 +190,7 @@ fun FileManagerScreen(
     onBack: () -> Unit,
     bottomPadding: Dp = 0.dp,
     onAudioFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
+    onPdfFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
     onMediaFileClick: ((fileId: String) -> Unit)? = null,
     viewModel: FileManagerViewModel = hiltViewModel()
 ) {
@@ -316,6 +321,28 @@ fun FileManagerScreen(
         }
     }
 
+    // One handler for both layouts. The list and the grid each carried their own copy of
+    // this, identical line for line, so every new kind of file that opens in the app had to
+    // be added twice or it worked in one layout only.
+    val handleFileClick: (NativeFileInfo) -> Unit = { file ->
+        val extension = MediaExtensions.of(file.name)
+        if (state.isSelectionMode) viewModel.toggleSelection(file.path)
+        else if (file.isSpecial || file.linkBroken) explainTarget = file
+        else if (file.opensAsDirectory) viewModel.navigateTo(file.path)
+        else if (onAudioFileClick != null && extension in MediaExtensions.AUDIO) {
+            viewModel.setAudioQueue(file)
+            onAudioFileClick(file.path, file.name, file.size)
+        } else if (onPdfFileClick != null && extension == PDF_EXTENSION) {
+            onPdfFileClick(file.path, file.name, file.size)
+        } else if (onMediaFileClick != null && extension in MEDIA_EXTENSIONS) {
+            val open = onMediaFileClick
+            viewModel.openMediaFile(file) { fileId ->
+                if (fileId != null) open(fileId)
+                else launchOpenWith(file)
+            }
+        } else launchOpenWith(file)
+    }
+
     val isAtRoot          = state.currentPath == "/"
     val isAmoled          = LocalAmoledMode.current
     val localHazeState    = remember { HazeState() }
@@ -378,23 +405,7 @@ fun FileManagerScreen(
                                 topPadding           = topPadding,
                                 bottomPadding        = bottomPadding + if (state.isSelectionMode) 72.dp else 80.dp,
                                 onThumbnailRequest   = viewModel::requestThumbnail,
-                                onFileClick          = { file ->
-                                    if (state.isSelectionMode) viewModel.toggleSelection(file.path)
-                                    else if (file.isSpecial || file.linkBroken) explainTarget = file
-                                    else if (file.opensAsDirectory) viewModel.navigateTo(file.path)
-                                    else if (onAudioFileClick != null &&
-                                             file.name.substringAfterLast('.', "").lowercase() in MediaExtensions.AUDIO) {
-                                        viewModel.setAudioQueue(file)
-                                        onAudioFileClick(file.path, file.name, file.size)
-                                    } else if (onMediaFileClick != null &&
-                                               file.name.substringAfterLast('.', "").lowercase() in MEDIA_EXTENSIONS) {
-                                        val open = onMediaFileClick
-                                        viewModel.openMediaFile(file) { fileId ->
-                                            if (fileId != null) open(fileId)
-                                            else launchOpenWith(file)
-                                        }
-                                    } else launchOpenWith(file)
-                                },
+                                onFileClick          = handleFileClick,
                                 onFileLongClick      = { file ->
                                     if (!state.isSelectionMode) viewModel.enterSelectionMode(file.path)
                                     else viewModel.toggleSelection(file.path)
@@ -417,23 +428,7 @@ fun FileManagerScreen(
                             topPadding         = topPadding,
                             bottomPadding      = bottomPadding + if (state.isSelectionMode) 72.dp else 80.dp,
                             onThumbnailRequest = viewModel::requestThumbnail,
-                            onFileClick     = { file ->
-                                if (state.isSelectionMode) viewModel.toggleSelection(file.path)
-                                else if (file.isSpecial || file.linkBroken) explainTarget = file
-                                else if (file.opensAsDirectory) viewModel.navigateTo(file.path)
-                                else if (onAudioFileClick != null &&
-                                         file.name.substringAfterLast('.', "").lowercase() in MediaExtensions.AUDIO) {
-                                    viewModel.setAudioQueue(file)
-                                    onAudioFileClick(file.path, file.name, file.size)
-                                } else if (onMediaFileClick != null &&
-                                           file.name.substringAfterLast('.', "").lowercase() in MEDIA_EXTENSIONS) {
-                                    val open = onMediaFileClick
-                                    viewModel.openMediaFile(file) { fileId ->
-                                        if (fileId != null) open(fileId)
-                                        else launchOpenWith(file)
-                                    }
-                                } else launchOpenWith(file)
-                            },
+                            onFileClick     = handleFileClick,
                             onFileLongClick = { file ->
                                 if (!state.isSelectionMode) viewModel.enterSelectionMode(file.path)
                                 else viewModel.toggleSelection(file.path)
@@ -2204,6 +2199,8 @@ private fun fileTypeIconAndColor(name: String, isDirectory: Boolean): Pair<Image
             Icons.Outlined.TableChart to Color(0xFF16A34A)
         "zip", "rar", "7z", "tar", "gz", "bz2" ->
             Icons.Outlined.Archive to Color(0xFF92400E)
+        PDF_EXTENSION ->
+            Icons.Outlined.PictureAsPdf to Color(0xFFDC2626)
         else -> Icons.Outlined.Description to Color(0xFF2563EB)
     }
 }

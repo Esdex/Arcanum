@@ -46,6 +46,7 @@ import zip.arcanum.arcanum.containers.ui.VaultConfigScreen
 import zip.arcanum.arcanum.containers.ui.VaultScreen
 import zip.arcanum.arcanum.containers.ui.VaultViewModel
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerDirectScreen
+import zip.arcanum.arcanum.files.pdf.PdfViewerScreen
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerScreen
 import zip.arcanum.arcanum.gallery.ui.MediaViewerScreen
 import zip.arcanum.arcanum.gallery.editor.PhotoEditorScreen
@@ -438,6 +439,9 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
                 onAudioFileClick   = { containerId, path, name, size ->
                     navController.navigate(Screen.AudioPlayerDirect.buildRoute(containerId, path, name, size))
                 },
+                onPdfFileClick     = { containerId, path, name, size ->
+                    navController.navigate(Screen.PdfViewer.buildRoute(containerId, path, name, size))
+                },
                 onMediaFileClick   = { fileId ->
                     navController.navigate(Screen.PhotoViewer.buildRoute(fileId, folderScope = true))
                 }
@@ -501,6 +505,22 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
             )
         ) {
             AudioPlayerDirectScreen(onBack = { navController.popBackStack() })
+        }
+
+        // ── PDF viewer (files - direct path) ─────────────────────────────
+        composable(
+            route     = Screen.PdfViewer.route,
+            // Half the NavHost's own 700 ms fade on the way out, at his request: closing a
+            // document should feel like putting it down, not like a transition.
+            popExitTransition = { fadeOut(tween(350)) },
+            arguments = listOf(
+                navArgument(Screen.PdfViewer.ARG_CONTAINER) { type = NavType.StringType },
+                navArgument(Screen.PdfViewer.ARG_PATH)      { type = NavType.StringType },
+                navArgument(Screen.PdfViewer.ARG_NAME)      { type = NavType.StringType },
+                navArgument(Screen.PdfViewer.ARG_SIZE)      { type = NavType.StringType }
+            )
+        ) {
+            PdfViewerScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Move vault ────────────────────────────────────────────────────
