@@ -13,6 +13,7 @@ import kotlin.math.roundToInt
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,7 +29,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -61,6 +62,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -74,6 +76,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -90,6 +93,9 @@ import zip.arcanum.R
 import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.components.AppDialog
+import zip.arcanum.core.components.BackButton
+import zip.arcanum.core.components.GroupedRow
+import zip.arcanum.core.components.SettingsGroup
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.LocalNotifications
 import zip.arcanum.core.components.AppSheet
@@ -125,7 +131,6 @@ fun VaultConfigScreen(
 
     val hazeState = remember { HazeState() }
 
-    var showMoreMenu         by remember { mutableStateOf(false) }
     var showUsbMissing       by remember { mutableStateOf(false) }
     var showSafeToRemove     by remember { mutableStateOf(false) }
     val configScope          = rememberCoroutineScope()
@@ -172,8 +177,14 @@ fun VaultConfigScreen(
     }
 
 
-    val topBarColors  = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                        else TopAppBarDefaults.topAppBarColors()
+    // Big title on the left that shrinks into an ordinary bar as the page moves under it,
+    // with the back arrow in a circle of its own - the shape of Android's own App info.
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val topBarColors  = if (isAmoled) TopAppBarDefaults.largeTopAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent
+                        )
+                        else TopAppBarDefaults.largeTopAppBarColors()
     val topBarHazeMod = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar)
                         else Modifier
 
@@ -182,14 +193,14 @@ fun VaultConfigScreen(
         // so it lands over the top bar instead of under it.
         Box(Modifier.fillMaxSize()) {
         Scaffold(
+            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
-                TopAppBar(
+                LargeTopAppBar(
                     modifier        = topBarHazeMod,
                     colors          = topBarColors,
+                    scrollBehavior  = scrollBehavior,
                     navigationIcon  = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null)
-                        }
+                        BackButton(onClick = onBack, modifier = Modifier.padding(start = 4.dp))
                     },
                     title           = {
                         Text(
@@ -199,66 +210,26 @@ fun VaultConfigScreen(
                         )
                     },
                     actions         = {
-                        Box {
-                            IconButton(onClick = { showMoreMenu = true }) {
-                                Icon(Icons.Outlined.MoreVert, contentDescription = null)
+                        // Details sit behind a button now rather than behind a tap on the
+                        // vault's icon: a picture that opens a screen is something you have
+                        // to be told about. It is grey while the vault is closed, because
+                        // the header it reads cannot be decrypted until then - and it says
+                        // so when pressed rather than doing nothing at all.
+                        IconButton(
+                            onClick = {
+                                if (isMounted) {
+                                    scope.launch {
+                                        detailsContainer = viewModel.getContainerDomain(containerId)
+                                    }
+                                } else notifications.notify(InAppNotification.DetailsNeedMount)
                             }
-                            DropdownMenu(
-                                expanded         = showMoreMenu,
-                                onDismissRequest = { showMoreMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text        = { Text(stringResource(R.string.vault_config_rename)) },
-                                    leadingIcon = { Icon(Icons.Outlined.DriveFileRenameOutline, contentDescription = null) },
-                                    enabled     = !isMounted,
-                                    onClick     = {
-                                        showMoreMenu = false
-                                        renameText   = container?.name ?: ""
-                                        showRenameDialog = true
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text        = { Text(stringResource(R.string.vault_config_move_sheet_title)) },
-                                    leadingIcon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
-                                    enabled     = !isMounted,
-                                    onClick     = {
-                                        showMoreMenu  = false
-                                        showMoveSheet = true
-                                    }
-                                )
-                                HorizontalDivider()
-                                DropdownMenuItem(
-                                    text        = { Text(stringResource(R.string.vault_forget_confirm)) },
-                                    leadingIcon = { Icon(Icons.Outlined.LinkOff, contentDescription = null) },
-                                    enabled     = !isMounted,
-                                    onClick     = {
-                                        showMoreMenu     = false
-                                        showForgetDialog = true
-                                    }
-                                )
-                                // No Delete for a USB vault. There is no file to remove -
-                                // the volume lives on a drive that is not the phone's - and
-                                // deleteVaultFile matches neither a path nor a SAF document
-                                // for one, so the red "delete forever" item did exactly what
-                                // Forget does while promising to destroy the vault.
-                                if (container?.usbSaltHash?.isNotEmpty() != true) {
-                                    DropdownMenuItem(
-                                        text        = { Text(stringResource(R.string.vault_delete_confirm), color = MaterialTheme.colorScheme.error) },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector        = Icons.Outlined.DeleteForever,
-                                                contentDescription = null,
-                                                tint               = MaterialTheme.colorScheme.error
-                                            )
-                                        },
-                                        enabled     = !isMounted,
-                                        onClick     = {
-                                            showMoreMenu   = false
-                                            showDeleteDialog = true
-                                        }
-                                    )
-                                }
-                            }
+                        ) {
+                            Icon(
+                                imageVector        = Icons.Outlined.Info,
+                                contentDescription = stringResource(R.string.vault_config_cd_info),
+                                tint               = if (isMounted) MaterialTheme.colorScheme.onSurface
+                                                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            )
                         }
                     }
                 )
@@ -276,109 +247,161 @@ fun VaultConfigScreen(
                         .padding(innerPadding)
                 ) {
                     // ── Hero ──────────────────────────────────────────────────────
-                    VaultConfigHero(
-                        container = container,
-                        isDynamic = isDynamic,
-                        isMounted = isMounted,
-                        onOpenDetails = {
-                            scope.launch { detailsContainer = viewModel.getContainerDomain(containerId) }
-                        },
-                        onBlocked = { notifications.notify(InAppNotification.DetailsNeedMount) }
-                    )
+                    VaultConfigHero(container = container, isMounted = isMounted)
 
-                    // ── Operations ───────────────────────────────────────────────
-                    VaultOperationItem(
-                        icon      = if (isMounted) Icons.Outlined.FolderOpen else Icons.Outlined.PlayArrow,
-                        rawColor  = Color(0xFF16A34A),
-                        title     = stringResource(if (isMounted) R.string.vault_config_op_open else R.string.vault_config_op_mount),
-                        subtitle  = stringResource(if (isMounted) R.string.vault_config_op_open_desc else R.string.vault_config_op_mount_desc),
-                        isDynamic = isDynamic,
-                        onClick   = {
-                            when {
-                                isMounted -> onOpenVault(containerId)
-                                // A USB vault needs the drive before the password is worth
-                                // asking for. Presence is checked passively; permission is
-                                // requested here rather than mid-mount, so the system
-                                // prompt does not interrupt someone typing a password.
-                                else -> requireDrive { onMount(containerId) }
+                    // ── The three actions ────────────────────────────────────────
+                    // Mount and unmount are one button, on the right, because they are one
+                    // decision with two states - and for a drive, unmounting IS the eject.
+                    Row(
+                        modifier              = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                    ) {
+                        VaultActionCapsule(
+                            icon    = Icons.Outlined.FolderOpen,
+                            label   = stringResource(R.string.vault_config_op_open),
+                            enabled = isMounted,
+                            onClick = { onOpenVault(containerId) }
+                        )
+                        VaultActionCapsule(
+                            icon    = Icons.Outlined.DriveFileRenameOutline,
+                            label   = stringResource(R.string.vault_config_rename),
+                            enabled = !isMounted,
+                            onClick = {
+                                renameText = container?.name ?: ""
+                                showRenameDialog = true
                             }
-                        }
-                    )
-                    if (isMounted) {
-                        // For a USB vault this IS the eject: closing the vault is what
-                        // flushes and releases the drive. Offering both would imply there
-                        // is a second step, and leaving it called "unmount" would hide the
-                        // physical action the user still has to take.
-                        VaultOperationItem(
-                            icon      = Icons.Outlined.Eject,
-                            rawColor  = Color(0xFF546E7A),
-                            title     = stringResource(
-                                if (isUsbVaultHeader) R.string.vault_config_op_eject
-                                else R.string.vault_unmount_confirm
+                        )
+                        VaultActionCapsule(
+                            icon    = when {
+                                !isMounted        -> Icons.Outlined.PlayArrow
+                                isUsbVaultHeader  -> Icons.Outlined.Eject
+                                else              -> Icons.Outlined.Lock
+                            },
+                            label   = stringResource(
+                                when {
+                                    !isMounted       -> R.string.vault_config_op_mount
+                                    isUsbVaultHeader -> R.string.vault_config_op_eject
+                                    else             -> R.string.vault_unmount_confirm
+                                }
                             ),
-                            subtitle  = stringResource(
-                                if (isUsbVaultHeader) R.string.vault_config_op_eject_desc
-                                else R.string.vault_card_unmount_desc
-                            ),
-                            isDynamic = isDynamic,
-                            onClick   = { showUnmountDialog = true }
+                            emphasised = true,
+                            onClick = {
+                                if (isMounted) showUnmountDialog = true
+                                else requireDrive { onMount(containerId) }
+                            }
                         )
                     }
-                    VaultOperationItem(
-                        icon      = Icons.Outlined.Timer,
-                        rawColor  = Color(0xFFD97706),
-                        title     = stringResource(R.string.vault_config_op_auto_unmount),
-                        subtitle  = stringResource(R.string.vault_config_op_auto_unmount_desc),
-                        isDynamic = isDynamic,
-                        onClick   = { showAutoUnmountSheet = true }
-                    )
-                    VaultOperationItem(
-                        icon      = Icons.Outlined.Share,
-                        rawColor  = Color(0xFF0E7490),
-                        title     = stringResource(R.string.vault_config_op_external_access),
-                        subtitle  = stringResource(R.string.vault_config_op_external_access_desc),
-                        isDynamic = isDynamic,
-                        onClick   = { showExternalAccessSheet = true }
-                    )
 
-                    VaultOperationItem(
-                        icon      = Icons.Outlined.Key,
-                        rawColor  = Color(0xFF1E88E5),
-                        title     = stringResource(R.string.vault_config_change_password),
-                        subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.chpwd_config_desc),
-                        isDynamic = isDynamic,
-                        enabled   = !isMounted,
-                        onClick   = { requireDrive { onChangePassword(containerId) } }
-                    )
-                    VaultOperationItem(
-                        icon      = ArcanumIcons.Keyfile,
-                        rawColor  = Color(0xFF7B1FA2),
-                        title     = stringResource(R.string.vault_config_change_keyfile),
-                        subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.chkeyfile_config_desc),
-                        isDynamic = isDynamic,
-                        enabled   = !isMounted,
-                        onClick   = { requireDrive { onChangeKeyfile(containerId) } }
-                    )
+                    // ── Access ───────────────────────────────────────────────────
+                    SettingsGroup(title = stringResource(R.string.vault_config_group_access)) {
+                        row { shape ->
+                            GroupedRow(
+                                shape    = shape,
+                                title    = stringResource(R.string.vault_config_change_password),
+                                subtitle = stringResource(
+                                    if (isMounted) R.string.vault_config_unmount_first
+                                    else R.string.chpwd_config_desc
+                                ),
+                                enabled  = !isMounted,
+                                onClick  = { requireDrive { onChangePassword(containerId) } }
+                            )
+                        }
+                        row { shape ->
+                            GroupedRow(
+                                shape    = shape,
+                                title    = stringResource(R.string.vault_config_change_keyfile),
+                                subtitle = stringResource(
+                                    if (isMounted) R.string.vault_config_unmount_first
+                                    else R.string.chkeyfile_config_desc
+                                ),
+                                enabled  = !isMounted,
+                                onClick  = { requireDrive { onChangeKeyfile(containerId) } }
+                            )
+                        }
+                        row { shape ->
+                            GroupedRow(
+                                shape    = shape,
+                                title    = stringResource(R.string.vault_config_op_external_access),
+                                subtitle = stringResource(R.string.vault_config_op_external_access_desc),
+                                onClick  = { showExternalAccessSheet = true }
+                            )
+                        }
+                    }
 
-                    VaultOperationItem(
-                        icon      = Icons.Outlined.SaveAlt,
-                        rawColor  = Color(0xFFE65100),
-                        title     = stringResource(R.string.vault_info_op_backup_header),
-                        subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.vault_card_backup_desc),
-                        isDynamic = isDynamic,
-                        enabled   = !isMounted,
-                        onClick   = { requireDrive { onBackupHeader(containerId) } }
-                    )
-                    VaultOperationItem(
-                        icon      = Icons.Outlined.Restore,
-                        rawColor  = Color(0xFF00838F),
-                        title     = stringResource(R.string.vault_info_op_restore_header),
-                        subtitle  = stringResource(if (isMounted) R.string.vault_config_unmount_first else R.string.vault_card_restore_desc),
-                        isDynamic = isDynamic,
-                        enabled   = !isMounted,
-                        onClick   = { requireDrive { onRestoreHeader(containerId) } }
-                    )
+                    // ── Protection ───────────────────────────────────────────────
+                    SettingsGroup(title = stringResource(R.string.vault_config_group_protection)) {
+                        row { shape ->
+                            GroupedRow(
+                                shape    = shape,
+                                title    = stringResource(R.string.vault_config_op_auto_unmount),
+                                subtitle = stringResource(R.string.vault_config_op_auto_unmount_desc),
+                                onClick  = { showAutoUnmountSheet = true }
+                            )
+                        }
+                        row { shape ->
+                            GroupedRow(
+                                shape    = shape,
+                                title    = stringResource(R.string.vault_info_op_backup_header),
+                                subtitle = stringResource(
+                                    if (isMounted) R.string.vault_config_unmount_first
+                                    else R.string.vault_card_backup_desc
+                                ),
+                                enabled  = !isMounted,
+                                onClick  = { requireDrive { onBackupHeader(containerId) } }
+                            )
+                        }
+                        row { shape ->
+                            GroupedRow(
+                                shape    = shape,
+                                title    = stringResource(R.string.vault_info_op_restore_header),
+                                subtitle = stringResource(
+                                    if (isMounted) R.string.vault_config_unmount_first
+                                    else R.string.vault_card_restore_desc
+                                ),
+                                enabled  = !isMounted,
+                                onClick  = { requireDrive { onRestoreHeader(containerId) } }
+                            )
+                        }
+                    }
 
+                    // ── Manage ───────────────────────────────────────────────────
+                    // What used to hide behind the three dots. Delete is missing for a USB
+                    // vault on purpose: there is no file of ours to remove, and the red
+                    // "delete forever" only ever did what Forget does.
+                    SettingsGroup(title = stringResource(R.string.vault_config_group_manage)) {
+                        row { shape ->
+                            GroupedRow(
+                                shape    = shape,
+                                title    = stringResource(R.string.vault_config_move_sheet_title),
+                                subtitle = stringResource(R.string.vault_config_move_desc),
+                                enabled  = !isMounted,
+                                onClick  = { showMoveSheet = true }
+                            )
+                        }
+                        row { shape ->
+                            GroupedRow(
+                                shape    = shape,
+                                title    = stringResource(R.string.vault_forget_confirm),
+                                subtitle = stringResource(R.string.vault_config_forget_desc),
+                                enabled  = !isMounted,
+                                onClick  = { showForgetDialog = true }
+                            )
+                        }
+                        if (!isUsbVaultHeader) {
+                            row { shape ->
+                                GroupedRow(
+                                    shape      = shape,
+                                    title      = stringResource(R.string.vault_delete_confirm),
+                                    subtitle   = stringResource(R.string.vault_config_delete_desc),
+                                    enabled    = !isMounted,
+                                    titleColor = MaterialTheme.colorScheme.error,
+                                    onClick    = { showDeleteDialog = true }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(24.dp))
                     Spacer(Modifier.navigationBarsPadding())
                     Spacer(Modifier.height(8.dp))
                 }
@@ -653,13 +676,9 @@ fun VaultConfigScreen(
 @Composable
 private fun VaultConfigHero(
     container: ContainerEntity?,
-    isDynamic: Boolean,
-    isMounted: Boolean = false,
-    onOpenDetails: () -> Unit = {},
-    onBlocked: () -> Unit = {}
+    isMounted: Boolean = false
 ) {
     val context = LocalContext.current
-    val isUsbVault = container?.usbSaltHash?.isNotEmpty() == true
     val heroIcon = vaultStorageIcon(
         path        = container?.path ?: "",
         safUri      = container?.safUri ?: "",
@@ -676,31 +695,6 @@ private fun VaultConfigHero(
         animationSpec = tween(300),
         label         = "hero_tint"
     )
-
-    val hop     = remember { Animatable(0f) }
-    val shake   = remember { Animatable(0f) }
-    var shakeTrigger by remember { mutableIntStateOf(0) }
-    val haptics = LocalHapticFeedback.current
-
-    // Only while mounted: a hop on a vault that cannot show details would be inviting a
-    // press that ends in a refusal.
-    LaunchedEffect(isMounted) {
-        if (!isMounted) return@LaunchedEffect
-        while (true) {
-            kotlinx.coroutines.delay(4000)
-            hop.animateTo(-26f, tween(200, easing = LinearOutSlowInEasing))
-            hop.animateTo(0f, spring(dampingRatio = 0.3f, stiffness = 700f))
-        }
-    }
-
-    LaunchedEffect(shakeTrigger) {
-        if (shakeTrigger == 0) return@LaunchedEffect
-        repeat(3) {
-            shake.animateTo(12f, tween(50))
-            shake.animateTo(-12f, tween(50))
-        }
-        shake.animateTo(0f, tween(50))
-    }
 
     val displayPath = remember(container?.path, container?.safUri, container?.name) {
         when {
@@ -728,31 +722,20 @@ private fun VaultConfigHero(
         }
     }
 
+    // Nothing to press here any more: the details moved to the button in the top bar, and
+    // with them went the hop that used to invite the press and the shake that answered one
+    // the vault could not honour.
     Column(
         modifier            = Modifier
             .fillMaxWidth()
-            .padding(vertical = 32.dp),
+            .padding(top = 8.dp, bottom = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // The icon is the way into the details, the way the lock is the way in on the
-        // mount screen. It only invites a press while the vault is open, because that is
-        // the only time it has anything to show - the algorithm, key size and PIM all
-        // come from a header that is not readable until then.
         Box(
             modifier         = Modifier
-                .offset { IntOffset(shake.value.roundToInt(), hop.value.roundToInt()) }
                 .size(96.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape)
-                .background(iconBg)
-                .clickable {
-                    if (isMounted) {
-                        onOpenDetails()
-                    } else {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onBlocked()
-                        shakeTrigger++
-                    }
-                },
+                .background(iconBg),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -765,7 +748,7 @@ private fun VaultConfigHero(
         Spacer(Modifier.height(16.dp))
         Text(
             text       = container?.name ?: "",
-            style      = MaterialTheme.typography.titleLarge,
+            style      = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold
         )
         if (displayPath.isNotBlank()) {
@@ -782,57 +765,55 @@ private fun VaultConfigHero(
     }
 }
 
-// ── Operation list item ───────────────────────────────────────────────────────
+// ── The round actions under the vault's name ─────────────────────────────────
 
+/**
+ * One of the three actions at the top, shaped after the ones on Android's own App info
+ * screen: a wide rounded blob with the icon inside it and the word underneath.
+ */
 @Composable
-private fun VaultOperationItem(
-    icon     : ImageVector,
-    rawColor : Color,
-    title    : String,
-    subtitle : String,
-    isDynamic: Boolean,
-    enabled  : Boolean = true,
-    onClick  : () -> Unit
+private fun VaultActionCapsule(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean = true,
+    emphasised: Boolean = false,
+    onClick: () -> Unit
 ) {
-    val iconColor = if (isDynamic) MaterialTheme.colorScheme.primary else rawColor
-    val effectiveIconColor = if (enabled) iconColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-    val effectiveTitleColor = if (enabled) MaterialTheme.colorScheme.onSurface
-                              else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    val container = when {
+        !enabled   -> MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.4f)
+        emphasised -> MaterialTheme.colorScheme.primaryContainer
+        else       -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    val content = when {
+        !enabled   -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+        emphasised -> MaterialTheme.colorScheme.onPrimaryContainer
+        else       -> MaterialTheme.colorScheme.onSecondaryContainer
+    }
 
-    ListItem(
-        colors          = ListItemDefaults.colors(containerColor = Color.Transparent),
-        leadingContent  = {
-            Box(
-                modifier         = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(effectiveIconColor.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector        = icon,
-                    contentDescription = null,
-                    tint               = effectiveIconColor,
-                    modifier           = Modifier.size(20.dp)
-                )
-            }
-        },
-        headlineContent  = {
-            Text(
-                text  = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = effectiveTitleColor
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .width(104.dp)
+                .height(60.dp)
+                .clip(RoundedCornerShape(30.dp))
+                .background(container)
+                .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector        = icon,
+                contentDescription = null,
+                tint               = content,
+                modifier           = Modifier.size(24.dp)
             )
-        },
-        supportingContent = {
-            Text(
-                text  = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        },
-        modifier         = Modifier
-            .padding(horizontal = 8.dp)
-            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
-    )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text       = label,
+            style      = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Medium,
+            color      = if (enabled) MaterialTheme.colorScheme.onSurface
+                         else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+        )
+    }
 }

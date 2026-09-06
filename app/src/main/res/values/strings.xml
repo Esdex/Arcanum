@@ -1197,6 +1197,13 @@
     <string name="vault_config_external_access_switch">Allow external app access</string>
     <string name="vault_config_external_access_switch_desc">Expose this vault in the system file picker while mounted</string>
     <string name="vault_config_title">Vault Config</string>
+    <string name="vault_config_cd_info">Vault details</string>
+    <string name="vault_config_group_access">Access</string>
+    <string name="vault_config_group_protection">Protection</string>
+    <string name="vault_config_group_manage">Manage</string>
+    <string name="vault_config_move_desc">Put the vault file somewhere else</string>
+    <string name="vault_config_forget_desc">Take it off the list and leave the file where it is</string>
+    <string name="vault_config_delete_desc">Delete the vault file for good</string>
 
     <string name="vault_storage_usb">USB drive</string>
     <string name="vault_storage_usb_partition">USB partition</string>
