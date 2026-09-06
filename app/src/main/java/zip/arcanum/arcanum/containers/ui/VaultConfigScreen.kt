@@ -246,6 +246,7 @@ fun VaultConfigScreen(
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                         .padding(innerPadding)
+                        .padding(horizontal = 16.dp)
                 ) {
                     // ── Hero ──────────────────────────────────────────────────────
                     VaultConfigHero(container = container, isMounted = isMounted)

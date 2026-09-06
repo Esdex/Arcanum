@@ -85,6 +85,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -96,6 +97,7 @@ import androidx.compose.runtime.setValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -176,6 +178,10 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.core.os.LocaleListCompat
 import zip.arcanum.core.components.BackButton
+import zip.arcanum.core.components.rememberCollapsedLargeTopBarBehavior
+import zip.arcanum.core.components.SettingsGroup
+import zip.arcanum.core.components.GroupedRow
+import zip.arcanum.core.components.GroupedRoundIcon
 
 private data class AppLanguage(val tag: String, val nativeName: String)
 
@@ -319,6 +325,30 @@ fun SettingsScreen(
 
 // ── Main card list ────────────────────────────────────────────────────────────
 
+/**
+ * The circle behind each icon on the main list.
+ *
+ * Pale and saturated rather than dark and solid, which is what Android's own Settings does:
+ * the glyph then sits in black on top and the row keeps its colour without shouting. The
+ * hues follow the meaning rather than the palette - the alarm is the red one - and the glyph
+ * colour is not stated anywhere, since [zip.arcanum.core.components.GroupedRoundIcon] takes
+ * it from how bright the circle is.
+ *
+ * These stand outside Material You on purpose. The screen used to hand every icon the theme's
+ * primaryContainer when dynamic colour was on, which made all five circles the same colour -
+ * and a colour that says nothing is worse here than one that does not match the wallpaper.
+ * Android's own Settings keeps its section colours for the same reason.
+ */
+private data class SectionHue(val circle: Color, val glyph: Color)
+
+private object SettingsHue {
+    val Security   = SectionHue(Color(0xFF60D5F3), Color(0xFF004E5D))
+    val Panic      = SectionHue(Color(0xFFFFB3AE), Color(0xFF8A1A16))
+    val Appearance = SectionHue(Color(0xFFFFB683), Color(0xFF753403))
+    val About      = SectionHue(Color(0xFFC7C7C7), Color(0xFF474747))
+    val Debug      = SectionHue(Color(0xFF80DA88), Color(0xFF00522C))
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainSettingsScreen(
@@ -327,15 +357,17 @@ private fun MainSettingsScreen(
     debugMode: Boolean,
     isPro: Boolean
 ) {
-    val isDynamic = LocalDynamicColor.current
     var showUpgradeOverlay by remember { mutableStateOf(false) }
+    val scrollBehavior = rememberCollapsedLargeTopBarBehavior()
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings_title)) },
+            LargeTopAppBar(
+                title          = { Text(stringResource(R.string.settings_title)) },
+                scrollBehavior = scrollBehavior,
                 navigationIcon = {
-                    BackButton(onClick = onBack)
+                    BackButton(onClick = onBack, modifier = Modifier.padding(start = 4.dp))
                 }
             )
         }
@@ -350,48 +382,99 @@ private fun MainSettingsScreen(
             if (!BuildConfig.IS_FDROID && !isPro) {
                 PremiumBannerCard(onClick = { showUpgradeOverlay = true })
             }
-            SettingsCard(
-                title     = stringResource(R.string.settings_card_security),
-                subtitle  = stringResource(R.string.settings_card_security_desc),
-                icon      = Icons.Outlined.Security,
-                rawColor  = Color(0xFFF44336),
-                isDynamic = isDynamic,
-                onClick   = { onNavigate(SubScreen.SECURITY) }
-            )
-            SettingsCard(
-                title     = stringResource(R.string.settings_card_panic),
-                subtitle  = stringResource(R.string.settings_card_panic_desc),
-                icon      = Icons.Outlined.Warning,
-                rawColor  = Color(0xFFFF5722),
-                isDynamic = isDynamic,
-                onClick   = { onNavigate(SubScreen.PANIC_MODE) }
-            )
-            SettingsCard(
-                title     = stringResource(R.string.settings_card_appearance),
-                subtitle  = stringResource(R.string.settings_card_appearance_desc),
-                icon      = Icons.Outlined.Palette,
-                rawColor  = Color(0xFF673AB7),
-                isDynamic = isDynamic,
-                onClick   = { onNavigate(SubScreen.APPEARANCE) }
-            )
-            SettingsCard(
-                title     = stringResource(R.string.settings_card_about),
-                subtitle  = stringResource(R.string.settings_card_about_desc),
-                icon      = Icons.Outlined.Info,
-                rawColor  = Color(0xFF607D8B),
-                isDynamic = isDynamic,
-                onClick   = { onNavigate(SubScreen.ABOUT) }
-            )
-            if (debugMode) {
-                SettingsCard(
-                    title     = stringResource(R.string.settings_card_debug),
-                    subtitle  = stringResource(R.string.settings_card_debug_desc),
-                    icon      = Icons.Outlined.BugReport,
-                    rawColor  = Color(0xFF009688),
-                    isDynamic = isDynamic,
-                    onClick   = { onNavigate(SubScreen.DEBUG) }
-                )
+            // Grouped the way Android's own Settings groups its sections: no headings, a
+            // round icon of its own colour on each row, and the gap between groups doing the
+            // sorting. Protection first, then how it looks, then what it is.
+            SettingsGroup {
+                row { shape ->
+                    GroupedRow(
+                        shape    = shape,
+                        title    = stringResource(R.string.settings_card_security),
+                        subtitle = stringResource(R.string.settings_card_security_desc),
+                        leading  = {
+                            GroupedRoundIcon(
+                                icon      = Icons.Outlined.Security,
+                                color     = SettingsHue.Security.circle,
+                                iconColor = SettingsHue.Security.glyph
+                            )
+                        },
+                        onClick  = { onNavigate(SubScreen.SECURITY) }
+                    )
+                }
+                row { shape ->
+                    GroupedRow(
+                        shape    = shape,
+                        title    = stringResource(R.string.settings_card_panic),
+                        subtitle = stringResource(R.string.settings_card_panic_desc),
+                        leading  = {
+                            GroupedRoundIcon(
+                                icon      = Icons.Outlined.Warning,
+                                color     = SettingsHue.Panic.circle,
+                                iconColor = SettingsHue.Panic.glyph
+                            )
+                        },
+                        onClick  = { onNavigate(SubScreen.PANIC_MODE) }
+                    )
+                }
             }
+
+            Spacer(Modifier.height(16.dp))
+
+            SettingsGroup {
+                row { shape ->
+                    GroupedRow(
+                        shape    = shape,
+                        title    = stringResource(R.string.settings_card_appearance),
+                        subtitle = stringResource(R.string.settings_card_appearance_desc),
+                        leading  = {
+                            GroupedRoundIcon(
+                                icon      = Icons.Outlined.Palette,
+                                color     = SettingsHue.Appearance.circle,
+                                iconColor = SettingsHue.Appearance.glyph
+                            )
+                        },
+                        onClick  = { onNavigate(SubScreen.APPEARANCE) }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            SettingsGroup {
+                row { shape ->
+                    GroupedRow(
+                        shape    = shape,
+                        title    = stringResource(R.string.settings_card_about),
+                        subtitle = stringResource(R.string.settings_card_about_desc),
+                        leading  = {
+                            GroupedRoundIcon(
+                                icon      = Icons.Outlined.Info,
+                                color     = SettingsHue.About.circle,
+                                iconColor = SettingsHue.About.glyph
+                            )
+                        },
+                        onClick  = { onNavigate(SubScreen.ABOUT) }
+                    )
+                }
+                if (debugMode) {
+                    row { shape ->
+                        GroupedRow(
+                            shape    = shape,
+                            title    = stringResource(R.string.settings_card_debug),
+                            subtitle = stringResource(R.string.settings_card_debug_desc),
+                            leading  = {
+                                GroupedRoundIcon(
+                                    icon      = Icons.Outlined.BugReport,
+                                    color     = SettingsHue.Debug.circle,
+                                iconColor = SettingsHue.Debug.glyph
+                                )
+                            },
+                            onClick  = { onNavigate(SubScreen.DEBUG) }
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
         }
     }
@@ -446,82 +529,10 @@ private fun PremiumBannerCard(onClick: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SettingsCard(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    rawColor: Color,
-    isDynamic: Boolean,
-    onClick: () -> Unit
-) {
-    val iconColor         = if (isDynamic) MaterialTheme.colorScheme.primary else rawColor
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed         by interactionSource.collectIsPressedAsState()
-    val scale             by animateFloatAsState(
-        targetValue   = if (isPressed) 0.97f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label         = "card_scale"
-    )
-
-    Card(
-        onClick           = onClick,
-        interactionSource = interactionSource,
-        shape             = RoundedCornerShape(16.dp),
-        colors            = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-        elevation         = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier          = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp)
-            .scale(scale)
-    ) {
-        Row(
-            modifier          = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier          = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(iconColor.copy(alpha = 0.15f)),
-                contentAlignment  = Alignment.Center
-            ) {
-                Icon(
-                    imageVector        = icon,
-                    contentDescription = null,
-                    tint               = iconColor,
-                    modifier           = Modifier.size(24.dp)
-                )
-            }
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text       = title,
-                    style      = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text  = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Icon(
-                imageVector        = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                contentDescription = null,
-                tint               = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
 // ── Sub-screen helpers ────────────────────────────────────────────────────────
 
 @Composable
-private fun SettingsGroup(content: @Composable () -> Unit) {
+private fun SubScreenGroup(content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -600,7 +611,7 @@ private fun SecuritySubScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(vertical = 8.dp)
         ) {
-            SettingsGroup {
+            SubScreenGroup {
                 SettingsRow(
                     title   = stringResource(R.string.settings_security_change_pin),
                     onClick = onChangePin
@@ -1005,7 +1016,7 @@ private fun PanicModeSubScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(vertical = 8.dp)
         ) {
-            SettingsGroup {
+            SubScreenGroup {
                 SettingsSwitch(
                     title           = stringResource(R.string.settings_panic_switch_title),
                     subtitle        = if (settings.enabled) stringResource(R.string.settings_panic_switch_desc)
@@ -1022,12 +1033,12 @@ private fun PanicModeSubScreen(
             AnimatedVisibility(visible = settings.enabled) {
                 Column {
                     PanicSectionLabel(stringResource(R.string.settings_panic_pin_section))
-                    SettingsGroup {
+                    SubScreenGroup {
                         SettingsRow(title = stringResource(R.string.settings_panic_change_pin), onClick = onSetPanicPin)
                     }
 
                     PanicSectionLabel(stringResource(R.string.settings_panic_wipe_section))
-                    SettingsGroup {
+                    SubScreenGroup {
                         SettingsSwitch(
                             title           = stringResource(R.string.settings_panic_full_wipe),
                             subtitle        = stringResource(R.string.settings_panic_full_wipe_desc),
@@ -1036,7 +1047,7 @@ private fun PanicModeSubScreen(
                         )
                     }
 
-                    SettingsGroup {
+                    SubScreenGroup {
                         SettingsSwitch(
                             title           = stringResource(R.string.settings_panic_clear_settings),
                             checked         = settings.clearSettings,
@@ -1060,7 +1071,7 @@ private fun PanicModeSubScreen(
 
                     if (containers.isNotEmpty() && !settings.fullWipe) {
                         PanicSectionLabel(stringResource(R.string.settings_panic_vaults_section))
-                        SettingsGroup {
+                        SubScreenGroup {
                             containers.forEach { container ->
                                 VaultPanicRow(
                                     container = container,
@@ -1758,7 +1769,7 @@ private fun PremiumSubScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(vertical = 8.dp)
         ) {
-            SettingsGroup {
+            SubScreenGroup {
                 SettingsRow(
                     title   = stringResource(R.string.settings_premium_title),
                     value   = stringResource(R.string.settings_premium_upgrade),
@@ -2059,7 +2070,7 @@ private fun DebugSubScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(vertical = 8.dp)
         ) {
-            SettingsGroup {
+            SubScreenGroup {
                 SettingsSwitch(
                     title           = stringResource(R.string.settings_debug_mode),
                     subtitle        = stringResource(R.string.settings_debug_mode_desc),
@@ -2087,7 +2098,7 @@ private fun DebugSubScreen(
                 val showMountLog by viewModel.showMountLog.collectAsState()
                 val saveMountLog by viewModel.saveMountLog.collectAsState()
                 val galleryResyncButton by viewModel.galleryResyncButton.collectAsState()
-                SettingsGroup {
+                SubScreenGroup {
                     SettingsSwitch(
                         title           = stringResource(R.string.settings_debug_mount_log_title),
                         subtitle        = stringResource(R.string.settings_debug_mount_log_desc),
@@ -2110,7 +2121,7 @@ private fun DebugSubScreen(
 
                 // ── Runtime ──────────────────────────────────────────────────
                 PanicSectionLabel(stringResource(R.string.settings_debug_section_runtime))
-                SettingsGroup {
+                SubScreenGroup {
                     state.runtime?.let { r ->
                         DebugRow("PID", r.pid.toString())
                         DebugRow("UID", r.uid.toString())
@@ -2126,7 +2137,7 @@ private fun DebugSubScreen(
 
                 // ── Mounted Containers ────────────────────────────────────────
                 PanicSectionLabel(stringResource(R.string.settings_debug_section_mounted))
-                SettingsGroup {
+                SubScreenGroup {
                     if (state.mounted.isEmpty() && !state.isLoading) {
                         Text(
                             stringResource(R.string.settings_debug_no_containers),
@@ -2163,7 +2174,7 @@ private fun DebugSubScreen(
                         ?.flags?.and(WindowManager.LayoutParams.FLAG_SECURE) ?: 0) != 0
                 }
                 PanicSectionLabel(stringResource(R.string.settings_debug_section_device))
-                SettingsGroup {
+                SubScreenGroup {
                     state.security?.let { s ->
                         DebugRow(
                             label      = "Keystore",
@@ -2285,7 +2296,7 @@ private fun DebugSubScreen(
 
                 // ── Database ──────────────────────────────────────────────────
                 PanicSectionLabel(stringResource(R.string.settings_debug_section_database))
-                SettingsGroup {
+                SubScreenGroup {
                     state.db?.let { db ->
                         DebugRow("Schema", "v${db.version}")
                         DebugRow("Containers", "${db.total} total, ${db.mounted} mounted")
@@ -2302,7 +2313,7 @@ private fun DebugSubScreen(
 
                 // ── Launcher Icons ────────────────────────────────────────────
                 PanicSectionLabel(stringResource(R.string.settings_debug_section_icons))
-                SettingsGroup {
+                SubScreenGroup {
                     Row(
                         modifier              = Modifier
                             .fillMaxWidth()
@@ -2329,7 +2340,7 @@ private fun DebugSubScreen(
                  * two dozen situations by hand to look at them is not a test anyone runs
                  * twice. Debug only (#135). */
                 PanicSectionLabel("Notifications")
-                SettingsGroup {
+                SubScreenGroup {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2385,7 +2396,7 @@ private fun DebugSubScreen(
 
                 // ── Tools ─────────────────────────────────────────────────────
                 PanicSectionLabel(stringResource(R.string.settings_debug_section_tools))
-                SettingsGroup {
+                SubScreenGroup {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2425,7 +2436,7 @@ private fun DebugSubScreen(
                 // ── Mount log ─────────────────────────────────────────────────
                 state.lastMountLog?.let { mountLog ->
                     PanicSectionLabel("Mount log")
-                    SettingsGroup {
+                    SubScreenGroup {
                         Text(
                             text     = mountLog.trim(),
                             style    = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
@@ -2466,7 +2477,7 @@ private fun DebugSubScreen(
 
                 // ── USB probe (issue #95 spike) ───────────────────────────────
                 PanicSectionLabel("USB probe")
-                SettingsGroup {
+                SubScreenGroup {
                     Text(
                         text     = "Read-only feasibility check for encrypted USB drives. " +
                                    "Plug a drive in over OTG and run it. Issues no write command, " +
@@ -2682,7 +2693,7 @@ private fun DebugSubScreen(
                 // ── Crash log ─────────────────────────────────────────────────
                 if (state.crashLogs.isNotEmpty()) {
                     PanicSectionLabel("Crash log")
-                    SettingsGroup {
+                    SubScreenGroup {
                         state.crashLogs.forEach { log ->
                             Text(
                                 text     = log.name,

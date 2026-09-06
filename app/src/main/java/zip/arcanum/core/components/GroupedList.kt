@@ -5,12 +5,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -56,13 +62,12 @@ fun SettingsGroup(
                 style      = MaterialTheme.typography.labelLarge,
                 color      = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold,
-                modifier   = Modifier.padding(start = 28.dp, end = 16.dp, top = 24.dp, bottom = 8.dp)
+                modifier   = Modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 8.dp)
             )
         }
-        Column(
-            modifier            = Modifier.padding(horizontal = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(GAP)
-        ) {
+        // No side padding of its own: the page decides how wide its content is, and a group
+        // that inset itself would sit narrower than everything else on the screen.
+        Column(verticalArrangement = Arrangement.spacedBy(GAP)) {
             rows.forEachIndexed { index, row -> row(groupShape(index, rows.size)) }
         }
     }
@@ -86,6 +91,7 @@ fun GroupedRow(
     enabled: Boolean = true,
     titleColor: Color? = null,
     onClick: (() -> Unit)? = null,
+    leading: @Composable (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null
 ) {
     val fade = if (enabled) 1f else 0.38f
@@ -100,6 +106,10 @@ fun GroupedRow(
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (leading != null) {
+            leading()
+            Spacer(Modifier.width(16.dp))
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text       = title,
@@ -136,6 +146,41 @@ fun GroupedBox(
             .padding(horizontal = 20.dp, vertical = 16.dp),
         content = content
     )
+}
+
+/**
+ * The round, filled icon that stands at the head of a top-level row - the shape Android's own
+ * Settings uses for its sections. Rows inside a screen have no icon at all; this is for the
+ * lists that lead somewhere else.
+ *
+ * The glyph takes black or white by the brightness of the circle behind it, so a palette can
+ * be picked for how it looks rather than for what will still be readable on it. Pass
+ * [iconColor] where the pair is known - a deep tone of the circle's own hue reads warmer than
+ * black, which is what Android's own icons do.
+ */
+@Composable
+fun GroupedRoundIcon(
+    icon: ImageVector,
+    color: Color,
+    iconColor: Color? = null,
+    enabled: Boolean = true
+) {
+    val fade = if (enabled) 1f else 0.38f
+    Box(
+        modifier         = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(color.copy(alpha = fade)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector        = icon,
+            contentDescription = null,
+            tint               = (iconColor
+                ?: if (color.luminance() > 0.45f) Color.Black else Color.White).copy(alpha = fade),
+            modifier           = Modifier.size(22.dp)
+        )
+    }
 }
 
 /** Round on the outside of the group, nearly square within it. */
