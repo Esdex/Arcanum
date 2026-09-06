@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.os.StatFs
 import android.provider.OpenableColumns
+import android.system.Os
 import androidx.lifecycle.ViewModel
 import java.util.concurrent.atomic.AtomicBoolean
 import androidx.lifecycle.viewModelScope
@@ -299,6 +301,34 @@ class CreateContainerViewModel @Inject constructor(
         var n = (it.currentStep - 1).coerceAtLeast(1)
         if (it.skips(n)) n = (n - 1).coerceAtLeast(1)
         it.copy(currentStep = n)
+    }
+
+    /**
+     * Free space where the vault is actually going to be written, in bytes, or null when
+     * it cannot be measured - the size step then simply offers no figure and no limit.
+     *
+     * The SAF target is measured through the descriptor of the file itself rather than
+     * through a path: the document the system picker created may live on an SD card, and
+     * statting the built-in storage instead reported its free space for the card. A
+     * device with a full internal volume and a half-empty card was told there was no room
+     * for a vault that fitted the card several times over (#180).
+     */
+    fun availableSpaceBytes(): Long? = when (_state.value.location) {
+        StorageLocation.USB_DRIVE        -> _state.value.usbDataSizeBytes.takeIf { it > 0L }
+        StorageLocation.APP_STORAGE      ->
+            runCatching { StatFs(_state.value.filePath).availableBytes }.getOrNull()
+        StorageLocation.INTERNAL_STORAGE -> safFreeBytes()
+    }
+
+    /** Free space on the volume holding the picked document, via its own descriptor.
+     *  Null when there is no document yet, or when the provider handed us something
+     *  that is not a file on a filesystem (a pipe from a cloud provider, say). */
+    private fun safFreeBytes(): Long? {
+        val fd = safParcelFd?.fileDescriptor?.takeIf { it.valid() } ?: return null
+        return runCatching {
+            val vfs = Os.fstatvfs(fd)
+            vfs.f_bavail * vfs.f_frsize
+        }.getOrNull()?.takeIf { it > 0L }
     }
 
     fun setSafUri(uri: Uri) {

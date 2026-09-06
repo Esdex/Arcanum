@@ -2,8 +2,6 @@ package zip.arcanum.arcanum.containers.ui
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Environment
-import android.os.StatFs
 import zip.arcanum.core.utils.FileUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -82,26 +80,12 @@ fun CreateContainerScreen(
     var prevStep           by remember { mutableIntStateOf(1) }
     var showCancelDialog   by remember { mutableStateOf(false) }
 
-    // usbDataSizeBytes is a key, not just an input: the drive is measured
-    // asynchronously after the location is chosen, and without it this stays at the
-    // zero it was computed with and Next never enables.
-    val availableSpaceMb = remember(state.filePath, state.location, state.usbDataSizeBytes) {
-        try {
-            if (state.location == StorageLocation.USB_DRIVE) {
-                // Not a filesystem to stat: the whole drive is the volume, and its
-                // usable size was measured when the drive was detected.
-                state.usbDataSizeBytes / (1024L * 1024L)
-            } else {
-                val path = when (state.location) {
-                    StorageLocation.APP_STORAGE      -> state.filePath
-                    StorageLocation.INTERNAL_STORAGE -> Environment.getExternalStorageDirectory().absolutePath
-                    StorageLocation.USB_DRIVE        -> ""   // handled above
-                }
-                StatFs(path).availableBytes / (1024L * 1024L)
-            }
-        } catch (_: Exception) {
-            Long.MAX_VALUE
-        }
+    // safUri and usbDataSizeBytes are keys, not just inputs: the document is picked and
+    // the drive measured asynchronously after the location is chosen, and without them
+    // this would stay at the figure it was computed with and Next never enable.
+    // Long.MAX_VALUE is what the size step reads as "unknown": no figure, no limit.
+    val availableSpaceMb = remember(state.filePath, state.location, state.safUri, state.usbDataSizeBytes) {
+        viewModel.availableSpaceBytes()?.div(1024L * 1024L) ?: Long.MAX_VALUE
     }
 
     val fileCreatorLauncher = rememberLauncherForActivityResult(

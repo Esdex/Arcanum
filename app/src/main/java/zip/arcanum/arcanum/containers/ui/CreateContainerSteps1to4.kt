@@ -487,12 +487,16 @@ fun StepVolumeSize(
                 color = MaterialTheme.colorScheme.error
             )
         }
+        // Said as a possibility, not as a fact: an app cannot ask Android what a removable
+        // volume is formatted as, and the card in the reporter's device was exFAT while
+        // this claimed a FAT32 limit for it (#180). Neither is it an error - nothing here
+        // blocks the size, and the creation itself is what would fail at 4 GB.
         if (state.isExternalSd && state.sizeMb >= 4096L) {
             Spacer(Modifier.height(4.dp))
             Text(
                 stringResource(R.string.create_size_fat32_limit),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else if (state.isExternalSd) {
             Spacer(Modifier.height(4.dp))
