@@ -2,7 +2,6 @@ package zip.arcanum.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -62,7 +61,6 @@ import zip.arcanum.core.components.SettingsGroup
 import zip.arcanum.core.components.GroupedRow
 import zip.arcanum.core.components.GroupedSwitch
 import zip.arcanum.core.components.GroupedBox
-import androidx.compose.foundation.interaction.MutableInteractionSource
 
 // Settings / Appearance: theme, dynamic colour, AMOLED and the app's language.
 
@@ -161,25 +159,18 @@ internal fun AppearanceSubScreen(
                             )
                         } else {
                             // Locked rather than absent: the padlock in the switch is the
-                            // whole message, and a tap on the row explains the rest.
-                            Box {
-                                GroupedSwitch(
-                                    shape           = shape,
-                                    title           = stringResource(R.string.settings_appearance_amoled),
-                                    subtitle        = stringResource(R.string.upgrade_pro_feature_subtitle),
-                                    checked         = false,
-                                    enabled         = false,
-                                    onCheckedChange = {}
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .matchParentSize()
-                                        .clickable(
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication        = null
-                                        ) { showUpgradeDialog = true }
-                                )
-                            }
+                            // whole message, and a tap on the row explains the rest. The row
+                            // takes that tap itself rather than an overlay on top of it, so
+                            // anything else in the row keeps its own taps.
+                            GroupedSwitch(
+                                shape           = shape,
+                                title           = stringResource(R.string.settings_appearance_amoled),
+                                subtitle        = stringResource(R.string.upgrade_pro_feature_subtitle),
+                                checked         = false,
+                                enabled         = false,
+                                onCheckedChange = {},
+                                onDisabledClick = { showUpgradeDialog = true }
+                            )
                         }
                     }
                 }

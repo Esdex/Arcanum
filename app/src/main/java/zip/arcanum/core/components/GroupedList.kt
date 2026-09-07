@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,12 +20,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,8 +40,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import zip.arcanum.R
 
 /**
  * Rows that belong together, drawn as one block of cards.
@@ -89,16 +99,27 @@ class GroupBuilder internal constructor() {
     }
 }
 
-/** One card in a group: a title, a line under it, and whatever belongs on the right. */
+/**
+ * One card in a group: a title, whatever belongs on the right, and - for a setting that needs
+ * explaining - an "i" beside it that opens the explanation.
+ *
+ * [subtitle] is for what the row **is**: the language now chosen, a version number, "Arcanum
+ * Pro feature". [info] is for what the setting **does**, and it does not sit in the row at all
+ * - a tap on the "i" opens it in a dialog. Keeping the prose out of the list is what lets a
+ * screen of eight settings be taken in at a glance, and it also lifts the length limit an
+ * explanation had while it lived in the row.
+ */
 @Composable
 fun GroupedRow(
     shape: Shape,
     title: String,
     subtitle: String? = null,
+    info: String? = null,
     enabled: Boolean = true,
     titleColor: Color? = null,
     border: BorderStroke? = null,
     onClick: (() -> Unit)? = null,
+    onDisabledClick: (() -> Unit)? = null,
     leading: @Composable (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null
 ) {
@@ -106,11 +127,20 @@ fun GroupedRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // A row that is only a title is shorter than one carrying a switch or an "i", and
+            // in a group of both the step is visible. The floor is that switch's own height.
+            .heightIn(min = ROW_MIN_HEIGHT)
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .then(if (border != null) Modifier.border(border, shape) else Modifier)
             .then(
-                if (onClick != null && enabled) Modifier.clickable(onClick = onClick) else Modifier
+                when {
+                    onClick != null && enabled -> Modifier.clickable(onClick = onClick)
+                    // A locked row still answers a tap - saying why beats doing nothing - and
+                    // the "i" inside it goes on taking its own, which is where the reason is.
+                    onDisabledClick != null    -> Modifier.clickable(onClick = onDisabledClick)
+                    else                       -> Modifier
+                }
             )
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -134,11 +164,44 @@ fun GroupedRow(
                 )
             }
         }
+        if (info != null) {
+            var showInfo by remember { mutableStateOf(false) }
+            Spacer(Modifier.width(4.dp))
+            // Never faded with the rest of the row: on a setting that cannot be moved this is
+            // the one thing still worth pressing.
+            IconButton(
+                onClick  = { showInfo = true },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector        = Icons.Outlined.Info,
+                    contentDescription = stringResource(R.string.common_info),
+                    tint               = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier           = Modifier.size(20.dp)
+                )
+            }
+            if (showInfo) {
+                InfoDialog(title = title, text = info, onDismiss = { showInfo = false })
+            }
+        }
         if (trailing != null) {
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(if (info != null) 8.dp else 16.dp))
             trailing()
         }
     }
+}
+
+/** What the "i" opens: the row's own title, the explanation under it, and a way out. */
+@Composable
+private fun InfoDialog(title: String, text: String, onDismiss: () -> Unit) {
+    AppDialog(
+        onDismissRequest = onDismiss,
+        title            = { Text(title) },
+        text             = { Text(text) },
+        confirmButton    = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_ok)) }
+        }
+    )
 }
 
 /**
@@ -156,14 +219,18 @@ fun GroupedSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     subtitle: String? = null,
-    enabled: Boolean = true
+    info: String? = null,
+    enabled: Boolean = true,
+    onDisabledClick: (() -> Unit)? = null
 ) {
     GroupedRow(
-        shape    = shape,
-        title    = title,
-        subtitle = subtitle,
-        enabled  = enabled,
-        onClick  = { onCheckedChange(!checked) },
+        shape           = shape,
+        title           = title,
+        subtitle        = subtitle,
+        info            = info,
+        enabled         = enabled,
+        onClick         = { onCheckedChange(!checked) },
+        onDisabledClick = onDisabledClick,
         trailing = {
             Switch(
                 checked         = checked,
@@ -264,3 +331,6 @@ fun groupShape(index: Int, count: Int): Shape {
 private val OUTER_RADIUS = 28.dp
 private val INNER_RADIUS = 6.dp
 private val GAP = 3.dp
+
+// The height of a Material switch plus the row's padding: what a row is when it holds one.
+private val ROW_MIN_HEIGHT = 64.dp

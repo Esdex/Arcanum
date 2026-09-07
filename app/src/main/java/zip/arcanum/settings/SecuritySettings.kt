@@ -2,7 +2,6 @@ package zip.arcanum.settings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,7 +28,6 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -172,7 +170,7 @@ internal fun SecuritySubScreen(
                     GroupedSwitch(
                         shape           = shape,
                         title           = stringResource(R.string.settings_security_argon2_offer),
-                        subtitle        = stringResource(R.string.settings_security_argon2_offer_desc),
+                        info            = stringResource(R.string.settings_security_argon2_offer_desc),
                         checked         = argon2Offer,
                         onCheckedChange = { viewModel.setArgon2Offer(it) }
                     )
@@ -185,7 +183,7 @@ internal fun SecuritySubScreen(
                     GroupedSwitch(
                         shape           = shape,
                         title           = stringResource(R.string.settings_security_screen_capture),
-                        subtitle        = stringResource(R.string.settings_security_screen_capture_desc),
+                        info            = stringResource(R.string.settings_security_screen_capture_desc),
                         checked         = screenCaptureProtection,
                         onCheckedChange = { enabled ->
                             if (!enabled) showWarning = true
@@ -195,29 +193,20 @@ internal fun SecuritySubScreen(
                 }
                 row { shape ->
                     // Applied once, it cannot be taken back without reinstalling - so the row
-                    // greys out, and a tap on it says why rather than doing nothing.
-                    Box {
-                        GroupedSwitch(
-                            shape           = shape,
-                            title           = stringResource(R.string.settings_security_disguise_title),
-                            subtitle        = stringResource(R.string.settings_security_disguise_desc),
-                            checked         = disguiseApplied,
-                            enabled         = !disguiseApplied,
-                            onCheckedChange = { viewModel.requestDisguise() }
-                        )
-                        if (disguiseApplied) {
-                            Box(
-                                modifier = Modifier
-                                    .matchParentSize()
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication        = null
-                                    ) {
-                                        notifications.notify(InAppNotification.DisguiseAlreadyApplied)
-                                    }
-                            )
+                    // greys out, and a tap on it says why rather than doing nothing. The row
+                    // takes that tap itself rather than an overlay on top of it, which would
+                    // swallow every tap in the row including the ones meant for what is in it.
+                    GroupedSwitch(
+                        shape           = shape,
+                        title           = stringResource(R.string.settings_security_disguise_title),
+                        info            = stringResource(R.string.settings_security_disguise_desc),
+                        checked         = disguiseApplied,
+                        enabled         = !disguiseApplied,
+                        onCheckedChange = { viewModel.requestDisguise() },
+                        onDisabledClick = {
+                            notifications.notify(InAppNotification.DisguiseAlreadyApplied)
                         }
-                    }
+                    )
                 }
             }
 
@@ -227,7 +216,7 @@ internal fun SecuritySubScreen(
                     GroupedSwitch(
                         shape           = shape,
                         title           = stringResource(R.string.settings_security_receive_shares),
-                        subtitle        = stringResource(R.string.settings_security_receive_shares_desc),
+                        info            = stringResource(R.string.settings_security_receive_shares_desc),
                         checked         = receiveShares,
                         onCheckedChange = { viewModel.setReceiveShares(it) }
                     )
@@ -236,7 +225,7 @@ internal fun SecuritySubScreen(
                     GroupedSwitch(
                         shape           = shape,
                         title           = stringResource(R.string.settings_security_media_content),
-                        subtitle        = stringResource(R.string.settings_security_media_content_desc),
+                        info            = stringResource(R.string.settings_security_media_content_desc),
                         checked         = mediaSessionContent,
                         onCheckedChange = { viewModel.setMediaSessionContent(it) }
                     )

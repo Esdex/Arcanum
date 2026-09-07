@@ -77,7 +77,9 @@ internal fun PanicModeSubScreen(
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding(), bottom = innerPadding.calculateBottomPadding())
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
+                // The first group here has no heading, and a heading is what gives the other
+                // sub-screens their room under the bar - so the page provides it instead.
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             SettingsGroup {
                 row { shape ->
