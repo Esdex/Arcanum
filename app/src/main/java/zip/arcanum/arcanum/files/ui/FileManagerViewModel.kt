@@ -1103,6 +1103,11 @@ class FileManagerViewModel @Inject constructor(
             }
     }
 
+    /** Whether a document made here should open in the editor at once (#109). */
+    val openNewInEditor = appPrefs.textEditor
+        .map { it.openAfterCreate }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
     fun createFolder(name: String) {
         val s = _state.value
         if (s.isReadOnly) {
@@ -1118,6 +1123,47 @@ class FileManagerViewModel @Inject constructor(
             notifications.notify(
                 if (rc == VeraCryptEngine.ERR_OK) InAppNotification.FolderCreated(name)
                 else InAppNotification.ReadOnlyError)
+        }
+    }
+
+    /**
+     * Makes an empty text document in the folder on screen.
+     *
+     * Written through [VeraCryptEngine.writeAt] rather than `writeFile`: an empty array there
+     * touches a file into existence on both filesystems, and - unlike the truncating write an
+     * import uses - it cannot empty a file that turns out to hold the name already.
+     *
+     * The name is checked against the directory as it is on disk rather than against the
+     * listing on screen, and case-insensitively, because FAT and exFAT do not tell "Notes.txt"
+     * from "notes.txt" - there the second name opens the first file. The sheet refuses a clash
+     * while it is being typed, so reaching this is the race, and the answer to it is to make
+     * nothing rather than to invent another name.
+     */
+    fun createTextDocument(name: String, onCreated: (path: String, name: String) -> Unit = { _, _ -> }) {
+        val s = _state.value
+        if (s.isReadOnly) {
+            notifications.notify(InAppNotification.ReadOnlyError)
+            return
+        }
+        val handle = repo.getContainerHandle(s.containerId) ?: return
+        val path = if (s.currentPath == "/") "/$name" else "${s.currentPath}/$name"
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val taken = runCatching { engine.listFilesOrNull(handle, s.currentPath) }
+                .getOrNull()?.any { it.name.equals(name, ignoreCase = true) } ?: false
+            if (taken) {
+                notifications.notify(InAppNotification.NameTaken(name))
+                return@launch
+            }
+            val rc = runCatching { engine.writeAt(handle, path, ByteArray(0), 0L) }
+                .getOrDefault(VeraCryptEngine.ERR_FS)
+            refreshNow()
+            notifications.notify(
+                if (rc == VeraCryptEngine.ERR_OK) InAppNotification.DocumentCreated(name)
+                else InAppNotification.ReadOnlyError)
+            if (rc == VeraCryptEngine.ERR_OK) {
+                withContext(Dispatchers.Main) { onCreated(path, name) }
+            }
         }
     }
 

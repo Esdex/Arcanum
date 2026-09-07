@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.filled.Star
@@ -70,7 +71,7 @@ import zip.arcanum.core.components.GroupedRoundIcon
 // Each sub-screen lives in a file of its own beside this one.
 
 private enum class SubScreen {
-    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, ABOUT, LICENSES, WHATS_NEW, DONATIONS, PREMIUM, DEBUG
+    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, TEXT_EDITOR, ABOUT, LICENSES, WHATS_NEW, DONATIONS, PREMIUM, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -168,6 +169,22 @@ fun SettingsScreen(
                 onDefaultContainerTab = { viewModel.setDefaultContainerTab(it) },
                 onBack             = { subScreen = null }
             )
+            SubScreen.TEXT_EDITOR -> {
+                val editorPrefs by viewModel.textEditor.collectAsState()
+                TextEditorSubScreen(
+                    prefs         = editorPrefs,
+                    onFontSize    = viewModel::setEditorFontSize,
+                    onMonospace   = viewModel::setEditorMonospace,
+                    onLineNumbers = viewModel::setEditorLineNumbers,
+                    onWordWrap    = viewModel::setEditorWordWrap,
+                    onHighlight   = viewModel::setEditorHighlight,
+                    onWhitespace  = viewModel::setEditorWhitespace,
+                    onOpenNew     = viewModel::setEditorOpenNew,
+                    onHideIme     = viewModel::setEditorHideIme,
+                    onBack        = { subScreen = null }
+                )
+            }
+
             SubScreen.CHANGE_PIN -> ChangePinScreen(onBack = { subScreen = null })
             SubScreen.ABOUT     -> AboutSubScreen(
                 onBack          = { subScreen = null },
@@ -223,6 +240,7 @@ private object SettingsHue {
     val Security   = SectionHue(Color(0xFF60D5F3), Color(0xFF004E5D))
     val Panic      = SectionHue(Color(0xFFFFB3AE), Color(0xFF8A1A16))
     val Appearance = SectionHue(Color(0xFFFFB683), Color(0xFF753403))
+    val Editor     = SectionHue(Color(0xFF7FD8C8), Color(0xFF00504A))
     val About      = SectionHue(Color(0xFFC7C7C7), Color(0xFF474747))
     val Debug      = SectionHue(Color(0xFF80DA88), Color(0xFF00522C))
     val Donate     = SectionHue(Color(0xFFFFC107), Color(0xFF5D4200))
@@ -313,6 +331,21 @@ private fun MainSettingsScreen(
                             )
                         },
                         onClick  = { onNavigate(SubScreen.APPEARANCE) }
+                    )
+                }
+                row { shape ->
+                    GroupedRow(
+                        shape    = shape,
+                        title    = stringResource(R.string.settings_card_editor),
+                        subtitle = stringResource(R.string.settings_card_editor_desc),
+                        leading  = {
+                            GroupedRoundIcon(
+                                icon      = Icons.Outlined.EditNote,
+                                color     = SettingsHue.Editor.circle,
+                                iconColor = SettingsHue.Editor.glyph
+                            )
+                        },
+                        onClick  = { onNavigate(SubScreen.TEXT_EDITOR) }
                     )
                 }
             }

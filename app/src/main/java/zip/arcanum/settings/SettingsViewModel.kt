@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
 import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.core.navigation_components.DefaultContainerTab
 import zip.arcanum.core.security.AppPreferences
+import zip.arcanum.core.security.TextEditorPrefs
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.DisguiseManager
 import zip.arcanum.core.security.IdleMonitor
@@ -78,6 +79,21 @@ class SettingsViewModel @Inject constructor(
     fun setArgon2Offer(enabled: Boolean) {
         viewModelScope.launch { prefs.setArgon2Offer(enabled) }
     }
+
+    // ── Text editor (#109) ────────────────────────────────────────────────────
+
+    val textEditor = prefs.textEditor.stateIn(
+        viewModelScope, SharingStarted.Eagerly, TextEditorPrefs()
+    )
+
+    fun setEditorFontSize(sp: Int)       { viewModelScope.launch { prefs.setEditorFontSize(sp) } }
+    fun setEditorMonospace(on: Boolean)  { viewModelScope.launch { prefs.setEditorMonospace(on) } }
+    fun setEditorLineNumbers(on: Boolean){ viewModelScope.launch { prefs.setEditorLineNumbers(on) } }
+    fun setEditorWordWrap(on: Boolean)   { viewModelScope.launch { prefs.setEditorWordWrap(on) } }
+    fun setEditorHighlight(on: Boolean)  { viewModelScope.launch { prefs.setEditorHighlight(on) } }
+    fun setEditorWhitespace(on: Boolean) { viewModelScope.launch { prefs.setEditorShowWhitespace(on) } }
+    fun setEditorOpenNew(on: Boolean)    { viewModelScope.launch { prefs.setEditorOpenAfterCreate(on) } }
+    fun setEditorHideIme(on: Boolean)    { viewModelScope.launch { prefs.setEditorHideImeOnScroll(on) } }
 
     fun setReceiveShares(enabled: Boolean) {
         viewModelScope.launch { prefs.setReceiveShares(enabled) }

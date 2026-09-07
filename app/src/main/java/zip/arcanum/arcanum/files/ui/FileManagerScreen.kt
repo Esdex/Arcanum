@@ -62,6 +62,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.PostAdd
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.AudioFile
@@ -71,7 +73,6 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentPaste
-import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.DriveFolderUpload
@@ -161,6 +162,7 @@ import zip.arcanum.arcanum.files.ui.FileManagerViewModel.SortBy
 import zip.arcanum.arcanum.files.ui.FileManagerViewModel.ViewMode
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.rememberMediaLocationGate
+import zip.arcanum.arcanum.files.text.TextExtensions
 import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.EmptyStateView
 import zip.arcanum.core.components.LocalHazeState
@@ -192,11 +194,13 @@ fun FileManagerScreen(
     bottomPadding: Dp = 0.dp,
     onAudioFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
     onPdfFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
+    onTextFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
     onMediaFileClick: ((fileId: String) -> Unit)? = null,
     viewModel: FileManagerViewModel = hiltViewModel()
 ) {
     val context          = LocalContext.current
     val state            by viewModel.state.collectAsState()
+    val openNewInEditor  by viewModel.openNewInEditor.collectAsState()
     val mountedContainers by viewModel.mountedContainers.collectAsState()
 
     var showFabMenu by remember { mutableStateOf(false) }
@@ -212,6 +216,14 @@ fun FileManagerScreen(
     )
 
     LaunchedEffect(containerId) { viewModel.initialize(containerId) }
+
+    // Coming back from a full-screen route - the editor above all, which can change a file's
+    // size and its date - re-enters this composition with a listing read before that
+    // happened. The first entry is skipped because initialize has just read the folder.
+    var listingSeen by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (listingSeen) viewModel.refreshCurrentDirectory() else listingSeen = true
+    }
 
     // Close FAB when selection mode activates
     LaunchedEffect(state.isSelectionMode) { if (state.isSelectionMode) showFabMenu = false }
@@ -243,7 +255,7 @@ fun FileManagerScreen(
     )
 
     // Dialog/sheet visibility
-    var showNewFolderDialog    by rememberSaveable { mutableStateOf(false) }
+    var showCreateNewSheet     by rememberSaveable { mutableStateOf(false) }
     var showDeleteConfirm      by rememberSaveable { mutableStateOf(false) }
     var showSortSheet          by remember { mutableStateOf(false) }
     var showMoveSheet          by remember { mutableStateOf(false) }
@@ -335,6 +347,8 @@ fun FileManagerScreen(
             onAudioFileClick(file.path, file.name, file.size)
         } else if (onPdfFileClick != null && extension == PDF_EXTENSION) {
             onPdfFileClick(file.path, file.name, file.size)
+        } else if (onTextFileClick != null && TextExtensions.isText(file.name)) {
+            onTextFileClick(file.path, file.name, file.size)
         } else if (onMediaFileClick != null && extension in MEDIA_EXTENSIONS) {
             val open = onMediaFileClick
             viewModel.openMediaFile(file) { fileId ->
@@ -416,6 +430,9 @@ fun FileManagerScreen(
                                 canLink              = state.supportsLinks,
                                 onCreateLink         = { linkTargets = listOf(it) },
                                 onOpenWith           = launchOpenWith,
+                                onEditAsText         = onTextFileClick?.let { open ->
+                                    { file -> open(file.path, file.name, file.size) }
+                                },
                                 formatSize           = viewModel::formatFileSize
                             )
                         }
@@ -609,8 +626,8 @@ fun FileManagerScreen(
                 ) + fadeIn(tween(200)),
                 exit    = slideOutVertically(tween(200), targetOffsetY = { it / 2 }) + fadeOut(tween(150))
             ) {
-                FabMenuItem(stringResource(R.string.files_action_new_folder), Icons.Outlined.CreateNewFolder) {
-                    showNewFolderDialog = true; showFabMenu = false
+                FabMenuItem(stringResource(R.string.files_action_new), Icons.Outlined.PostAdd) {
+                    showCreateNewSheet = true; showFabMenu = false
                 }
             }
         }
@@ -643,14 +660,29 @@ fun FileManagerScreen(
 
     // ── Dialogs ───────────────────────────────────────────────────────────
 
-    if (showNewFolderDialog) {
-        NewFolderDialog(
-            onDismiss = { showNewFolderDialog = false },
-            onCreate  = { name ->
-                viewModel.createFolder(name)
-                showNewFolderDialog = false
-            }
-        )
+    if (showCreateNewSheet) {
+        AppSheet(
+            onDismissRequest = { showCreateNewSheet = false },
+            sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            CreateNewSheetContent(
+                // The listing behind the sheet, so a name already in this folder is refused
+                // while it is being typed rather than after the sheet has closed.
+                takenNames       = remember(state.rawFiles) { state.rawFiles.map { it.name }.toSet() },
+                onCreateFolder   = { name ->
+                    viewModel.createFolder(name)
+                    showCreateNewSheet = false
+                },
+                onCreateDocument = { name ->
+                    // Straight into the editor unless that has been turned off: an empty
+                    // file is not the point, what goes in it is (#109).
+                    viewModel.createTextDocument(name) { path, created ->
+                        if (openNewInEditor) onTextFileClick?.invoke(path, created, 0L)
+                    }
+                    showCreateNewSheet = false
+                }
+            )
+        }
     }
 
     explainTarget?.let { file ->
@@ -1249,6 +1281,7 @@ private fun FileListContent(
     onRename: (NativeFileInfo) -> Unit,
     onProperties: (NativeFileInfo) -> Unit,
     onOpenWith: (NativeFileInfo) -> Unit,
+    onEditAsText: ((NativeFileInfo) -> Unit)?,
     canLink: Boolean,
     onCreateLink: (NativeFileInfo) -> Unit,
     formatSize: (Long) -> String
@@ -1271,6 +1304,7 @@ private fun FileListContent(
                 onRename           = { onRename(file) },
                 onProperties       = { onProperties(file) },
                 onOpenWith         = { onOpenWith(file) },
+                onEditAsText       = onEditAsText?.let { edit -> { edit(file) } },
                 canLink            = canLink,
                 onCreateLink       = { onCreateLink(file) },
                 formatSize         = formatSize
@@ -1324,6 +1358,7 @@ private fun FileListItem(
     onRename: () -> Unit,
     onProperties: () -> Unit,
     onOpenWith: () -> Unit,
+    onEditAsText: (() -> Unit)?,
     canLink: Boolean,
     onCreateLink: () -> Unit,
     formatSize: (Long) -> String
@@ -1444,6 +1479,20 @@ private fun FileListItem(
                             text = { Text(stringResource(R.string.files_action_open_with)) },
                             leadingIcon = { Icon(Icons.Outlined.FileOpen, null) },
                             onClick = { onOpenWith(); showItemMenu = false }
+                        )
+                    }
+                    /* Only where a tap would not already do it: the editor opens the
+                     * extensions people expect to be text, and this is the way in for the
+                     * ones it will not guess at - a file with no extension, a .bak, a
+                     * config named after the program that wrote it. Opening something that
+                     * is not text is not a risk: the editor reads it, sees bytes no text
+                     * has, and says so instead of showing rubbish. */
+                    if (onEditAsText != null && !file.isDirectory && !file.isSpecial &&
+                        !file.linkBroken && !TextExtensions.isText(file.name)) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.files_action_edit_as_text)) },
+                            leadingIcon = { Icon(Icons.Outlined.EditNote, null) },
+                            onClick = { onEditAsText(); showItemMenu = false }
                         )
                     }
                     DropdownMenuItem(
@@ -1658,31 +1707,6 @@ private fun FabMenuItem(label: String, icon: ImageVector, onClick: () -> Unit) {
 }
 
 // ── Dialogs & Sheets ──────────────────────────────────────────────────────────
-
-@Composable
-private fun NewFolderDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
-    var folderName by rememberSaveable { mutableStateOf("") }
-    AppDialog(
-        onDismissRequest = onDismiss,
-        title            = { Text(stringResource(R.string.files_new_folder_title)) },
-        text = {
-            OutlinedTextField(
-                value         = folderName,
-                onValueChange = { folderName = it },
-                label         = { Text(stringResource(R.string.files_new_folder_label)) },
-                singleLine    = true,
-                modifier      = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick  = { if (folderName.isNotBlank()) onCreate(folderName.trim()) },
-                enabled  = folderName.isNotBlank()
-            ) { Text(stringResource(R.string.files_new_folder_create)) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } }
-    )
-}
 
 @Composable
 private fun RenameDialog(

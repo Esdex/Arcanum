@@ -8,6 +8,7 @@ import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Eject
 import androidx.compose.material.icons.outlined.Favorite
@@ -88,6 +89,7 @@ val InAppNotification.severity: NotificationSeverity
         is InAppNotification.UsbSafeToRemove,
         is InAppNotification.HiddenVolumeWriteProtection,
         is InAppNotification.SavedAs,
+        is InAppNotification.NameTaken,
         is InAppNotification.OperationRefusedLocked  -> NotificationSeverity.WARNING
 
         /* Prompts, not failures. All three used to be red, which put "no vault is open" in
@@ -186,6 +188,9 @@ private val InAppNotification.icon: ImageVector
         is InAppNotification.DisguiseAlreadyApplied  -> Icons.Outlined.Calculate
         is InAppNotification.FilesLinked             -> Icons.Outlined.Link
         is InAppNotification.SavedAs                 -> Icons.Outlined.SaveAs
+        is InAppNotification.DocumentCreated         -> Icons.Outlined.Description
+        is InAppNotification.DocumentSaved           -> Icons.Outlined.SaveAs
+        is InAppNotification.NameTaken               -> Icons.Outlined.Warning
         is InAppNotification.FilesMoved              -> Icons.AutoMirrored.Outlined.DriveFileMove
         is InAppNotification.ReadOnlyError           -> Icons.Outlined.AutoStories
         is InAppNotification.AppUpdated              -> Icons.Outlined.NewReleases
@@ -213,6 +218,9 @@ private fun InAppNotification.title(ctx: Context): String = when (this) {
     is InAppNotification.SavedAs                -> ctx.getString(R.string.notif_saved_as)
     is InAppNotification.FilesAlreadyHere       -> ctx.getString(R.string.notif_already_here)
     is InAppNotification.FolderCreated          -> ctx.getString(R.string.notif_folder_created)
+    is InAppNotification.DocumentCreated        -> ctx.getString(R.string.notif_document_created)
+    is InAppNotification.DocumentSaved          -> ctx.getString(R.string.notif_document_saved)
+    is InAppNotification.NameTaken              -> ctx.getString(R.string.notif_name_taken)
     is InAppNotification.HiddenVolumeWriteProtection -> ctx.getString(R.string.notif_hidden_write_protection)
     is InAppNotification.ImportFailed           -> ctx.getString(R.string.notif_import_failed)
     is InAppNotification.ReadOnlyError          -> ctx.getString(R.string.notif_read_only_error)
@@ -248,6 +256,9 @@ private fun InAppNotification.subtitle(ctx: Context): String = when (this) {
     is InAppNotification.SavedAs                -> newName
     is InAppNotification.FilesAlreadyHere       -> ctx.getString(R.string.notif_already_here_subtitle)
     is InAppNotification.FolderCreated          -> name
+    is InAppNotification.DocumentCreated        -> name
+    is InAppNotification.DocumentSaved          -> name
+    is InAppNotification.NameTaken              -> name
     is InAppNotification.FilesDeleted           -> ctx.getString(R.string.notif_files_deleted_subtitle)
     is InAppNotification.HiddenVolumeWriteProtection -> ctx.getString(R.string.notif_hidden_write_protection_subtitle)
     is InAppNotification.ReadOnlyError          -> ctx.getString(R.string.notif_read_only_error_subtitle)

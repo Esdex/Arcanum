@@ -58,6 +58,17 @@ class AppPreferences @Inject constructor(
         val MEDIA_SESSION_CONTENT     = booleanPreferencesKey("media_session_content")
         val ARGON2_OFFER              = booleanPreferencesKey("argon2_offer")
 
+        // The text editor. Everything here is how it looks and behaves, nothing about
+        // what it opens, so a panic wipe may take the lot.
+        val EDITOR_FONT_SIZE          = intPreferencesKey("editor_font_size")
+        val EDITOR_MONOSPACE          = booleanPreferencesKey("editor_monospace")
+        val EDITOR_LINE_NUMBERS       = booleanPreferencesKey("editor_line_numbers")
+        val EDITOR_WORD_WRAP          = booleanPreferencesKey("editor_word_wrap")
+        val EDITOR_HIGHLIGHT          = booleanPreferencesKey("editor_highlight")
+        val EDITOR_WHITESPACE         = booleanPreferencesKey("editor_whitespace")
+        val EDITOR_OPEN_NEW           = booleanPreferencesKey("editor_open_new")
+        val EDITOR_HIDE_IME           = booleanPreferencesKey("editor_hide_ime_on_scroll")
+
         /** Survives panic mode's "Clear app settings" - see [clearSettingsForPanic]. */
         val PANIC_KEEP: List<Preferences.Key<*>> = listOf(
             CALCULATOR_ENABLED, DISGUISE_PROMPT_SHOWN, RECEIVE_SHARES,
@@ -342,5 +353,72 @@ class AppPreferences @Inject constructor(
 
     suspend fun setDefaultContainerTab(tab: DefaultContainerTab) {
         context.appPrefsDataStore.edit { it[Keys.DEFAULT_CONTAINER_TAB] = tab.name }
+    }
+    // ── Text editor ───────────────────────────────────────────────────────────
+
+    /** Every editor preference at once - the editor and its settings screen read them all. */
+    val textEditor: Flow<TextEditorPrefs> = context.appPrefsDataStore.data.map { p ->
+        TextEditorPrefs(
+            fontSizeSp    = p[Keys.EDITOR_FONT_SIZE]    ?: TextEditorPrefs.DEFAULT_FONT_SIZE,
+            monospace     = p[Keys.EDITOR_MONOSPACE]    ?: true,
+            lineNumbers   = p[Keys.EDITOR_LINE_NUMBERS] ?: true,
+            wordWrap      = p[Keys.EDITOR_WORD_WRAP]    ?: false,
+            highlight     = p[Keys.EDITOR_HIGHLIGHT]    ?: true,
+            showWhitespace = p[Keys.EDITOR_WHITESPACE]  ?: false,
+            openAfterCreate = p[Keys.EDITOR_OPEN_NEW]   ?: true,
+            hideImeOnScroll = p[Keys.EDITOR_HIDE_IME]    ?: false
+        )
+    }
+
+    suspend fun setEditorFontSize(sp: Int) {
+        context.appPrefsDataStore.edit { it[Keys.EDITOR_FONT_SIZE] = sp }
+    }
+
+    suspend fun setEditorMonospace(on: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.EDITOR_MONOSPACE] = on }
+    }
+
+    suspend fun setEditorLineNumbers(on: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.EDITOR_LINE_NUMBERS] = on }
+    }
+
+    suspend fun setEditorWordWrap(on: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.EDITOR_WORD_WRAP] = on }
+    }
+
+    suspend fun setEditorHighlight(on: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.EDITOR_HIGHLIGHT] = on }
+    }
+
+    suspend fun setEditorShowWhitespace(on: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.EDITOR_WHITESPACE] = on }
+    }
+
+    suspend fun setEditorOpenAfterCreate(on: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.EDITOR_OPEN_NEW] = on }
+    }
+
+    suspend fun setEditorHideImeOnScroll(on: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.EDITOR_HIDE_IME] = on }
+    }
+}
+
+/** The editor's look and behaviour, as one thing to pass around. */
+data class TextEditorPrefs(
+    val fontSizeSp: Int = DEFAULT_FONT_SIZE,
+    val monospace: Boolean = true,
+    val lineNumbers: Boolean = true,
+    // Off by default: a line of a config file or of code means one line, and a wrapped one
+    // hides that. What does not fit is reached by dragging sideways.
+    val wordWrap: Boolean = false,
+    val highlight: Boolean = true,
+    val showWhitespace: Boolean = false,
+    val openAfterCreate: Boolean = true,
+    /** Off by default: a keyboard that closes itself is a surprise until it is asked for. */
+    val hideImeOnScroll: Boolean = false
+) {
+    companion object {
+        const val DEFAULT_FONT_SIZE = 14
+        val FONT_SIZES = 10..24
     }
 }

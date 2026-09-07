@@ -63,6 +63,20 @@ sealed class Screen(val route: String) {
         }
     }
 
+    /** A text file opened for editing, addressed like the PDF viewer's route (#109). */
+    object TextEditor : Screen("text_editor?cid={cid}&path={path}&name={name}&size={size}") {
+        const val ARG_CONTAINER = "cid"
+        const val ARG_PATH      = "path"
+        const val ARG_NAME      = "name"
+        const val ARG_SIZE      = "size"
+
+        fun buildRoute(containerId: String, path: String, name: String, size: Long): String {
+            val encodedPath = android.net.Uri.encode(path)
+            val encodedName = android.net.Uri.encode(name)
+            return "text_editor?cid=$containerId&path=$encodedPath&name=$encodedName&size=$size"
+        }
+    }
+
     object FileManager : Screen("file_manager/{containerId}") {
         const val ARG = "containerId"
         fun buildRoute(containerId: String) = "file_manager/$containerId"

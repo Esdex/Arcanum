@@ -135,6 +135,9 @@
     <string name="notif_files_moved_subtitle">→ %1$s</string>
     <string name="notif_files_deleted_subtitle">Removed permanently</string>
     <string name="notif_folder_created">Folder created</string>
+    <string name="notif_document_created">Document created</string>
+    <string name="notif_document_saved">Document saved</string>
+    <string name="notif_name_taken">Name already taken</string>
     <string name="notif_files_imported_subtitle">Encrypted and stored in vault</string>
     <string name="notif_import_cancelled">Import stopped</string>
     <plurals name="notif_import_cancelled_body">
@@ -377,6 +380,60 @@
     <string name="files_new_folder_title">New Folder</string>
     <string name="files_new_folder_label">Folder name</string>
     <string name="files_new_folder_create">Create</string>
+
+    <!-- Creating something new, from the FAB -->
+    <string name="files_action_new">New…</string>
+    <string name="files_new_sheet_title">Create new</string>
+    <string name="files_new_document">New text document</string>
+    <string name="files_new_type_title">Text document</string>
+    <string name="files_new_type_txt">Plain text</string>
+    <string name="files_new_type_md">Markdown</string>
+    <string name="files_new_type_other">Another extension</string>
+    <string name="files_new_name_folder">Folder name</string>
+    <string name="files_new_name_document">Document name</string>
+    <string name="files_new_name_label">Name</string>
+    <string name="files_new_ext_label">Extension</string>
+    <string name="files_new_error_taken">This name is already taken here</string>
+    <string name="files_new_error_chars">A name cannot contain \\ / : * ? &quot; &lt; &gt; |</string>
+    <string name="files_new_error_ext">An extension cannot contain a dot or a space</string>
+    <string name="files_action_edit_as_text">Edit as text</string>
+
+    <!-- Text editor (#109) -->
+    <string name="editor_save">Save</string>
+    <string name="editor_undo">Undo</string>
+    <string name="editor_redo">Redo</string>
+    <string name="editor_saving">Saving…</string>
+    <string name="editor_unsaved">Unsaved changes</string>
+    <string name="editor_note_mixed_newlines">This file ends its lines both ways; saving writes them all the same way</string>
+    <string name="editor_note_encoding">Not valid UTF-8: shown byte for byte, and saved back the same</string>
+    <string name="editor_error_too_large">Too large to edit</string>
+    <string name="editor_error_too_large_desc">The editor lays a file out in one piece, so it takes files up to %1$s. Open with can hand this one to another app.</string>
+    <string name="editor_error_not_text">Not a text file</string>
+    <string name="editor_error_not_text_desc">There are bytes in this file that no text has.</string>
+    <string name="editor_error_vault_closed">The vault was closed</string>
+    <string name="editor_error_unreadable">Cannot read this file</string>
+    <string name="editor_encoding_title">This file cannot hold those characters</string>
+    <string name="editor_encoding_message">It is not a UTF-8 file, so it is kept exactly as its bytes were - and its encoding has no room for some of what you typed. Saving it as it is would put question marks there instead. Converting the whole file to UTF-8 keeps everything you typed, and is a change to the file itself: a program that expects the old encoding will read it differently.</string>
+    <string name="editor_encoding_convert">Convert to UTF-8</string>
+
+    <!-- Text editor settings -->
+    <string name="settings_card_editor">Text editor</string>
+    <string name="settings_card_editor_desc">Line numbers, colouring, font</string>
+    <string name="settings_editor_title">Text editor</string>
+    <string name="settings_editor_preview">Preview</string>
+    <string name="settings_editor_preview_sample"># Notes\nThe editor colours **Markdown**, JSON, XML,\nini files and shell scripts.\n\n    indented, to show the spaces\n- a line long enough to run past the edge of this card\n- `code stays legible`\n\n[the docs](https://arcanum.zip/docs)</string>
+    <string name="settings_editor_group_text">Text</string>
+    <string name="settings_editor_group_gutter">On screen</string>
+    <string name="settings_editor_group_behaviour">Behaviour</string>
+    <string name="settings_editor_font_size">Font size</string>
+    <string name="settings_editor_monospace">Monospaced font</string>
+    <string name="settings_editor_word_wrap">Wrap long lines</string>
+    <string name="settings_editor_line_numbers">Line numbers</string>
+    <string name="settings_editor_whitespace">Show spaces and tabs</string>
+    <string name="settings_editor_highlight">Syntax colouring</string>
+    <string name="settings_editor_highlight_desc">Colours the parts of a file that a format gives meaning to - headings and links in Markdown, keys and strings in JSON, tags in XML, comments and keywords in shell scripts and code. It is only colour: nothing in the file changes, and a format the editor does not know is shown plain. Colouring stops on its own for files over about 200 KB, where doing it on every keystroke would make the keyboard lag.</string>
+    <string name="settings_editor_open_new">Open new documents in the editor</string>
+    <string name="settings_editor_hide_ime">Close the keyboard when scrolling</string>
     <string name="files_rename_title">Rename</string>
     <string name="files_rename_label">New name</string>
     <string name="files_delete_title_single">Delete this item?</string>

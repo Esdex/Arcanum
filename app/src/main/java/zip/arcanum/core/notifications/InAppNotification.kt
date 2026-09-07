@@ -168,6 +168,19 @@ sealed class InAppNotification {
 
     data class FolderCreated(val name: String) : InAppNotification()
 
+    /** An empty text document made in the file manager, named after what it was called. */
+    data class DocumentCreated(val name: String) : InAppNotification()
+
+    /** A text document written back to the vault from the editor (#109). */
+    data class DocumentSaved(val name: String) : InAppNotification()
+
+    /**
+     * A name that was free when it was typed and taken by the time it was written. The sheet
+     * that asks for a name refuses a clash itself, so this is the race, and it says what was
+     * not made rather than making it under another name.
+     */
+    data class NameTaken(val name: String) : InAppNotification()
+
     /** [skipped] counts names that were already taken and left alone at the user's word (#157). */
     data class FilesImported(val count: Int, val skipped: Int = 0) : InAppNotification()
 
