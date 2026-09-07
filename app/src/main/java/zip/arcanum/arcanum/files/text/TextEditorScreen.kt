@@ -2,6 +2,26 @@ package zip.arcanum.arcanum.files.text
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
+import androidx.compose.material.icons.outlined.CheckBox
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FormatBold
+import androidx.compose.material.icons.outlined.FormatItalic
+import androidx.compose.material.icons.outlined.FormatListNumbered
+import androidx.compose.material.icons.outlined.FormatQuote
+import androidx.compose.material.icons.outlined.FormatStrikethrough
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.Title
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalDensity
 import android.graphics.Typeface
 import android.util.TypedValue
 import androidx.compose.ui.graphics.toArgb
@@ -74,10 +94,47 @@ fun TextEditorScreen(
     val state by viewModel.state.collectAsState()
     val prefs by viewModel.prefs.collectAsState()
 
-    // The editing view keeps the history; the bar only mirrors what it says about it.
+    /*
+     * The editing view belongs to the screen, not to the branch that shows it.
+     *
+     * The rendered view and the editor are two ways of looking at one text, and the text -
+     * with the cursor and the undo history - lives in this view. Letting AndroidView build it
+     * would mean building it again on every switch of mode, which would take the history and
+     * any unsaved edit with it.
+     */
     var editor    by remember { mutableStateOf<CodeEditText?>(null) }
     var canUndo   by remember { mutableStateOf(false) }
     var canRedo   by remember { mutableStateOf(false) }
+
+    val context0 = LocalContext.current
+    LaunchedEffect(state.isLoading, state.failure) {
+        if (!state.isLoading && state.failure == null && editor == null) {
+            editor = CodeEditText(context0).apply {
+                background       = null
+                onTextEdited     = viewModel::onTextChange
+                onHistoryChanged = { undo, redo -> canUndo = undo; canRedo = redo }
+                // Wrapping decided before the text arrives: setting it afterwards lays the
+                // whole file out a second time, which on a large one is the opening cost
+                // paid twice.
+                setWordWrap(viewModel.prefs.value.wordWrap)
+                setDocument(state.savedText)
+                if (state.readOnly) {
+                    // Read, select, copy - but no caret to type with, and no keyboard.
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    setTextIsSelectable(true)
+                    isCursorVisible = false
+                }
+            }
+        }
+    }
+
+    val isMarkdown = state.syntax == Syntax.MARKDOWN
+    // Markdown has two ways to look at it. The mode survives a rotation but not the screen:
+    // opening a file is opening it to read or to write, and that is decided each time.
+    var viewMode  by rememberSaveable { mutableStateOf(false) }
+    var pendingLink by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     // The view owns the text and the cursor from the moment the file is handed to it; the
     // view model is told what changed and nothing is ever pushed back, which is what keeps a
@@ -126,6 +183,34 @@ fun TextEditorScreen(
         )
     }
 
+    // Leaving the app from a file kept in a vault is not something to do on a stray touch,
+    // and the address is shown in full because that is the part worth reading.
+    pendingLink?.let { url ->
+        AppDialog(
+            onDismissRequest = { pendingLink = null },
+            title = { Text(stringResource(R.string.editor_link_title)) },
+            text  = { Text(url) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingLink = null
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(url)
+                            )
+                        )
+                    }
+                }) { Text(stringResource(R.string.editor_link_open)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLink = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color    = MaterialTheme.colorScheme.background
@@ -135,6 +220,7 @@ fun TextEditorScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
+            .imePadding()
     ) {
         Row(
             modifier          = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -162,7 +248,7 @@ fun TextEditorScreen(
                     )
                 }
             }
-            if (state.failure == null && !state.isLoading && !state.readOnly) {
+            if (state.failure == null && !state.isLoading && !state.readOnly && !viewMode) {
                 IconButton(onClick = { editor?.undo() }, enabled = canUndo) {
                     Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.editor_undo))
                 }
@@ -170,7 +256,7 @@ fun TextEditorScreen(
                     Icon(Icons.AutoMirrored.Outlined.Redo, stringResource(R.string.editor_redo))
                 }
             }
-            if (!state.readOnly) {
+            if (!state.readOnly && !viewMode) {
                 IconButton(onClick = { viewModel.save() }, enabled = state.isDirty && !state.isSaving) {
                     Icon(Icons.Outlined.Save, stringResource(R.string.editor_save))
                 }
@@ -185,7 +271,7 @@ fun TextEditorScreen(
             if (state.unknownEncoding) EditorNote(stringResource(R.string.editor_note_encoding))
         }
 
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
             when {
                 state.isLoading -> CircularProgressIndicator()
 
@@ -213,19 +299,102 @@ fun TextEditorScreen(
                     modifier = Modifier.padding(horizontal = 32.dp)
                 )
 
-                else -> EditorBody(
-                    readOnly    = state.readOnly,
-                    initialText = state.savedText,
-                    onChange    = viewModel::onTextChange,
-                    prefs       = prefs,
-                    syntax      = state.syntax,
-                    onCreated   = { editor = it },
-                    onHistory   = { undo, redo -> canUndo = undo; canRedo = redo }
+                // The editing view is kept even while the rendered side is on screen: it
+                // owns the text and the undo history, and letting it go would drop both
+                // every time the mode is flipped. A checkbox tapped in the rendered view
+                // edits through it, so the two never hold different texts.
+                viewMode -> MarkdownView(
+                    source       = state.text,
+                    fontSizeSp   = prefs.fontSizeSp,
+                    onToggleTask = { offset -> editor?.toggleTaskAt(offset) },
+                    onLink       = { url -> pendingLink = url },
+                    modifier     = Modifier.fillMaxSize()
                 )
+
+                else -> editor?.let { view ->
+                    EditorBody(view = view, prefs = prefs, syntax = state.syntax)
+                }
             }
+
+            // Markdown is the only thing there are two ways to look at.
+            if (isMarkdown && state.failure == null && !state.isLoading) {
+                SmallFloatingActionButton(
+                    onClick  = {
+                        // Going to read: put the keyboard away first, or it stays up over a
+                        // page that has nothing to type into.
+                        if (!viewMode) editor?.let { view ->
+                            androidx.core.view.ViewCompat.getWindowInsetsController(view)
+                                ?.hide(androidx.core.view.WindowInsetsCompat.Type.ime())
+                        }
+                        viewMode = !viewMode
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .navigationBarsPadding()
+                        .padding(16.dp)
+                ) {
+                    Icon(
+                        imageVector = if (viewMode) Icons.Outlined.Edit else Icons.Outlined.Visibility,
+                        contentDescription = stringResource(
+                            if (viewMode) R.string.editor_mode_edit else R.string.editor_mode_view
+                        )
+                    )
+                }
+            }
+        }
+
+        // The row of marks, over the keyboard and only while it is up: it is a keyboard
+        // extension, and on a screen without one it would be a toolbar in the way.
+        val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        if (isMarkdown && imeVisible && !viewMode && !state.readOnly &&
+            state.failure == null && !state.isLoading) {
+            MarkupBar(onAction = { prefix, suffix, line ->
+                val view = editor ?: return@MarkupBar
+                if (line) view.toggleLinePrefix(prefix) else view.wrapSelection(prefix, suffix)
+            })
         }
     }
 }
+}
+
+/**
+ * The marks a Markdown file is written with, in reach of a thumb.
+ *
+ * Each button is either a pair wrapped round the selection or a prefix on the line the caret
+ * is on, and each is a toggle: pressing it on text that already carries the mark takes it off.
+ * The row scrolls, because ten buttons do not fit a narrow phone and hiding half of them
+ * behind an overflow would cost more taps than it saves.
+ */
+@Composable
+private fun MarkupBar(onAction: (prefix: String, suffix: String, lineWide: Boolean) -> Unit) {
+    val actions = listOf(
+        Triple(Icons.Outlined.FormatBold, R.string.editor_mark_bold, Triple("**", "**", false)),
+        Triple(Icons.Outlined.FormatItalic, R.string.editor_mark_italic, Triple("*", "*", false)),
+        Triple(Icons.Outlined.FormatStrikethrough, R.string.editor_mark_strike, Triple("~~", "~~", false)),
+        Triple(Icons.Outlined.Code, R.string.editor_mark_code, Triple("`", "`", false)),
+        Triple(Icons.Outlined.Link, R.string.editor_mark_link, Triple("[", "](url)", false)),
+        Triple(Icons.Outlined.Title, R.string.editor_mark_heading, Triple("## ", "", true)),
+        Triple(Icons.Outlined.FormatQuote, R.string.editor_mark_quote, Triple("> ", "", true)),
+        Triple(Icons.AutoMirrored.Outlined.FormatListBulleted, R.string.editor_mark_bullet, Triple("- ", "", true)),
+        Triple(Icons.Outlined.FormatListNumbered, R.string.editor_mark_numbered, Triple("1. ", "", true)),
+        Triple(Icons.Outlined.CheckBox, R.string.editor_mark_task, Triple("- [ ] ", "", true))
+    )
+    HorizontalDivider()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        actions.forEach { (icon, label, marks) ->
+            val (prefix, suffix, lineWide) = marks
+            IconButton(onClick = { onAction(prefix, suffix, lineWide) }) {
+                Icon(icon, stringResource(label))
+            }
+        }
+    }
 }
 
 /** One line of quiet explanation under the bar. */
@@ -244,13 +413,9 @@ private fun EditorNote(text: String) {
 
 @Composable
 private fun EditorBody(
-    readOnly: Boolean,
-    initialText: String,
-    onChange: (String) -> Unit,
+    view: CodeEditText,
     prefs: TextEditorPrefs,
-    syntax: Syntax,
-    onCreated: (CodeEditText) -> Unit,
-    onHistory: (canUndo: Boolean, canRedo: Boolean) -> Unit
+    syntax: Syntax
 ) {
     val dark    = LocalDarkMode.current
     val colors  = if (dark) SyntaxColors.Dark else SyntaxColors.Light
@@ -260,46 +425,27 @@ private fun EditorBody(
     val cursorColor = MaterialTheme.colorScheme.primary.toArgb()
     val gutterText  = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     val gutterBack  = MaterialTheme.colorScheme.surfaceContainerLow.toArgb()
+    val frontBack   = MaterialTheme.colorScheme.surfaceContainerHigh.toArgb()
 
     AndroidView(
-        modifier = Modifier.fillMaxSize().imePadding(),
-        factory  = { ctx ->
-            CodeEditText(ctx).apply {
-                background       = null
-                onTextEdited     = onChange
-                onHistoryChanged = onHistory
-                // Wrapping decided before the text arrives: setting it afterwards lays the
-                // whole file out a second time, which on a large one is the whole opening
-                // cost paid twice.
-                setWordWrap(prefs.wordWrap)
-                // Read, select, copy - but no caret to type with, and no keyboard.
-                if (readOnly) {
-                    isFocusable = false
-                    isFocusableInTouchMode = false
-                    setTextIsSelectable(true)
-                    isCursorVisible = false
-                }
-                // The text is handed over ONCE, here. Writing it again on a later pass would
-                // take the cursor and the selection with it on every keystroke.
-                setDocument(initialText)
-                onCreated(this)
-            }
-        },
-        update = { view ->
-            view.onTextEdited = onChange
-            view.onHistoryChanged = onHistory
-            view.setTextSize(TypedValue.COMPLEX_UNIT_SP, prefs.fontSizeSp.toFloat())
-            view.typeface = if (prefs.monospace) Typeface.MONOSPACE else Typeface.DEFAULT
-            view.setTextColor(textColor)
-            view.accentColor = cursorColor
-            view.gutterTextColor = gutterText
-            view.gutterBackground = gutterBack
-            view.showLineNumbers = prefs.lineNumbers
-            view.showWhitespace  = prefs.showWhitespace
-            view.hideImeOnScroll = prefs.hideImeOnScroll
-            view.palette         = palette
-            view.syntax          = if (prefs.highlight) syntax else Syntax.NONE
-            view.setWordWrap(prefs.wordWrap)
+        modifier = Modifier.fillMaxSize(),
+        // The instance is the screen's; this only puts it on screen again after a switch of
+        // mode, which is why it must be handed back with no parent of its own.
+        factory  = { view },
+        update   = { v ->
+            v.setTextSize(TypedValue.COMPLEX_UNIT_SP, prefs.fontSizeSp.toFloat())
+            v.typeface = if (prefs.monospace) Typeface.MONOSPACE else Typeface.DEFAULT
+            v.setTextColor(textColor)
+            v.accentColor = cursorColor
+            v.gutterTextColor = gutterText
+            v.gutterBackground = gutterBack
+            v.frontMatterBackground = frontBack
+            v.showLineNumbers = prefs.lineNumbers
+            v.showWhitespace  = prefs.showWhitespace
+            v.hideImeOnScroll = prefs.hideImeOnScroll
+            v.palette         = palette
+            v.syntax          = if (prefs.highlight) syntax else Syntax.NONE
+            v.setWordWrap(prefs.wordWrap)
         }
     )
 }

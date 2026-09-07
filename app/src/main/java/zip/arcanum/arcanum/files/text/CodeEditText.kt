@@ -9,6 +9,7 @@ import android.text.Editable
 import android.text.Spanned
 import android.text.TextWatcher
 import android.text.style.ForegroundColorSpan
+import android.text.style.LineBackgroundSpan
 import android.text.style.StyleSpan
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -108,6 +109,10 @@ class CodeEditText @JvmOverloads constructor(
 
     var gutterBackground: Int = 0
         set(value) { field = value; gutterPaint.color = value; invalidate() }
+
+    /** The panel behind a Markdown file's front matter, in edit mode. */
+    var frontMatterBackground: Int = 0
+        set(value) { field = value; scheduleHighlight(0) }
 
     private val numberPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val gutterPaint = Paint()
@@ -374,6 +379,85 @@ class CodeEditText @JvmOverloads constructor(
         requestLayout()
     }
 
+    // ── Marking up text ───────────────────────────────────────────────────────
+    /*
+     * What the row of buttons over the keyboard does. All three go through the Editable, so
+     * each one is a single entry in the undo history and reaches the view model the same way
+     * typing does.
+     */
+
+    /** Wraps the selection, or opens an empty pair at the caret and puts it in the middle. */
+    fun wrapSelection(prefix: String, suffix: String = prefix) {
+        val e = text ?: return
+        val a = selectionStart.coerceIn(0, e.length)
+        val b = selectionEnd.coerceIn(0, e.length)
+        val from = minOf(a, b)
+        val to   = maxOf(a, b)
+        val inner = e.subSequence(from, to).toString()
+        // Already wrapped: take the marks off again, so the button is a toggle.
+        val outerFrom = from - prefix.length
+        val outerTo   = to + suffix.length
+        if (outerFrom >= 0 && outerTo <= e.length &&
+            e.subSequence(outerFrom, from).toString() == prefix &&
+            e.subSequence(to, outerTo).toString() == suffix) {
+            e.replace(outerFrom, outerTo, inner)
+            setSelection(outerFrom, outerFrom + inner.length)
+            return
+        }
+        e.replace(from, to, prefix + inner + suffix)
+        if (inner.isEmpty()) setSelection(from + prefix.length)
+        else setSelection(from + prefix.length, to + prefix.length)
+    }
+
+    /**
+     * Puts [prefix] at the start of the line the caret is on, or takes it off again.
+     *
+     * The other list markers are cleared first, so turning a bullet into a checkbox is one
+     * tap rather than a tap and a tidy-up.
+     */
+    fun toggleLinePrefix(prefix: String) {
+        val e = text ?: return
+        val pos = selectionStart.coerceIn(0, e.length)
+        var lineStart = pos
+        while (lineStart > 0 && e[lineStart - 1] != '\n') lineStart--
+        var lineEnd = pos
+        while (lineEnd < e.length && e[lineEnd] != '\n') lineEnd++
+
+        val line = e.subSequence(lineStart, lineEnd).toString()
+        val indent = line.takeWhile { it == ' ' || it == '\t' }
+        val body = line.substring(indent.length)
+
+        val replacement = when {
+            body.startsWith(prefix) -> indent + body.removePrefix(prefix)
+            else -> indent + prefix + body.removePrefix(stripMarker(body))
+        }
+        e.replace(lineStart, lineEnd, replacement)
+        setSelection((lineStart + replacement.length).coerceIn(0, e.length))
+    }
+
+    /** Whatever list or heading marker the line already carries, so it can be swapped. */
+    private fun stripMarker(body: String): String =
+        MARKERS.firstOrNull { body.startsWith(it) } ?: ""
+
+    /**
+     * Flips the checkbox whose bracket is at [offset] - the tap in the rendered view.
+     *
+     * Checked against the source rather than trusted: the rendering it came from may be a
+     * moment old, and writing an x into the middle of a word is not a thing to risk.
+     */
+    fun toggleTaskAt(offset: Int) {
+        val e = text ?: return
+        if (offset !in 0 until e.length) return
+        if (offset < 1 || e[offset - 1] != '[') return
+        if (offset + 1 >= e.length || e[offset + 1] != ']') return
+        val replacement = when (e[offset]) {
+            ' ' -> "x"
+            'x', 'X' -> " "
+            else -> return
+        }
+        e.replace(offset, offset + 1, replacement)
+    }
+
     // ── Flinging ──────────────────────────────────────────────────────────────
     /*
      * A text view scrolls while a finger drags it and stops dead when the finger lifts: it is
@@ -569,10 +653,18 @@ class CodeEditText @JvmOverloads constructor(
         val to   = minOf(layout.getLineEnd(lastRow), editable.length)
         if (to <= from) return
 
+        // A Markdown file may open with front matter, and that block is not prose: it is the
+        // note's properties, and it reads as such in every editor that knows about it. It is
+        // coloured by its own rules, and the generic ones are kept out of it - a value like
+        // "tags: one, two" is not a list, and a date is not a number to be highlighted.
+        val frontEnd = if (syntax == Syntax.MARKDOWN) frontMatterEnd(editable) else 0
+
         applyingSpans = true
         try {
             clearOurSpans(editable, from, to)
+            if (frontEnd > from) paintFrontMatter(editable, minOf(frontEnd, editable.length))
             for (token in SyntaxHighlighter.tokens(editable, from, to, syntax)) {
+                if (token.start < frontEnd) continue
                 val color = palette.getOrNull(token.kind.ordinal) ?: continue
                 editable.setSpan(HlColor(color), token.start, token.end,
                                  Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -596,11 +688,81 @@ class CodeEditText @JvmOverloads constructor(
     private fun clearOurSpans(editable: Editable, from: Int, to: Int) {
         editable.getSpans(from, to, HlColor::class.java).forEach { editable.removeSpan(it) }
         editable.getSpans(from, to, HlStyle::class.java).forEach { editable.removeSpan(it) }
+        editable.getSpans(from, to, HlBackground::class.java).forEach { editable.removeSpan(it) }
+    }
+
+    /**
+     * Where the front matter ends, or 0 when the file does not open with any.
+     *
+     * Only ever at the very start of the file, and only when it closes - three dashes on the
+     * first line and nothing else after them is a horizontal rule, not an unterminated block,
+     * and colouring the rest of the note as properties would be a strange way to say so.
+     */
+    private fun frontMatterEnd(text: CharSequence): Int {
+        if (text.length < 8) return 0
+        var i = 0
+        while (i < text.length && text[i] != '\n') i++
+        if (text.subSequence(0, i).toString().trim() != "---") return 0
+        var lineStart = i + 1
+        while (lineStart < text.length) {
+            var lineEnd = lineStart
+            while (lineEnd < text.length && text[lineEnd] != '\n') lineEnd++
+            if (text.subSequence(lineStart, lineEnd).toString().trim() == "---") return lineEnd
+            lineStart = lineEnd + 1
+        }
+        return 0
+    }
+
+    /** The block itself: a panel behind it, muted fences, keys apart from their values. */
+    private fun paintFrontMatter(editable: Editable, end: Int) {
+        if (frontMatterBackground != 0) {
+            editable.setSpan(HlBackground(frontMatterBackground), 0, end,
+                             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        val comment = palette.getOrNull(TokenKind.COMMENT.ordinal) ?: return
+        val key     = palette.getOrNull(TokenKind.ATTR.ordinal) ?: return
+        val value   = palette.getOrNull(TokenKind.STRING.ordinal) ?: return
+
+        var lineStart = 0
+        while (lineStart < end) {
+            var lineEnd = lineStart
+            while (lineEnd < end && editable[lineEnd] != '\n') lineEnd++
+            val line = editable.subSequence(lineStart, lineEnd).toString()
+            if (line.trim() == "---") {
+                editable.setSpan(HlColor(comment), lineStart, lineEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            } else {
+                val colon = line.indexOf(':')
+                if (colon > 0) {
+                    editable.setSpan(HlColor(key), lineStart, lineStart + colon,
+                                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    editable.setSpan(HlStyle(android.graphics.Typeface.BOLD), lineStart, lineStart + colon,
+                                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    if (lineStart + colon + 1 < lineEnd) {
+                        editable.setSpan(HlColor(value), lineStart + colon + 1, lineEnd,
+                                         Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                }
+            }
+            lineStart = lineEnd + 1
+        }
     }
 
     /** Ours, so they can be found and removed without touching anyone else's. */
     private class HlColor(color: Int) : ForegroundColorSpan(color)
     private class HlStyle(style: Int) : StyleSpan(style)
+
+    /** Fills the whole width of each line it covers, which is what makes it read as a panel. */
+    private class HlBackground(private val color: Int) : LineBackgroundSpan {
+        override fun drawBackground(
+            canvas: Canvas, paint: Paint, left: Int, right: Int, top: Int,
+            baseline: Int, bottom: Int, text: CharSequence, start: Int, end: Int, lineNumber: Int
+        ) {
+            val previous = paint.color
+            paint.color = color
+            canvas.drawRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), paint)
+            paint.color = previous
+        }
+    }
 
     private companion object {
         const val TAG = "TextEditor"
@@ -608,6 +770,8 @@ class CodeEditText @JvmOverloads constructor(
         const val NUMBER_GAP_PX = 8f
         const val HISTORY_LIMIT = 500
         const val TYPING_RUN_MS = 900L
+        val MARKERS = listOf("- [ ] ", "- [x] ", "- [X] ", "- ", "* ", "+ ", "> ",
+                             "###### ", "##### ", "#### ", "### ", "## ", "# ")
         const val SELECTION_ALPHA = 0x50
     }
 }
