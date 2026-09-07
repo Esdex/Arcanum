@@ -58,6 +58,8 @@ class TextEditorViewModel @Inject constructor(
         val syntax: Syntax = Syntax.NONE,
         val mixedNewlines: Boolean = false,
         val unknownEncoding: Boolean = false,
+        /** A vault mounted read-only can be read here, and nothing more. */
+        val readOnly: Boolean = false,
         /** Set when a save was refused because the file's encoding cannot hold what was typed. */
         val encodingRefused: Boolean = false,
         val failure: Failure? = null
@@ -71,7 +73,13 @@ class TextEditorViewModel @Inject constructor(
     private val name: String = savedStateHandle[Screen.TextEditor.ARG_NAME] ?: ""
     private val size: Long = savedStateHandle.get<String>(Screen.TextEditor.ARG_SIZE)?.toLongOrNull() ?: 0L
 
-    private val _state = MutableStateFlow(State(name = name, syntax = SyntaxHighlighter.of(name)))
+    private val _state = MutableStateFlow(
+        State(
+            name     = name,
+            syntax   = SyntaxHighlighter.of(name),
+            readOnly = repo.isContainerReadOnly(containerId)
+        )
+    )
     val state = _state.asStateFlow()
 
     val prefs: kotlinx.coroutines.flow.StateFlow<TextEditorPrefs> = prefs.textEditor
@@ -165,6 +173,13 @@ class TextEditorViewModel @Inject constructor(
         val s = _state.value
         val doc = document
         if (doc == null || !s.isDirty || s.failure != null) { onDone(true); return }
+        // Nothing to try: the write would be refused by the filesystem, and finding that out
+        // at the moment of leaving the screen is the worst time to be told.
+        if (s.readOnly) {
+            notifications.notify(InAppNotification.ReadOnlyError)
+            onDone(false)
+            return
+        }
 
         // A file the editor could not read as UTF-8 is held byte for byte, and its encoding
         // may simply have no room for what was just typed. Writing it anyway would put

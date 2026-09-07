@@ -404,6 +404,7 @@
     <string name="editor_redo">Redo</string>
     <string name="editor_saving">Saving…</string>
     <string name="editor_unsaved">Unsaved changes</string>
+    <string name="editor_note_read_only">This vault is open for reading only - the file can be read but not changed</string>
     <string name="editor_note_mixed_newlines">This file ends its lines both ways; saving writes them all the same way</string>
     <string name="editor_note_encoding">Not valid UTF-8: shown byte for byte, and saved back the same</string>
     <string name="editor_error_too_large">Too large to edit</string>

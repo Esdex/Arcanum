@@ -162,7 +162,7 @@ fun TextEditorScreen(
                     )
                 }
             }
-            if (state.failure == null && !state.isLoading) {
+            if (state.failure == null && !state.isLoading && !state.readOnly) {
                 IconButton(onClick = { editor?.undo() }, enabled = canUndo) {
                     Icon(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.editor_undo))
                 }
@@ -170,14 +170,17 @@ fun TextEditorScreen(
                     Icon(Icons.AutoMirrored.Outlined.Redo, stringResource(R.string.editor_redo))
                 }
             }
-            IconButton(onClick = { viewModel.save() }, enabled = state.isDirty && !state.isSaving) {
-                Icon(Icons.Outlined.Save, stringResource(R.string.editor_save))
+            if (!state.readOnly) {
+                IconButton(onClick = { viewModel.save() }, enabled = state.isDirty && !state.isSaving) {
+                    Icon(Icons.Outlined.Save, stringResource(R.string.editor_save))
+                }
             }
         }
 
         // What the file is, where that is not what it seems. Both stay on screen rather than
         // appearing once, because both are about what saving will do.
         if (state.failure == null && !state.isLoading) {
+            if (state.readOnly) EditorNote(stringResource(R.string.editor_note_read_only))
             if (state.mixedNewlines) EditorNote(stringResource(R.string.editor_note_mixed_newlines))
             if (state.unknownEncoding) EditorNote(stringResource(R.string.editor_note_encoding))
         }
@@ -211,6 +214,7 @@ fun TextEditorScreen(
                 )
 
                 else -> EditorBody(
+                    readOnly    = state.readOnly,
                     initialText = state.savedText,
                     onChange    = viewModel::onTextChange,
                     prefs       = prefs,
@@ -240,6 +244,7 @@ private fun EditorNote(text: String) {
 
 @Composable
 private fun EditorBody(
+    readOnly: Boolean,
     initialText: String,
     onChange: (String) -> Unit,
     prefs: TextEditorPrefs,
@@ -267,6 +272,13 @@ private fun EditorBody(
                 // whole file out a second time, which on a large one is the whole opening
                 // cost paid twice.
                 setWordWrap(prefs.wordWrap)
+                // Read, select, copy - but no caret to type with, and no keyboard.
+                if (readOnly) {
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    setTextIsSelectable(true)
+                    isCursorVisible = false
+                }
                 // The text is handed over ONCE, here. Writing it again on a later pass would
                 // take the cursor and the selection with it on every keystroke.
                 setDocument(initialText)
