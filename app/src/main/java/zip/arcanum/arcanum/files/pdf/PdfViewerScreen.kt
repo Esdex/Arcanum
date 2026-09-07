@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material3.Surface
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -115,6 +116,13 @@ fun PdfViewerScreen(
     val focusedPage by remember { derivedStateOf { listState.firstVisibleItemIndex } }
 
 
+    // Surface, not a bare Column: AppTheme calls MaterialTheme without one, so a screen
+    // that provides no surface of its own leaves LocalContentColor at its default black -
+    // which is invisible on a dark background, and is what made this bar unreadable.
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color    = MaterialTheme.colorScheme.background
+    ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -255,6 +263,7 @@ fun PdfViewerScreen(
                 }
             }
         }
+    }
     }
 }
 
