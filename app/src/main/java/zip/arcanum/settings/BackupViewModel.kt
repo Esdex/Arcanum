@@ -46,6 +46,14 @@ class BackupViewModel @Inject constructor(
     private val _state = MutableStateFlow(UiState())
     val state = _state.asStateFlow()
 
+    /** How much there is to save, kept fresh as the switches move. */
+    private val _preview = MutableStateFlow<SettingsBackup.Summary?>(null)
+    val preview = _preview.asStateFlow()
+
+    fun refreshPreview(includeVaults: Boolean) {
+        viewModelScope.launch { _preview.value = backup.preview(includeVaults) }
+    }
+
     fun clearResult() = _state.update { it.copy(result = null) }
     fun cancelPendingImport() = _state.update { it.copy(pendingImport = null) }
 

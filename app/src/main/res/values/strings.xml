@@ -702,7 +702,6 @@
     <string name="settings_backup_card">Backup</string>
     <string name="settings_backup_card_desc">Save your settings to a file, restore them on another phone</string>
     <string name="settings_backup_intro">A backup carries your settings, the way the vault list is arranged, and - if you ask for it - the list of vaults itself.\n\nIt never carries your PIN, panic mode, or fingerprint unlock: a PIN in a file is a key, panic mode belongs to the phone it was set up on, and fingerprint unlock is tied to this phone\'s hardware and cannot leave it.</string>
-    <string name="settings_backup_group_file">The file</string>
     <string name="settings_backup_save">Save to a file</string>
     <string name="settings_backup_save_desc">Choose where to put it</string>
     <string name="settings_backup_restore">Restore</string>
@@ -713,7 +712,17 @@
     <string name="settings_backup_protect_desc">The file is encrypted with a password of its own, unrelated to your PIN or to any vault password. Without it the file cannot be read - there is no way to recover it, so keep it somewhere you will still have it when the new phone arrives.</string>
     <string name="settings_backup_password">Password</string>
     <string name="settings_backup_no_password_warning">Without a password this file names your vaults in plain text to anyone who opens it.</string>
-    <string name="settings_backup_choose_file">Choose file</string>
+    <string name="settings_backup_password_hint">Typed once, and there is no way to recover it. Keep it somewhere you will still have it when the new phone arrives.</string>
+    <string name="settings_restore_running">Restoring…</string>
+    <string name="settings_restore_done_title">Settings restored</string>
+    <string name="settings_restore_failed_title">Nothing was restored</string>
+    <string name="settings_backup_running">Backing up…</string>
+    <string name="settings_backup_running_sub">Protecting the file takes a moment. Do not close the app.</string>
+    <string name="settings_backup_saved_title">Backup saved</string>
+    <string name="settings_backup_failed_title">Backup failed</string>
+    <string name="settings_backup_contents">What goes in the file</string>
+    <string name="settings_backup_contents_body">%1$d settings and %2$d vaults.\n\nNot your PIN, not panic mode, and not fingerprint unlock - those stay on this phone.</string>
+    <string name="settings_backup_choose_file">Choose where to save</string>
     <string name="settings_backup_password_needed_title">This backup is protected</string>
     <string name="settings_backup_password_needed_body">Enter the password the backup was saved with.</string>
     <string name="settings_backup_done_saved">Saved: %1$d settings and %2$d vaults.</string>

@@ -12,6 +12,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.Upload
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.Icons
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -31,6 +39,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import zip.arcanum.R
 import zip.arcanum.core.backup.BackupCodec
 import zip.arcanum.core.components.AppDialog
+import zip.arcanum.core.components.OperationFailure
+import zip.arcanum.core.components.OperationLoading
+import zip.arcanum.core.components.OperationScrim
+import zip.arcanum.core.components.OperationSuccess
 import zip.arcanum.core.components.GroupedRow
 import zip.arcanum.core.components.GroupedSwitch
 import zip.arcanum.core.components.SettingsGroup
@@ -48,37 +60,68 @@ import java.util.Locale
 @Composable
 internal fun BackupSubScreen(
     onBack: () -> Unit,
+    onSave: () -> Unit,
     viewModel: BackupViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
 
-    var showExportSheet by remember { mutableStateOf(false) }
-    var includeVaults   by remember { mutableStateOf(true) }
-    var usePassword     by remember { mutableStateOf(true) }
-    var password        by remember { mutableStateOf("") }
     var importPassword  by remember { mutableStateOf("") }
-
-    val suggestedName = remember {
-        val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        "arcanum-settings-$day.${BackupCodec.FILE_EXTENSION}"
-    }
-
-    val saveLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/octet-stream")
-    ) { uri ->
-        if (uri != null) {
-            viewModel.export(
-                target        = uri,
-                includeVaults = includeVaults,
-                password      = if (usePassword && password.isNotBlank()) password.toCharArray() else null
-            )
-        }
-        password = ""
-    }
+    var passwordShown   by remember { mutableStateOf(false) }
 
     val openLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) viewModel.beginImport(uri) }
+
+    /*
+     * Restoring reports itself the way saving does: the whole screen, and it stays until Done
+     * is pressed. A restore that ends in a banner is a restore nobody is sure happened - and
+     * this one rewrites the settings of the app the banner would be sitting in.
+     */
+    if (state.busy) {
+        OperationScrim {
+            OperationLoading(
+                title    = stringResource(R.string.settings_restore_running),
+                subtitle = stringResource(R.string.settings_backup_running_sub)
+            )
+        }
+        return
+    }
+    when (val result = state.result) {
+        is BackupViewModel.Result.Imported -> {
+            OperationScrim {
+                OperationSuccess(
+                    title  = stringResource(R.string.settings_restore_done_title),
+                    body   = stringResource(
+                        R.string.settings_backup_done_restored, result.settings, result.vaults
+                    ) + if (result.skipped > 0)
+                            "\n\n" + stringResource(R.string.settings_backup_done_skipped, result.skipped)
+                        else "",
+                    onDone = { viewModel.clearResult() }
+                )
+            }
+            return
+        }
+        is BackupViewModel.Result.WrongPassword,
+        is BackupViewModel.Result.TooNew,
+        is BackupViewModel.Result.Malformed,
+        is BackupViewModel.Result.Failed -> {
+            OperationScrim {
+                OperationFailure(
+                    title  = stringResource(R.string.settings_restore_failed_title),
+                    body   = when (result) {
+                        is BackupViewModel.Result.WrongPassword -> stringResource(R.string.settings_backup_err_password)
+                        is BackupViewModel.Result.TooNew        -> stringResource(R.string.settings_backup_err_too_new)
+                        is BackupViewModel.Result.Malformed     -> stringResource(R.string.settings_backup_err_malformed)
+                        is BackupViewModel.Result.Failed        -> result.message
+                        else                                    -> ""
+                    },
+                    onDone = { viewModel.clearResult() }
+                )
+            }
+            return
+        }
+        else -> Unit
+    }
 
     SubScreenScaffold(title = stringResource(R.string.settings_backup_title), onBack = onBack) { innerPadding ->
         Column(
@@ -88,21 +131,25 @@ internal fun BackupSubScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            Text(
-                text     = stringResource(R.string.settings_backup_intro),
-                style    = MaterialTheme.typography.bodyMedium,
-                color    = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
-            )
-
-            SettingsGroup(title = stringResource(R.string.settings_backup_group_file)) {
+            // No heading over the two rows: there is one group on this screen and its title
+            // would name the obvious. The explanation sits under them instead of over them -
+            // what the screen offers is two actions, and what it costs is worth reading
+            // second.
+            SettingsGroup {
                 row { shape ->
                     GroupedRow(
                         shape    = shape,
                         title    = stringResource(R.string.settings_backup_save),
                         subtitle = stringResource(R.string.settings_backup_save_desc),
                         enabled  = !state.busy,
-                        onClick  = { showExportSheet = true }
+                        leading  = {
+                            Icon(
+                                imageVector        = Icons.Outlined.Upload,
+                                contentDescription = null,
+                                tint               = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        onClick  = onSave
                     )
                 }
                 row { shape ->
@@ -111,85 +158,29 @@ internal fun BackupSubScreen(
                         title    = stringResource(R.string.settings_backup_restore),
                         subtitle = stringResource(R.string.settings_backup_restore_desc),
                         enabled  = !state.busy,
+                        leading  = {
+                            Icon(
+                                imageVector        = Icons.Outlined.Download,
+                                contentDescription = null,
+                                tint               = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
                         onClick  = { openLauncher.launch(arrayOf("*/*")) }
                     )
                 }
             }
 
-            if (state.busy) {
-                Spacer(Modifier.height(16.dp))
-                CircularProgressIndicator(Modifier.padding(start = 16.dp).height(24.dp))
-            }
+            Spacer(Modifier.height(20.dp))
+
+            Text(
+                text     = stringResource(R.string.settings_backup_intro),
+                style    = MaterialTheme.typography.bodyMedium,
+                color    = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
 
             Spacer(Modifier.height(24.dp))
         }
-    }
-
-    // The options are asked for BEFORE the file dialog: a password typed after choosing where
-    // to save reads as a second thought, and the choice of what goes in changes what the file
-    // is worth protecting.
-    if (showExportSheet) {
-        AppDialog(
-            onDismissRequest = { showExportSheet = false },
-            title = { Text(stringResource(R.string.settings_backup_save)) },
-            text  = {
-                Column {
-                    SettingsGroup {
-                        row { shape ->
-                            GroupedSwitch(
-                                shape           = shape,
-                                title           = stringResource(R.string.settings_backup_include_vaults),
-                                info            = stringResource(R.string.settings_backup_include_vaults_desc),
-                                checked         = includeVaults,
-                                onCheckedChange = { includeVaults = it }
-                            )
-                        }
-                        row { shape ->
-                            GroupedSwitch(
-                                shape           = shape,
-                                title           = stringResource(R.string.settings_backup_protect),
-                                info            = stringResource(R.string.settings_backup_protect_desc),
-                                checked         = usePassword,
-                                onCheckedChange = { usePassword = it }
-                            )
-                        }
-                    }
-                    if (usePassword) {
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value                = password,
-                            onValueChange        = { password = it },
-                            label                = { Text(stringResource(R.string.settings_backup_password)) },
-                            singleLine           = true,
-                            visualTransformation  = PasswordVisualTransformation(),
-                            keyboardOptions      = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            modifier             = Modifier.fillMaxWidth()
-                        )
-                    } else {
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            text  = stringResource(R.string.settings_backup_no_password_warning),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = !usePassword || password.isNotBlank(),
-                    onClick = {
-                        showExportSheet = false
-                        saveLauncher.launch(suggestedName)
-                    }
-                ) { Text(stringResource(R.string.settings_backup_choose_file)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showExportSheet = false }) {
-                    Text(stringResource(R.string.common_cancel))
-                }
-            }
-        )
     }
 
     state.pendingImport?.let {
@@ -208,7 +199,17 @@ internal fun BackupSubScreen(
                         onValueChange        = { importPassword = it },
                         label                = { Text(stringResource(R.string.settings_backup_password)) },
                         singleLine           = true,
-                        visualTransformation  = PasswordVisualTransformation(),
+                        visualTransformation = if (passwordShown) VisualTransformation.None
+                                               else PasswordVisualTransformation(),
+                        trailingIcon         = {
+                            IconButton(onClick = { passwordShown = !passwordShown }) {
+                                Icon(
+                                    if (passwordShown) Icons.Outlined.VisibilityOff
+                                    else Icons.Outlined.Visibility,
+                                    contentDescription = null
+                                )
+                            }
+                        },
                         keyboardOptions      = KeyboardOptions(keyboardType = KeyboardType.Password),
                         modifier             = Modifier.fillMaxWidth()
                     )
@@ -226,31 +227,6 @@ internal fun BackupSubScreen(
             dismissButton = {
                 TextButton(onClick = { importPassword = ""; viewModel.cancelPendingImport() }) {
                     Text(stringResource(R.string.common_cancel))
-                }
-            }
-        )
-    }
-
-    state.result?.let { result ->
-        val message = when (result) {
-            is BackupViewModel.Result.Exported ->
-                stringResource(R.string.settings_backup_done_saved, result.settings, result.vaults) +
-                    if (result.encrypted) "" else "\n\n" + stringResource(R.string.settings_backup_no_password_warning)
-            is BackupViewModel.Result.Imported ->
-                stringResource(R.string.settings_backup_done_restored, result.settings, result.vaults) +
-                    if (result.skipped > 0) "\n\n" + stringResource(R.string.settings_backup_done_skipped, result.skipped) else ""
-            is BackupViewModel.Result.WrongPassword -> stringResource(R.string.settings_backup_err_password)
-            is BackupViewModel.Result.TooNew        -> stringResource(R.string.settings_backup_err_too_new)
-            is BackupViewModel.Result.Malformed     -> stringResource(R.string.settings_backup_err_malformed)
-            is BackupViewModel.Result.Failed        -> result.message
-        }
-        AppDialog(
-            onDismissRequest = { viewModel.clearResult() },
-            title = { Text(stringResource(R.string.settings_backup_title)) },
-            text  = { Text(message) },
-            confirmButton = {
-                TextButton(onClick = { viewModel.clearResult() }) {
-                    Text(stringResource(R.string.common_ok))
                 }
             }
         )

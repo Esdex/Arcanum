@@ -72,7 +72,7 @@ import zip.arcanum.core.components.GroupedRoundIcon
 // Each sub-screen lives in a file of its own beside this one.
 
 private enum class SubScreen {
-    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, TEXT_EDITOR, BACKUP, ABOUT, LICENSES, WHATS_NEW, DONATIONS, PREMIUM, DEBUG
+    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, TEXT_EDITOR, BACKUP, BACKUP_SAVE, ABOUT, LICENSES, WHATS_NEW, DONATIONS, PREMIUM, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -109,6 +109,7 @@ fun SettingsScreen(
             SubScreen.SET_PANIC_PIN -> SubScreen.PANIC_MODE
             SubScreen.CHANGE_PIN    -> SubScreen.SECURITY
             SubScreen.LICENSES      -> SubScreen.ABOUT
+            SubScreen.BACKUP_SAVE   -> SubScreen.BACKUP
             SubScreen.WHATS_NEW     -> whatsNewFrom
             // Not always About: the F-Droid build reaches this from the main list, and a
             // notification can reach it from nowhere at all. The button on the screen and
@@ -187,7 +188,15 @@ fun SettingsScreen(
             }
 
             SubScreen.CHANGE_PIN -> ChangePinScreen(onBack = { subScreen = null })
-            SubScreen.BACKUP    -> BackupSubScreen(onBack = { subScreen = null })
+            SubScreen.BACKUP    -> BackupSubScreen(
+                onBack = { subScreen = null },
+                onSave = { subScreen = SubScreen.BACKUP_SAVE }
+            )
+
+            SubScreen.BACKUP_SAVE -> BackupSaveSubScreen(
+                onBack   = { subScreen = SubScreen.BACKUP },
+                onSaving = { subScreen = SubScreen.BACKUP }
+            )
 
             SubScreen.ABOUT     -> AboutSubScreen(
                 onBack          = { subScreen = null },

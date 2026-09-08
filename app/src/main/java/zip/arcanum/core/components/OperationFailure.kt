@@ -3,9 +3,9 @@ package zip.arcanum.core.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
@@ -30,29 +30,22 @@ import com.airbnb.lottie.compose.rememberLottieComposition
 import zip.arcanum.R
 
 /**
- * The "the operation finished" screen: check animation, title, body, and a
- * full-width button pinned to the bottom.
+ * The "it did not work" screen: the same shape as [OperationSuccess], the other animation.
  *
- * This exists because six screens had grown their own copy of it and drifted
- * apart on every axis - animation size, title style, whether the haptic fired
- * at all, and whether the button sat at the bottom or floated in the middle of
- * a centred column. Backup and restore had ended up with no animation and no
- * haptic. Use this rather than writing a seventh copy.
- *
- * [extra] renders under the body, inside the centred block, for the cases that
- * need to show something specific - the keyfile generator lists the files it
- * created and repeats its backup warning there.
+ * It exists so that a failure is as much of a screen as a success is. An operation that ends
+ * in a banner while its successful twin ends in a full page reads as something that half
+ * happened - and the one thing somebody needs after a failed backup is a plain statement
+ * that nothing was written.
  */
 @Composable
-fun OperationSuccess(
+fun OperationFailure(
     title: String,
     body: String? = null,
     onDone: () -> Unit,
-    doneLabel: String = stringResource(R.string.common_done),
-    extra: (@Composable ColumnScope.() -> Unit)? = null
+    doneLabel: String = stringResource(R.string.common_done)
 ) {
     val haptic      = LocalHapticFeedback.current
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.success_check))
+    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.error))
     val progress    by animateLottieCompositionAsState(composition = composition, iterations = 1)
 
     LaunchedEffect(Unit) { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
@@ -74,7 +67,7 @@ fun OperationSuccess(
                 Text(
                     text       = title,
                     style      = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     textAlign  = TextAlign.Center
                 )
                 if (body != null) {
@@ -85,14 +78,16 @@ fun OperationSuccess(
                         textAlign = TextAlign.Center
                     )
                 }
-                extra?.invoke(this)
             }
         }
         Button(
             onClick  = onDone,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
         ) {
-            Text(doneLabel, fontWeight = FontWeight.SemiBold)
+            Text(doneLabel)
         }
     }
 }

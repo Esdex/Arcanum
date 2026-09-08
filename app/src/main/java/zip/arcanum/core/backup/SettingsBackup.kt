@@ -109,6 +109,12 @@ class SettingsBackup @Inject constructor(
 
     // ── Writing ───────────────────────────────────────────────────────────────
 
+    /** What a backup would contain right now - for the screen that offers to write one. */
+    suspend fun preview(includeVaults: Boolean): Summary = Summary(
+        settings = prefs.exportAll().count { it.key !in prefs.BACKUP_SKIP } + displayPrefs.exportAll().size,
+        vaults   = if (includeVaults) containerDao.getAllContainersOnce().size else 0
+    )
+
     suspend fun export(includeVaults: Boolean, password: CharArray?): Pair<ByteArray, Summary> {
         val settings = prefs.exportAll()
             .filterKeys { it !in prefs.BACKUP_SKIP }
