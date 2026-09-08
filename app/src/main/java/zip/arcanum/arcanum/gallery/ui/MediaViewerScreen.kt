@@ -49,6 +49,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -68,6 +71,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -156,7 +160,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.delay
@@ -364,14 +367,25 @@ fun MediaViewerScreen(
         val window = (context as? Activity)?.window ?: return@LaunchedEffect
         val wic = WindowCompat.getInsetsController(window, view)
         if (showBars) {
-            wic.show(WindowInsetsCompat.Type.systemBars())
+            wic.show(WindowInsetsCompat.Type.statusBars())
             // The menu lives in the bar - leave both up until it is dismissed, then the effect
             // re-runs on videoMenuExpanded and the countdown starts over from the full 3s.
             if (videoMenuExpanded) return@LaunchedEffect
             delay(3_000); showBars = false
         } else {
-            wic.hide(WindowInsetsCompat.Type.systemBars())
-            wic.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            /*
+             * The status bar goes, the navigation area stays.
+             *
+             * Hiding it too is what broke the back gesture: an immersive window is handed the
+             * screen edges, which is where the back gesture lives, so a swipe from the edge
+             * reached the pager and turned the page. Nothing in an app can ask for the
+             * system's gesture back while it holds the edges - the choice is one or the
+             * other, and the gesture is worth more than a few millimetres of picture. The
+             * app already draws under the bars (enableEdgeToEdge), so the photograph is
+             * full-screen either way; what remains is the thin handle, and on a phone with
+             * three buttons the Back button itself, which would otherwise be taken away.
+             */
+            wic.hide(WindowInsetsCompat.Type.statusBars())
         }
     }
 
