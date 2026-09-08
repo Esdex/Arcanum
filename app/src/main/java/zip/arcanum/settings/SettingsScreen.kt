@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Security
@@ -71,7 +72,7 @@ import zip.arcanum.core.components.GroupedRoundIcon
 // Each sub-screen lives in a file of its own beside this one.
 
 private enum class SubScreen {
-    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, TEXT_EDITOR, ABOUT, LICENSES, WHATS_NEW, DONATIONS, PREMIUM, DEBUG
+    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, TEXT_EDITOR, BACKUP, ABOUT, LICENSES, WHATS_NEW, DONATIONS, PREMIUM, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -186,6 +187,8 @@ fun SettingsScreen(
             }
 
             SubScreen.CHANGE_PIN -> ChangePinScreen(onBack = { subScreen = null })
+            SubScreen.BACKUP    -> BackupSubScreen(onBack = { subScreen = null })
+
             SubScreen.ABOUT     -> AboutSubScreen(
                 onBack          = { subScreen = null },
                 onLicenses      = { subScreen = SubScreen.LICENSES },
@@ -244,6 +247,7 @@ private object SettingsHue {
     val About      = SectionHue(Color(0xFFC7C7C7), Color(0xFF474747))
     val Debug      = SectionHue(Color(0xFF80DA88), Color(0xFF00522C))
     val Donate     = SectionHue(Color(0xFFFFC107), Color(0xFF5D4200))
+    val Backup     = SectionHue(Color(0xFFB9C4FF), Color(0xFF1B2E82))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -353,6 +357,21 @@ private fun MainSettingsScreen(
             Spacer(Modifier.height(16.dp))
 
             SettingsGroup {
+                row { shape ->
+                    GroupedRow(
+                        shape    = shape,
+                        title    = stringResource(R.string.settings_backup_card),
+                        subtitle = stringResource(R.string.settings_backup_card_desc),
+                        leading  = {
+                            GroupedRoundIcon(
+                                icon      = Icons.Outlined.Save,
+                                color     = SettingsHue.Backup.circle,
+                                iconColor = SettingsHue.Backup.glyph
+                            )
+                        },
+                        onClick  = { onNavigate(SubScreen.BACKUP) }
+                    )
+                }
                 row { shape ->
                     GroupedRow(
                         shape    = shape,

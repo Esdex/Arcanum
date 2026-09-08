@@ -36,6 +36,7 @@ import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.BuildConfig
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.security.AppPreferences
+import zip.arcanum.core.security.VaultDisplayPrefs
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.BiometricCryptoManager
@@ -46,9 +47,6 @@ import zip.arcanum.usb.UsbBlockDevice
 import zip.arcanum.usb.UsbVolumeManager
 import javax.crypto.Cipher
 import javax.inject.Inject
-
-private val Context.vaultDisplayDataStore: DataStore<Preferences>
-    by preferencesDataStore(name = "vault_display_prefs")
 
 @HiltViewModel
 class VaultViewModel @Inject constructor(
@@ -61,6 +59,8 @@ class VaultViewModel @Inject constructor(
     private val prefs: AppPreferences,
     private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
     private val closer: zip.arcanum.arcanum.containers.data.VaultCloser,
+    private val fingerprint: zip.arcanum.core.security.VolumeFingerprint,
+    private val displayPrefs: zip.arcanum.core.security.VaultDisplayPrefs,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -79,13 +79,6 @@ class VaultViewModel @Inject constructor(
         val groupBy:        GroupBy       = GroupBy.LOCATION,
         val biometricFirst: Boolean       = false
     )
-
-    private object DisplayKeys {
-        val SORT_BY         = stringPreferencesKey("sort_by")
-        val SORT_DIRECTION  = stringPreferencesKey("sort_direction")
-        val GROUP_BY        = stringPreferencesKey("group_by")
-        val BIOMETRIC_FIRST = booleanPreferencesKey("biometric_first")
-    }
 
     private val _sortState = MutableStateFlow(SortState())
     val sortState = _sortState.asStateFlow()
@@ -160,30 +153,30 @@ class VaultViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val prefs = context.vaultDisplayDataStore.data.first()
+            val prefs = displayPrefs.read()
             _sortState.value = SortState(
-                sortBy         = prefs[DisplayKeys.SORT_BY]
+                sortBy         = prefs[VaultDisplayPrefs.Keys.SORT_BY]
                                      ?.let { runCatching { SortBy.valueOf(it) }.getOrNull() }
                                      ?: SortBy.NAME,
-                direction      = prefs[DisplayKeys.SORT_DIRECTION]
+                direction      = prefs[VaultDisplayPrefs.Keys.SORT_DIRECTION]
                                      ?.let { runCatching { SortDirection.valueOf(it) }.getOrNull() }
                                      ?: SortDirection.ASCENDING,
-                groupBy        = prefs[DisplayKeys.GROUP_BY]
+                groupBy        = prefs[VaultDisplayPrefs.Keys.GROUP_BY]
                                      ?.let { runCatching { GroupBy.valueOf(it) }.getOrNull() }
                                      ?: GroupBy.LOCATION,
-                biometricFirst = prefs[DisplayKeys.BIOMETRIC_FIRST] ?: false
+                biometricFirst = prefs[VaultDisplayPrefs.Keys.BIOMETRIC_FIRST] ?: false
             )
         }
     }
 
     private fun persistSortState(state: SortState) {
         viewModelScope.launch {
-            context.vaultDisplayDataStore.edit { prefs ->
-                prefs[DisplayKeys.SORT_BY]         = state.sortBy.name
-                prefs[DisplayKeys.SORT_DIRECTION]  = state.direction.name
-                prefs[DisplayKeys.GROUP_BY]        = state.groupBy.name
-                prefs[DisplayKeys.BIOMETRIC_FIRST] = state.biometricFirst
-            }
+            displayPrefs.write(
+                sortBy         = state.sortBy.name,
+                direction      = state.direction.name,
+                groupBy        = state.groupBy.name,
+                biometricFirst = state.biometricFirst
+            )
         }
     }
 
@@ -506,6 +499,16 @@ class VaultViewModel @Inject constructor(
                             protectHidden = hasHidden
                         )
                         mountLogger.log("Mount successful.")
+                        /* A vault added before fingerprints existed gets one here: mounting
+                           is the moment the file is known to be the right one, because it
+                           just opened with this password. */
+                        launch {
+                            val row = repo.getEntityById(container.id)
+                            if (row != null && row.volumeSaltHash.isEmpty() && row.usbSaltHash.isEmpty()) {
+                                fingerprint.read(row.path, row.safUri)
+                                    ?.let { repo.updateVolumeSaltHash(container.id, it) }
+                            }
+                        }
                         // Only logged here; the banner is raised by
                         // ContainerScreenViewModel, on the screen this navigates to.
                         if (needsCheck)
@@ -616,6 +619,8 @@ class VaultViewModel @Inject constructor(
         data class Error(val message: String)          : AddVaultResult
         /** No USB drive is attached; the user is asked to plug one in and retry. */
         data object NoUsbDrive                         : AddVaultResult
+        /** A vault that had lost its file has been pointed at one again. */
+        data class Relocated(val fileName: String, val sizeChanged: Boolean) : AddVaultResult
     }
 
     private val _addVaultResult = MutableStateFlow<AddVaultResult?>(null)
@@ -677,12 +682,152 @@ class VaultViewModel @Inject constructor(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
             try {
-                repo.addContainerFromUri(safUri, name, size)
+                val newId = repo.addContainerFromUri(safUri, name, size)
+                fingerprint.readUri(uri)?.let { repo.updateVolumeSaltHash(newId, it) }
                 _addVaultResult.value = AddVaultResult.Added(name)
             } catch (e: Exception) {
                 _addVaultResult.value = AddVaultResult.Error(e.message ?: "Unknown error")
             }
         }
+    }
+
+    /**
+     * Points a vault that has lost its file at a file again.
+     *
+     * A vault goes missing for ordinary reasons - the file was moved on the phone, the phone
+     * is a new one and the backup brought the list without the permission that goes with it
+     * (#63) - and until now the only thing to do about it was to forget the vault and add it
+     * again, which lost every setting it had. This keeps the row, its name and its settings,
+     * and gives it a file.
+     *
+     * Whether it is the RIGHT file is not something the app can know: a container is
+     * indistinguishable from random bytes without the password, which is the whole point of
+     * it. What can be said is whether the size matches the one on record, and that is said
+     * rather than acted on - the mount is the real test, and it either opens or it does not.
+     */
+    /**
+     * Vaults whose file is not where the app last saw it.
+     *
+     * Worked out once per change of the list, on the IO thread: asking the question inside a
+     * row would put a provider call into every recomposition of every card, and a SAF query
+     * is a trip to another process.
+     *
+     * A vault on a drive is never in here. Its file is not lost - the drive is simply not
+     * plugged in, which is an ordinary state and says nothing about the vault.
+     */
+    val missingContainerIds: StateFlow<Set<String>> =
+        repo.getAllContainersRaw()
+            .map { rows ->
+                withContext(Dispatchers.IO) {
+                    val fileVaults = rows.filter { it.usbSaltHash.isEmpty() }
+                    val missing = fileVaults.filter { !fileIsThere(it) }.map { it.id }.toSet()
+                    /* The same pass fills in a fingerprint for any vault that has none and
+                       whose file is right there. Waiting for a mount was not enough: a vault
+                       restored from a backup has never been mounted here, and that is exactly
+                       the vault somebody points at a file - with nothing to check it against,
+                       the wrong file was accepted in silence. Sixty-four bytes per vault, on
+                       a list that has already opened each of them to see whether it is
+                       there. */
+                    fileVaults
+                        .filter { it.id !in missing && it.volumeSaltHash.isEmpty() }
+                        .forEach { row ->
+                            fingerprint.read(row.path, row.safUri)
+                                ?.let { repo.updateVolumeSaltHash(row.id, it) }
+                        }
+                    missing
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    private fun fileIsThere(row: ContainerEntity): Boolean = when {
+        row.safUri.isNotEmpty() -> runCatching {
+            context.contentResolver.openFileDescriptor(Uri.parse(row.safUri), "r")?.use { true } ?: false
+        }.getOrDefault(false)
+        row.path.isNotEmpty()   -> java.io.File(row.path).exists()
+        else                    -> true
+    }
+
+    fun relocateContainer(id: String, uri: Uri) {
+        viewModelScope.launch {
+            val container = repo.getContainerById(id) ?: return@launch
+            val (name, size) = resolveUriMeta(uri) ?: run {
+                _addVaultResult.value = AddVaultResult.InvalidFile
+                return@launch
+            }
+            if (size < 131072L || size % 512 != 0L) {
+                _addVaultResult.value = AddVaultResult.InvalidFile
+                return@launch
+            }
+            val taken = runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }.isSuccess
+            if (!taken) {
+                _addVaultResult.value = AddVaultResult.Error("Could not keep access to that file")
+                return@launch
+            }
+
+            /*
+             * Is this the volume the row means? The header's salt answers that without a
+             * password - and a mismatch is a QUESTION rather than a refusal, because there is
+             * an innocent way to get one: the password was changed somewhere else, on a
+             * desktop say, and VeraCrypt wrote a new salt. Refusing outright would lock
+             * someone out of their own vault for having maintained it elsewhere.
+             */
+            val known  = repo.getEntityById(id)?.volumeSaltHash.orEmpty()
+            val picked = fingerprint.readUri(uri)
+            if (known.isNotEmpty() && picked != null && picked != known) {
+                _pendingRelocate.value = PendingRelocate(id, uri, name, size)
+                return@launch
+            }
+            /* The row keeps its id, so its biometric credentials, its place in panic mode's
+               plan and its media index all still belong to it. Only where it lives changes. */
+            commitRelocate(id, uri, name, size, container.size, picked)
+        }
+    }
+
+    /** A file the user picked that does not look like the volume the row means. */
+    data class PendingRelocate(val id: String, val uri: Uri, val name: String, val size: Long)
+
+    private val _pendingRelocate = MutableStateFlow<PendingRelocate?>(null)
+    val pendingRelocate: StateFlow<PendingRelocate?> = _pendingRelocate.asStateFlow()
+
+    fun cancelRelocate() { _pendingRelocate.value = null }
+
+    /** The user has looked at the warning and says this is the file. */
+    fun confirmRelocate() {
+        val pending = _pendingRelocate.value ?: return
+        _pendingRelocate.value = null
+        viewModelScope.launch {
+            val container = repo.getContainerById(pending.id) ?: return@launch
+            commitRelocate(
+                id           = pending.id,
+                uri          = pending.uri,
+                name         = pending.name,
+                size         = pending.size,
+                recordedSize = container.size,
+                fingerprint  = fingerprint.readUri(pending.uri)
+            )
+        }
+    }
+
+    private suspend fun commitRelocate(
+        id: String,
+        uri: Uri,
+        name: String,
+        size: Long,
+        recordedSize: Long,
+        fingerprint: String?
+    ) {
+        /* The row keeps its id, so its biometric credentials, its place in panic mode's plan
+           and its media index all still belong to it. Only where it lives changes. */
+        repo.updateSafUri(id, uri.toString())
+        repo.updateContainerPath(id, "")
+        if (size != recordedSize) repo.updateSize(id, size)
+        if (fingerprint != null) repo.updateVolumeSaltHash(id, fingerprint)
+        _addVaultResult.value = AddVaultResult.Relocated(name, sizeChanged = size != recordedSize)
     }
 
     private fun resolveDisplayName(uri: Uri): String? =

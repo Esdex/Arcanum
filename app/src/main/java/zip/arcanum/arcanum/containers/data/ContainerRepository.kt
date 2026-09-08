@@ -243,6 +243,12 @@ class ContainerRepository @Inject constructor(
     suspend fun updatePkcs5Iterations(id: String, iterations: Int) =
         dao.updatePkcs5Iterations(id, iterations)
 
+    /** The row as it is stored, for the fields the domain object does not carry. */
+    suspend fun getEntityById(id: String): ContainerEntity? = dao.getContainerById(id)
+
+    suspend fun updateVolumeSaltHash(id: String, hash: String) =
+        dao.updateVolumeSaltHash(id, hash)
+
     suspend fun updateHeaderModifiedAt(id: String, time: Long) =
         dao.updateHeaderModifiedAt(id, time)
 

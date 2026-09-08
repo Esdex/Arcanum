@@ -114,6 +114,62 @@ class AppPreferences @Inject constructor(
         }
     }
 
+    /**
+     * Every preference by key name, for the settings backup (#63).
+     *
+     * Generic on purpose: a setting added later is carried by a backup without anybody
+     * remembering to add it here, which is the opposite of how [Keys.PANIC_KEEP] works and
+     * is right for the opposite reason - a wipe should forget by default, a backup should
+     * carry by default.
+     */
+    suspend fun exportAll(): Map<String, Any> =
+        context.appPrefsDataStore.data.first().asMap().entries
+            .associate { (key, value) -> key.name to value }
+
+    /**
+     * Writes preferences back. Keys the app no longer knows are written anyway and simply
+     * never read - dropping them would make a backup lossy across a downgrade, and they cost
+     * a few bytes.
+     */
+    suspend fun importAll(values: Map<String, Any>) {
+        context.appPrefsDataStore.edit { prefs ->
+            values.forEach { (name, value) ->
+                when (value) {
+                    is Boolean -> prefs[booleanPreferencesKey(name)] = value
+                    is Int     -> prefs[intPreferencesKey(name)]     = value
+                    is Long    -> prefs[longPreferencesKey(name)]    = value
+                    is String  -> prefs[stringPreferencesKey(name)]  = value
+                    else       -> Unit
+                }
+            }
+        }
+    }
+
+    /**
+     * What a backup never carries.
+     *
+     * - the **disguise**, because it is applied by enabling a launcher component and cannot
+     *   be taken back without reinstalling: a file must not be able to turn it on.
+     * - **what has already been seen**, because those are clocks. Restored onto a new phone
+     *   they would have it ask for support on its first day, having counted the days on the
+     *   old one.
+     * - the **shuffle seed**, which is meaningless anywhere but where it was made.
+     * - **biometric unlock at the app's entrance**. The credential itself cannot travel - it
+     *   is wrapped by a key that never leaves the phone - so a restored preference would find
+     *   no token and take the enrol-on-first-unlock path: the app would offer a fingerprint
+     *   on a phone where nobody chose one, and the first finger presented would become the
+     *   one that opens it. Restoring a backup already requires the PIN, so this opens nothing
+     *   by itself; it is excluded for the reason the disguise is, which is that a file must
+     *   not switch on a way in.
+     */
+    val BACKUP_SKIP: Set<String> = setOf(
+        "calculator_enabled",
+        "biometric_unlock_enabled",
+        "first_seen_at",
+        "last_support_prompt_at",
+        "gallery_random_seed"
+    )
+
     val autoLockEnabled: Flow<Boolean> = context.appPrefsDataStore.data
         .map { it[Keys.AUTO_LOCK] ?: true }
 

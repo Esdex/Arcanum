@@ -132,6 +132,9 @@ interface ContainerDao {
     @Query("UPDATE containers SET pkcs5Iterations = :iterations WHERE id = :id")
     suspend fun updatePkcs5Iterations(id: String, iterations: Int)
 
+    @Query("UPDATE containers SET volumeSaltHash = :hash WHERE id = :id")
+    suspend fun updateVolumeSaltHash(id: String, hash: String)
+
     @Query("UPDATE containers SET headerModifiedAt = :time WHERE id = :id")
     suspend fun updateHeaderModifiedAt(id: String, time: Long)
 

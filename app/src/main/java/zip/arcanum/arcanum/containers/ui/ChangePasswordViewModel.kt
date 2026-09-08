@@ -62,6 +62,7 @@ data class ChangePasswordState(
 @HiltViewModel
 class ChangePasswordViewModel @Inject constructor(
     private val repo: ContainerRepository,
+    private val fingerprint: zip.arcanum.core.security.VolumeFingerprint,
     private val changePasswordParams: ChangePasswordParams,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -202,6 +203,7 @@ class ChangePasswordViewModel @Inject constructor(
                 when (svcState) {
                     is ChangePasswordService.State.Success -> {
                         _state.update { it.copy(isRunning = false, isSuccess = true) }
+                        refreshFingerprint(containerId)
                         ChangePasswordService.reset()
                     }
                     is ChangePasswordService.State.Failure -> {
@@ -222,5 +224,18 @@ class ChangePasswordViewModel @Inject constructor(
         s.oldKeyfileData.forEach { it.fill(0) }
         s.newKeyfileData.forEach { it.fill(0) }
         collectedEntropy.fill(0)
+    }
+
+    /*
+     * The header has just been rewritten, which means a new salt - so the fingerprint the app
+     * knows this volume by is stale. Recording the new one here is what stops the app from
+     * disowning a vault it has just maintained ([[VolumeFingerprint]]).
+     */
+    private fun refreshFingerprint(containerId: String) {
+        viewModelScope.launch {
+            val row = repo.getEntityById(containerId) ?: return@launch
+            if (row.usbSaltHash.isNotEmpty()) return@launch
+            fingerprint.read(row.path, row.safUri)?.let { repo.updateVolumeSaltHash(containerId, it) }
+        }
     }
 }

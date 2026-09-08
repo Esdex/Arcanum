@@ -35,6 +35,7 @@ data class RestoreHeaderState(
 @HiltViewModel
 class RestoreHeaderViewModel @Inject constructor(
     private val repo: ContainerRepository,
+    private val fingerprint: zip.arcanum.core.security.VolumeFingerprint,
     private val engine: VeraCryptEngine,
     private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
     @ApplicationContext private val context: Context
@@ -136,7 +137,10 @@ class RestoreHeaderViewModel @Inject constructor(
             _state.update { it.copy(keyfileData = emptyList(), keyfileDisplayNames = emptyList()) }
 
             when (result) {
-                is CryptoResult.Success -> _state.update { it.copy(isRunning = false, isSuccess = true) }
+                is CryptoResult.Success -> {
+                    _state.update { it.copy(isRunning = false, isSuccess = true) }
+                    refreshFingerprint(containerId)
+                }
                 is CryptoResult.Failure -> _state.update { it.copy(isRunning = false, error = result.error.name) }
             }
         }
@@ -182,6 +186,7 @@ class RestoreHeaderViewModel @Inject constructor(
                         usbSaltHash = fresh
                     }
                     _state.update { it.copy(isRunning = false, isSuccess = true) }
+                    refreshFingerprint(containerId)
                 }
                 is CryptoResult.Failure -> _state.update { it.copy(isRunning = false, error = r.error.name) }
             }
@@ -202,5 +207,18 @@ class RestoreHeaderViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         _state.value.keyfileData.forEach { it.fill(0) }
+    }
+
+    /*
+     * The header has just been rewritten, which means a new salt - so the fingerprint the app
+     * knows this volume by is stale. Recording the new one here is what stops the app from
+     * disowning a vault it has just maintained ([[VolumeFingerprint]]).
+     */
+    private fun refreshFingerprint(containerId: String) {
+        viewModelScope.launch {
+            val row = repo.getEntityById(containerId) ?: return@launch
+            if (row.usbSaltHash.isNotEmpty()) return@launch
+            fingerprint.read(row.path, row.safUri)?.let { repo.updateVolumeSaltHash(containerId, it) }
+        }
     }
 }

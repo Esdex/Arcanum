@@ -113,6 +113,20 @@ sealed class InAppNotification {
         val fileName: String
     ) : InAppNotification()
 
+    /** A vault that had lost its file has been pointed at one again (#63). */
+    data class VaultRelocated(
+        val fileName: String
+    ) : InAppNotification()
+
+    /**
+     * The same, with the one thing the app can check said out loud: the file is not the size
+     * the vault was. It may still be the right one - a container is indistinguishable from
+     * noise without its password, so this is the only doubt that can be voiced at all.
+     */
+    data class VaultRelocatedSizeDiffers(
+        val fileName: String
+    ) : InAppNotification()
+
     data class VaultAlreadyExists(
         val fileName: String
     ) : InAppNotification()

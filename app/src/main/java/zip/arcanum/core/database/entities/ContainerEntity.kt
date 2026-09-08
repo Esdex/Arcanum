@@ -66,4 +66,18 @@ data class ContainerEntity(
      * fingerprint; this only spares that search in the ordinary case.
      */
     @ColumnInfo(defaultValue = "0") val usbStartByte: Long = 0L,
+
+    /**
+     * SHA-256 of the volume header's salt, for a vault held in a FILE (#63).
+     *
+     * The same fingerprint [usbSaltHash] is for a drive, kept for a different reason: a file
+     * vault is found by its path, and a path is exactly what is lost when the file is moved
+     * or when the list arrives from another phone. With this the app can say whether the file
+     * somebody points at is the volume the row means, before any password is typed.
+     *
+     * Empty for vaults added before this existed; filled in the first time such a vault is
+     * mounted. Rewritten whenever the header is - a new password, new keyfiles, a restored
+     * header - because VeraCrypt writes a new salt each time. See [VolumeFingerprint].
+     */
+    @ColumnInfo(defaultValue = "") val volumeSaltHash: String = "",
 )

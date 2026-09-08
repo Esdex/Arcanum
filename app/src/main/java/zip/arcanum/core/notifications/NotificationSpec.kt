@@ -183,6 +183,8 @@ private val InAppNotification.icon: ImageVector
             if (failed > 0) Icons.Outlined.Warning else Icons.Outlined.CheckCircle
         is InAppNotification.UsbSafeToRemove         -> Icons.Outlined.Eject
         is InAppNotification.VaultAdded              -> Icons.Outlined.FolderZip
+        is InAppNotification.VaultRelocated          -> Icons.Outlined.FolderZip
+        is InAppNotification.VaultRelocatedSizeDiffers -> Icons.Outlined.FolderZip
         is InAppNotification.AddressCopied           -> Icons.Outlined.ContentCopy
         is InAppNotification.ImportCancelled         -> Icons.Outlined.Cancel
         is InAppNotification.DisguiseAlreadyApplied  -> Icons.Outlined.Calculate
@@ -208,6 +210,8 @@ private fun InAppNotification.title(ctx: Context): String = when (this) {
     is InAppNotification.VaultError             -> ctx.getString(R.string.notif_vault_error)
     is InAppNotification.ExportSuccess          -> ctx.getString(R.string.notif_export_success)
     is InAppNotification.VaultAdded             -> ctx.getString(R.string.notif_vault_added)
+    is InAppNotification.VaultRelocated         -> ctx.getString(R.string.notif_vault_relocated)
+    is InAppNotification.VaultRelocatedSizeDiffers -> ctx.getString(R.string.notif_vault_relocated)
     is InAppNotification.VaultAlreadyExists     -> ctx.getString(R.string.notif_vault_already_exists)
     is InAppNotification.VaultInvalidFile       -> ctx.getString(R.string.notif_vault_invalid_file)
     is InAppNotification.VaultAddError          -> ctx.getString(R.string.notif_vault_add_error)
@@ -246,6 +250,9 @@ private fun InAppNotification.subtitle(ctx: Context): String = when (this) {
     is InAppNotification.VaultError             -> message
     is InAppNotification.ExportSuccess          -> fileName
     is InAppNotification.VaultAdded             -> ctx.getString(R.string.notif_vault_added_subtitle, fileName)
+    is InAppNotification.VaultRelocated         -> ctx.getString(R.string.notif_vault_relocated_subtitle, fileName)
+    is InAppNotification.VaultRelocatedSizeDiffers ->
+        ctx.getString(R.string.notif_vault_relocated_size_subtitle, fileName)
     is InAppNotification.VaultAlreadyExists     -> fileName
     is InAppNotification.VaultInvalidFile       -> ctx.getString(R.string.notif_vault_invalid_file_subtitle)
     is InAppNotification.VaultAddError          -> message

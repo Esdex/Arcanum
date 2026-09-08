@@ -18,7 +18,7 @@ import zip.arcanum.core.database.entities.MediaFileEntity
         MediaFileEntity::class,
         CalculationEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -26,7 +26,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** Must match the `version` in the @Database annotation above - the debug screen reports it. */
-        const val VERSION = 15
+        const val VERSION = 16
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -140,6 +140,15 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_14_15 = object : Migration(14, 15) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS mount_points")
+            }
+        }
+
+        /** The volume fingerprint for file-hosted vaults - see ContainerEntity.volumeSaltHash. */
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE containers ADD COLUMN volumeSaltHash TEXT NOT NULL DEFAULT ''"
+                )
             }
         }
     }

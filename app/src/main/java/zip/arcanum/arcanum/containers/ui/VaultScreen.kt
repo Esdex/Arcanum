@@ -22,6 +22,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -77,6 +79,7 @@ import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.CheckBox
@@ -186,6 +189,8 @@ fun VaultScreen(
 ) {
     val context              = LocalContext.current
     val containers           by viewModel.containers.collectAsState()
+    val missingIds           by viewModel.missingContainerIds.collectAsState()
+    val pendingRelocate      by viewModel.pendingRelocate.collectAsState()
     val canAddMoreContainers by viewModel.canAddMoreContainers.collectAsState()
     val addVaultResult       by viewModel.addVaultResult.collectAsState()
     val usbLayout            by viewModel.usbLayout.collectAsState()
@@ -302,6 +307,10 @@ fun VaultScreen(
             VaultViewModel.AddVaultResult.InvalidFile      -> notifications.notify(InAppNotification.VaultInvalidFile)
             VaultViewModel.AddVaultResult.LimitReached     -> showUpgradeDialog = true
             is VaultViewModel.AddVaultResult.Error         -> notifications.notify(InAppNotification.VaultAddError(result.message))
+            is VaultViewModel.AddVaultResult.Relocated     -> notifications.notify(
+                if (result.sizeChanged) InAppNotification.VaultRelocatedSizeDiffers(result.fileName)
+                else                    InAppNotification.VaultRelocated(result.fileName)
+            )
             VaultViewModel.AddVaultResult.NoUsbDrive       -> showUsbInsertPrompt = true
         }
         viewModel.clearAddVaultResult()
@@ -333,6 +342,17 @@ fun VaultScreen(
         contract = OpenDocumentStartingAt(pickerStartUri)
     ) { uri ->
         if (uri != null) viewModel.addContainerFromUri(uri)
+    }
+
+    /* The vault whose file is being looked for, kept across the trip to the picker: the
+       overlay is gone by the time the result comes back. */
+    var relocatingId by remember { mutableStateOf<String?>(null) }
+    val relocateLauncher = rememberLauncherForActivityResult(
+        contract = OpenDocumentStartingAt(pickerStartUri)
+    ) { uri ->
+        val id = relocatingId
+        relocatingId = null
+        if (uri != null && id != null) viewModel.relocateContainer(id, uri)
     }
 
     LaunchedEffect(selectionMode) {
@@ -500,6 +520,7 @@ fun VaultScreen(
                                             onOpen                 = { openVault(container) },
                                             onVaultInfo            = { onVaultInfo(container.id) },
                                             onRename               = { renameText = container.name; renameContainer = container },
+                                            isMissing              = container.id in missingIds,
                                             onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
                                             onUnmount              = { containerToUnmount = container }
                                         )
@@ -517,6 +538,7 @@ fun VaultScreen(
                                         onOpen                 = { openVault(container) },
                                         onVaultInfo            = { onVaultInfo(container.id) },
                                         onRename               = { renameText = container.name; renameContainer = container },
+                                        isMissing              = container.id in missingIds,
                                         onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
                                         onUnmount              = { containerToUnmount = container }
                                     )
@@ -736,6 +758,21 @@ fun VaultScreen(
                 )
             }
 
+            // ── The file picked is not this volume ────────────────────────────
+            pendingRelocate?.let { pending ->
+                RelocateMismatchOverlay(
+                    fileName    = pending.name,
+                    onChooseAnother = {
+                        val id = pending.id
+                        viewModel.cancelRelocate()
+                        relocatingId = id
+                        relocateLauncher.launch(arrayOf("*/*"))
+                    },
+                    onUseAnyway = { viewModel.confirmRelocate() },
+                    onBack      = { viewModel.cancelRelocate() }
+                )
+            }
+
             // ── USB drive missing ─────────────────────────────────────────────
             // The same question the vault's own screen asks, in the same words: a vault on a
             // drive is checked before the mount screen opens, not after a password is typed.
@@ -780,6 +817,14 @@ fun VaultScreen(
                 ContainerNotFoundOverlay(
                     container        = c,
                     onBack           = { containerNotFound = null },
+                    onLocate         = {
+                        val target = containerNotFound
+                        containerNotFound = null
+                        if (target != null) {
+                            relocatingId = target.id
+                            relocateLauncher.launch(arrayOf("*/*"))
+                        }
+                    },
                     onRemoveFromList = { showRemoveNotFoundConfirm = true }
                 )
                 if (showRemoveNotFoundConfirm) {
@@ -1065,6 +1110,7 @@ private fun VaultCardItem(
     cardShape: Shape? = null,
     onVaultInfo: () -> Unit = {},
     onRename: () -> Unit = {},
+    isMissing: Boolean = false,
     isLastInGroup: Boolean = true,
     selectedIds: Set<String>,
     selectionMode: Boolean,
@@ -1088,7 +1134,8 @@ private fun VaultCardItem(
         onLongClick             = onLongClick,
         onUnmount               = onUnmount,
         onVaultInfo             = onVaultInfo,
-        onRename                = onRename
+        onRename                = onRename,
+        isMissing               = isMissing
     )
 }
 
@@ -1280,6 +1327,8 @@ private fun VaultCard(
     onUnmount: () -> Unit = {},
     onVaultInfo: () -> Unit = {},
     onRename: () -> Unit = {},
+    /** The file this vault lives in is not where it was: it can be pointed at one again. */
+    isMissing: Boolean = false,
 ) {
     val context = LocalContext.current
     val appStr   = stringResource(R.string.vault_storage_app)
@@ -1375,15 +1424,24 @@ private fun VaultCard(
                 modifier         = Modifier.size(24.dp)
             )
         } else {
+            /* Three states, three colours: open is green, closed takes the accent, and a
+               vault whose file is missing is grey - deliberately the dullest of the three,
+               because it is not an alarm, it is a vault that is simply not there. */
             val iconBg by animateColorAsState(
-                targetValue   = if (container.isMounted) Color(0xFF16A34A)
-                                else MaterialTheme.colorScheme.primaryContainer,
+                targetValue   = when {
+                    isMissing            -> MaterialTheme.colorScheme.surfaceContainerHighest
+                    container.isMounted  -> Color(0xFF16A34A)
+                    else                 -> MaterialTheme.colorScheme.primaryContainer
+                },
                 animationSpec = tween<Color>(300),
                 label         = "icon_bg"
             )
             val iconTint by animateColorAsState(
-                targetValue   = if (container.isMounted) Color.White
-                                else MaterialTheme.colorScheme.onPrimaryContainer,
+                targetValue   = when {
+                    isMissing            -> MaterialTheme.colorScheme.onSurfaceVariant
+                    container.isMounted  -> Color.White
+                    else                 -> MaterialTheme.colorScheme.onPrimaryContainer
+                },
                 animationSpec = tween<Color>(300),
                 label         = "icon_tint"
             )
@@ -1404,11 +1462,12 @@ private fun VaultCard(
                        ordinary storage. Same rule as the vault's own screen and the
                        destination sheet. */
                     Icon(
-                        imageVector        = vaultStorageIcon(
-                            path        = container.path,
-                            safUri      = container.safUri,
-                            usbSaltHash = container.usbSaltHash
-                        ),
+                        imageVector        = if (isMissing) Icons.Outlined.FolderOff
+                                             else vaultStorageIcon(
+                                                 path        = container.path,
+                                                 safUri      = container.safUri,
+                                                 usbSaltHash = container.usbSaltHash
+                                             ),
                         contentDescription = null,
                         tint               = iconTint,
                         modifier           = Modifier.size(26.dp)
@@ -1446,7 +1505,9 @@ private fun VaultCard(
             }
         }
 
-        if (!inSelectionMode) {
+        // No size for a vault whose file is missing: the number would describe something the
+        // app cannot see, and the row already says what is wrong through its icon.
+        if (!inSelectionMode && !isMissing) {
             Text(
                 text  = container.size.fmtSize(),
                 style = MaterialTheme.typography.bodySmall,
@@ -1587,6 +1648,7 @@ private fun isContainerAccessible(context: android.content.Context, container: C
 private fun ContainerNotFoundOverlay(
     container: ContainerEntity,
     onBack: () -> Unit,
+    onLocate: () -> Unit,
     onRemoveFromList: () -> Unit
 ) {
     androidx.activity.compose.BackHandler { onBack() }
@@ -1604,7 +1666,11 @@ private fun ContainerNotFoundOverlay(
         Column(
             modifier            = Modifier
                 .align(Alignment.Center)
-                .padding(horizontal = 40.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 40.dp)
+                // What the buttons below occupy: the content is centred in what is left,
+                // not in the screen, or it comes to rest on them.
+                .padding(bottom = 180.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
@@ -1648,11 +1714,26 @@ private fun ContainerNotFoundOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Button(
+            /* A vault goes missing for ordinary reasons - the file was moved, or the list
+               came from another phone - and the useful thing to offer is the file, not the
+               way out. A vault on a drive has no file to point at: what is missing there is
+               the drive itself, and the answer is to plug it in. */
+            if (container.usbSaltHash.isEmpty()) {
+                Button(
+                    onClick  = onLocate,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.vault_not_found_locate))
+                }
+            }
+            TextButton(
                 onClick  = onBack,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(stringResource(R.string.common_back))
+                Text(
+                    text  = stringResource(R.string.common_back),
+                    color = Color.White.copy(alpha = 0.7f)
+                )
             }
             TextButton(
                 onClick  = onRemoveFromList,
@@ -1683,4 +1764,116 @@ private class OpenDocumentStartingAt(
         super.createIntent(context, input).apply {
             if (initialUri != null) putExtra(DocumentsContract.EXTRA_INITIAL_URI, initialUri)
         }
+}
+
+/**
+ * The file somebody pointed a lost vault at is not the volume that vault means (#63).
+ *
+ * A refusal rather than a question, because the header's salt does answer this: the file
+ * whose first 64 bytes hash to something else is a different volume. Esdex's call, and the
+ * right default.
+ *
+ * The way out at the bottom is not a hedge. A salt changes whenever the header is rewritten,
+ * so a vault whose password was changed on a desktop carries a fingerprint this phone has
+ * never seen - the file is the right one and the app cannot tell. Without that button such a
+ * vault could only be recovered by forgetting it and adding it again, losing every setting
+ * it had, which is the very thing this screen exists to avoid.
+ */
+@Composable
+private fun RelocateMismatchOverlay(
+    fileName: String,
+    onChooseAnother: () -> Unit,
+    onUseAnyway: () -> Unit,
+    onBack: () -> Unit
+) {
+    androidx.activity.compose.BackHandler { onBack() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(21f)
+            .background(Color.Black)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication        = null
+            ) {}
+    ) {
+        Column(
+            modifier            = Modifier
+                .align(Alignment.Center)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 40.dp)
+                // What the buttons below occupy: the content is centred in what is left,
+                // not in the screen, or it comes to rest on them.
+                .padding(bottom = 180.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier         = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Outlined.Warning,
+                    contentDescription = null,
+                    tint     = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+            Spacer(Modifier.height(32.dp))
+            Text(
+                text       = stringResource(R.string.vault_relocate_mismatch_title),
+                style      = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                color      = Color.White,
+                textAlign  = TextAlign.Center
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text      = stringResource(R.string.vault_relocate_mismatch_body, fileName),
+                style     = MaterialTheme.typography.bodyMedium,
+                color     = Color.White.copy(alpha = 0.7f),
+                textAlign = TextAlign.Center
+            )
+        }
+
+        Column(
+            modifier            = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
+                .padding(horizontal = 40.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Button(
+                onClick  = onChooseAnother,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.vault_relocate_choose_another))
+            }
+            TextButton(
+                onClick  = onUseAnyway,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text      = stringResource(R.string.vault_relocate_mismatch_confirm),
+                    color     = Color.White.copy(alpha = 0.5f),
+                    textAlign = TextAlign.Center
+                )
+            }
+            TextButton(
+                onClick  = onBack,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text  = stringResource(R.string.common_back),
+                    color = Color.White.copy(alpha = 0.5f)
+                )
+            }
+        }
+    }
 }
