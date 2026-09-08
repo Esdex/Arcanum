@@ -408,9 +408,19 @@ fun MediaViewerScreen(
 
     LaunchedEffect(uiState.currentFile?.id, mc, showMediaContent) {
         userInteracted = false
-        showBars = true
         playbackError = null
         val file = uiState.currentFile ?: return@LaunchedEffect
+        /*
+         * A photograph does NOT bring the interface back. Swiping used to raise it every
+         * time, so a viewer put into full screen on purpose came out of it at the next
+         * swipe; only a tap should undo a tap. It starts visible when the viewer opens,
+         * which is what [showBars] is initialised to.
+         *
+         * A video does, because the controls live in those bars: landing on one with them
+         * down would leave no way to play, pause or seek it without first guessing that a
+         * tap is needed. They hide themselves again three seconds later, as they always do.
+         */
+        if (file.fileType == MediaFileType.VIDEO) showBars = true
         if (file.fileType == MediaFileType.VIDEO) {
             val controller = mc ?: return@LaunchedEffect
             // Reset the playback UI state for the new item BEFORE starting playback. The controller's
