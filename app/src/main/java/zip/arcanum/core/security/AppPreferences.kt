@@ -32,7 +32,6 @@ class AppPreferences @Inject constructor(
         val AMOLED_GLASS          = booleanPreferencesKey("amoled_glass")
         val DYNAMIC_COLOR         = booleanPreferencesKey("dynamic_color")
         val SCREEN_CAPTURE_PROT   = booleanPreferencesKey("screen_capture_protection")
-        val DISGUISE_PROMPT_SHOWN = booleanPreferencesKey("disguise_prompt_shown")
         val MEDIA_LOC_PROMPT_SHOWN = booleanPreferencesKey("media_location_prompt_shown")
         val GALLERY_SORT_BY   = stringPreferencesKey("gallery_sort_by")
         val GALLERY_SORT_ASC  = booleanPreferencesKey("gallery_sort_asc")
@@ -43,7 +42,6 @@ class AppPreferences @Inject constructor(
          * should see it, since the mount screen's unlock control moved.
          */
         val MOUNT_HINT_SHOWN      = booleanPreferencesKey("mount_hint_shown")
-        val FIRST_LOGIN_DONE      = booleanPreferencesKey("first_login_done")
         val CALCULATOR_ENABLED        = booleanPreferencesKey("calculator_enabled")
         val BIOMETRIC_UNLOCK_ENABLED  = booleanPreferencesKey("biometric_unlock_enabled")
         val SHOW_MOUNT_LOG            = booleanPreferencesKey("show_mount_log")
@@ -72,9 +70,9 @@ class AppPreferences @Inject constructor(
 
         /** Survives panic mode's "Clear app settings" - see [clearSettingsForPanic]. */
         val PANIC_KEEP: List<Preferences.Key<*>> = listOf(
-            CALCULATOR_ENABLED, DISGUISE_PROMPT_SHOWN, RECEIVE_SHARES,
+            CALCULATOR_ENABLED, RECEIVE_SHARES,
             THEME_MODE, AMOLED_GLASS, DYNAMIC_COLOR,
-            FIRST_LOGIN_DONE, MOUNT_HINT_SHOWN, MEDIA_LOC_PROMPT_SHOWN,
+            MOUNT_HINT_SHOWN, MEDIA_LOC_PROMPT_SHOWN,
             LAST_SEEN_VERSION_CODE, FIRST_SEEN_AT, LAST_SUPPORT_PROMPT_AT
         )
     }
@@ -170,13 +168,6 @@ class AppPreferences @Inject constructor(
         context.appPrefsDataStore.edit { it[Keys.SCREEN_CAPTURE_PROT] = enabled }
     }
 
-    val disguisePromptShown: Flow<Boolean> = context.appPrefsDataStore.data
-        .map { it[Keys.DISGUISE_PROMPT_SHOWN] ?: false }
-
-    suspend fun setDisguisePromptShown(shown: Boolean) {
-        context.appPrefsDataStore.edit { it[Keys.DISGUISE_PROMPT_SHOWN] = shown }
-    }
-
     /**
      * Whether the explanation shown before the ACCESS_MEDIA_LOCATION request has been
      * through once. A denial sets USER_FIXED on the permission, so the system dialog never
@@ -225,13 +216,6 @@ class AppPreferences @Inject constructor(
 
     suspend fun setMountHintShown() {
         context.appPrefsDataStore.edit { it[Keys.MOUNT_HINT_SHOWN] = true }
-    }
-
-    val firstLoginDone: Flow<Boolean> = context.appPrefsDataStore.data
-        .map { it[Keys.FIRST_LOGIN_DONE] ?: false }
-
-    suspend fun setFirstLoginDone() {
-        context.appPrefsDataStore.edit { it[Keys.FIRST_LOGIN_DONE] = true }
     }
 
     // null = key absent (first install); default = true (calculator on)

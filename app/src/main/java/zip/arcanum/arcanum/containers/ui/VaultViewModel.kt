@@ -68,10 +68,15 @@ class VaultViewModel @Inject constructor(
     enum class SortDirection { ASCENDING, DESCENDING }
     enum class GroupBy       { NONE, LOCATION }
 
+    /**
+     * How the vault list is arranged before anyone touches the view options: by name, grouped
+     * by where the vault lives, with biometric vaults in their group rather than pulled to the
+     * top. A choice made in the sheet is remembered and these stop applying.
+     */
     data class SortState(
         val sortBy:         SortBy        = SortBy.NAME,
         val direction:      SortDirection = SortDirection.ASCENDING,
-        val groupBy:        GroupBy       = GroupBy.NONE,
+        val groupBy:        GroupBy       = GroupBy.LOCATION,
         val biometricFirst: Boolean       = false
     )
 
@@ -165,7 +170,7 @@ class VaultViewModel @Inject constructor(
                                      ?: SortDirection.ASCENDING,
                 groupBy        = prefs[DisplayKeys.GROUP_BY]
                                      ?.let { runCatching { GroupBy.valueOf(it) }.getOrNull() }
-                                     ?: GroupBy.NONE,
+                                     ?: GroupBy.LOCATION,
                 biometricFirst = prefs[DisplayKeys.BIOMETRIC_FIRST] ?: false
             )
         }
@@ -929,18 +934,39 @@ class VaultViewModel @Inject constructor(
                 return@launch
             }
             val success = when {
+                /*
+                 * A vault on a drive has no file of ours to rename: it is found by the hash of
+                 * its header salt, and its name exists only in our own list. So it renames
+                 * with the drive in a pocket, and nothing on the drive changes.
+                 */
+                container.usbSaltHash.isNotEmpty() -> {
+                    repo.updateName(id, newName)
+                    true
+                }
+                /*
+                 * A vault the user picked with the file chooser is renamed in the app only -
+                 * the file keeps the name it has on the device.
+                 *
+                 * Not a shortcut: renaming it is what LOST a vault, reported 2026-09-08 and
+                 * then reproduced on the device. `DocumentsContract.renameDocument` really
+                 * renames the file and hands back a new document URI - and the permission the
+                 * user gave belongs to the old one. The new document is granted nothing at
+                 * all: `takePersistableUriPermission` on it is refused, and so is a plain
+                 * write, which is how the attempt to undo the rename ended too:
+                 *
+                 *   SecurityException: Permission Denial: writing ...documents/document/
+                 *   primary%3AVera%2Fext4test ... requires MANAGE_DOCUMENTS, or
+                 *   grantUriPermission()   at DocumentsContract.renameDocument
+                 *
+                 * So the file cannot be renamed and kept, and it cannot be renamed and put
+                 * back either. The name in the list is a label; the vault is not. Whoever
+                 * wants the file itself renamed can do it in a file manager and add the vault
+                 * again - that is one picker away, and it is the only route that ends with
+                 * the app holding a permission for the name it shows.
+                 */
                 container.safUri.isNotEmpty() -> {
-                    try {
-                        val uri = Uri.parse(container.safUri)
-                        val newUri = android.provider.DocumentsContract.renameDocument(
-                            context.contentResolver, uri, newName
-                        )
-                        if (newUri != null) repo.updateSafUri(id, newUri.toString())
-                        repo.updateName(id, newName)
-                        true
-                    } catch (_: Exception) {
-                        false
-                    }
+                    repo.updateName(id, newName)
+                    true
                 }
                 container.path.isNotEmpty() -> {
                     val file = java.io.File(container.path)

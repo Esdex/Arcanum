@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -73,6 +74,8 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import zip.arcanum.usb.isExtendedContainer
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Usb
+import androidx.compose.material.icons.outlined.DriveFileRenameOutline
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Visibility
@@ -97,6 +100,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -119,6 +123,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -136,6 +141,7 @@ import zip.arcanum.core.theme.ArcanumHazeStyle
 import zip.arcanum.core.theme.LocalAmoledMode
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
+import zip.arcanum.core.components.groupShape
 import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.EmptyStateView
 import zip.arcanum.core.components.LocalHazeState
@@ -166,7 +172,8 @@ fun VaultScreen(
     onCreateContainer: () -> Unit,
     onGenerateKeyfile: () -> Unit = {},
     onOpenSettings: () -> Unit,
-    onVaultConfig: (containerId: String) -> Unit,
+    onVaultInfo: (containerId: String) -> Unit,
+    onOpenVault: (containerId: String) -> Unit = {},
     onMountContainer: (containerId: String) -> Unit = {},
     onMountSuccess: (id: String) -> Unit = {},
     onUnmountStart: (containerId: String) -> Unit = {},
@@ -196,7 +203,6 @@ fun VaultScreen(
     var fabExpanded        by remember { mutableStateOf(false) }
     var showLockDialog     by remember { mutableStateOf(false) }
     var containerToUnmount        by remember { mutableStateOf<ContainerEntity?>(null) }
-    var containerToRemoveFromList by remember { mutableStateOf<ContainerEntity?>(null) }
     val notifications             = LocalNotifications.current
     var selectionMode      by remember { mutableStateOf(false) }
     var selectedIds        by remember { mutableStateOf(emptySet<String>()) }
@@ -207,11 +213,61 @@ fun VaultScreen(
     var showRemoveNotFoundConfirm    by remember { mutableStateOf(false) }
     var showOpenVaultSheet           by remember { mutableStateOf(false) }
     var showUsbInsertPrompt          by remember { mutableStateOf(false) }
+    var showUsbMissing               by remember { mutableStateOf(false) }
+    var renameContainer              by remember { mutableStateOf<ContainerEntity?>(null) }
+    var renameText                   by remember { mutableStateOf("") }
+    var pendingUsbAction             by remember { mutableStateOf<(() -> Unit)?>(null) }
     val usbScope                     = rememberCoroutineScope()
     var showAppStoragePicker         by remember { mutableStateOf(false) }
     val appStorageRoot               = remember(context) { context.filesDir.parentFile!! }
     var appStorageCurrentDir         by remember { mutableStateOf(appStorageRoot) }
     var appStorageEntries            by remember { mutableStateOf<List<java.io.File>>(emptyList()) }
+
+    /*
+     * What a tap on a vault does.
+     *
+     * The thing you came for: an open vault is entered, a closed one asks for its password.
+     * It used to open the vault's own screen, which is a page of settings - a detour for the
+     * one action out of ten that anybody wants. That screen is now the last item of the
+     * long-press menu, where the other rarely-wanted things already were.
+     *
+     * A vault on a drive is checked before the mount screen opens rather than after a
+     * password has been typed into it - the same order the vault's own screen uses.
+     */
+    val openVault: (ContainerEntity) -> Unit = { container ->
+        when {
+            container.isMounted -> onOpenVault(container.id)
+            container.usbSaltHash.isNotEmpty() -> {
+                pendingUsbAction = { onMountContainer(container.id) }
+                usbScope.launch {
+                    if (viewModel.isUsbDriveAttached() && viewModel.ensureUsbPermission()) {
+                        pendingUsbAction = null
+                        onMountContainer(container.id)
+                    } else {
+                        showUsbMissing = true
+                    }
+                }
+            }
+            isContainerAccessible(context, container) -> onMountContainer(container.id)
+            else -> containerNotFound = container
+        }
+    }
+
+    val renameResult by viewModel.renameResult.collectAsState()
+    LaunchedEffect(renameResult) {
+        when (val r = renameResult) {
+            is VaultViewModel.RenameResult.Success -> {
+                renameContainer = null
+                viewModel.clearRenameResult()
+            }
+            is VaultViewModel.RenameResult.Error -> {
+                notifications.notify(InAppNotification.VaultAddError(r.message))
+                renameContainer = null
+                viewModel.clearRenameResult()
+            }
+            else -> Unit
+        }
+    }
 
     LaunchedEffect(Unit) { viewModel.initVersionCheck() }
 
@@ -417,39 +473,35 @@ fun VaultScreen(
                                 grouped.forEach { (groupName, groupList) ->
                                     stickyHeader(key = "hdr_$groupName") {
                                         Text(
-                                            text     = groupName,
-                                            style    = MaterialTheme.typography.labelMedium,
-                                            color    = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier
+                                            text       = groupName,
+                                            style      = MaterialTheme.typography.labelLarge,
+                                            color      = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier   = Modifier
                                                 .fillMaxWidth()
                                                 .background(MaterialTheme.colorScheme.surface)
-                                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)
                                         )
                                     }
-                                    items(groupList, key = { it.id }) { container ->
+                                    itemsIndexed(groupList, key = { _, c -> c.id }) { index, container ->
                                         VaultCardItem(
+                                            // Grouped by location, a group is one block of
+                                            // cards - the shape the settings screens use, with
+                                            // the round corners on the outside of the group
+                                            // and near-square ones within it.
+                                            cardShape              = groupShape(index, groupList.size),
+                                            isLastInGroup          = index == groupList.size - 1,
                                             container              = container,
                                             selectedIds            = selectedIds,
                                             selectionMode          = selectionMode,
                                             contextMenuContainerId = contextMenuContainerId,
                                             onContextMenuChange    = { open -> contextMenuContainerId = if (open) container.id else null },
                                             onSelect               = { selectedIds = if (container.id in selectedIds) selectedIds - container.id else selectedIds + container.id },
-                                            onOpen                 = {
-                                                // A USB vault always opens: the config screen
-                                                // works without the drive, and the presence
-                                                // check belongs on the actions that need it.
-                                                if (container.usbSaltHash.isNotEmpty() ||
-                                                    container.isMounted ||
-                                                    isContainerAccessible(context, container)
-                                                ) {
-                                                    onVaultConfig(container.id)
-                                                } else {
-                                                    containerNotFound = container
-                                                }
-                                            },
+                                            onOpen                 = { openVault(container) },
+                                            onVaultInfo            = { onVaultInfo(container.id) },
+                                            onRename               = { renameText = container.name; renameContainer = container },
                                             onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
-                                            onUnmount              = { containerToUnmount = container },
-                                            onRemoveFromList       = { containerToRemoveFromList = container }
+                                            onUnmount              = { containerToUnmount = container }
                                         )
                                     }
                                 }
@@ -462,19 +514,11 @@ fun VaultScreen(
                                         contextMenuContainerId = contextMenuContainerId,
                                         onContextMenuChange    = { open -> contextMenuContainerId = if (open) container.id else null },
                                         onSelect               = { selectedIds = if (container.id in selectedIds) selectedIds - container.id else selectedIds + container.id },
-                                        onOpen                 = {
-                                            if (container.usbSaltHash.isNotEmpty() ||
-                                                container.isMounted ||
-                                                isContainerAccessible(context, container)
-                                            ) {
-                                                onVaultConfig(container.id)
-                                            } else {
-                                                containerNotFound = container
-                                            }
-                                        },
+                                        onOpen                 = { openVault(container) },
+                                        onVaultInfo            = { onVaultInfo(container.id) },
+                                        onRename               = { renameText = container.name; renameContainer = container },
                                         onLongClick            = { selectionMode = true; selectedIds = selectedIds + container.id },
-                                        onUnmount              = { containerToUnmount = container },
-                                        onRemoveFromList       = { containerToRemoveFromList = container }
+                                        onUnmount              = { containerToUnmount = container }
                                     )
                                 }
                             }
@@ -649,27 +693,77 @@ fun VaultScreen(
                 )
             }
 
-            // ── Forget one vault, from its row ───────────────────────────────
-            containerToRemoveFromList?.let { c ->
+            // ── Upgrade overlay ───────────────────────────────────────────────
+            if (showUpgradeDialog) {
+                UpgradeOverlay(onDismiss = { showUpgradeDialog = false })
+            }
+
+            // ── Rename ────────────────────────────────────────────────────────
+            renameContainer?.let { target ->
                 AppDialog(
-                    onDismissRequest = { containerToRemoveFromList = null },
-                    title            = { Text(stringResource(R.string.vault_remove_title, c.name)) },
-                    text             = { Text(stringResource(R.string.vault_remove_body)) },
+                    onDismissRequest = { renameContainer = null },
+                    title            = { Text(stringResource(R.string.vault_rename_title)) },
+                    text             = {
+                        Column {
+                            OutlinedTextField(
+                                value         = renameText,
+                                onValueChange = { renameText = it },
+                                label         = { Text(stringResource(R.string.vault_rename_label)) },
+                                singleLine    = true,
+                                modifier      = Modifier.fillMaxWidth()
+                            )
+                            if (target.safUri.isNotEmpty()) {
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    text  = stringResource(R.string.vault_rename_saf_note),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
                     confirmButton    = {
-                        TextButton(onClick = {
-                            containerToRemoveFromList = null
-                            viewModel.removeFromList(c.id)
-                        }) { Text(stringResource(R.string.vault_forget_confirm)) }
+                        TextButton(
+                            onClick = { viewModel.renameContainer(target.id, renameText.trim()) },
+                            enabled = renameText.isNotBlank() && renameText.trim() != target.name
+                        ) { Text(stringResource(R.string.vault_rename_confirm)) }
                     },
                     dismissButton    = {
-                        TextButton(onClick = { containerToRemoveFromList = null }) { Text(stringResource(R.string.common_cancel)) }
+                        TextButton(onClick = { renameContainer = null }) {
+                            Text(stringResource(R.string.common_cancel))
+                        }
                     }
                 )
             }
 
-            // ── Upgrade overlay ───────────────────────────────────────────────
-            if (showUpgradeDialog) {
-                UpgradeOverlay(onDismiss = { showUpgradeDialog = false })
+            // ── USB drive missing ─────────────────────────────────────────────
+            // The same question the vault's own screen asks, in the same words: a vault on a
+            // drive is checked before the mount screen opens, not after a password is typed.
+            if (showUsbMissing) {
+                AppDialog(
+                    onDismissRequest = { showUsbMissing = false; pendingUsbAction = null },
+                    title            = { Text(stringResource(R.string.usb_not_connected_title)) },
+                    text             = { Text(stringResource(R.string.usb_not_connected_body)) },
+                    confirmButton    = {
+                        TextButton(onClick = {
+                            showUsbMissing = false
+                            val retry = pendingUsbAction
+                            usbScope.launch {
+                                if (viewModel.isUsbDriveAttached() && viewModel.ensureUsbPermission()) {
+                                    pendingUsbAction = null
+                                    retry?.invoke()
+                                } else {
+                                    showUsbMissing = true
+                                }
+                            }
+                        }) { Text(stringResource(R.string.usb_try_again)) }
+                    },
+                    dismissButton    = {
+                        TextButton(onClick = { showUsbMissing = false; pendingUsbAction = null }) {
+                            Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
             }
 
             // ── Container not found overlay ───────────────────────────────────
@@ -962,9 +1056,16 @@ fun VaultScreen(
 
 // ── VaultCardItem (thin wrapper used by both flat and grouped list) ───────────
 
+/** The gap between cards inside one location group - what SettingsGroup leaves. */
+private val GROUP_GAP = 3.dp
+
 @Composable
 private fun VaultCardItem(
     container: ContainerEntity,
+    cardShape: Shape? = null,
+    onVaultInfo: () -> Unit = {},
+    onRename: () -> Unit = {},
+    isLastInGroup: Boolean = true,
     selectedIds: Set<String>,
     selectionMode: Boolean,
     contextMenuContainerId: String?,
@@ -973,10 +1074,11 @@ private fun VaultCardItem(
     onOpen: () -> Unit,
     onLongClick: () -> Unit,
     onUnmount: () -> Unit,
-    onRemoveFromList: () -> Unit,
 ) {
     VaultCard(
         container               = container,
+        cardShape               = cardShape,
+        isLastInGroup           = isLastInGroup,
         isSelected              = container.id in selectedIds,
         inSelectionMode         = selectionMode,
         onLockIconClick         = if (container.isMounted && !selectionMode) onUnmount else null,
@@ -984,7 +1086,9 @@ private fun VaultCardItem(
         onShowContextMenuChange = onContextMenuChange,
         onClick                 = { if (selectionMode) onSelect() else onOpen() },
         onLongClick             = onLongClick,
-        onRemoveFromList        = onRemoveFromList
+        onUnmount               = onUnmount,
+        onVaultInfo             = onVaultInfo,
+        onRename                = onRename
     )
 }
 
@@ -1163,6 +1267,9 @@ private fun GroupByOption(
 @Composable
 private fun VaultCard(
     container: ContainerEntity,
+    /** Non-null while the list is grouped: where this row sits in its block of cards. */
+    cardShape: Shape? = null,
+    isLastInGroup: Boolean = true,
     isSelected: Boolean,
     inSelectionMode: Boolean,
     onLockIconClick: (() -> Unit)? = null,
@@ -1170,7 +1277,9 @@ private fun VaultCard(
     onShowContextMenuChange: (Boolean) -> Unit = {},
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onRemoveFromList: () -> Unit,
+    onUnmount: () -> Unit = {},
+    onVaultInfo: () -> Unit = {},
+    onRename: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val appStr   = stringResource(R.string.vault_storage_app)
@@ -1192,9 +1301,31 @@ private fun VaultCard(
             else                                                -> localStr
         }
     }
+    /*
+     * Grouped by location, the group's own heading already says where the vault is, and
+     * repeating it under every name is noise. The row says instead what the heading cannot:
+     * when the vault was last opened. Android's own relative wording, so it follows the
+     * phone's language and turns into a date once "days ago" stops meaning anything.
+     */
+    val openedLabel = if (cardShape != null && container.lastAccessedAt > 0L) {
+        stringResource(
+            R.string.vault_last_opened,
+            remember(container.lastAccessedAt) {
+                android.text.format.DateUtils.getRelativeTimeSpanString(
+                    container.lastAccessedAt,
+                    System.currentTimeMillis(),
+                    android.text.format.DateUtils.MINUTE_IN_MILLIS
+                ).toString()
+            }
+        )
+    } else null
+
     val bgColor by animateColorAsState(
-        targetValue   = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                        else Color.Transparent,
+        targetValue   = when {
+            isSelected      -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+            cardShape != null -> MaterialTheme.colorScheme.surfaceContainerHigh
+            else            -> Color.Transparent
+        },
         animationSpec = tween<androidx.compose.ui.graphics.Color>(150),
         label         = "card_sel_bg"
     )
@@ -1202,10 +1333,19 @@ private fun VaultCard(
     var touchOffset by remember { mutableStateOf(DpOffset.Zero) }
     var menuWidthPx     by remember { mutableIntStateOf(0) }
     var cardHeightPx    by remember { mutableIntStateOf(0) }
-    Box {
+    Box(
+        modifier = if (cardShape != null)
+            Modifier.padding(
+                start  = 16.dp,
+                end    = 16.dp,
+                bottom = if (isLastInGroup) 0.dp else GROUP_GAP
+            )
+        else Modifier
+    ) {
     Row(
         modifier              = Modifier
             .fillMaxWidth()
+            .then(if (cardShape != null) Modifier.clip(cardShape) else Modifier)
             .background(bgColor)
             .onSizeChanged { cardHeightPx = it.height }
             .pointerInput(Unit) {
@@ -1294,12 +1434,16 @@ private fun VaultCard(
                 style      = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text  = storageLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // Grouped: when it was last opened. Flat list: where it is kept.
+            val secondLine = if (cardShape != null) openedLabel else storageLabel
+            if (secondLine != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text  = secondLine,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
         if (!inSelectionMode) {
@@ -1322,15 +1466,29 @@ private fun VaultCard(
         },
         modifier         = Modifier.onSizeChanged { menuWidthPx = it.width }
     ) {
+        // Closing an open vault leads, because it is the one thing here that is urgent.
+        if (container.isMounted) {
+            DropdownMenuItem(
+                text        = { Text(stringResource(R.string.vault_menu_unmount)) },
+                leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
+                onClick     = { onShowContextMenuChange(false); onUnmount() }
+            )
+        }
+        DropdownMenuItem(
+            text        = { Text(stringResource(R.string.vault_menu_rename)) },
+            leadingIcon = { Icon(Icons.Outlined.DriveFileRenameOutline, contentDescription = null) },
+            onClick     = { onShowContextMenuChange(false); onRename() }
+        )
         DropdownMenuItem(
             text        = { Text(stringResource(R.string.vault_menu_select)) },
             leadingIcon = { Icon(Icons.Outlined.CheckBox, contentDescription = null) },
             onClick     = { onShowContextMenuChange(false); onLongClick() }
         )
+        // Last: the vault's own page, which is where a tap on the card used to land.
         DropdownMenuItem(
-            text        = { Text(stringResource(R.string.vault_menu_remove)) },
-            leadingIcon = { Icon(Icons.Outlined.LinkOff, contentDescription = null) },
-            onClick     = { onShowContextMenuChange(false); onRemoveFromList() }
+            text        = { Text(stringResource(R.string.vault_menu_info)) },
+            leadingIcon = { Icon(Icons.Outlined.Info, contentDescription = null) },
+            onClick     = { onShowContextMenuChange(false); onVaultInfo() }
         )
     }
     } // Box

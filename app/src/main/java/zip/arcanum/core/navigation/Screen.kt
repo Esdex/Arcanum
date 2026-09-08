@@ -110,9 +110,9 @@ sealed class Screen(val route: String) {
         fun buildRoute(containerId: String) = "change_keyfile/$containerId"
     }
 
-    object VaultConfig : Screen("vault_config/{containerId}") {
+    object VaultInfo : Screen("vault_info/{containerId}") {
         const val ARG = "containerId"
-        fun buildRoute(containerId: String) = "vault_config/$containerId"
+        fun buildRoute(containerId: String) = "vault_info/$containerId"
     }
 
     object BackupHeader : Screen("backup_header/{containerId}") {

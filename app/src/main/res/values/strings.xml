@@ -577,6 +577,7 @@
     <string name="vault_config_change_password">Change Password</string>
     <string name="vault_rename_title">Rename Container</string>
     <string name="vault_rename_label">Container name</string>
+    <string name="vault_rename_saf_note">The file on your device keeps its name. Android does not let an app keep access to a file it renames, so only the name shown in Arcanum changes.</string>
     <string name="vault_rename_confirm">Rename</string>
     <string name="vault_rename_mounted_title">Cannot Rename</string>
     <string name="vault_rename_mounted_body">Please unmount the container before renaming it</string>
@@ -633,9 +634,12 @@
     <string name="vault_biometric_unlock_confirm">Unlock</string>
     <string name="vault_remove_biometric_title">Remove biometric?</string>
     <string name="vault_remove_biometric_body">You\'ll need to enter your password manually to unlock \"%1$s\".</string>
+    <string name="vault_menu_unmount">Unmount</string>
+    <string name="vault_menu_rename">Rename</string>
     <string name="vault_menu_select">Select</string>
     <string name="vault_menu_config">Config</string>
     <string name="vault_menu_remove">Forget</string>
+    <string name="vault_menu_info">Vault Info</string>
     <string name="vault_menu_delete">Delete</string>
 
     <!-- Settings screen -->
@@ -717,7 +721,6 @@
     <string name="disguise_overlay_title">Improve Your Privacy</string>
     <string name="disguise_overlay_body">Arcanum will disguise itself as a plain Calculator app on your home screen. No one will know what\'s really installed.\n\nTo unlock, open the calculator, enter your PIN using the number buttons, then hold "=" for 2 seconds.\n\nThe app will restart to apply the disguise. This cannot be undone without reinstalling.</string>
     <string name="disguise_overlay_apply">Apply Disguise</string>
-    <string name="disguise_overlay_maybe_later">Maybe Later</string>
     <string name="settings_panic_title">Panic Mode</string>
     <string name="settings_panic_switch_title">Panic Mode</string>
     <string name="settings_panic_switch_desc">Entering Panic PIN silently wipes selected data</string>
@@ -1285,7 +1288,7 @@
     <string name="vault_config_external_access_warning">While this vault is mounted, other apps can open and edit its files through the system file picker - but only files and folders you explicitly pick and grant. Nothing is decrypted to disk, and access ends the moment the vault is unmounted.</string>
     <string name="vault_config_external_access_switch">Allow external app access</string>
     <string name="vault_config_external_access_switch_desc">Expose this vault in the system file picker while mounted</string>
-    <string name="vault_config_title">Vault Config</string>
+    <string name="vault_info_title">Vault Info</string>
     <string name="vault_config_cd_info">Vault details</string>
     <string name="vault_config_group_access">Access</string>
     <string name="vault_config_group_protection">Protection</string>
@@ -1295,6 +1298,8 @@
     <string name="vault_config_delete_desc">Delete the vault file for good</string>
 
     <string name="vault_storage_usb">USB drive</string>
+    <string name="vault_last_opened">Opened %1$s</string>
+    <string name="vault_info_usb_id">Volume %1$s</string>
     <string name="vault_storage_usb_partition">USB partition</string>
     <string name="vault_storage_usb_hint">A flash drive, or one partition of it</string>
     <string name="usb_not_connected_title">No USB drive connected</string>

@@ -9,8 +9,7 @@ import javax.inject.Singleton
 
 @Singleton
 class DisguiseManager @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val prefs: AppPreferences
+    @ApplicationContext private val context: Context
 ) {
     companion object {
         private const val ALIAS_ARCANUM    = "zip.arcanum.MainActivityArcanum"
@@ -34,7 +33,6 @@ class DisguiseManager @Inject constructor(
             PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
             PackageManager.DONT_KILL_APP
         )
-        prefs.setDisguisePromptShown(true)
     }
 
     suspend fun reset() {
@@ -49,6 +47,5 @@ class DisguiseManager @Inject constructor(
             PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
             PackageManager.DONT_KILL_APP
         )
-        prefs.setDisguisePromptShown(false)
     }
 }

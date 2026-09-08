@@ -25,7 +25,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Eject
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Search
@@ -94,7 +93,6 @@ private val containerTabs = listOf(
 @Composable
 fun ContainerScreen(
     onBack: () -> Unit,
-    onUnmountStart: (containerId: String) -> Unit = {},
     onPhotoClick: (fileId: String) -> Unit = {},
     onVideoClick: (fileId: String) -> Unit = {},
     onAudioClick: (fileId: String) -> Unit = {},
@@ -123,7 +121,6 @@ fun ContainerScreen(
         if (selectedTab == BottomNavItem.ContainerInfo.route) storageViewModel.refresh()
     }
     var defaultTabApplied      by rememberSaveable { mutableStateOf(false) }
-    var showUnmountConfirm     by remember { mutableStateOf(false) }
 
     // Open on the user's preferred tab the first time this screen is shown. Guarded
     // so it never overrides a manual tab switch or a restored tab after process death.
@@ -196,11 +193,6 @@ fun ContainerScreen(
                     else -> TopAppBar(
                         title          = { Text(stringResource(R.string.nav_storage)) },
                         navigationIcon = { BackIconButton(onBack) },
-                        actions        = {
-                            IconButton(onClick = { showUnmountConfirm = true }) {
-                                Icon(Icons.Outlined.Eject, contentDescription = null)
-                            }
-                        },
                         modifier       = if (isAmoled) Modifier.hazeEffect(state = hazeState, style = ArcanumHazeStyle.topBar) else Modifier,
                         colors         = if (isAmoled) TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                                          else TopAppBarDefaults.topAppBarColors()
@@ -308,28 +300,6 @@ fun ContainerScreen(
                 }
 
             }
-        }
-
-        if (showUnmountConfirm) {
-            AppDialog(
-                onDismissRequest = { showUnmountConfirm = false },
-                title            = { Text(stringResource(R.string.vault_unmount_dialog_title)) },
-                text             = { Text(stringResource(R.string.vault_info_unmount_body)) },
-                confirmButton    = {
-                    TextButton(onClick = {
-                        showUnmountConfirm = false
-                        viewModel.unmount {}
-                        onUnmountStart(viewModel.containerId)
-                    }) {
-                        Text(stringResource(R.string.vault_unmount_confirm), color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton    = {
-                    TextButton(onClick = { showUnmountConfirm = false }) {
-                        Text(stringResource(R.string.common_cancel))
-                    }
-                }
-            )
         }
     }
 }

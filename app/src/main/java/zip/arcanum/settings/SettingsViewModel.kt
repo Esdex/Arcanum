@@ -205,18 +205,14 @@ class SettingsViewModel @Inject constructor(
     private val _disguiseApplied    = MutableStateFlow(disguiseManager.isDisguiseApplied())
     val disguiseApplied = _disguiseApplied.asStateFlow()
 
-    val showDisguiseOverlay = combine(
-        pinManager.isPinSetFlow.map { it ?: false },
-        prefs.disguisePromptShown,
-        prefs.firstLoginDone,
-        _manualShowDisguise
-    ) { pinSet, promptShown, firstLoginDone, manual ->
-        (pinSet && !promptShown && !disguiseManager.isDisguiseApplied() && firstLoginDone) || manual
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
-
-    fun setFirstLoginDone() {
-        viewModelScope.launch { prefs.setFirstLoginDone() }
-    }
+    /*
+     * Shown only when the user asks for it, from the disguise switch in Settings.
+     *
+     * It used to offer itself on the first visit to the vault list as well, which is the one
+     * moment someone is least able to judge it: they have just set a PIN, have no vault yet,
+     * and the offer is for a change that cannot be undone without reinstalling.
+     */
+    val showDisguiseOverlay = _manualShowDisguise.asStateFlow()
 
     fun setAutoLock(enabled: Boolean) {
         viewModelScope.launch { prefs.setAutoLock(enabled) }
@@ -301,7 +297,6 @@ class SettingsViewModel @Inject constructor(
 
     fun dismissDisguiseOverlay() {
         _manualShowDisguise.value = false
-        viewModelScope.launch { prefs.setDisguisePromptShown(true) }
     }
 
     fun resetDisguise() {

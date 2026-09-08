@@ -36,7 +36,7 @@ import zip.arcanum.arcanum.containers.ui.MountScreen
 import zip.arcanum.arcanum.share.ShareTargetScreen
 import zip.arcanum.arcanum.containers.ui.MountSuccessOverlay
 import zip.arcanum.arcanum.containers.ui.UnmountAnimationOverlay
-import zip.arcanum.arcanum.containers.ui.VaultConfigScreen
+import zip.arcanum.arcanum.containers.ui.VaultInfoScreen
 import zip.arcanum.arcanum.containers.ui.VaultScreen
 import zip.arcanum.arcanum.containers.ui.VaultViewModel
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerDirectScreen
@@ -233,7 +233,6 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
             CalculatorScreen(
                 onAuthenticated = {
                     settingsViewModel.markUnlocked()
-                    settingsViewModel.setFirstLoginDone()
                     navController.navigate(Screen.VaultScreen.route) {
                         popUpTo(Screen.Calculator.route) { inclusive = true }
                     }
@@ -249,7 +248,6 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
             PinEntryScreen(
                 onAuthenticated = {
                     settingsViewModel.markUnlocked()
-                    settingsViewModel.setFirstLoginDone()
                     navController.navigate(Screen.VaultScreen.route) {
                         popUpTo(Screen.PinEntry.route) { inclusive = true }
                     }
@@ -285,8 +283,11 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
                 onOpenSettings = {
                     navController.navigate(Screen.AppSettings.route)
                 },
-                onVaultConfig = { containerId ->
-                    navController.navigate(Screen.VaultConfig.buildRoute(containerId))
+                onVaultInfo = { containerId ->
+                    navController.navigate(Screen.VaultInfo.buildRoute(containerId))
+                },
+                onOpenVault = { containerId ->
+                    navController.navigate(Screen.ContainerScreen.buildRoute(containerId))
                 },
                 onMountContainer = { containerId ->
                     navController.navigate(Screen.MountScreen.buildRoute(containerId))
@@ -353,12 +354,6 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
         ) {
             ContainerScreen(
                 onBack          = { navController.popBackStack() },
-                onUnmountStart  = {
-                    // Pop ContainerScreen immediately — same frame as the overlay appearing.
-                    // The scrim fades in over VaultScreen, hiding the instant nav transition.
-                    navController.popBackStack(Screen.VaultScreen.route, inclusive = false)
-                    showUnmountOverlay = true
-                },
                 onPhotoClick       = { fileId -> navController.navigate(Screen.PhotoViewer.buildRoute(fileId)) },
                 onVideoClick       = { fileId -> navController.navigate(Screen.PhotoViewer.buildRoute(fileId)) },
                 onAudioClick       = { fileId -> navController.navigate(Screen.AudioPlayer.buildRoute(fileId)) },
@@ -559,17 +554,17 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
             )
         }
 
-        // ── Vault config ─────────────────────────────────────────────────
+        // ── Vault info ───────────────────────────────────────────────────
         composable(
-            route             = Screen.VaultConfig.route,
-            arguments         = listOf(navArgument(Screen.VaultConfig.ARG) { type = NavType.StringType }),
+            route             = Screen.VaultInfo.route,
+            arguments         = listOf(navArgument(Screen.VaultInfo.ARG) { type = NavType.StringType }),
             enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
             popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
         ) { backStackEntry ->
-            val containerId = backStackEntry.arguments?.getString(Screen.VaultConfig.ARG) ?: return@composable
+            val containerId = backStackEntry.arguments?.getString(Screen.VaultInfo.ARG) ?: return@composable
             val parentEntry = remember(backStackEntry) { navController.getBackStackEntry(Screen.VaultScreen.route) }
             val vaultViewModel: VaultViewModel = hiltViewModel(parentEntry)
-            VaultConfigScreen(
+            VaultInfoScreen(
                 containerId      = containerId,
                 viewModel        = vaultViewModel,
                 onBack           = { navController.popBackStack() },

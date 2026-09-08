@@ -46,7 +46,7 @@ import zip.arcanum.core.theme.LocalAmoledMode
  * see-through dialog nobody noticed until it was used on a device. A null says outright
  * that there is nothing behind this to blur, and both consumers paint a solid surface
  * instead. A screen that wants the glass provides a state and puts hazeSource on its
- * content, as VaultConfigScreen does.
+ * content, as VaultInfoScreen does.
  */
 val LocalHazeState = compositionLocalOf<HazeState?> { null }
 

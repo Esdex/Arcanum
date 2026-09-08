@@ -615,7 +615,7 @@ fun DisguiseOverlay(onApply: () -> Unit, onMaybeLater: () -> Unit) {
                     }
                     TextButton(onClick = onMaybeLater) {
                         Text(
-                            text  = stringResource(R.string.disguise_overlay_maybe_later),
+                            text  = stringResource(R.string.common_cancel),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

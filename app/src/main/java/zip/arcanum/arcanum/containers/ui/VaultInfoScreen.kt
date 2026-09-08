@@ -110,7 +110,7 @@ import zip.arcanum.core.theme.LocalDynamicColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VaultConfigScreen(
+fun VaultInfoScreen(
     containerId: String,
     viewModel: VaultViewModel,
     onBack: () -> Unit,
@@ -206,7 +206,7 @@ fun VaultConfigScreen(
                     },
                     title           = {
                         Text(
-                            text     = stringResource(R.string.vault_config_title),
+                            text     = stringResource(R.string.vault_info_title),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -250,7 +250,7 @@ fun VaultConfigScreen(
                         .padding(horizontal = 16.dp)
                 ) {
                     // ── Hero ──────────────────────────────────────────────────────
-                    VaultConfigHero(container = container, isMounted = isMounted)
+                    VaultInfoHero(container = container, isMounted = isMounted)
 
                     // ── The three actions ────────────────────────────────────────
                     // Mount and unmount are one button, on the right, because they are one
@@ -462,13 +462,23 @@ fun VaultConfigScreen(
                 onDismissRequest = { showRenameDialog = false },
                 title            = { Text(stringResource(R.string.vault_rename_title)) },
                 text             = {
-                    OutlinedTextField(
-                        value         = renameText,
-                        onValueChange = { renameText = it },
-                        label         = { Text(stringResource(R.string.vault_rename_label)) },
-                        singleLine    = true,
-                        modifier      = Modifier.fillMaxWidth()
-                    )
+                    Column {
+                        OutlinedTextField(
+                            value         = renameText,
+                            onValueChange = { renameText = it },
+                            label         = { Text(stringResource(R.string.vault_rename_label)) },
+                            singleLine    = true,
+                            modifier      = Modifier.fillMaxWidth()
+                        )
+                        if (container?.safUri?.isNotEmpty() == true) {
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text  = stringResource(R.string.vault_rename_saf_note),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 },
                 confirmButton    = {
                     TextButton(
@@ -677,7 +687,7 @@ fun VaultConfigScreen(
 // ── Hero ──────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun VaultConfigHero(
+private fun VaultInfoHero(
     container: ContainerEntity?,
     isMounted: Boolean = false
 ) {
@@ -699,9 +709,21 @@ private fun VaultConfigHero(
         label         = "hero_tint"
     )
 
-    val displayPath = remember(container?.path, container?.safUri, container?.name) {
+    /*
+     * A vault on a drive has no path to show, and its name is a label the user can change -
+     * so after a rename two volumes on the same drive would look alike. What cannot be
+     * changed is the fingerprint the vault is found by: a hash of its header salt, which is
+     * what identifies the volume to the app in the first place. Twelve characters of it are
+     * enough to tell two apart and short enough to read.
+     */
+    val usbId = stringResource(
+        R.string.vault_info_usb_id,
+        (container?.usbSaltHash ?: "").take(12)
+    )
+    val displayPath = remember(container?.path, container?.safUri, container?.name, container?.usbSaltHash, usbId) {
         when {
             container == null -> ""
+            container.usbSaltHash.isNotBlank() -> usbId
             container.path.isNotBlank() -> {
                 val path = container.path
                 val appDataDir = context.filesDir.parentFile?.absolutePath ?: ""
