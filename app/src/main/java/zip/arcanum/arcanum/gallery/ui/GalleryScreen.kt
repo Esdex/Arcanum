@@ -47,6 +47,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import android.graphics.Bitmap
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
@@ -110,6 +127,7 @@ fun GalleryScreen(
     }
 
     val sortSheetState    = rememberModalBottomSheetState()
+    val folderSheetState  = rememberModalBottomSheetState()
 
     val uiState           by viewModel.uiState.collectAsState()
     val thumbnails        by viewModel.thumbnails.collectAsState()
@@ -129,6 +147,23 @@ fun GalleryScreen(
                 onFilter    = { viewModel.setFilter(it) },
                 onSortBy    = { viewModel.setSortBy(it) },
                 onToggleDir = viewModel::toggleSortDirection
+            )
+        }
+    }
+
+    if (uiState.showFolderSheet) {
+        AppSheet(
+            onDismissRequest = { viewModel.setFolderSheet(false) },
+            sheetState       = folderSheetState
+        ) {
+            GalleryFolderSheet(
+                folders      = uiState.folders,
+                selected     = uiState.folderFilter,
+                totalCount   = uiState.allMedia.size,
+                thumbnails   = thumbnails,
+                onRequestThumbnail = viewModel::requestThumbnail,
+                onToggle     = viewModel::toggleFolder,
+                onShowAll    = viewModel::showAllFolders
             )
         }
     }
@@ -180,7 +215,9 @@ fun GalleryScreen(
                     onResync         = { containerId?.let { viewModel.scanContainer(it) } },
                     onClearSelection = { viewModel.clearSelection() },
                     onDeleteSelected = { viewModel.requestDeleteSelected() },
-                    onSortClick      = { viewModel.setOptionsSheet(true) }
+                    onSortClick      = { viewModel.setOptionsSheet(true) },
+                    foldersFiltered  = uiState.folderFilter.isNotEmpty(),
+                    onFoldersClick   = { viewModel.setFolderSheet(true) }
                 )
             }
         ) { innerPadding ->
@@ -238,7 +275,9 @@ private fun GalleryTopBar(
     onResync: () -> Unit,
     onClearSelection: () -> Unit,
     onDeleteSelected: () -> Unit,
-    onSortClick: () -> Unit
+    onSortClick: () -> Unit,
+    foldersFiltered: Boolean = false,
+    onFoldersClick: () -> Unit = {}
 ) {
     if (selectionMode) {
         TopAppBar(
@@ -319,6 +358,7 @@ private fun GalleryTopBar(
                     IconButton(onClick = onSortClick) {
                         Icon(Icons.Outlined.SwapVert, stringResource(R.string.files_sort_title))
                     }
+                    FoldersAction(foldersFiltered, onFoldersClick)
                 }
                 IconButton(onClick = if (isSearchActive) onSearchClose else onSearchToggle) {
                     Icon(
@@ -354,7 +394,7 @@ private fun GalleryContent(
     onDaySelect: (GalleryViewModel.DayGroup) -> Unit,
     onMonthSelect: (GalleryViewModel.MonthGroup) -> Unit
 ) {
-    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
 
     if (uiState.isEmpty && !uiState.isScanning) {
         EmptyStateView(
@@ -369,8 +409,19 @@ private fun GalleryContent(
         return
     }
 
-    LazyColumn(
-        state          = listState,
+    /*
+     * A grid of cells rather than a column of hand-made rows of three.
+     *
+     * The rows were an optimisation - one lazy item per row, so only visible rows composed -
+     * and they cost the thing the grid is now asked for: with a row as the unit, a photograph
+     * that leaves cannot be animated out and the ones after it cannot slide up, because the
+     * row keeps its key and merely changes what is in it. A LazyVerticalGrid composes only
+     * visible cells too, and gives every photograph a key of its own, which is what
+     * animateItem needs.
+     */
+    LazyVerticalGrid(
+        columns        = GridCells.Fixed(3),
+        state          = gridState,
         contentPadding = PaddingValues(
             top    = innerPadding.calculateTopPadding(),
             bottom = bottomPadding
@@ -378,7 +429,7 @@ private fun GalleryContent(
         modifier       = Modifier.fillMaxSize()
     ) {
         if (uiState.isScanning) {
-            item(key = "scan_progress") {
+            item(key = "scan_progress", span = { GridItemSpan(maxLineSpan) }) {
                 ScanProgressBar(
                     progress    = uiState.scanProgress,
                     total       = uiState.scanTotal,
@@ -388,7 +439,7 @@ private fun GalleryContent(
         }
 
         if (isPreloading) {
-            item(key = "preload_progress") {
+            item(key = "preload_progress", span = { GridItemSpan(maxLineSpan) }) {
                 PreloadProgressBar(done = preloadDone, total = preloadTotal)
             }
         }
@@ -399,8 +450,8 @@ private fun GalleryContent(
         val grouped = uiState.sortBy == GalleryViewModel.SortBy.DATE
 
         uiState.monthGroups.forEach { monthGroup ->
-            if (grouped) item(key = "month_${monthGroup.month}") {
-                // Compute tri-state inside item{} so it only runs for visible month headers.
+            if (grouped) item(key = "month_${monthGroup.month}", span = { GridItemSpan(maxLineSpan) }) {
+                // Computed inside item{} so it only runs for visible month headers.
                 val monthAllIds = remember(monthGroup) { monthGroup.days.flatMap { it.photos }.map { it.id }.toSet() }
                 val monthSelectedCount = monthAllIds.count { it in selectedIds }
                 val monthSelState = when {
@@ -411,12 +462,16 @@ private fun GalleryContent(
                 MonthHeader(
                     title      = monthGroup.month,
                     triState   = monthSelState,
-                    onCheckClick = { onMonthSelect(monthGroup) }
+                    onCheckClick = { onMonthSelect(monthGroup) },
+                    modifier   = Modifier.animateItem()
                 )
             }
 
             monthGroup.days.forEach { dayGroup ->
-                if (grouped) item(key = "day_${monthGroup.month}_${dayGroup.date}") {
+                if (grouped) item(
+                    key  = "day_${monthGroup.month}_${dayGroup.date}",
+                    span = { GridItemSpan(maxLineSpan) }
+                ) {
                     val dayAllIds = remember(dayGroup) { dayGroup.photos.map { it.id }.toSet() }
                     val daySelectedCount = dayAllIds.count { it in selectedIds }
                     val daySelState = when {
@@ -427,31 +482,39 @@ private fun GalleryContent(
                     DayHeader(
                         date       = dayGroup.displayDate,
                         triState   = daySelState,
-                        onCheckClick = { onDaySelect(dayGroup) }
+                        onCheckClick = { onDaySelect(dayGroup) },
+                        modifier   = Modifier.animateItem()
                     )
                 }
 
-                // Each row of 3 photos is a separate lazy item so only visible rows compose.
-                val rows = dayGroup.photos.chunked(3)
-                rows.forEachIndexed { rowIdx, rowPhotos ->
-                    item(key = "row_${monthGroup.month}_${dayGroup.date}_$rowIdx") {
-                        PhotoRow(
-                            photos        = rowPhotos,
-                            thumbnails    = thumbnails,
-                            selectedIds   = selectedIds,
-                            selectionMode = selectionMode,
-                            onVisible     = onThumbnailRequest,
-                            onClick       = { file ->
-                                if (selectionMode) onPhotoSelect(file) else onMediaClick(file)
-                            },
-                            onLongPress   = { file -> onPhotoSelect(file) }
-                        )
-                    }
+                items(dayGroup.photos, key = { it.id }) { file ->
+                    MediaGridItem(
+                        file          = file,
+                        thumbnail     = thumbnails[file.id],
+                        isSelected    = file.id in selectedIds,
+                        selectionMode = selectionMode,
+                        /* What was asked for: a photograph that the filter takes away fades
+                           where it stands, and the ones after it walk into the gap rather
+                           than jumping. */
+                        modifier      = Modifier.animateItem(
+                            fadeInSpec    = tween(180),
+                            placementSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness    = Spring.StiffnessMediumLow
+                            ),
+                            fadeOutSpec   = tween(150)
+                        ),
+                        onVisible     = { onThumbnailRequest(file) },
+                        onClick       = {
+                            if (selectionMode) onPhotoSelect(file) else onMediaClick(file)
+                        },
+                        onLongPress   = { onPhotoSelect(file) }
+                    )
                 }
             }
         }
 
-        item { Spacer(Modifier.height(16.dp)) }
+        item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(16.dp)) }
     }
 }
 
@@ -463,10 +526,11 @@ private enum class TriState { NONE, PARTIAL, ALL }
 private fun MonthHeader(
     title: String,
     triState: TriState,
+    modifier: Modifier = Modifier,
     onCheckClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)
             .padding(start = 16.dp, end = 12.dp, top = 16.dp, bottom = 4.dp),
@@ -486,10 +550,11 @@ private fun MonthHeader(
 private fun DayHeader(
     date: String,
     triState: TriState,
+    modifier: Modifier = Modifier,
     onCheckClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -573,33 +638,6 @@ private fun SelectionCircle(
 }
 
 // ── Day photo grid ────────────────────────────────────────────────────────────
-
-@Composable
-private fun PhotoRow(
-    photos: List<MediaFileEntity>,
-    thumbnails: Map<String, android.graphics.Bitmap?>,
-    selectedIds: Set<String>,
-    selectionMode: Boolean,
-    onVisible: (MediaFileEntity) -> Unit,
-    onClick: (MediaFileEntity) -> Unit,
-    onLongPress: (MediaFileEntity) -> Unit
-) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-        photos.forEach { file ->
-            MediaGridItem(
-                file         = file,
-                thumbnail    = thumbnails[file.id],
-                isSelected   = file.id in selectedIds,
-                selectionMode = selectionMode,
-                modifier     = Modifier.weight(1f),
-                onVisible    = { onVisible(file) },
-                onClick      = { onClick(file) },
-                onLongPress  = { onLongPress(file) }
-            )
-        }
-        repeat(3 - photos.size) { Spacer(Modifier.weight(1f)) }
-    }
-}
 
 // ── Media grid item ───────────────────────────────────────────────────────────
 
@@ -903,5 +941,196 @@ private fun GalleryOptionsSheet(
                 }
             }
         }
+    }
+}
+
+/**
+ * Which folders the gallery is showing (#123).
+ *
+ * The reporter's complaint was that the gallery throws every folder together. This does not
+ * add a second way to browse - albums with their own navigation, their own back button and
+ * their own bugs - it narrows the one gallery there is: a folder is ticked, and the grid
+ * shows what is in it. Nothing is ticked to begin with, which is all of them.
+ *
+ * A row is four of the folder's newest pictures in a square, its name, and how many files it
+ * holds. The tiles are the same thumbnails the grid uses, asked for the same way, so opening
+ * this sheet costs nothing that scrolling the gallery would not.
+ */
+@Composable
+private fun GalleryFolderSheet(
+    folders: List<GalleryViewModel.MediaFolder>,
+    selected: Set<String>,
+    totalCount: Int,
+    thumbnails: Map<String, Bitmap>,
+    onRequestThumbnail: (MediaFileEntity) -> Unit,
+    onToggle: (String) -> Unit,
+    onShowAll: () -> Unit
+) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
+        Text(
+            text       = stringResource(R.string.gallery_folders_title),
+            style      = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier   = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 12.dp)
+        )
+        /* AppSheet lays its content out in a plain Column and scrolls nothing, so a vault
+           with many folders would push the rows past the bottom of the screen - the trap
+           that made the destination sheet unusable (#179). */
+        LazyColumn(
+            modifier = Modifier.heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.5f).dp)
+        ) {
+            item("all") {
+                FolderRow(
+                    name     = stringResource(R.string.gallery_folders_all),
+                    count    = totalCount,
+                    selected = selected.isEmpty(),
+                    onClick  = onShowAll
+                ) {
+                    Box(
+                        modifier         = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Outlined.PhotoLibrary,
+                            contentDescription = null,
+                            tint     = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
+            items(folders, key = { it.path }) { folder ->
+                FolderRow(
+                    name     = folder.name,
+                    count    = folder.count,
+                    selected = folder.path in selected,
+                    onClick  = { onToggle(folder.path) }
+                ) {
+                    FolderMosaic(
+                        covers             = folder.covers,
+                        thumbnails         = thumbnails,
+                        onRequestThumbnail = onRequestThumbnail
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Four pictures in a square: the folder's newest, filling in as their thumbnails arrive. */
+@Composable
+private fun FolderMosaic(
+    covers: List<MediaFileEntity>,
+    thumbnails: Map<String, Bitmap>,
+    onRequestThumbnail: (MediaFileEntity) -> Unit
+) {
+    LaunchedEffect(covers) { covers.forEach(onRequestThumbnail) }
+    Column(Modifier.fillMaxSize()) {
+        for (row in 0 until 2) {
+            Row(Modifier.weight(1f).fillMaxWidth()) {
+                for (col in 0 until 2) {
+                    val file   = covers.getOrNull(row * 2 + col)
+                    val bitmap = file?.let { thumbnails[it.id] }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    ) {
+                        if (bitmap != null) {
+                            Image(
+                                bitmap             = bitmap.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale       = ContentScale.Crop,
+                                modifier           = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FolderRow(
+    name: String,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .background(
+                if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                else Color.Transparent
+            )
+            .padding(horizontal = 24.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(12.dp))
+        ) {
+            icon()
+            // The tick sits on the tile rather than beside the count: the tile is what the
+            // eye goes to, and the count keeps the right edge it was asked for.
+            if (selected) {
+                Box(
+                    modifier         = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(3.dp)
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = null,
+                        tint     = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.width(16.dp))
+        Text(
+            text     = name,
+            style    = MaterialTheme.typography.bodyLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text  = count.toString(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/**
+ * The folder filter's button.
+ *
+ * Coloured while a filter is on, because a gallery showing a fraction of what is in the vault
+ * and saying nothing about it is indistinguishable from one that has lost the rest.
+ */
+@Composable
+internal fun FoldersAction(filtered: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(
+            imageVector        = if (filtered) Icons.Filled.Folder else Icons.Outlined.Folder,
+            contentDescription = stringResource(R.string.gallery_folders_cd),
+            tint               = if (filtered) MaterialTheme.colorScheme.primary
+                                 else LocalContentColor.current
+        )
     }
 }

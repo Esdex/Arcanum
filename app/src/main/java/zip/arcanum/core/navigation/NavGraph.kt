@@ -187,7 +187,9 @@ fun ContainerScreen(
                         onRescan         = { galleryViewModel.scanContainer(viewModel.containerId) },
                         onClearSelection = { galleryViewModel.clearSelection() },
                         onDeleteSelected = { galleryViewModel.requestDeleteSelected() },
-                        onOptionsClick   = { galleryViewModel.setOptionsSheet(true) }
+                        onOptionsClick   = { galleryViewModel.setOptionsSheet(true) },
+                        foldersFiltered  = galleryState.folderFilter.isNotEmpty(),
+                        onFoldersClick   = { galleryViewModel.setFolderSheet(true) }
                     )
                     BottomNavItem.ContainerFiles.route -> {} // FileManagerScreen owns its top bar
                     else -> TopAppBar(
@@ -321,7 +323,9 @@ private fun GalleryTopBar(
     onRescan: () -> Unit,
     onClearSelection: () -> Unit,
     onDeleteSelected: () -> Unit,
-    onOptionsClick: () -> Unit
+    onOptionsClick: () -> Unit,
+    foldersFiltered: Boolean = false,
+    onFoldersClick: () -> Unit = {}
 ) {
     val isAmoled  = LocalAmoledMode.current
     val hazeState = LocalHazeState.current
@@ -428,6 +432,7 @@ private fun GalleryTopBar(
                             IconButton(onClick = onOptionsClick) {
                                 Icon(Icons.Outlined.Tune, contentDescription = stringResource(R.string.gallery_options))
                             }
+                            zip.arcanum.arcanum.gallery.ui.FoldersAction(foldersFiltered, onFoldersClick)
                             IconButton(onClick = onSearchToggle) {
                                 Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.nav_gallery_cd_search))
                             }

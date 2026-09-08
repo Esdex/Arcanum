@@ -70,6 +70,22 @@ class GalleryViewModel @Inject constructor(
         val days: List<DayGroup>
     )
 
+    /**
+     * One folder of the vault that holds media, as the folder sheet shows it: a few of its
+     * newest files for the tile, its name, and how many are in it.
+     *
+     * Derived from the index rather than from the filesystem - every media file already
+     * carries the path it lives at, so the folders are a grouping of what the gallery is
+     * showing anyway. Nothing is scanned, and a folder appears the moment something lands
+     * in it.
+     */
+    data class MediaFolder(
+        val path: String,
+        val name: String,
+        val count: Int,
+        val covers: List<MediaFileEntity>
+    )
+
     data class UiState(
         val isScanning: Boolean = false,
         val scanProgress: Int = 0,
@@ -86,7 +102,11 @@ class GalleryViewModel @Inject constructor(
         val isSearchActive: Boolean = false,
         val isEmpty: Boolean = false,
         val showDeleteConfirm: Boolean = false,
-        val isReadOnly: Boolean = false
+        val isReadOnly: Boolean = false,
+        val folders: List<MediaFolder> = emptyList(),
+        /** Which folders the grid is limited to. Empty means all of them. */
+        val folderFilter: Set<String> = emptySet(),
+        val showFolderSheet: Boolean = false
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -116,6 +136,18 @@ class GalleryViewModel @Inject constructor(
     private var currentContainerId: String? = null
     private var scanJob: Job? = null
     private val _filter = MutableStateFlow(MediaFilter.ALL)
+
+    /*
+     * Deliberately not remembered between sessions. A folder can be moved or emptied while
+     * the vault is closed, and a filter restored onto a folder that is no longer there shows
+     * an empty gallery with nothing to explain it. It lasts as long as the vault is open,
+     * which is as long as the folders it names are known to be real.
+     */
+    private val _folderFilter = MutableStateFlow<Set<String>>(emptySet())
+
+    /** What the root folder is called in the sheet - the vault's own name. */
+    private var vaultName: String = ""
+
     private val _allFiles = MutableStateFlow<List<MediaFileEntity>>(emptyList())
 
     init {
@@ -171,22 +203,34 @@ class GalleryViewModel @Inject constructor(
         if (currentContainerId == containerId) return
         currentContainerId = containerId
         clearThumbnailState()
+        // A vault that has just been closed and another opened must not inherit a filter
+        // naming folders of the one before it.
+        _folderFilter.value = emptySet()
+        viewModelScope.launch {
+            vaultName = repo.getContainerById(containerId)?.name.orEmpty()
+        }
 
         viewModelScope.launch(Dispatchers.Default) {
             combine(
                 mediaFileDao.getMediaForContainer(containerId),
-                _filter
-            ) { files, filter -> Pair(files, filter) }.collect { (files, filter) ->
-                _allFiles.value = files
-                val groups = visible(files, filter = filter)
-                _uiState.update {
-                    it.copy(
-                        allMedia    = files,
-                        monthGroups = groups,
-                        isEmpty     = files.isEmpty() && !it.isScanning
-                    )
+                _filter,
+                _folderFilter
+            ) { files, filter, folders -> Triple(files, filter, folders) }
+                .collect { (files, filter, folders) ->
+                    _allFiles.value = files
+                    val groups = visible(files, filter = filter, folders = folders)
+                    _uiState.update {
+                        it.copy(
+                            allMedia     = files,
+                            monthGroups  = groups,
+                            isEmpty      = files.isEmpty() && !it.isScanning,
+                            folders      = foldersOf(files),
+                            /* A folder that has lost its last file stops existing, and a
+                               filter naming it would quietly show nothing. */
+                            folderFilter = folders.intersect(files.map { f -> folderOf(f.relativePath) }.toSet())
+                        )
+                    }
                 }
-            }
         }
 
         viewModelScope.launch {
@@ -431,9 +475,14 @@ class GalleryViewModel @Inject constructor(
         filter: MediaFilter = _filter.value,
         query: String = _uiState.value.searchQuery,
         sortBy: SortBy = _uiState.value.sortBy,
-        ascending: Boolean = _uiState.value.sortAscending
+        ascending: Boolean = _uiState.value.sortAscending,
+        folders: Set<String> = _folderFilter.value
     ): List<MonthGroup> {
         var result = applyFilter(files, filter)
+        /* A folder means that folder, not the tree under it: every folder with media of its
+           own is a row of its own in the sheet, so following the tree would show one file
+           under two different names. */
+        if (folders.isNotEmpty()) result = result.filter { folderOf(it.relativePath) in folders }
         if (query.isNotBlank()) result = result.filter { it.fileName.contains(query, ignoreCase = true) }
 
         if (sortBy == SortBy.RANDOM) {
@@ -466,6 +515,38 @@ class GalleryViewModel @Inject constructor(
                 days  = listOf(DayGroup(date = LocalDate.MIN, displayDate = "", photos = ordered))
             )
         )
+    }
+
+    /** The directory part of a media file's path inside the vault; "/" for the root. */
+    private fun folderOf(relativePath: String): String =
+        relativePath.substringBeforeLast('/', "").ifEmpty { "/" }
+
+    /**
+     * Every folder holding media, newest first inside each one so the tile shows what was
+     * added last. The root of the vault is a folder like any other and takes the vault's own
+     * name, because "/" means nothing to anybody.
+     */
+    private fun foldersOf(files: List<MediaFileEntity>): List<MediaFolder> =
+        files.groupBy { folderOf(it.relativePath) }
+            .map { (path, inIt) ->
+                MediaFolder(
+                    path   = path,
+                    name   = if (path == "/") vaultName else path.substringAfterLast('/'),
+                    count  = inIt.size,
+                    covers = inIt.sortedByDescending { it.dateCreated }.take(4)
+                )
+            }
+            .sortedBy { it.name.lowercase() }
+
+    fun setFolderSheet(open: Boolean) = _uiState.update { it.copy(showFolderSheet = open) }
+
+    /** Ticking the last folder off is the same as asking for all of them. */
+    fun toggleFolder(path: String) {
+        _folderFilter.update { if (path in it) it - path else it + path }
+    }
+
+    fun showAllFolders() {
+        _folderFilter.value = emptySet()
     }
 
     private fun groupByMonthAndDay(files: List<MediaFileEntity>, alreadyOrdered: Boolean = false): List<MonthGroup> {
