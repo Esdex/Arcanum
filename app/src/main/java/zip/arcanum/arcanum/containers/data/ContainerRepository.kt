@@ -70,6 +70,18 @@ class ContainerRepository @Inject constructor(
     suspend fun setMounted(id: String, mounted: Boolean) =
         dao.setMounted(id, mounted)
 
+    /**
+     * When a vault was last mounted, on the monotonic clock.
+     *
+     * Read by the background-unmount rule: ProcessLifecycleOwner reports ON_STOP during the
+     * mount animation and the navigation that follows it, and a vault unmounted a moment
+     * after it was opened looks to the user like a mount that failed. It lives here rather
+     * than in a ViewModel because the rule that reads it now runs in the process.
+     */
+    @Volatile
+    var lastMountAtMs: Long = 0L
+        private set
+
     suspend fun mountContainer(
         id: String, handle: Long, pim: Int = 0,
         isHidden: Boolean = false, hasHidden: Boolean = false,
@@ -86,6 +98,7 @@ class ContainerRepository @Inject constructor(
             parcelFd = parcelFd,
             isReadOnly = isReadOnly
         )
+        lastMountAtMs = android.os.SystemClock.elapsedRealtime()
         _mountedContainerIds.update { it + id }
         dao.setMounted(id, true)
         dao.updateLastAccessed(id, System.currentTimeMillis())

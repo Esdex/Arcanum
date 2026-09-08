@@ -1,9 +1,7 @@
 package zip.arcanum.arcanum.containers.ui
 
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
@@ -14,9 +12,6 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -31,7 +26,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
@@ -45,7 +39,6 @@ import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.BiometricCryptoManager
-import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.crypto.CryptoError
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
@@ -67,7 +60,7 @@ class VaultViewModel @Inject constructor(
     private val mountLogger: MountLogger,
     private val prefs: AppPreferences,
     private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
-    private val idleMonitor: IdleMonitor,
+    private val closer: zip.arcanum.arcanum.containers.data.VaultCloser,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -160,40 +153,7 @@ class VaultViewModel @Inject constructor(
     }
 
 
-    /* SCREEN_ON matters as much as SCREEN_OFF: a screen-off unmount now waits for any
-     * operation to finish, and if the screen comes back before it does, the reason for
-     * unmounting is gone. */
-    private val screenStateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(ctx: Context, intent: Intent) {
-            when (intent.action) {
-                Intent.ACTION_SCREEN_OFF -> unmountContainersOnStop(isLocked = true)
-                Intent.ACTION_SCREEN_ON  -> pendingUnmountJob?.cancel()
-            }
-        }
-    }
-
-    private val appBackgroundObserver = object : DefaultLifecycleObserver {
-        override fun onStop(owner: LifecycleOwner) {
-            unmountContainersOnStop(isLocked = false)
-        }
-
-        /* Back in the foreground: whatever the background unmount was waiting to do, it
-         * is no longer what the user asked for. */
-        override fun onStart(owner: LifecycleOwner) {
-            pendingUnmountJob?.cancel()
-        }
-    }
-
-    /* An auto-unmount that has been put off until the work in flight is done. Only one is
-     * ever pending: a newer trigger replaces an older one. */
-    private var pendingUnmountJob: Job? = null
-
     init {
-        context.registerReceiver(
-            screenStateReceiver,
-            IntentFilter(Intent.ACTION_SCREEN_OFF).apply { addAction(Intent.ACTION_SCREEN_ON) }
-        )
-        ProcessLifecycleOwner.get().lifecycle.addObserver(appBackgroundObserver)
         viewModelScope.launch {
             val prefs = context.vaultDisplayDataStore.data.first()
             _sortState.value = SortState(
@@ -209,12 +169,6 @@ class VaultViewModel @Inject constructor(
                 biometricFirst = prefs[DisplayKeys.BIOMETRIC_FIRST] ?: false
             )
         }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        ProcessLifecycleOwner.get().lifecycle.removeObserver(appBackgroundObserver)
-        context.unregisterReceiver(screenStateReceiver)
     }
 
     private fun persistSortState(state: SortState) {
@@ -290,7 +244,6 @@ class VaultViewModel @Inject constructor(
         }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private var mountJob: Job? = null
-    private var lastMountTimeMillis = 0L
 
     fun cancelMount() {
         mountJob?.cancel()
@@ -510,7 +463,7 @@ class VaultViewModel @Inject constructor(
                         if (!protectHiddenPassword.isNullOrBlank() && !hasHidden) {
                             mountLogger.log("ERROR: protection was requested but the volume has no " +
                                             "hidden-volume boundary - unmounting")
-                            withContext(Dispatchers.IO) { cryptoEngine.unmountContainer(handle) }
+                            withContext(Dispatchers.IO) { closer.closeHandle(handle) }
                             _mountState.value = MountState.Error(HIDDEN_PROTECTION_FAILED_MESSAGE)
                             return@launch
                         }
@@ -552,7 +505,6 @@ class VaultViewModel @Inject constructor(
                         // ContainerScreenViewModel, on the screen this navigates to.
                         if (needsCheck)
                             mountLogger.log("The last session that wrote to this vault did not finish.")
-                        lastMountTimeMillis = System.currentTimeMillis()
                         _mountState.value = MountState.Idle
                         onSuccess(container.id)
                     }
@@ -829,24 +781,10 @@ class VaultViewModel @Inject constructor(
     fun unmountContainer(id: String, onDone: () -> Unit) {
         viewModelScope.launch {
             val handle = repo.getContainerHandle(id)
-            if (handle != null) closeByHandle(handle)
+            if (handle != null) closer.closeHandle(handle)
             repo.unmountContainer(id)
             onDone()
         }
-    }
-
-    /**
-     * Closes a mounted volume by whichever route owns it.
-     *
-     * A USB volume must go through UsbVolumeManager rather than straight to the engine:
-     * the manager holds the transport, and closing the container behind its back would
-     * leave the USB interface claimed and the manager still believing a volume is
-     * mounted - so the drive would stay missing from Android and a later detach would
-     * fire against something already gone.
-     */
-    private suspend fun closeByHandle(handle: Long) {
-        if (usbVolumes.mounted.value?.handle == handle) usbVolumes.unmount()
-        else cryptoEngine.unmountContainer(handle)
     }
 
     /** Enriched domain container (mount-only fields resolved) for the details sheet. */
@@ -856,7 +794,7 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch {
             ids.forEach { id ->
                 val handle = repo.getContainerHandle(id)
-                if (handle != null) cryptoEngine.unmountContainer(handle)
+                if (handle != null) closer.closeHandle(handle)
             }
             repo.deleteContainersById(ids)
         }
@@ -874,44 +812,10 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch { repo.updateExternalAccessEnabled(id, value) }
     }
 
-    fun unmountContainersOnStop(isLocked: Boolean) {
-        // Skip background unmounting if a container was just mounted — ProcessLifecycleOwner.onStop
-        // can fire during the mount animation or navigation transition, causing the freshly-mounted
-        // container to be unmounted immediately. Screen-off (isLocked=true) is not affected.
-        if (!isLocked && System.currentTimeMillis() - lastMountTimeMillis < 3_000L) return
-        pendingUnmountJob?.cancel()
-        pendingUnmountJob = viewModelScope.launch {
-            // Flush first, before any waiting and regardless of the settings below. The USB
-            // backend holds writes back to merge them, and Android kills backgrounded apps
-            // without warning - those bytes exist nowhere else. Whether the vault should also
-            // be closed is a choice; whether it should lose data is not.
-            repo.getAllContainersRaw().first().filter { it.isMounted }.forEach { c ->
-                repo.getContainerHandle(c.id)?.let { cryptoEngine.flushContainer(it) }
-            }
-
-            // Only an explicit Unmount or a panic PIN may cut an operation short. Backgrounding
-            // and screen-off must not: an import, a paste, a delete or a move would be torn off
-            // mid-write, and opening the system file picker is itself a trip to the background.
-            // So the unmount waits the work out. If the user comes back, or the screen does,
-            // this job is cancelled and the vault stays as it was. See IdleMonitor.
-            while (idleMonitor.isBusy) delay(1_000L)
-
-            // Re-read rather than reusing the list from before the wait: what is mounted, and
-            // what each vault asks for, may have changed while we waited.
-            repo.getAllContainersRaw().first().filter { it.isMounted }.forEach { c ->
-                if (c.unmountOnBackground || (isLocked && c.unmountOnLock)) {
-                    val handle = repo.getContainerHandle(c.id)
-                    if (handle != null) closeByHandle(handle)
-                    repo.unmountContainer(c.id)
-                }
-            }
-        }
-    }
-
     fun removeFromList(id: String) {
         viewModelScope.launch {
             val handle = repo.getContainerHandle(id)
-            if (handle != null) closeByHandle(handle)
+            if (handle != null) closer.closeHandle(handle)
             repo.deleteContainersById(setOf(id))
         }
     }
@@ -1068,7 +972,7 @@ class VaultViewModel @Inject constructor(
     fun deleteVaultFile(id: String) {
         viewModelScope.launch {
             val handle = repo.getContainerHandle(id)
-            if (handle != null) cryptoEngine.unmountContainer(handle)
+            if (handle != null) closer.closeHandle(handle)
             val container = repo.getContainerById(id)
             repo.deleteContainersById(setOf(id))
             when {

@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dagger.Lazy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import zip.arcanum.arcanum.containers.data.VaultCloser
 import zip.arcanum.arcanum.saf.VaultDocumentsProvider
 import zip.arcanum.core.database.dao.CalculatorHistoryDao
 import zip.arcanum.core.database.dao.ContainerDao
@@ -47,7 +49,10 @@ class PanicManager @Inject constructor(
     private val historyDao: CalculatorHistoryDao,
     private val biometricCryptoManager: BiometricCryptoManager,
     private val traceCleaner: VaultTraceCleaner,
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    /* Lazy: this manager is built on the calculator screen, where nothing is mounted and the
+     * native library has no business being loaded. */
+    private val vaultCloser: Lazy<VaultCloser>
 ) {
     private object Keys {
         val ENABLED            = booleanPreferencesKey("enabled")
@@ -114,6 +119,19 @@ class PanicManager @Inject constructor(
     suspend fun executeWipe() {
         val settings = getPanicSettings()
         if (!settings.enabled) return
+        /*
+         * Close every open volume first, whatever the settings below decide to do with the
+         * vaults themselves.
+         *
+         * Two reasons, and the second one is new. Deleting a container file that is still
+         * open leaves the data on disk until the descriptor closes, so closing first is what
+         * makes the delete a delete. And with the keep-alive service running (#102) a mounted
+         * vault is what holds the process in the foreground: the service stops when the last
+         * volume closes, so without this a panic wipe would leave a foreground service - and
+         * on Android 12 and earlier its notification - standing over an app that has just
+         * erased itself.
+         */
+        vaultCloser.get().closeAll()
         if (settings.fullWipe) {
             val all = containerDao.getAllContainersOnce()
             all.forEach { entity ->

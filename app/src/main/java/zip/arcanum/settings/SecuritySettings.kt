@@ -86,9 +86,11 @@ internal fun SecuritySubScreen(
 ) {
     val context     = LocalContext.current
     var showWarning by remember { mutableStateOf(false) }
+    var showKeepMountedWarning by remember { mutableStateOf(false) }
     val receiveShares by viewModel.receiveShares.collectAsState()
     val mediaSessionContent by viewModel.mediaSessionContent.collectAsState()
     val argon2Offer         by viewModel.argon2Offer.collectAsState()
+    val keepVaultsMounted   by viewModel.keepVaultsMounted.collectAsState()
     val notifications = LocalNotifications.current
 
     SubScreenScaffold(title = stringResource(R.string.settings_security_title), onBack = onBack) { innerPadding ->
@@ -177,6 +179,25 @@ internal fun SecuritySubScreen(
                 }
             }
 
+            // ── While a vault is open ────────────────────────────────────
+            SettingsGroup(title = stringResource(R.string.settings_security_group_mounted)) {
+                row { shape ->
+                    GroupedSwitch(
+                        shape           = shape,
+                        title           = stringResource(R.string.settings_security_keep_mounted),
+                        info            = stringResource(R.string.settings_security_keep_mounted_desc),
+                        checked         = keepVaultsMounted,
+                        onCheckedChange = { on ->
+                            // Turning it OFF needs no warning, and neither does turning it on
+                            // when the app is not pretending to be anything: the panel naming
+                            // Arcanum only costs something to someone relying on the disguise.
+                            if (on && disguiseApplied) showKeepMountedWarning = true
+                            else viewModel.setKeepVaultsMounted(on)
+                        }
+                    )
+                }
+            }
+
             // ── On this device ───────────────────────────────────────────
             SettingsGroup(title = stringResource(R.string.settings_security_group_device)) {
                 row { shape ->
@@ -234,6 +255,16 @@ internal fun SecuritySubScreen(
 
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (showKeepMountedWarning) {
+        KeepMountedWarningOverlay(
+            onDismiss = { showKeepMountedWarning = false },
+            onConfirm = {
+                viewModel.setKeepVaultsMounted(true)
+                showKeepMountedWarning = false
+            }
+        )
     }
 
     if (showWarning) {
@@ -403,6 +434,109 @@ private fun ScreenshotWarningOverlay(
                 }
 
                 Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+/**
+ * What keeping a vault open costs someone wearing the disguise.
+ *
+ * A full screen rather than a dialog because it is the same kind of thing the screenshot
+ * warning is: a setting that cannot be undone by turning it back off - once the shade has
+ * named the app to someone, it has named it. It is shown only when the disguise is applied;
+ * with no disguise on there is nothing to give away.
+ */
+@Composable
+private fun KeepMountedWarningOverlay(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.warning))
+    val progress    by animateLottieCompositionAsState(composition = composition, iterations = 1)
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows  = false,
+            dismissOnBackPress      = true,
+            dismissOnClickOutside   = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color    = MaterialTheme.colorScheme.background
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .systemBarsPadding()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        // The buttons are pinned to the bottom of the same Box, so centring
+                        // this on the whole screen leaves the card resting on them. The
+                        // padding is what the buttons occupy: the content is centred in what
+                        // is left rather than in the screen.
+                        .padding(horizontal = 28.dp)
+                        .padding(bottom = 180.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    LottieAnimation(
+                        composition = composition,
+                        progress    = { progress },
+                        modifier    = Modifier.size(160.dp)
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    Text(
+                        text      = stringResource(R.string.settings_security_keep_mounted_warn_title),
+                        style     = MaterialTheme.typography.headlineSmall,
+                        textAlign = TextAlign.Center,
+                        color     = MaterialTheme.colorScheme.onBackground
+                    )
+
+                    Spacer(Modifier.height(20.dp))
+
+                    Surface(
+                        shape    = RoundedCornerShape(16.dp),
+                        color    = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text     = stringResource(R.string.settings_security_keep_mounted_warn_body),
+                            style    = MaterialTheme.typography.bodyMedium,
+                            color    = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 28.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick  = onConfirm,
+                        colors   = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.settings_security_keep_mounted_warn_confirm))
+                    }
+                    TextButton(onClick = onDismiss) {
+                        Text(
+                            text  = stringResource(R.string.common_cancel),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
     }

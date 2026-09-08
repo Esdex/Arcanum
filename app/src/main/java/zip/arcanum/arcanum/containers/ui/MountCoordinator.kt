@@ -6,21 +6,18 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.gallery.MediaScanner
 import zip.arcanum.arcanum.gallery.ThumbnailPreloader
 import zip.arcanum.core.database.entities.MediaFileEntity
-import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
 
 @HiltViewModel
 class MountCoordinator @Inject constructor(
     private val mediaScanner: MediaScanner,
     private val repo: ContainerRepository,
-    private val thumbnailPreloader: ThumbnailPreloader,
-    private val cryptoEngine: VeraCryptEngine
+    private val thumbnailPreloader: ThumbnailPreloader
 ) : ViewModel() {
 
     sealed interface Phase {
@@ -37,6 +34,9 @@ class MountCoordinator @Inject constructor(
 
     private val _phase = MutableStateFlow<Phase>(Phase.Idle)
     val phase = _phase.asStateFlow()
+
+    /** Which vaults are open, for the navigation guard on a vault's own screen. */
+    val mountedContainerIds = repo.mountedContainerIds
 
     /** Called immediately when crypto succeeds — starts the unlock animation. */
     fun beginUnlocking(containerId: String) {
@@ -72,16 +72,5 @@ class MountCoordinator @Inject constructor(
     /** Called by AppNavigation after navigation has been committed. */
     fun dismiss() {
         _phase.value = Phase.Idle
-    }
-
-    /** Unmounts all currently mounted containers — called before auto-lock navigation. */
-    fun unmountAll() {
-        viewModelScope.launch(Dispatchers.IO) {
-            repo.getAllContainersRaw().first().filter { it.isMounted }.forEach { c ->
-                val handle = repo.getContainerHandle(c.id)
-                if (handle != null) cryptoEngine.unmountContainer(handle)
-                repo.unmountContainer(c.id)
-            }
-        }
     }
 }

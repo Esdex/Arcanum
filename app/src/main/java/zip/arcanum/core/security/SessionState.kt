@@ -1,5 +1,8 @@
 package zip.arcanum.core.security
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -32,12 +35,24 @@ class SessionState @Inject constructor() {
     var isLocked: Boolean = true
         private set
 
+    /*
+     * The same answer as [isLocked], as a flow, because the thing that now enforces the lock
+     * is not a composition any more: [LockController] runs in the process and has to start
+     * and stop its idle clock when the app is unlocked and locked, with no Activity involved.
+     * The @Volatile field stays because it is read from callbacks on any thread and must not
+     * suspend.
+     */
+    private val _lockedFlow = MutableStateFlow(true)
+    val lockedFlow: StateFlow<Boolean> = _lockedFlow.asStateFlow()
+
     fun markUnlocked() {
         unlockedInThisProcess = true
         isLocked = false
+        _lockedFlow.value = false
     }
 
     fun markLocked() {
         isLocked = true
+        _lockedFlow.value = true
     }
 }

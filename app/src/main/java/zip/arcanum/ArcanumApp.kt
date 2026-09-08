@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import zip.arcanum.R
 import zip.arcanum.arcanum.containers.service.ContainerCreationService
+import zip.arcanum.core.security.LockController
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.NativeCrashHandler
 import java.io.File
@@ -26,6 +27,13 @@ import javax.inject.Inject
 class ArcanumApp : Application() {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
+
+    /*
+     * The lock lives in the process, not in the UI (#102). Started here because it has to be
+     * running before anything is mounted and to still be running when the Activity is gone -
+     * which is exactly the state the keep-alive service creates.
+     */
+    @Inject lateinit var lockController: LockController
 
     override fun onCreate() {
         super.onCreate()
@@ -40,6 +48,7 @@ class ArcanumApp : Application() {
             Timber.plant(Timber.DebugTree())
         }
         createNotificationChannels()
+        lockController.start()
         CoroutineScope(Dispatchers.IO).launch { FileUtils.purgeLegacyTempFiles(this@ArcanumApp) }
     }
 

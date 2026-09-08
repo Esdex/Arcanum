@@ -27,6 +27,7 @@ import zip.arcanum.core.security.TextEditorPrefs
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.DisguiseManager
 import zip.arcanum.core.security.IdleMonitor
+import zip.arcanum.core.security.LockController
 import zip.arcanum.core.security.PinManager
 import zip.arcanum.core.security.PinResult
 import zip.arcanum.core.security.SessionState
@@ -42,6 +43,7 @@ class SettingsViewModel @Inject constructor(
     private val billingManager: BillingManagerInterface,
     private val idleMonitor: IdleMonitor,
     private val sessionState: SessionState,
+    private val lockController: LockController,
     private val shareIntake: ShareIntake,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
@@ -107,30 +109,41 @@ class SettingsViewModel @Inject constructor(
 
     fun clearPendingShare() = shareIntake.clear()
 
-    /** Monotonic timestamp (elapsedRealtime) of the last user interaction - drives idle auto-lock. */
-    fun lastInteractionAtMs(): Long = idleMonitor.lastInteractionAtMs
-
-    /**
-     * How long the app has had nothing to do, in milliseconds. Unlike [lastInteractionAtMs]
-     * this also counts work the app is doing for the user, so a long mount or import is not
-     * mistaken for an idle phone. Zero while an operation is running.
+    /*
+     * The idle clock and the lock state itself are no longer read through here. Asking the
+     * session how idle it is, or telling it that the screen has been locked, was how the UI
+     * enforced auto-lock; [LockController] does that in the process now, and leaving a second
+     * door open to the same state is how the two would drift apart (#102).
      */
-    fun idleMillis(): Long = idleMonitor.idleMillis()
-
-    /** True while a long operation is in flight - locking now would cut it in half. */
-    fun isBusy(): Boolean = idleMonitor.isBusy
 
     /** Reset the inactivity timer, e.g. when the authenticated area is (re)entered. */
     fun recordInteraction() = idleMonitor.recordInteraction()
 
-    /** True once the PIN has been accepted in this process - see [SessionState]. */
-    fun wasUnlockedInThisProcess(): Boolean = sessionState.unlockedInThisProcess
-
     /** Record that the user authenticated, so a restored back stack can be trusted. */
     fun markUnlocked() = sessionState.markUnlocked()
 
-    /** Record that the app has put the lock screen up, so work arriving from outside can tell. */
-    fun markLocked() = sessionState.markLocked()
+    /**
+     * Whether the session is locked, as a flow.
+     *
+     * The navigation layer watches this instead of running the auto-lock clock itself: the
+     * clock now lives in [LockController], in the process, so that a kept-alive app with no
+     * Activity left is still something that locks (#102). The UI's remaining job is to leave
+     * the authenticated area when this turns true.
+     */
+    val locked: StateFlow<Boolean> = sessionState.lockedFlow
+
+    /** Lock now - for the UI's own reasons, such as a restored stack this process never unlocked. */
+    fun lockNow() = lockController.lockNow()
+
+    val keepVaultsMounted = prefs.keepVaultsMounted.stateIn(
+        scope        = viewModelScope,
+        started      = SharingStarted.Eagerly,
+        initialValue = false
+    )
+
+    fun setKeepVaultsMounted(enabled: Boolean) {
+        viewModelScope.launch { prefs.setKeepVaultsMounted(enabled) }
+    }
 
     val autoLockEnabled = prefs.autoLockEnabled.stateIn(
         scope        = viewModelScope,

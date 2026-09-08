@@ -18,6 +18,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Keeping the process alive while a vault is open (#102). None of the defined types
+         describes it, which is what specialUse is for; dataSync would be a lie and is capped
+         at six hours a day since Android 15. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- Strip ACCESS_NETWORK_STATE, merged in transitively by WorkManager/Media3.
          The app references no connectivity APIs, and the offline guarantee depends on
@@ -64,6 +68,15 @@
             android:name=".arcanum.containers.service.ChangeKeyfileService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".arcanum.containers.service.KeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps a volume the user has opened mounted while the app is in the background. The mount exists only inside this process, so the volume closes when the process is killed." />
+        </service>
 
         <!-- Disable WorkManager auto-init so HiltWorkerFactory can be injected first -->
         <provider

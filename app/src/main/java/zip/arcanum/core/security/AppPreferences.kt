@@ -57,6 +57,7 @@ class AppPreferences @Inject constructor(
         val LAST_SUPPORT_PROMPT_AT    = longPreferencesKey("last_support_prompt_at")
         val MEDIA_SESSION_CONTENT     = booleanPreferencesKey("media_session_content")
         val ARGON2_OFFER              = booleanPreferencesKey("argon2_offer")
+        val KEEP_VAULTS_MOUNTED       = booleanPreferencesKey("keep_vaults_mounted")
 
         // The text editor. Everything here is how it looks and behaves, nothing about
         // what it opens, so a panic wipe may take the lot.
@@ -275,6 +276,20 @@ class AppPreferences @Inject constructor(
 
     suspend fun setUnmountOnAutoLock(enabled: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.UNMOUNT_ON_AUTO_LOCK] = enabled }
+    }
+
+    /**
+     * Whether the app holds itself in memory while a vault is open (#102).
+     *
+     * Off by default, and deliberately not in [Keys.PANIC_KEEP]: a wipe that leaves this on
+     * shows nothing to anyone, and the safer of the two states after a panic is the one where
+     * a backgrounded vault closes with the process.
+     */
+    val keepVaultsMounted: Flow<Boolean> = context.appPrefsDataStore.data
+        .map { it[Keys.KEEP_VAULTS_MOUNTED] ?: false }
+
+    suspend fun setKeepVaultsMounted(enabled: Boolean) {
+        context.appPrefsDataStore.edit { it[Keys.KEEP_VAULTS_MOUNTED] = enabled }
     }
 
     /**

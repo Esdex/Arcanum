@@ -41,6 +41,11 @@
     <string name="notif_channel_vault_creation">Vault Creation</string>
     <string name="notif_channel_vault_creation_desc">Shows progress while creating an encrypted vault</string>
     <string name="notif_creating_vault">Creating vault…</string>
+    <string name="notif_channel_keepalive">Open vaults</string>
+    <string name="notif_channel_keepalive_desc">Shown while a vault is being kept open in the background</string>
+    <string name="notif_keepalive_title">Vault open</string>
+    <string name="notif_keepalive_text">Tap to open the app</string>
+    <string name="notif_keepalive_disguised_text">Tap to open</string>
     <string name="notif_creation_progress">%1$d%% complete</string>
     <string name="notif_channel_change_password">Password Change</string>
     <string name="notif_channel_change_password_desc">Shows progress while changing a vault password</string>
@@ -678,6 +683,12 @@
     <string name="settings_auto_lock_minute">min</string>
     <string name="settings_auto_lock_minutes">min</string>
     <string name="settings_auto_lock_hour">hour</string>
+    <string name="settings_security_group_mounted">While a vault is open</string>
+    <string name="settings_security_keep_mounted">Keep vaults open in the background</string>
+    <string name="settings_security_keep_mounted_desc">Android closes apps it is not using to reclaim memory, and a vault closes with the app - which is why an import or an open file can stop working while you are in another app. This keeps Arcanum running while a vault is open, so leaving the app no longer closes it.\n\nIt is a best effort, not a promise: a phone short of memory, or a manufacturer\'s own battery saver, can still close the app.\n\nAuto-lock is unaffected - the app still locks on its schedule, and vaults set to close when you leave or when the screen goes off still do. A vault kept open this way stays readable by apps you have granted access to, even while Arcanum itself is locked.\n\nOn Android 13 and later the app is listed in the notification shade\'s active apps panel while a vault is being kept open, under the name Arcanum. The calculator disguise does not cover that.</string>
+    <string name="settings_security_keep_mounted_warn_title">Arcanum will be named in the shade</string>
+    <string name="settings_security_keep_mounted_warn_body">While a vault is kept open, Android lists this app in the notification shade\'s active apps panel - under the name Arcanum, not Calculator.\n\nThe disguise cannot cover it: it changes the launcher icon, and that panel uses the name Android knows the app by. Anyone who opens the shade while a vault is open will see it.</string>
+    <string name="settings_security_keep_mounted_warn_confirm">Turn on anyway</string>
     <string name="settings_security_unmount_on_auto_lock">Unmount all vaults on auto-lock</string>
     <string name="settings_security_unmount_on_auto_lock_desc">All mounted vaults will be locked when auto-lock triggers</string>
     <string name="settings_security_media_content">Show what is playing outside the app</string>

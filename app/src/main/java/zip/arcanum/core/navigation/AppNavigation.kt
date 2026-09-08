@@ -13,16 +13,12 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -32,11 +28,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.rememberCoroutineScope
 import zip.arcanum.arcanum.containers.ui.MountCoordinator
 import zip.arcanum.arcanum.containers.ui.MountScreen
 import zip.arcanum.arcanum.share.ShareTargetScreen
@@ -71,21 +65,6 @@ import zip.arcanum.arcanum.containers.ui.MoveVaultScreen
 import zip.arcanum.setup.PinEntryScreen
 import zip.arcanum.setup.SetupPinScreen
 
-// 0=Immediately(1.5s grace) 1=30s 2=1m 3=2m 4=5m 5=10m 6=30m 7=1h
-// Index 0 is a background-only "lock the moment you leave" grace period; indices >= 1 are
-// inactivity windows enforced by the idle loop in AppNavigation (foreground and background).
-fun autoLockDelayMillis(index: Int): Long = when (index) {
-    0    -> 1_500L
-    1    -> 30_000L
-    2    -> 60_000L
-    3    -> 120_000L
-    4    -> 300_000L
-    5    -> 600_000L
-    6    -> 1_800_000L
-    7    -> 3_600_000L
-    else -> 1_500L
-}
-
 @Composable
 fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
     val isPinSet          by pinManager.isPinSetFlow.collectAsState()
@@ -118,111 +97,57 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
     val mountCoordinator: MountCoordinator = hiltViewModel()
     val mountPhase by mountCoordinator.phase.collectAsState()
 
-    val autoLockEnabled      by settingsViewModel.autoLockEnabled.collectAsState()
-    val autoLockDelayIndex   by settingsViewModel.autoLockDelayIndex.collectAsState()
-    val unmountOnAutoLock    by settingsViewModel.unmountOnAutoLock.collectAsState()
+    val locked by settingsViewModel.locked.collectAsState()
 
-    val lifecycleOwner = LocalLifecycleOwner.current
     val lockedRoutes = remember(lockScreenRoute) {
         setOf(Screen.Onboarding.route, Screen.SetupPin.route, Screen.Calculator.route, Screen.PinEntry.route)
     }
-    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+    val currentEntry = navController.currentBackStackEntryAsState().value
+    val currentRoute = currentEntry?.destination?.route
     val isUnlockedArea = currentRoute != null && currentRoute !in lockedRoutes
-    val autoLockScope = rememberCoroutineScope()
 
-    fun lockNow() {
-        settingsViewModel.markLocked()
-        if (unmountOnAutoLock) mountCoordinator.unmountAll()
-        navController.navigate(lockScreenRoute) {
-            popUpTo(0) { inclusive = true }
-            launchSingleTop = true
+    /*
+     * A vault's screen cannot outlive the vault.
+     *
+     * Closing a vault by hand pops this screen as part of the same gesture, and an auto-lock
+     * clears the whole stack on its way to the PIN - so the only way to end up looking at a
+     * vault that is no longer open was to have it closed from underneath: the per-vault
+     * "unmount when I leave the app", or an unmount from somewhere else. Coming back to the
+     * app then landed on a screen whose contents cannot be read any more.
+     *
+     * Only while the vault's own screen is the one on top: a viewer or the editor above it
+     * says what happened in its own words, which is better than the stack disappearing from
+     * under an unsaved file.
+     */
+    val mountedIds by mountCoordinator.mountedContainerIds.collectAsState()
+    LaunchedEffect(mountedIds, currentRoute) {
+        if (currentRoute != Screen.ContainerScreen.route) return@LaunchedEffect
+        val id = currentEntry?.arguments?.getString(Screen.ContainerScreen.ARG)
+        if (id != null && id !in mountedIds) {
+            navController.popBackStack(Screen.VaultScreen.route, inclusive = false)
         }
     }
 
-    // A background kill takes the mount map, the JNI handles and the idle clock with it, but
-    // Android still restores the saved back stack - so without this the app comes back sitting
-    // on an authenticated screen with nobody having entered the PIN, and the idle check cannot
-    // notice because IdleMonitor is rebuilt with "now" as the last interaction (#150). The
-    // process, not the screen, is what holds the unlock, so a restored stack this process never
-    // authenticated is not trusted. A configuration change does not restart the process, which
-    // is what keeps rotation from asking again.
-    LaunchedEffect(currentRoute) {
-        if (currentRoute != null && currentRoute !in lockedRoutes &&
-            !settingsViewModel.wasUnlockedInThisProcess()
-        ) {
-            lockNow()
-        }
-    }
-
-    // Index 0 ("Immediately") keeps the original background-only behavior: lock shortly after
-    // the app leaves the foreground. Indices >= 1 are handled by the idle loop below instead,
-    // so this observer only arms for index 0.
-    DisposableEffect(lifecycleOwner, autoLockEnabled, autoLockDelayIndex, unmountOnAutoLock, lockScreenRoute) {
-        var lockJob: Job? = null
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_STOP -> {
-                    if (autoLockEnabled && autoLockDelayIndex == 0) {
-                        val current = navController.currentDestination?.route ?: return@LifecycleEventObserver
-                        if (current !in lockedRoutes) {
-                            lockJob = autoLockScope.launch {
-                                delay(autoLockDelayMillis(0))
-                                // Leaving the app in the middle of a long operation must not
-                                // tear it down: lockNow() unmounts when "unmount on auto-lock"
-                                // is on, and unmounting a volume that is still being mounted
-                                // is how half-built state is made. Wait the work out, then
-                                // lock - the screen behind is already gone either way.
-                                while (settingsViewModel.isBusy()) delay(1_000L)
-                                lockNow()
-                            }
-                        }
-                    }
-                }
-                Lifecycle.Event.ON_START -> {
-                    lockJob?.cancel()
-                    // Idle windows (index >= 1): if the app was backgrounded long enough that the
-                    // inactivity window already elapsed, lock immediately on return - before the
-                    // resume touch can reset the timer. Covers Doze deferring the idle loop's
-                    // wake-ups while the process was in the background.
-                    if (autoLockEnabled && autoLockDelayIndex >= 1) {
-                        val current = navController.currentDestination?.route
-                        if (current != null && current !in lockedRoutes) {
-                            if (settingsViewModel.idleMillis() >= autoLockDelayMillis(autoLockDelayIndex)) lockNow()
-                        }
-                    }
-                }
-                else -> Unit
+    /*
+     * The one place the UI leaves the authenticated area.
+     *
+     * Deciding *when* to lock is no longer done here - LockController owns the idle clock,
+     * the "lock the moment you leave" grace and the unmount rules, because a composition
+     * cannot be trusted to outlive the process it locks (#102). What is left here is the
+     * part that genuinely belongs to the UI: when the session says it is locked, go to the
+     * lock screen.
+     *
+     * This also covers a restored back stack. A background kill takes the mount map, the JNI
+     * handles and the idle clock with it, but Android still restores the saved stack - so the
+     * app can come back sitting on an authenticated screen inside a process that never saw
+     * the PIN (#150). A fresh process starts locked, so that lands here like any other lock.
+     */
+    LaunchedEffect(locked, isUnlockedArea) {
+        if (locked && isUnlockedArea) {
+            navController.navigate(lockScreenRoute) {
+                popUpTo(0) { inclusive = true }
+                launchSingleTop = true
             }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            lockJob?.cancel()
-        }
-    }
-
-    // Idle auto-lock (index >= 1): lock once the app has had nothing to do for the configured
-    // window. "Nothing to do" means neither a user interaction nor work being done for them -
-    // see IdleMonitor. The clock is monotonic and untouched by backgrounding, so a vault left
-    // mounted ages out whether the app is in the foreground or the background, and it is never
-    // reset on ON_START, so a long background can't be "forgiven" by returning to the app.
-    LaunchedEffect(autoLockEnabled, autoLockDelayIndex, isUnlockedArea) {
-        if (!autoLockEnabled || autoLockDelayIndex == 0 || !isUnlockedArea) return@LaunchedEffect
-        // Fresh baseline for the unlock we just entered.
-        settingsViewModel.recordInteraction()
-        val windowMs = autoLockDelayMillis(autoLockDelayIndex)
-        while (isActive) {
-            // idleMillis() is zero while the app is working for the user, so a mount, a
-            // create, a header restore or a long import holds the window open instead of
-            // being mistaken for a phone on a table. The clock starts again when the work
-            // stops, not from the last touch before it.
-            val remaining = windowMs - settingsViewModel.idleMillis()
-            if (remaining <= 0L) {
-                lockNow()
-                break
-            }
-            // Re-check at least every 20s so a late interaction is picked up promptly.
-            delay(remaining.coerceIn(500L, 20_000L))
         }
     }
 
