@@ -925,6 +925,7 @@ fun FileManagerScreen(
             DestinationPickerSheetContent(
                 title              = stringResource(R.string.files_move_to_title),
                 currentContainerId = containerId,
+                selectedPaths      = state.selectedItems,
                 containers         = mountedContainers,
                 onListDirs         = viewModel::listDirectoriesAt,
                 onConfirm          = { destContainerId, path, name ->
@@ -944,6 +945,7 @@ fun FileManagerScreen(
             DestinationPickerSheetContent(
                 title              = stringResource(R.string.files_link_to_title),
                 currentContainerId = containerId,
+                selectedPaths      = linkTargets.map { it.path }.toSet(),
                 /* This vault and no other. A link names something in the same
                  * filesystem; offering another vault could only ever end in a
                  * refusal or, worse, a copy (#128). */
@@ -992,6 +994,7 @@ fun FileManagerScreen(
             DestinationPickerSheetContent(
                 title              = stringResource(R.string.files_copy_to_title),
                 currentContainerId = containerId,
+                selectedPaths      = state.selectedItems,
                 containers         = mountedContainers,
                 onListDirs         = viewModel::listDirectoriesAt,
                 onConfirm          = { destContainerId, path, name ->
@@ -1888,11 +1891,16 @@ private fun SortSheetContent(
     }
 }
 
+/** The same green the current vault is marked with in this sheet. */
+private val HERE_GREEN = Color(0xFF16A34A)
+
 @Composable
 private fun DestinationPickerSheetContent(
     title: String,
     confirmLabel: String,
     currentContainerId: String,
+    /** Full paths of what is being copied, moved or linked - marked where they appear. */
+    selectedPaths: Set<String>,
     containers: List<Container>,
     onListDirs: (containerId: String, path: String, onResult: (List<NativeFileInfo>) -> Unit) -> Unit,
     onConfirm: (destinationContainerId: String, destinationPath: String, destinationName: String) -> Unit
@@ -1966,7 +1974,7 @@ private fun DestinationPickerSheetContent(
                 items(sortedContainers, key = { it.id }) { c ->
                     val isCurrent   = c.id == currentContainerId
                     val displayName = if (isCurrent) stringResource(R.string.files_this_vault) else c.name
-                    val iconTint    = if (isCurrent) Color(0xFF16A34A) else Color(0xFFF59E0B)
+                    val iconTint    = if (isCurrent) HERE_GREEN else Color(0xFFF59E0B)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2134,24 +2142,30 @@ private fun DestinationPickerSheetContent(
                 }
 
                 items(shownDirs, key = { it.name }) { dir ->
+                    val dirPath = if (browsePath == "/") "/${dir.name}" else "$browsePath/${dir.name}"
+                    /* A folder that is itself being moved or copied, marked the way the
+                       vault the user came from already is: green for "this one is yours".
+                       Without it the sheet lists the folder being moved among the places to
+                       move it to, and nothing says which row is which. */
+                    val isHere  = container.id == currentContainerId && dirPath in selectedPaths
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                val newPath = if (browsePath == "/") "/${dir.name}" else "$browsePath/${dir.name}"
-                                browsePath = newPath
-                                loadDirs(container, newPath)
+                                browsePath = dirPath
+                                loadDirs(container, dirPath)
                             }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             Icons.Outlined.Folder, null,
-                            tint     = Color(0xFFF59E0B),
+                            tint     = if (isHere) HERE_GREEN else Color(0xFFF59E0B),
                             modifier = Modifier.size(22.dp)
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(dir.name, style = MaterialTheme.typography.bodyLarge,
+                             color = if (isHere) HERE_GREEN else Color.Unspecified,
                              modifier = Modifier.weight(1f))
                         Icon(Icons.Outlined.ChevronRight, null,
                              tint = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -856,7 +856,14 @@ class FileManagerViewModel @Inject constructor(
 
                     if (item.isDirectory) {
                         val ok = copyDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath, tally)
-                        if (ok) count++ else failed++
+                        if (ok) {
+                            count++
+                            // A copy is a new file wherever it lands, and the gallery knows
+                            // only what is indexed - the same gap a move had.
+                            indexAndThumbnail(
+                                destHandle, destinationContainerId, filesUnder(destHandle, destItemPath)
+                            )
+                        } else failed++
                     } else {
                         var offset = 0L
                         var writeOk = true
@@ -869,7 +876,12 @@ class FileManagerViewModel @Inject constructor(
                             if (chunk.size < chunkSize) break
                         }
                         if (!writeOk) runCatching { engine.deleteFile(destHandle, destItemPath) }
-                        if (writeOk) count++ else failed++
+                        if (writeOk) {
+                            count++
+                            indexAndThumbnail(
+                                destHandle, destinationContainerId, listOf(destItemPath to item.size)
+                            )
+                        } else failed++
                     }
                 } catch (_: Exception) { failed++ }
             }
@@ -964,7 +976,22 @@ class FileManagerViewModel @Inject constructor(
                     item.isDirectory -> moveDirectoryRecursive(sourceHandle, item.path, destHandle, destItemPath, tally)
                     else -> moveFile(sourceHandle, item.path, destHandle, destItemPath, item.size)
                 }
-                if (moved) count++ else failed++
+                if (moved) {
+                    count++
+                    /* The gallery's index is a table of paths, and a move changes them.
+                       Without this the row still points at where the file WAS: the grid
+                       shows it, opening it gives a broken image, and only a remount puts it
+                       right - which is what was reported. Delete and rename have followed
+                       the index for a long time; move never did. */
+                    moveMedia(
+                        item                   = item,
+                        sourceContainerId      = s.containerId,
+                        destinationContainerId = destinationContainerId,
+                        destHandle             = destHandle,
+                        destItemPath           = destItemPath,
+                        destName               = destName
+                    )
+                } else failed++
             }
 
             exitSelectionMode()
@@ -1101,6 +1128,59 @@ class FileManagerViewModel @Inject constructor(
                 mediaFileDao.updateMediaFile(entity.copy(relativePath = newPath))
                 thumbnailManager.renameFileCache(containerId, entity.relativePath, newPath, entity.id)
             }
+    }
+
+    /**
+     * Carries the gallery's index along with a moved file or folder.
+     *
+     * Inside one vault a move is a rename, so the rows are rewritten and keep their ids -
+     * which keeps the thumbnails, and keeps a photo open in the viewer from losing its place.
+     * Into another vault the file leaves one index and joins another: the old rows go, and
+     * what landed is indexed where it landed, the way an import is.
+     */
+    private suspend fun moveMedia(
+        item: NativeFileInfo,
+        sourceContainerId: String,
+        destinationContainerId: String,
+        destHandle: Long,
+        destItemPath: String,
+        destName: String
+    ) {
+        if (destinationContainerId == sourceContainerId) {
+            if (item.isDirectory) renameDirectoryMedia(sourceContainerId, item.path, destItemPath)
+            else                  renameFileMedia(sourceContainerId, item.path, destItemPath, destName)
+            return
+        }
+        if (item.isDirectory) {
+            cleanupDirectoryMedia(sourceContainerId, item.path)
+            indexAndThumbnail(destHandle, destinationContainerId, filesUnder(destHandle, destItemPath))
+        } else {
+            cleanupFileMedia(sourceContainerId, item.path)
+            indexAndThumbnail(destHandle, destinationContainerId, listOf(destItemPath to item.size))
+        }
+    }
+
+    /**
+     * Every ordinary file under [path], as the (path, size) pairs the indexer takes.
+     *
+     * Links are not followed: one that points at a folder above itself would walk forever,
+     * and a link is not media of its own in any case. Nothing here decides what is media -
+     * [MediaScanner.indexFile] does, and returns null for the rest.
+     */
+    private fun filesUnder(handle: Long, path: String): List<Pair<String, Long>> {
+        val out   = mutableListOf<Pair<String, Long>>()
+        val stack = ArrayDeque<String>().apply { add(path) }
+        while (stack.isNotEmpty()) {
+            val dir = stack.removeLast()
+            val entries = runCatching { engine.listFilesOrNull(handle, dir)?.toList() }
+                .getOrNull() ?: continue
+            for (entry in entries) {
+                if (entry.isSymlink || entry.isSpecial) continue
+                val child = if (dir == "/") "/${entry.name}" else "$dir/${entry.name}"
+                if (entry.isDirectory) stack.addLast(child) else out += child to entry.size
+            }
+        }
+        return out
     }
 
     /** Whether a document made here should open in the editor at once (#109). */
