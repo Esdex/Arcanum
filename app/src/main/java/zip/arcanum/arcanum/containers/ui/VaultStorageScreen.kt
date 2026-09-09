@@ -49,7 +49,7 @@ import kotlin.math.roundToInt
 /**
  * The container's Storage tab: a usage donut plus a checkable category legend.
  * The "boring" General/Encryption info now lives behind the Vault details sheet
- * in Vault Config (see [VaultDetailsSheet]).
+ * in Vault Info (see [VaultDetailsSheet]).
  */
 @Composable
 fun VaultStorageScreen(

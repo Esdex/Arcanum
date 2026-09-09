@@ -24,7 +24,7 @@ import zip.arcanum.core.components.AppSheet
 
 /**
  * Bottom sheet showing the "boring" technical vault info — General + Encryption —
- * that is not needed day-to-day. Opened from Vault Config (only while mounted).
+ * that is not needed day-to-day. Opened from Vault Info (only while mounted).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -1316,7 +1316,7 @@
     <string name="vault_info_op_restore_header">Restore Header</string>
     <string name="vault_card_restore_desc">Restore the header from a backup copy</string>
 
-    <!-- Vault Config Screen -->
+    <!-- Vault Info Screen -->
     <string name="vault_config_op_mount">Mount</string>
     <string name="vault_config_op_mount_desc">Unlock and access vault contents</string>
     <string name="vault_config_op_open">Open</string>
