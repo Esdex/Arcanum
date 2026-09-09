@@ -45,6 +45,7 @@ class SettingsViewModel @Inject constructor(
     private val sessionState: SessionState,
     private val lockController: LockController,
     private val shareIntake: ShareIntake,
+    private val traceCleaner: zip.arcanum.core.security.VaultTraceCleaner,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
@@ -238,8 +239,16 @@ class SettingsViewModel @Inject constructor(
         initialValue = false
     )
 
+    /**
+     * Turning this off takes the file with it. The log names the vault, its path and whether
+     * a hidden volume was protected, and it outlived the switch that wrote it: the only other
+     * way to remove it is the Debug screen, which is gone the moment debug mode goes off.
+     */
     fun setSaveMountLog(enabled: Boolean) {
-        viewModelScope.launch { prefs.setSaveMountLog(enabled) }
+        viewModelScope.launch {
+            prefs.setSaveMountLog(enabled)
+            if (!enabled) traceCleaner.clearMountLog()
+        }
     }
 
     val galleryResyncButton = prefs.galleryResyncButton.stateIn(
@@ -269,6 +278,8 @@ class SettingsViewModel @Inject constructor(
                 prefs.setShowMountLog(false)
                 prefs.setSaveMountLog(false)
                 prefs.setGalleryResyncButton(false)
+                // The switches go, so the log they wrote goes with them - see setSaveMountLog.
+                traceCleaner.clearMountLog()
             }
         }
     }

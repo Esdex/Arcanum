@@ -59,6 +59,7 @@ import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.LocalNotifications
 import zip.arcanum.R
 import androidx.compose.foundation.layout.navigationBarsPadding
+import zip.arcanum.core.components.WarningOverlay
 import zip.arcanum.core.components.SettingsRow
 import zip.arcanum.core.components.SettingsSwitch
 import androidx.compose.material3.Slider
@@ -258,12 +259,15 @@ internal fun SecuritySubScreen(
     }
 
     if (showKeepMountedWarning) {
-        KeepMountedWarningOverlay(
-            onDismiss = { showKeepMountedWarning = false },
-            onConfirm = {
+        WarningOverlay(
+            title        = stringResource(R.string.settings_security_keep_mounted_warn_title),
+            body         = stringResource(R.string.settings_security_keep_mounted_warn_body),
+            confirmLabel = stringResource(R.string.settings_security_keep_mounted_warn_confirm),
+            onConfirm    = {
                 viewModel.setKeepVaultsMounted(true)
                 showKeepMountedWarning = false
-            }
+            },
+            onDismiss    = { showKeepMountedWarning = false }
         )
     }
 
@@ -447,101 +451,6 @@ private fun ScreenshotWarningOverlay(
  * named the app to someone, it has named it. It is shown only when the disguise is applied;
  * with no disguise on there is nothing to give away.
  */
-@Composable
-private fun KeepMountedWarningOverlay(onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.warning))
-    val progress    by animateLottieCompositionAsState(composition = composition, iterations = 1)
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows  = false,
-            dismissOnBackPress      = true,
-            dismissOnClickOutside   = false
-        )
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color    = MaterialTheme.colorScheme.background
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .systemBarsPadding()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        // The buttons are pinned to the bottom of the same Box, so centring
-                        // this on the whole screen leaves the card resting on them. The
-                        // padding is what the buttons occupy: the content is centred in what
-                        // is left rather than in the screen.
-                        .padding(horizontal = 28.dp)
-                        .padding(bottom = 180.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    LottieAnimation(
-                        composition = composition,
-                        progress    = { progress },
-                        modifier    = Modifier.size(160.dp)
-                    )
-
-                    Spacer(Modifier.height(16.dp))
-
-                    Text(
-                        text      = stringResource(R.string.settings_security_keep_mounted_warn_title),
-                        style     = MaterialTheme.typography.headlineSmall,
-                        textAlign = TextAlign.Center,
-                        color     = MaterialTheme.colorScheme.onBackground
-                    )
-
-                    Spacer(Modifier.height(20.dp))
-
-                    Surface(
-                        shape    = RoundedCornerShape(16.dp),
-                        color    = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text     = stringResource(R.string.settings_security_keep_mounted_warn_body),
-                            style    = MaterialTheme.typography.bodyMedium,
-                            color    = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-                }
-
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 28.dp, vertical = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick  = onConfirm,
-                        colors   = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(stringResource(R.string.settings_security_keep_mounted_warn_confirm))
-                    }
-                    TextButton(onClick = onDismiss) {
-                        Text(
-                            text  = stringResource(R.string.common_cancel),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
 @Composable
 fun DisguiseOverlay(onApply: () -> Unit, onMaybeLater: () -> Unit) {
     BackHandler(enabled = true) { /* non-dismissable */ }

@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import zip.arcanum.R
 import zip.arcanum.core.backup.BackupCodec
+import zip.arcanum.core.components.WarningOverlay
 import zip.arcanum.core.components.OperationFailure
 import zip.arcanum.core.components.OperationScrim
 import zip.arcanum.core.components.OperationLoading
@@ -70,6 +71,7 @@ internal fun BackupSaveSubScreen(
     var usePassword   by remember { mutableStateOf(true) }
     var password      by remember { mutableStateOf("") }
     var passwordShown by remember { mutableStateOf(false) }
+    var showHiddenWarning by remember { mutableStateOf(false) }
 
     val preview by viewModel.preview.collectAsState()
     LaunchedEffect(includeVaults) { viewModel.refreshPreview(includeVaults) }
@@ -231,7 +233,16 @@ internal fun BackupSaveSubScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Button(
-                    onClick  = { saveLauncher.launch(suggestedName) },
+                    /*
+                     * A file with no password is plain text, and a vault set to protect a
+                     * hidden volume says so in it. That is worth stopping for once: the
+                     * warning is shown before the picker rather than after the file exists.
+                     */
+                    onClick  = {
+                        val unprotected = !usePassword || password.isBlank()
+                        if (unprotected && (preview?.hiddenProtected ?: 0) > 0) showHiddenWarning = true
+                        else saveLauncher.launch(suggestedName)
+                    },
                     enabled  = !usePassword || password.isNotBlank(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -239,5 +250,18 @@ internal fun BackupSaveSubScreen(
                 }
             }
         }
+    }
+
+    if (showHiddenWarning) {
+        WarningOverlay(
+            title        = stringResource(R.string.settings_backup_hidden_warn_title),
+            body         = stringResource(R.string.settings_backup_hidden_warn_body),
+            confirmLabel = stringResource(R.string.settings_backup_hidden_warn_confirm),
+            onConfirm    = {
+                showHiddenWarning = false
+                saveLauncher.launch(suggestedName)
+            },
+            onDismiss    = { showHiddenWarning = false }
+        )
     }
 }

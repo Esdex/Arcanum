@@ -713,6 +713,9 @@
     <string name="settings_backup_protect_desc">The file is encrypted with a password of its own, unrelated to your PIN or to any vault password. Without it the file cannot be read - there is no way to recover it, so keep it somewhere you will still have it when the new phone arrives.</string>
     <string name="settings_backup_password">Password</string>
     <string name="settings_backup_no_password_warning">Without a password this file names your vaults in plain text to anyone who opens it.</string>
+    <string name="settings_backup_hidden_warn_title">This file would name a hidden volume</string>
+    <string name="settings_backup_hidden_warn_body">One of the vaults on this list is set to protect a hidden volume, and a backup without a password is written in plain text. Anyone who reads the file learns that a hidden volume exists - which is the one thing a hidden volume is supposed to keep to itself. Put a password on the file, or leave the vault list out of it.</string>
+    <string name="settings_backup_hidden_warn_confirm">Save without a password</string>
     <string name="settings_backup_password_hint">Typed once, and there is no way to recover it. Keep it somewhere you will still have it when the new phone arrives.</string>
     <string name="settings_restore_running">Restoring…</string>
     <string name="settings_restore_done_title">Settings restored</string>

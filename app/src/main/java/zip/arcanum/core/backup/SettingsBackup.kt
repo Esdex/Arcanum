@@ -44,7 +44,12 @@ class SettingsBackup @Inject constructor(
 ) {
 
     /** What went in, so the screen can say it rather than claim success in the abstract. */
-    data class Summary(val settings: Int, val vaults: Int)
+    /**
+     * [hiddenProtected] is how many of those vaults are set to protect a hidden volume. It is
+     * not written anywhere; the screen needs it to warn before a file with no password is
+     * made, because such a file says in plain text that a hidden volume exists.
+     */
+    data class Summary(val settings: Int, val vaults: Int, val hiddenProtected: Int = 0)
 
     sealed interface Restored {
         data class Success(val settings: Int, val vaults: Int, val vaultsSkipped: Int) : Restored
@@ -110,10 +115,14 @@ class SettingsBackup @Inject constructor(
     // ── Writing ───────────────────────────────────────────────────────────────
 
     /** What a backup would contain right now - for the screen that offers to write one. */
-    suspend fun preview(includeVaults: Boolean): Summary = Summary(
-        settings = prefs.exportAll().count { it.key !in prefs.BACKUP_SKIP } + displayPrefs.exportAll().size,
-        vaults   = if (includeVaults) containerDao.getAllContainersOnce().size else 0
-    )
+    suspend fun preview(includeVaults: Boolean): Summary {
+        val rows = if (includeVaults) containerDao.getAllContainersOnce() else emptyList()
+        return Summary(
+            settings = prefs.exportAll().count { it.key !in prefs.BACKUP_SKIP } + displayPrefs.exportAll().size,
+            vaults   = rows.size,
+            hiddenProtected = rows.count { it.mountProtectHidden }
+        )
+    }
 
     suspend fun export(includeVaults: Boolean, password: CharArray?): Pair<ByteArray, Summary> {
         val settings = prefs.exportAll()
@@ -125,7 +134,7 @@ class SettingsBackup @Inject constructor(
 
         val payload = json.encodeToString(Payload(settings, display, vaults))
         val bytes   = BackupCodec.encode(payload, BuildConfig.VERSION_CODE, password)
-        return bytes to Summary(settings.size, vaults.size)
+        return bytes to Summary(settings.size, vaults.size, vaults.count { it.mountProtectHidden })
     }
 
     // ── Reading ───────────────────────────────────────────────────────────────
@@ -208,12 +217,14 @@ class SettingsBackup @Inject constructor(
         id = id, name = name, path = path, size = size, algorithm = algorithm, prf = prf,
         filesystem = filesystem, createdAt = createdAt, lastAccessedAt = 0L,
         isFavorite = isFavorite,
-        /* Two things a restored row must not claim: that the volume is open, and that a
-           finger opens it. The first is true only of a running app, the second of a keystore
-           that stayed on the other phone. */
-        isMounted = false, hasBiometric = false,
+        /* Three things a restored row must not claim: that the volume is open, that a
+           finger opens it, and that its files may be read by other apps. The first is true
+           only of a running app, the second of a keystore that stayed on the other phone,
+           and the third is a consent given on that phone, to the apps on it - it is asked
+           for again here rather than assumed. */
+        isMounted = false, hasBiometric = false, externalAccessEnabled = false,
         unmountOnLock = unmountOnLock, unmountOnBackground = unmountOnBackground,
-        externalAccessEnabled = externalAccessEnabled, mountHashId = mountHashId,
+        mountHashId = mountHashId,
         mountAlgorithmId = mountAlgorithmId, mountReadOnly = mountReadOnly,
         mountProtectHidden = mountProtectHidden, safUri = safUri, keySize = keySize,
         encryptionMode = encryptionMode, blockSize = blockSize, formatVersion = formatVersion,

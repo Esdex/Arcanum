@@ -61,6 +61,7 @@ class VaultViewModel @Inject constructor(
     private val closer: zip.arcanum.arcanum.containers.data.VaultCloser,
     private val fingerprint: zip.arcanum.core.security.VolumeFingerprint,
     private val displayPrefs: zip.arcanum.core.security.VaultDisplayPrefs,
+    private val traceCleaner: zip.arcanum.core.security.VaultTraceCleaner,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -354,7 +355,9 @@ class VaultViewModel @Inject constructor(
             var pfdConsumed = false
             try {
                 if (keyfileData.isNotEmpty()) mountLogger.log("Keyfiles: ${keyfileData.size} file(s)")
-                if (pim > 0) mountLogger.log("PIM: $pim")
+                /* That a PIM was used, never which one: this log is written to a file
+                   in plain text, and the PIM is half of the credentials. */
+                if (pim > 0) mountLogger.log("PIM: custom")
                 val algoLabel = if (algorithm  == VeraCryptEngine.ALGO_AUTO) "auto-detect (all ciphers)"
                                 else VeraCryptEngine.algorithmIdToString(algorithm)
                 val hashLabel = if (hashAlgorithm == VeraCryptEngine.HASH_AUTO) "auto-detect (all PRFs)"
@@ -823,8 +826,16 @@ class VaultViewModel @Inject constructor(
     ) {
         /* The row keeps its id, so its biometric credentials, its place in panic mode's plan
            and its media index all still belong to it. Only where it lives changes. */
+        val previousUri = repo.getContainerById(id)?.safUri.orEmpty()
         repo.updateSafUri(id, uri.toString())
         repo.updateContainerPath(id, "")
+        /* The grant on the file this vault used to live in. Nothing else reclaims it: the
+           cleaner releases a vault's CURRENT uri when the vault goes, and purgeOrphans does
+           not sweep grants on purpose - so without this the app keeps a persisted permission
+           on a file it no longer knows anything about (#134's mistake, made again). */
+        if (previousUri.isNotEmpty() && previousUri != uri.toString()) {
+            traceCleaner.releaseReplacedSafUri(previousUri)
+        }
         if (size != recordedSize) repo.updateSize(id, size)
         if (fingerprint != null) repo.updateVolumeSaltHash(id, fingerprint)
         _addVaultResult.value = AddVaultResult.Relocated(name, sizeChanged = size != recordedSize)

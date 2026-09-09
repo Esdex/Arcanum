@@ -167,6 +167,22 @@ class VaultTraceCleaner @Inject constructor(
         release(entity.safUri)
     }
 
+    /**
+     * Hands back the grant on a file a vault has been moved off, once the row already points
+     * at the new one. Called from the relocate path, which is the only place a live vault
+     * changes its uri: [releaseSafPermission] covers a vault being removed, and nothing
+     * sweeps grants afterwards.
+     */
+    suspend fun releaseReplacedSafUri(oldUri: String) {
+        if (oldUri.isEmpty()) return
+        // Another vault may be the same file, and a keyfile may live at that uri too.
+        val stillUsed = containerDao.getAllContainersOnce().any { it.safUri == oldUri } ||
+            containerDao.getAllContainersOnce()
+                .any { oldUri in biometricCryptoManager.loadKeyfileUris(it.id) }
+        if (stillUsed) return
+        release(oldUri)
+    }
+
     /** The same for keyfiles, which are shareable between vaults and so are checked first. */
     private suspend fun releaseKeyfilePermissions(id: String, uris: List<String>) {
         if (uris.isEmpty()) return
