@@ -913,7 +913,10 @@ fun VaultScreen(
                     )
                     ListItem(
                         colors          = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        leadingContent  = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
+                        /* The same icon internal storage has everywhere else: the create
+                           wizard's step 2, and every vault card through vaultStorageIcon.
+                           A folder here said "browse", which is not what it opens. */
+                        leadingContent  = { Icon(Icons.Outlined.Storage, contentDescription = null) },
                         headlineContent = { Text(stringResource(R.string.vault_storage_internal)) },
                         trailingContent = { Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                         modifier        = Modifier.clickable {
