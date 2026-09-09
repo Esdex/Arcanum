@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
@@ -72,6 +71,7 @@ import zip.arcanum.arcanum.containers.ui.VaultStorageScreen
 import zip.arcanum.arcanum.containers.ui.VaultStorageViewModel
 import zip.arcanum.arcanum.files.ui.FileManagerScreen
 import zip.arcanum.arcanum.files.ui.FileManagerViewModel
+import zip.arcanum.core.components.TopBarSearchField
 import zip.arcanum.arcanum.gallery.ui.GalleryScreen
 import zip.arcanum.arcanum.gallery.ui.GalleryViewModel
 import zip.arcanum.core.components.LocalHazeState
@@ -357,24 +357,11 @@ private fun GalleryTopBar(
                     )
                 } else {
                     if (isSearchActive) {
-                        BasicTextField(
-                            value         = searchQuery,
-                            onValueChange = onSearchChange,
-                            singleLine    = true,
-                            textStyle     = MaterialTheme.typography.bodyLarge.copy(
-                                color = MaterialTheme.colorScheme.onSurface
-                            ),
-                            modifier      = Modifier.fillMaxWidth(),
-                            decorationBox = { inner ->
-                                if (searchQuery.isEmpty()) {
-                                    Text(
-                                        stringResource(R.string.nav_gallery_search_placeholder),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                inner()
-                            }
+                        TopBarSearchField(
+                            query         = searchQuery,
+                            onQueryChange = onSearchChange,
+                            placeholder   = stringResource(R.string.nav_gallery_search_placeholder),
+                            modifier      = Modifier.fillMaxWidth()
                         )
                     } else {
                         Row(

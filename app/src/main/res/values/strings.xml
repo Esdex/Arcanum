@@ -286,6 +286,7 @@
     <string name="gallery_folders_title">Folders to show</string>
     <string name="gallery_folders_all">All folders</string>
     <string name="gallery_folders_cd">Choose folders</string>
+    <string name="gallery_search_folders">Folders</string>
     <string name="gallery_options">View options</string>
     <string name="gallery_filter_all">All</string>
     <string name="gallery_filter_photos">Photos</string>

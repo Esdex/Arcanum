@@ -66,7 +66,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import android.graphics.Bitmap
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -107,6 +106,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import zip.arcanum.R
 import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.EmptyStateView
+import zip.arcanum.core.components.TopBarSearchField
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
 import androidx.compose.foundation.Canvas
@@ -170,8 +170,14 @@ fun GalleryScreen(
 
     val selectionMode = selectedIds.isNotEmpty()
 
-    // Intercept back press in selection mode instead of navigating away
-    BackHandler(enabled = selectionMode) { viewModel.clearSelection() }
+    /*
+     * One handler for both, in the order the screen undoes things: a selection first, then
+     * the search box. Two BackHandlers would leave that order to the dispatcher's own
+     * bookkeeping, and back out of the vault entirely if either of them guessed wrong.
+     */
+    BackHandler(enabled = selectionMode || uiState.isSearchActive) {
+        if (selectionMode) viewModel.clearSelection() else viewModel.setSearchActive(false)
+    }
 
     val isPreloading = containerId != null
             && preloadState.isRunning
@@ -235,7 +241,8 @@ fun GalleryScreen(
                 onThumbnailRequest = { viewModel.requestThumbnail(it) },
                 onPhotoSelect      = { viewModel.togglePhotoSelection(it) },
                 onDaySelect        = { viewModel.toggleDaySelection(it) },
-                onMonthSelect      = { viewModel.toggleMonthSelection(it) }
+                onMonthSelect      = { viewModel.toggleMonthSelection(it) },
+                onOpenFolder       = { viewModel.showOnlyFolder(it) }
             )
         }
     } else {
@@ -253,7 +260,8 @@ fun GalleryScreen(
             onThumbnailRequest = { viewModel.requestThumbnail(it) },
             onPhotoSelect      = { viewModel.togglePhotoSelection(it) },
             onDaySelect        = { viewModel.toggleDaySelection(it) },
-            onMonthSelect      = { viewModel.toggleMonthSelection(it) }
+            onMonthSelect      = { viewModel.toggleMonthSelection(it) },
+            onOpenFolder       = { viewModel.showOnlyFolder(it) }
         )
     }
 }
@@ -311,25 +319,10 @@ private fun GalleryTopBar(
                     enter   = expandHorizontally() + fadeIn(),
                     exit    = shrinkHorizontally() + fadeOut()
                 ) {
-                    BasicTextField(
-                        value         = searchQuery,
-                        onValueChange = onSearchChange,
-                        singleLine    = true,
-                        textStyle     = MaterialTheme.typography.bodyLarge.copy(
-                            color = MaterialTheme.colorScheme.onSurface
-                        ),
-                        decorationBox = { inner ->
-                            Box {
-                                if (searchQuery.isEmpty()) {
-                                    Text(
-                                        stringResource(R.string.gallery_search_placeholder),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                inner()
-                            }
-                        }
+                    TopBarSearchField(
+                        query         = searchQuery,
+                        onQueryChange = onSearchChange,
+                        placeholder   = stringResource(R.string.gallery_search_placeholder)
                     )
                 }
                 AnimatedVisibility(visible = !isSearchActive, enter = fadeIn(), exit = fadeOut()) {
@@ -392,7 +385,8 @@ private fun GalleryContent(
     onThumbnailRequest: (MediaFileEntity) -> Unit,
     onPhotoSelect: (MediaFileEntity) -> Unit,
     onDaySelect: (GalleryViewModel.DayGroup) -> Unit,
-    onMonthSelect: (GalleryViewModel.MonthGroup) -> Unit
+    onMonthSelect: (GalleryViewModel.MonthGroup) -> Unit,
+    onOpenFolder: (String) -> Unit
 ) {
     val gridState = rememberLazyGridState()
 
@@ -441,6 +435,41 @@ private fun GalleryContent(
         if (isPreloading) {
             item(key = "preload_progress", span = { GridItemSpan(maxLineSpan) }) {
                 PreloadProgressBar(done = preloadDone, total = preloadTotal)
+            }
+        }
+
+        /*
+         * What a search found besides files: the folders whose name it matches, each one a
+         * row you can tap to see that folder on its own (#123). They sit at the top of the
+         * grid rather than in a band above it so they scroll away with the results instead
+         * of standing over an empty screen.
+         */
+        if (uiState.matchingFolders.isNotEmpty()) {
+            item(key = "folder_matches", span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text     = stringResource(R.string.gallery_search_folders),
+                    style    = MaterialTheme.typography.labelLarge,
+                    color    = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 4.dp)
+                )
+            }
+            items(
+                uiState.matchingFolders,
+                key  = { "folder_row_${it.path}" },
+                span = { GridItemSpan(maxLineSpan) }
+            ) { folder ->
+                FolderRow(
+                    name     = folder.name,
+                    count    = folder.count,
+                    selected = false,
+                    onClick  = { onOpenFolder(folder.path) }
+                ) {
+                    FolderMosaic(
+                        covers             = folder.covers,
+                        thumbnails         = thumbnails,
+                        onRequestThumbnail = onThumbnailRequest
+                    )
+                }
             }
         }
 
@@ -1023,7 +1052,7 @@ private fun GalleryFolderSheet(
 @Composable
 private fun FolderMosaic(
     covers: List<MediaFileEntity>,
-    thumbnails: Map<String, Bitmap>,
+    thumbnails: Map<String, Bitmap?>,
     onRequestThumbnail: (MediaFileEntity) -> Unit
 ) {
     LaunchedEffect(covers) { covers.forEach(onRequestThumbnail) }

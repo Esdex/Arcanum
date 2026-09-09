@@ -104,6 +104,8 @@ class GalleryViewModel @Inject constructor(
         val showDeleteConfirm: Boolean = false,
         val isReadOnly: Boolean = false,
         val folders: List<MediaFolder> = emptyList(),
+        /** Folders whose name matches the search box, shown above the results. */
+        val matchingFolders: List<MediaFolder> = emptyList(),
         /** Which folders the grid is limited to. Empty means all of them. */
         val folderFilter: Set<String> = emptySet(),
         val showFolderSheet: Boolean = false
@@ -219,12 +221,14 @@ class GalleryViewModel @Inject constructor(
                 .collect { (files, filter, folders) ->
                     _allFiles.value = files
                     val groups = visible(files, filter = filter, folders = folders)
+                    val allFolders = foldersOf(files)
                     _uiState.update {
                         it.copy(
                             allMedia     = files,
                             monthGroups  = groups,
                             isEmpty      = files.isEmpty() && !it.isScanning,
-                            folders      = foldersOf(files),
+                            folders      = allFolders,
+                            matchingFolders = foldersMatching(allFolders, it.searchQuery),
                             /* A folder that has lost its last file stops existing, and a
                                filter naming it would quietly show nothing. */
                             folderFilter = folders.intersect(files.map { f -> folderOf(f.relativePath) }.toSet())
@@ -315,7 +319,9 @@ class GalleryViewModel @Inject constructor(
     }
 
     fun setSearchQuery(query: String) {
-        _uiState.update { it.copy(searchQuery = query) }
+        _uiState.update {
+            it.copy(searchQuery = query, matchingFolders = foldersMatching(it.folders, query))
+        }
         viewModelScope.launch(Dispatchers.Default) {
             val groups = visible(_allFiles.value, query = query)
             _uiState.update { it.copy(monthGroups = groups) }
@@ -483,7 +489,14 @@ class GalleryViewModel @Inject constructor(
            own is a row of its own in the sheet, so following the tree would show one file
            under two different names. */
         if (folders.isNotEmpty()) result = result.filter { folderOf(it.relativePath) in folders }
-        if (query.isNotBlank()) result = result.filter { it.fileName.contains(query, ignoreCase = true) }
+        /* A folder's name answers the search box too (#123): a gallery that throws every
+           folder together is exactly where "Camera" is the thing you know and the file
+           names are the thing you do not. The rows above the grid name the folders that
+           matched; this is what puts their contents in it. */
+        if (query.isNotBlank()) result = result.filter {
+            it.fileName.contains(query, ignoreCase = true) ||
+                folderNameOf(it.relativePath).contains(query, ignoreCase = true)
+        }
 
         if (sortBy == SortBy.RANDOM) {
             // Seeded, so the same seed always gives the same arrangement - which is what lets
@@ -522,6 +535,15 @@ class GalleryViewModel @Inject constructor(
         relativePath.substringBeforeLast('/', "").ifEmpty { "/" }
 
     /**
+     * What that folder is called on screen - the last segment, or the vault's own name at
+     * the root. Searching matches this and not the whole path, so a query does not sweep in
+     * every folder that happens to sit under a matching parent: a folder here means that
+     * folder, the same rule the filter itself follows.
+     */
+    private fun folderNameOf(relativePath: String): String =
+        folderOf(relativePath).let { if (it == "/") vaultName else it.substringAfterLast('/') }
+
+    /**
      * Every folder holding media, newest first inside each one so the tile shows what was
      * added last. The root of the vault is a folder like any other and takes the vault's own
      * name, because "/" means nothing to anybody.
@@ -547,6 +569,31 @@ class GalleryViewModel @Inject constructor(
 
     fun showAllFolders() {
         _folderFilter.value = emptySet()
+    }
+
+    /** Folders a search query names. Empty while the box is empty, so the rows only appear
+     *  once something has been typed. */
+    private fun foldersMatching(folders: List<MediaFolder>, query: String): List<MediaFolder> =
+        if (query.isBlank()) emptyList()
+        else folders.filter { it.name.contains(query, ignoreCase = true) }
+
+    /**
+     * Tapping a folder in the search results: show that folder and nothing else, and leave
+     * the search behind rather than layering one narrowing on top of another.
+     *
+     * The grid is rebuilt here rather than left to the [_folderFilter] collector, because
+     * asking for the folder already filtered on does not change that flow's value and would
+     * emit nothing - the query would go from the box while the grid still hid what it named.
+     */
+    fun showOnlyFolder(path: String) {
+        _uiState.update {
+            it.copy(searchQuery = "", isSearchActive = false, matchingFolders = emptyList())
+        }
+        _folderFilter.value = setOf(path)
+        viewModelScope.launch(Dispatchers.Default) {
+            val groups = visible(_allFiles.value, query = "", folders = setOf(path))
+            _uiState.update { it.copy(monthGroups = groups) }
+        }
     }
 
     private fun groupByMonthAndDay(files: List<MediaFileEntity>, alreadyOrdered: Boolean = false): List<MonthGroup> {

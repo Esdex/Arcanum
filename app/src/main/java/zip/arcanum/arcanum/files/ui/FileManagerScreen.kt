@@ -51,8 +51,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.draw.paint
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
@@ -164,6 +162,7 @@ import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.rememberMediaLocationGate
 import zip.arcanum.arcanum.files.text.TextExtensions
 import zip.arcanum.core.components.AppSheet
+import zip.arcanum.core.components.TopBarSearchField
 import zip.arcanum.core.components.EmptyStateView
 import zip.arcanum.core.components.LocalHazeState
 import zip.arcanum.core.notifications.InAppNotification
@@ -231,7 +230,11 @@ fun FileManagerScreen(
     // BackHandler: close FAB menu → exit selection → navigate up → onBack
     BackHandler(enabled = showFabMenu) { showFabMenu = false }
     BackHandler(enabled = state.isSelectionMode) { viewModel.exitSelectionMode() }
-    BackHandler(enabled = !state.isSelectionMode && state.currentPath != "/") { viewModel.navigateUp() }
+    /* Before navigating up, and before leaving: the search box is the most recent thing
+       opened, so it is the first thing back should take away. The conditions keep these
+       two mutually exclusive rather than leaving the order to the dispatcher. */
+    BackHandler(enabled = !state.isSelectionMode && state.isSearchActive) { viewModel.setSearchActive(false) }
+    BackHandler(enabled = !state.isSelectionMode && !state.isSearchActive && state.currentPath != "/") { viewModel.navigateUp() }
 
     // Activity result launchers
     var showImportSheet       by remember { mutableStateOf(false) }
@@ -1029,10 +1032,6 @@ private fun FileManagerTopBar(
     onToggleHidden: () -> Unit,
     showHidden: Boolean,
 ) {
-    val searchFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(isSearchActive) {
-        if (isSearchActive) runCatching { searchFocusRequester.requestFocus() }
-    }
     val isAmoled  = LocalAmoledMode.current
     val hazeState = LocalHazeState.current
 
@@ -1045,22 +1044,12 @@ private fun FileManagerTopBar(
         },
         title = {
             if (isSearchActive) {
-                BasicTextField(
-                    value         = searchQuery,
-                    onValueChange = onSearchChange,
-                    singleLine    = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    textStyle     = MaterialTheme.typography.bodyLarge.copy(
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    modifier      = Modifier.fillMaxWidth().focusRequester(searchFocusRequester),
-                    decorationBox = { inner ->
-                        if (searchQuery.isEmpty()) {
-                            Text(stringResource(R.string.files_search_placeholder), style = MaterialTheme.typography.bodyLarge,
-                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        inner()
-                    }
+                TopBarSearchField(
+                    query         = searchQuery,
+                    onQueryChange = onSearchChange,
+                    placeholder   = stringResource(R.string.files_search_placeholder),
+                    modifier      = Modifier.fillMaxWidth(),
+                    imeAction     = ImeAction.Search
                 )
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
