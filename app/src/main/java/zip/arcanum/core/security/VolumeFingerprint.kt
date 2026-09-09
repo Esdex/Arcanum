@@ -43,8 +43,18 @@ class VolumeFingerprint @Inject constructor(
         val salt = runCatching {
             when {
                 safUri.isNotEmpty() -> context.contentResolver.openInputStream(Uri.parse(safUri))?.use {
+                    /* Read in a loop rather than with readNBytes: that arrived in API 33 and
+                       this app runs from 29, where the call is a NoSuchMethodError rather
+                       than a compile error. A stream may also hand back less than asked for
+                       without being at its end, which is the same loop either way. */
                     val buffer = ByteArray(SALT_BYTES)
-                    if (it.readNBytes(buffer, 0, SALT_BYTES) == SALT_BYTES) buffer else null
+                    var got = 0
+                    while (got < SALT_BYTES) {
+                        val n = it.read(buffer, got, SALT_BYTES - got)
+                        if (n <= 0) break
+                        got += n
+                    }
+                    if (got == SALT_BYTES) buffer else null
                 }
                 path.isNotEmpty() -> RandomAccessFile(path, "r").use {
                     val buffer = ByteArray(SALT_BYTES)
