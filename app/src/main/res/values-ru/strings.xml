@@ -1243,6 +1243,15 @@
     <string name="restore_header_success_body">Основной заголовок тома восстановлен. Теперь том открывается прежними учётными данными.</string>
     <string name="restore_header_error_wrong_password">Неверный пароль или ключевой файл.</string>
     <string name="restore_header_error_generic">Не удалось восстановить: %s</string>
+    <string name="header_err_busy_restore">Отключите хранилище, прежде чем восстанавливать его заголовок.</string>
+    <string name="header_err_busy_backup">Отключите хранилище, прежде чем сохранять копию его заголовка.</string>
+    <string name="header_err_open_volume">Не удалось открыть файл хранилища.</string>
+    <string name="header_err_open_backup">Не удалось открыть файл резервной копии.</string>
+    <string name="header_err_open_output">Не удалось открыть файл назначения.</string>
+    <string name="header_err_corrupted">Заголовок не читается — файл повреждён или это не хранилище.</string>
+    <string name="header_err_io">Накопитель отказал в чтении или записи.</string>
+    <string name="header_err_no_space">Не хватает места, чтобы записать файл.</string>
+    <string name="header_err_read_only">Хранилище открыто только для чтения.</string>
     <string name="restore_header_op_desc">Восстановить из встроенной или внешней копии</string>
     <string name="vault_info_op_restore_header">Восстановить заголовок</string>
     <string name="vault_card_restore_desc">Восстановить заголовок из резервной копии</string>

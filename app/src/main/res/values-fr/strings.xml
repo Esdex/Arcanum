@@ -1235,6 +1235,15 @@
     <string name="restore_header_success_body">L\'en-tête principal du volume a été restauré. Vous pouvez maintenant accéder au volume avec les identifiants d\'origine.</string>
     <string name="restore_header_error_wrong_password">Mot de passe ou fichier clé incorrect.</string>
     <string name="restore_header_error_generic">Échec de la restauration : %s</string>
+    <string name="header_err_busy_restore">Démontez le coffre avant de restaurer son en-tête.</string>
+    <string name="header_err_busy_backup">Démontez le coffre avant de sauvegarder son en-tête.</string>
+    <string name="header_err_open_volume">Le fichier du coffre n\'a pas pu être ouvert.</string>
+    <string name="header_err_open_backup">Le fichier de sauvegarde n\'a pas pu être ouvert.</string>
+    <string name="header_err_open_output">Le fichier de destination n\'a pas pu être ouvert.</string>
+    <string name="header_err_corrupted">L\'en-tête est illisible : le fichier est endommagé, ou ce n\'est pas un coffre.</string>
+    <string name="header_err_io">Le stockage a refusé la lecture ou l\'écriture.</string>
+    <string name="header_err_no_space">Il n\'y a pas assez de place pour écrire le fichier.</string>
+    <string name="header_err_read_only">Le coffre est ouvert en lecture seule.</string>
     <string name="restore_header_op_desc">Restaurer depuis une sauvegarde intégrée ou externe</string>
     <string name="vault_info_op_restore_header">Restaurer l\'en-tête</string>
     <string name="vault_card_restore_desc">Restaurer l\'en-tête depuis une copie de sauvegarde</string>

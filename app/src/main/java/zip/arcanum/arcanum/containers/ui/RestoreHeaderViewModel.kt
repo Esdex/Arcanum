@@ -86,7 +86,7 @@ class RestoreHeaderViewModel @Inject constructor(
     fun startRestore() {
         if (_state.value.isRunning) return
         if (repo.getContainerHandle(containerId) != null) {
-            _state.update { it.copy(error = "Unmount the vault before restoring its header.") }
+            _state.update { it.copy(error = "BUSY") }
             return
         }
         val s = _state.value
@@ -103,7 +103,7 @@ class RestoreHeaderViewModel @Inject constructor(
                 else
                     ParcelFileDescriptor.open(File(containerPath), ParcelFileDescriptor.MODE_READ_WRITE)
             } catch (e: Exception) {
-                _state.update { it.copy(isRunning = false, error = "Failed to open volume: ${e.message}") }
+                _state.update { it.copy(isRunning = false, error = "OPEN_VOLUME") }
                 return@launch
             }
 
@@ -112,14 +112,14 @@ class RestoreHeaderViewModel @Inject constructor(
                     context.contentResolver.openFileDescriptor(Uri.parse(s.backupUri), "r")
                 } catch (e: Exception) {
                     volumePfd?.close()
-                    _state.update { it.copy(isRunning = false, error = "Failed to open backup file: ${e.message}") }
+                    _state.update { it.copy(isRunning = false, error = "OPEN_BACKUP") }
                     return@launch
                 }
             } else null
 
             if (volumePfd == null) {
                 backupPfd?.close()
-                _state.update { it.copy(isRunning = false, error = "Failed to open volume.") }
+                _state.update { it.copy(isRunning = false, error = "OPEN_VOLUME") }
                 return@launch
             }
 
@@ -156,7 +156,7 @@ class RestoreHeaderViewModel @Inject constructor(
             try {
                 context.contentResolver.openFileDescriptor(Uri.parse(s.backupUri), "r")
             } catch (e: Exception) {
-                _state.update { it.copy(isRunning = false, error = "Failed to open backup: ${e.message}") }
+                _state.update { it.copy(isRunning = false, error = "OPEN_BACKUP") }
                 return
             }
         } else null
@@ -200,8 +200,8 @@ class RestoreHeaderViewModel @Inject constructor(
     }
 
     private companion object {
-        const val USB_NOT_CONNECTED = "Connect the USB drive holding this vault and try again."
-        const val USB_WRONG_DEVICE  = "Wrong USB device: the connected drive does not hold this vault."
+        const val USB_NOT_CONNECTED = "USB_NOT_CONNECTED"
+        const val USB_WRONG_DEVICE  = "USB_WRONG_DEVICE"
     }
 
     override fun onCleared() {

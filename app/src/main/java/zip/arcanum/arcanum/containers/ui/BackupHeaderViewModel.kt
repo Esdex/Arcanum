@@ -84,7 +84,7 @@ class BackupHeaderViewModel @Inject constructor(
     fun startBackup() {
         if (_state.value.isRunning) return
         if (repo.getContainerHandle(containerId) != null) {
-            _state.update { it.copy(error = "Unmount the vault before backing up its header.") }
+            _state.update { it.copy(error = "BUSY") }
             return
         }
         val s = _state.value
@@ -101,7 +101,7 @@ class BackupHeaderViewModel @Inject constructor(
                 else
                     ParcelFileDescriptor.open(File(containerPath), ParcelFileDescriptor.MODE_READ_ONLY)
             } catch (e: Exception) {
-                _state.update { it.copy(isRunning = false, error = "Failed to open volume: ${e.message}") }
+                _state.update { it.copy(isRunning = false, error = "OPEN_VOLUME") }
                 return@launch
             }
 
@@ -109,13 +109,13 @@ class BackupHeaderViewModel @Inject constructor(
                 context.contentResolver.openFileDescriptor(Uri.parse(s.outputUri), "rw")
             } catch (e: Exception) {
                 volumePfd?.close()
-                _state.update { it.copy(isRunning = false, error = "Failed to open output file: ${e.message}") }
+                _state.update { it.copy(isRunning = false, error = "OPEN_OUTPUT") }
                 return@launch
             }
 
             if (volumePfd == null || outputPfd == null) {
                 volumePfd?.close(); outputPfd?.close()
-                _state.update { it.copy(isRunning = false, error = "Failed to open files.") }
+                _state.update { it.copy(isRunning = false, error = "OPEN_VOLUME") }
                 return@launch
             }
 
@@ -147,11 +147,11 @@ class BackupHeaderViewModel @Inject constructor(
         val outputPfd = try {
             context.contentResolver.openFileDescriptor(Uri.parse(s.outputUri), "rw")
         } catch (e: Exception) {
-            _state.update { it.copy(isRunning = false, error = "Failed to open output file: ${e.message}") }
+            _state.update { it.copy(isRunning = false, error = "OPEN_OUTPUT") }
             return
         }
         if (outputPfd == null) {
-            _state.update { it.copy(isRunning = false, error = "Failed to open output file.") }
+            _state.update { it.copy(isRunning = false, error = "OPEN_OUTPUT") }
             return
         }
 
@@ -184,8 +184,8 @@ class BackupHeaderViewModel @Inject constructor(
     }
 
     private companion object {
-        const val USB_NOT_CONNECTED = "Connect the USB drive holding this vault and try again."
-        const val USB_WRONG_DEVICE  = "Wrong USB device: the connected drive does not hold this vault."
+        const val USB_NOT_CONNECTED = "USB_NOT_CONNECTED"
+        const val USB_WRONG_DEVICE  = "USB_WRONG_DEVICE"
     }
 
     override fun onCleared() {

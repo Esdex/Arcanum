@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -153,10 +154,7 @@ fun RestoreHeaderScreen(
 
             // ── Error message ─────────────────────────────────────────────────
             if (state.error != null && !state.isRunning) {
-                val errorMsg = when (state.error) {
-                    "WRONG_PASSWORD" -> stringResource(R.string.restore_header_error_wrong_password)
-                    else             -> stringResource(R.string.restore_header_error_generic, state.error ?: "")
-                }
+                val errorMsg = headerOpErrorText(state.error ?: "", restore = true)
                 Text(
                     text     = errorMsg,
                     color    = MaterialTheme.colorScheme.error,
@@ -199,6 +197,10 @@ private fun RestoreFormContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            /* Before the scroll, so the keyboard shrinks the viewport rather than sitting on
+               top of it: with the external-backup source picked, the password field is far
+               enough down that the keyboard covered the very field being typed into. */
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
     ) {

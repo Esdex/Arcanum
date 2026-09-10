@@ -1235,6 +1235,15 @@
     <string name="restore_header_success_body">Se ha restaurado el encabezado principal del volumen. Ya puedes acceder a él con las credenciales originales.</string>
     <string name="restore_header_error_wrong_password">Contraseña o archivo clave incorrectos.</string>
     <string name="restore_header_error_generic">La restauración falló: %s</string>
+    <string name="header_err_busy_restore">Desmonta la bóveda antes de restaurar su encabezado.</string>
+    <string name="header_err_busy_backup">Desmonta la bóveda antes de copiar su encabezado.</string>
+    <string name="header_err_open_volume">No se pudo abrir el archivo de la bóveda.</string>
+    <string name="header_err_open_backup">No se pudo abrir el archivo de copia.</string>
+    <string name="header_err_open_output">No se pudo abrir el archivo de destino.</string>
+    <string name="header_err_corrupted">No se pudo leer el encabezado: el archivo está dañado, o no es una bóveda.</string>
+    <string name="header_err_io">El almacenamiento rechazó la lectura o la escritura.</string>
+    <string name="header_err_no_space">No hay espacio suficiente para escribir el archivo.</string>
+    <string name="header_err_read_only">La bóveda está abierta solo para lectura.</string>
     <string name="restore_header_op_desc">Restaurar desde una copia incrustada o externa</string>
     <string name="vault_info_op_restore_header">Restaurar el encabezado</string>
     <string name="vault_card_restore_desc">Restaurar el encabezado desde una copia</string>

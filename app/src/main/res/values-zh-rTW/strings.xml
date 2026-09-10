@@ -1219,6 +1219,15 @@
     <string name="restore_header_success_body">主要磁碟區標頭已還原。現在可以用原本的憑證存取這個磁碟區。</string>
     <string name="restore_header_error_wrong_password">密碼或金鑰檔案不正確。</string>
     <string name="restore_header_error_generic">還原失敗：%s</string>
+    <string name="header_err_busy_restore">還原標頭前請先卸載保險庫。</string>
+    <string name="header_err_busy_backup">備份標頭前請先卸載保險庫。</string>
+    <string name="header_err_open_volume">無法開啟保險庫檔案。</string>
+    <string name="header_err_open_backup">無法開啟備份檔案。</string>
+    <string name="header_err_open_output">無法開啟目標檔案。</string>
+    <string name="header_err_corrupted">標頭無法讀取 —— 檔案已損壞，或者它不是保險庫。</string>
+    <string name="header_err_io">儲存裝置拒絕了讀取或寫入。</string>
+    <string name="header_err_no_space">空間不足，無法寫入檔案。</string>
+    <string name="header_err_read_only">保險庫以唯讀方式開啟。</string>
     <string name="restore_header_op_desc">從內嵌備份或外部備份還原</string>
     <string name="vault_info_op_restore_header">還原標頭</string>
     <string name="vault_card_restore_desc">從備份副本還原標頭</string>

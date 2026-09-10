@@ -1243,6 +1243,15 @@
     <string name="restore_header_success_body">Основний заголовок тому відновлено. Тепер том відкривається попередніми обліковими даними.</string>
     <string name="restore_header_error_wrong_password">Невірний пароль або ключовий файл.</string>
     <string name="restore_header_error_generic">Не вдалося відновити: %s</string>
+    <string name="header_err_busy_restore">Відключіть сховище, перш ніж відновлювати його заголовок.</string>
+    <string name="header_err_busy_backup">Відключіть сховище, перш ніж зберігати копію його заголовка.</string>
+    <string name="header_err_open_volume">Не вдалося відкрити файл сховища.</string>
+    <string name="header_err_open_backup">Не вдалося відкрити файл резервної копії.</string>
+    <string name="header_err_open_output">Не вдалося відкрити файл призначення.</string>
+    <string name="header_err_corrupted">Заголовок не читається — файл пошкоджено або це не сховище.</string>
+    <string name="header_err_io">Носій відмовив у читанні або записі.</string>
+    <string name="header_err_no_space">Не вистачає місця, щоб записати файл.</string>
+    <string name="header_err_read_only">Сховище відкрите лише для читання.</string>
     <string name="restore_header_op_desc">Відновити з вбудованої або зовнішньої копії</string>
     <string name="vault_info_op_restore_header">Відновити заголовок</string>
     <string name="vault_card_restore_desc">Відновити заголовок із резервної копії</string>

@@ -1219,6 +1219,15 @@
     <string name="restore_header_success_body">主ボリュームヘッダを復元しました。元の資格情報でボリュームを開けます。</string>
     <string name="restore_header_error_wrong_password">パスワードまたはキーファイルが違います。</string>
     <string name="restore_header_error_generic">復元に失敗しました: %s</string>
+    <string name="header_err_busy_restore">ヘッダを復元する前にボールトをアンマウントしてください。</string>
+    <string name="header_err_busy_backup">ヘッダをバックアップする前にボールトをアンマウントしてください。</string>
+    <string name="header_err_open_volume">ボールトのファイルを開けませんでした。</string>
+    <string name="header_err_open_backup">バックアップファイルを開けませんでした。</string>
+    <string name="header_err_open_output">書き込み先のファイルを開けませんでした。</string>
+    <string name="header_err_corrupted">ヘッダを読み取れません。ファイルが壊れているか、ボールトではありません。</string>
+    <string name="header_err_io">ストレージが読み書きを拒否しました。</string>
+    <string name="header_err_no_space">ファイルを書き込む空き容量が足りません。</string>
+    <string name="header_err_read_only">このボールトは読み取り専用で開いています。</string>
     <string name="restore_header_op_desc">埋め込みまたは外部のバックアップから復元します</string>
     <string name="vault_info_op_restore_header">ヘッダを復元</string>
     <string name="vault_card_restore_desc">バックアップからヘッダを復元します</string>

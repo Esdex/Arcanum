@@ -1316,6 +1316,15 @@
     <string name="restore_header_success_body">The primary volume header has been restored. You can now access the volume with the original credentials.</string>
     <string name="restore_header_error_wrong_password">Wrong password or incorrect keyfile.</string>
     <string name="restore_header_error_generic">Restore failed: %s</string>
+    <string name="header_err_busy_restore">Unmount the vault before restoring its header.</string>
+    <string name="header_err_busy_backup">Unmount the vault before backing up its header.</string>
+    <string name="header_err_open_volume">The vault file could not be opened.</string>
+    <string name="header_err_open_backup">The backup file could not be opened.</string>
+    <string name="header_err_open_output">The file to write to could not be opened.</string>
+    <string name="header_err_corrupted">The header could not be read - the file is damaged, or it is not a vault.</string>
+    <string name="header_err_io">The storage refused to read or write.</string>
+    <string name="header_err_no_space">There is not enough space to write the file.</string>
+    <string name="header_err_read_only">The vault is open for reading only.</string>
     <string name="restore_header_op_desc">Restore from an embedded or external backup</string>
     <string name="vault_info_op_restore_header">Restore Header</string>
     <string name="vault_card_restore_desc">Restore the header from a backup copy</string>

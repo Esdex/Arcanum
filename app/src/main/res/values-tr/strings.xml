@@ -1227,6 +1227,15 @@
     <string name="restore_header_success_body">Birincil birim başlığı geri yüklendi. Artık birime özgün kimlik bilgileriyle erişebilirsiniz.</string>
     <string name="restore_header_error_wrong_password">Yanlış parola ya da hatalı anahtar dosyası.</string>
     <string name="restore_header_error_generic">Geri yükleme başarısız: %s</string>
+    <string name="header_err_busy_restore">Başlığı geri yüklemeden önce kasanın bağlantısını kesin.</string>
+    <string name="header_err_busy_backup">Başlığı yedeklemeden önce kasanın bağlantısını kesin.</string>
+    <string name="header_err_open_volume">Kasa dosyası açılamadı.</string>
+    <string name="header_err_open_backup">Yedek dosyası açılamadı.</string>
+    <string name="header_err_open_output">Hedef dosya açılamadı.</string>
+    <string name="header_err_corrupted">Başlık okunamıyor - dosya bozuk ya da bir kasa değil.</string>
+    <string name="header_err_io">Depolama okuma ya da yazmayı reddetti.</string>
+    <string name="header_err_no_space">Dosyayı yazmak için yeterli yer yok.</string>
+    <string name="header_err_read_only">Kasa yalnızca okuma için açık.</string>
     <string name="restore_header_op_desc">Gömülü ya da dış bir yedekten geri yükle</string>
     <string name="vault_info_op_restore_header">Başlığı geri yükle</string>
     <string name="vault_card_restore_desc">Başlığı bir yedek kopyadan geri yükle</string>

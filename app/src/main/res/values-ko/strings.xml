@@ -1219,6 +1219,15 @@
     <string name="restore_header_success_body">기본 볼륨 헤더를 복원했습니다. 이제 원래 자격 증명으로 볼륨에 접근할 수 있습니다.</string>
     <string name="restore_header_error_wrong_password">비밀번호 또는 키 파일이 올바르지 않습니다.</string>
     <string name="restore_header_error_generic">복원에 실패했습니다: %s</string>
+    <string name="header_err_busy_restore">헤더를 복원하기 전에 보관함을 마운트 해제하세요.</string>
+    <string name="header_err_busy_backup">헤더를 백업하기 전에 보관함을 마운트 해제하세요.</string>
+    <string name="header_err_open_volume">보관함 파일을 열지 못했습니다.</string>
+    <string name="header_err_open_backup">백업 파일을 열지 못했습니다.</string>
+    <string name="header_err_open_output">저장할 파일을 열지 못했습니다.</string>
+    <string name="header_err_corrupted">헤더를 읽을 수 없습니다. 파일이 손상되었거나 보관함이 아닙니다.</string>
+    <string name="header_err_io">저장소가 읽기 또는 쓰기를 거부했습니다.</string>
+    <string name="header_err_no_space">파일을 쓸 공간이 부족합니다.</string>
+    <string name="header_err_read_only">보관함이 읽기 전용으로 열려 있습니다.</string>
     <string name="restore_header_op_desc">내장 백업 또는 외부 백업에서 복원합니다</string>
     <string name="vault_info_op_restore_header">헤더 복원</string>
     <string name="vault_card_restore_desc">백업본에서 헤더를 복원합니다</string>

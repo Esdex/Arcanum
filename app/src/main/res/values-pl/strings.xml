@@ -1243,6 +1243,15 @@
     <string name="restore_header_success_body">Główny nagłówek woluminu został przywrócony. Możesz teraz otworzyć wolumin pierwotnymi poświadczeniami.</string>
     <string name="restore_header_error_wrong_password">Złe hasło lub nieprawidłowy plik klucza.</string>
     <string name="restore_header_error_generic">Przywracanie nieudane: %s</string>
+    <string name="header_err_busy_restore">Odmontuj skarbiec przed przywróceniem jego nagłówka.</string>
+    <string name="header_err_busy_backup">Odmontuj skarbiec przed wykonaniem kopii jego nagłówka.</string>
+    <string name="header_err_open_volume">Nie udało się otworzyć pliku skarbca.</string>
+    <string name="header_err_open_backup">Nie udało się otworzyć pliku kopii.</string>
+    <string name="header_err_open_output">Nie udało się otworzyć pliku docelowego.</string>
+    <string name="header_err_corrupted">Nagłówka nie da się odczytać - plik jest uszkodzony albo to nie skarbiec.</string>
+    <string name="header_err_io">Nośnik odmówił odczytu lub zapisu.</string>
+    <string name="header_err_no_space">Za mało miejsca, aby zapisać plik.</string>
+    <string name="header_err_read_only">Skarbiec jest otwarty tylko do odczytu.</string>
     <string name="restore_header_op_desc">Przywróć z kopii wbudowanej lub zewnętrznej</string>
     <string name="vault_info_op_restore_header">Przywróć nagłówek</string>
     <string name="vault_card_restore_desc">Przywróć nagłówek z kopii zapasowej</string>

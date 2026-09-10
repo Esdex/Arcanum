@@ -1235,6 +1235,15 @@
     <string name="restore_header_success_body">L\'intestazione principale del volume è stata ripristinata. Ora puoi accedere al volume con le credenziali originali.</string>
     <string name="restore_header_error_wrong_password">Password o file chiave errati.</string>
     <string name="restore_header_error_generic">Ripristino non riuscito: %s</string>
+    <string name="header_err_busy_restore">Smonta la cassaforte prima di ripristinarne l\'intestazione.</string>
+    <string name="header_err_busy_backup">Smonta la cassaforte prima di farne il backup dell\'intestazione.</string>
+    <string name="header_err_open_volume">Non è stato possibile aprire il file della cassaforte.</string>
+    <string name="header_err_open_backup">Non è stato possibile aprire il file di backup.</string>
+    <string name="header_err_open_output">Non è stato possibile aprire il file di destinazione.</string>
+    <string name="header_err_corrupted">L\'intestazione non è leggibile: il file è danneggiato, o non è una cassaforte.</string>
+    <string name="header_err_io">L\'archiviazione ha rifiutato la lettura o la scrittura.</string>
+    <string name="header_err_no_space">Non c\'è spazio sufficiente per scrivere il file.</string>
+    <string name="header_err_read_only">La cassaforte è aperta in sola lettura.</string>
     <string name="restore_header_op_desc">Ripristina da un backup incorporato o esterno</string>
     <string name="vault_info_op_restore_header">Ripristina l\'intestazione</string>
     <string name="vault_card_restore_desc">Ripristina l\'intestazione da una copia di backup</string>

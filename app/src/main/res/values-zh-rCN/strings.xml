@@ -1219,6 +1219,15 @@
     <string name="restore_header_success_body">主卷标头已恢复。现在可以用原来的凭据访问该卷。</string>
     <string name="restore_header_error_wrong_password">密码或密钥文件不正确。</string>
     <string name="restore_header_error_generic">恢复失败：%s</string>
+    <string name="header_err_busy_restore">恢复标头前请先卸载保险库。</string>
+    <string name="header_err_busy_backup">备份标头前请先卸载保险库。</string>
+    <string name="header_err_open_volume">无法打开保险库文件。</string>
+    <string name="header_err_open_backup">无法打开备份文件。</string>
+    <string name="header_err_open_output">无法打开目标文件。</string>
+    <string name="header_err_corrupted">标头无法读取 —— 文件已损坏，或者它不是保险库。</string>
+    <string name="header_err_io">存储拒绝了读取或写入。</string>
+    <string name="header_err_no_space">空间不足，无法写入文件。</string>
+    <string name="header_err_read_only">保险库以只读方式打开。</string>
     <string name="restore_header_op_desc">从内嵌备份或外部备份恢复</string>
     <string name="vault_info_op_restore_header">恢复标头</string>
     <string name="vault_card_restore_desc">从备份副本恢复标头</string>

@@ -1227,6 +1227,15 @@
     <string name="restore_header_success_body">Der primäre Volume-Header wurde wiederhergestellt. Du kommst nun mit den ursprünglichen Zugangsdaten an das Volume.</string>
     <string name="restore_header_error_wrong_password">Falsches Passwort oder falsche Schlüsseldatei.</string>
     <string name="restore_header_error_generic">Wiederherstellung fehlgeschlagen: %s</string>
+    <string name="header_err_busy_restore">Hänge den Tresor aus, bevor du seinen Header wiederherstellst.</string>
+    <string name="header_err_busy_backup">Hänge den Tresor aus, bevor du seinen Header sicherst.</string>
+    <string name="header_err_open_volume">Die Tresordatei konnte nicht geöffnet werden.</string>
+    <string name="header_err_open_backup">Die Sicherungsdatei konnte nicht geöffnet werden.</string>
+    <string name="header_err_open_output">Die Zieldatei konnte nicht geöffnet werden.</string>
+    <string name="header_err_corrupted">Der Header ist nicht lesbar - die Datei ist beschädigt, oder sie ist kein Tresor.</string>
+    <string name="header_err_io">Der Speicher hat das Lesen oder Schreiben verweigert.</string>
+    <string name="header_err_no_space">Es ist nicht genug Platz, um die Datei zu schreiben.</string>
+    <string name="header_err_read_only">Der Tresor ist nur zum Lesen geöffnet.</string>
     <string name="restore_header_op_desc">Aus einer eingebetteten oder externen Sicherung wiederherstellen</string>
     <string name="vault_info_op_restore_header">Header wiederherstellen</string>
     <string name="vault_card_restore_desc">Header aus einer Sicherungskopie wiederherstellen</string>

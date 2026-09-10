@@ -1235,6 +1235,15 @@
     <string name="restore_header_success_body">O cabeçalho principal do volume foi restaurado. Já pode aceder ao volume com as credenciais originais.</string>
     <string name="restore_header_error_wrong_password">Palavra-passe ou ficheiro de chave incorretos.</string>
     <string name="restore_header_error_generic">O restauro falhou: %s</string>
+    <string name="header_err_busy_restore">Desmonte o cofre antes de restaurar o seu cabeçalho.</string>
+    <string name="header_err_busy_backup">Desmonte o cofre antes de copiar o seu cabeçalho.</string>
+    <string name="header_err_open_volume">Não foi possível abrir o ficheiro do cofre.</string>
+    <string name="header_err_open_backup">Não foi possível abrir o ficheiro de cópia.</string>
+    <string name="header_err_open_output">Não foi possível abrir o ficheiro de destino.</string>
+    <string name="header_err_corrupted">O cabeçalho não pode ser lido - o ficheiro está danificado, ou não é um cofre.</string>
+    <string name="header_err_io">O armazenamento recusou a leitura ou a escrita.</string>
+    <string name="header_err_no_space">Não há espaço suficiente para escrever o ficheiro.</string>
+    <string name="header_err_read_only">O cofre está aberto só para leitura.</string>
     <string name="restore_header_op_desc">Restaurar a partir de uma cópia incorporada ou externa</string>
     <string name="vault_info_op_restore_header">Restaurar o cabeçalho</string>
     <string name="vault_card_restore_desc">Restaurar o cabeçalho a partir de uma cópia</string>
