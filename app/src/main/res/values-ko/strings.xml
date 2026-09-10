@@ -530,6 +530,12 @@
     <string name="create_format_est_text">예상 시간: 약 %1$s</string>
     <string name="create_step7_title">파일 시스템</string>
     <string name="create_fs_subtitle">보관함 내에서 파일을 구성하는 방법을 선택하세요</string>
+    <string name="create_portability_title">이 보관함을 어디에서 열 예정인가요?</string>
+    <string name="create_portability_subtitle">다음 단계에서 어떤 파일 시스템을 권할지가 여기서 정해집니다.</string>
+    <string name="create_portability_here">Android나 Linux에서만</string>
+    <string name="create_portability_here_desc">ext4를 권합니다. 권한과 링크를 유지하고, 파일 하나가 4 GB로 제한되지 않습니다.</string>
+    <string name="create_portability_other">Windows나 macOS에서도</string>
+    <string name="create_portability_other_desc">FAT32나 exFAT을 권합니다. 어떤 컴퓨터에서도 따로 설치하지 않고 열립니다.</string>
     <string name="create_fs_recommended">권장</string>
     <string name="create_fs_coming_soon">곧 출시</string>
     <string name="create_fs_coming_soon_toast">곧 출시</string>

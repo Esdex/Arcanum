@@ -134,6 +134,18 @@ data class CreateContainerState(
     /** Standard's count, since [volumeType] starts there; [CreateContainerViewModel.setVolumeType]
      *  is what keeps the two agreeing after that. */
     val totalSteps: Int = STEP_CREATING,
+    /**
+     * Whether this vault also has to open on Windows or macOS. It decides which filesystem
+     * the next step recommends, and nothing else. Android and Linux only by default: that is
+     * where the app runs, and ext4 is the better vault for it.
+     */
+    val crossPlatform: Boolean = false,
+    /**
+     * The filesystem step asks the question above on its own screen first. Kept as a flag
+     * rather than a step of its own because the wizard numbers its steps in 66 places and
+     * the USB step already shows that a screen can live inside one (usbNewPartitionStep).
+     */
+    val portabilityAnswered: Boolean = false,
     val volumeType: VolumeType = VolumeType.STANDARD,
     val location: StorageLocation = StorageLocation.INTERNAL_STORAGE,
     val filePath: String = "",

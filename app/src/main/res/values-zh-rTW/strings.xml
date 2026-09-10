@@ -530,6 +530,12 @@
     <string name="create_format_est_text">預估時間：~%1$s</string>
     <string name="create_step7_title">檔案系統</string>
     <string name="create_fs_subtitle">選擇保險庫內檔案的組織方式</string>
+    <string name="create_portability_title">這個保險庫要在哪裡開啟？</string>
+    <string name="create_portability_subtitle">下一步建議哪種檔案系統由此決定。</string>
+    <string name="create_portability_here">只在 Android 或 Linux 上</string>
+    <string name="create_portability_here_desc">建議 ext4：保留權限與連結，單一檔案也不受 4 GB 限制。</string>
+    <string name="create_portability_other">也在 Windows 或 macOS 上</string>
+    <string name="create_portability_other_desc">建議 FAT32 或 exFAT，任何電腦不必安裝任何東西就能開啟。</string>
     <string name="create_fs_recommended">建議</string>
     <string name="create_fs_coming_soon">即將推出</string>
     <string name="create_fs_coming_soon_toast">即將推出</string>

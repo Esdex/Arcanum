@@ -548,6 +548,12 @@
     <string name="create_format_est_text">Ориентировочное время: ~%1$s</string>
     <string name="create_step7_title">Файловая система</string>
     <string name="create_fs_subtitle">Выберите способ организации файлов внутри хранилища</string>
+    <string name="create_portability_title">Где будет открываться это хранилище?</string>
+    <string name="create_portability_subtitle">От этого зависит, какую файловую систему предложит следующий шаг.</string>
+    <string name="create_portability_here">Только на Android или Linux</string>
+    <string name="create_portability_here_desc">Предложит ext4: сохраняет права и ссылки, и ни один файл не упирается в 4 ГБ.</string>
+    <string name="create_portability_other">Ещё и на Windows или macOS</string>
+    <string name="create_portability_other_desc">Предложит FAT32 или exFAT — их открывает любой компьютер, ничего не устанавливая.</string>
     <string name="create_fs_recommended">Рекомендуется</string>
     <string name="create_fs_coming_soon">Скоро</string>
     <string name="create_fs_coming_soon_toast">Скоро</string>

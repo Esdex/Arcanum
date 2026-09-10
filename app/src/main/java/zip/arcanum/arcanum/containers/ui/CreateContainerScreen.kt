@@ -137,6 +137,8 @@ fun CreateContainerScreen(
             state.currentStep == 11 && state.volumeType == VolumeType.HIDDEN   -> { /* locked: outer already created */ }
             state.currentStep in 12..16 -> viewModel.prevStep()
             state.currentStep == 3 && state.usbNewPartitionStep -> viewModel.cancelUsbNewPartition()
+            state.currentStep == 8 && state.portabilityAnswered ->
+                viewModel.update { copy(portabilityAnswered = false) }
             state.currentStep in listOf(17, 18) -> { /* locked after hidden creation starts */ }
             state.currentStep > 1   -> viewModel.prevStep()
             else                    -> onBack()
@@ -194,6 +196,8 @@ fun CreateContainerScreen(
                                     state.currentStep == 11 -> { /* locked */ }
                                     state.currentStep in 12..16 -> viewModel.prevStep()
                                     state.currentStep == 3 && state.usbNewPartitionStep -> viewModel.cancelUsbNewPartition()
+                                    state.currentStep == 8 && state.portabilityAnswered ->
+                                        viewModel.update { copy(portabilityAnswered = false) }
                                     state.currentStep > 1 -> viewModel.prevStep()
                                     else                  -> onBack()
                                 }
@@ -283,7 +287,13 @@ fun CreateContainerScreen(
                                     argon2Cost        = viewModel::argon2Cost
                                 )
                         7    -> StepFormatMode(state, viewModel::update)
-                        8    -> StepFilesystem(state, viewModel::update)
+                        8    -> if (!state.portabilityAnswered) {
+                                    StepPortability(state) { cross ->
+                                        viewModel.update { copy(crossPlatform = cross) }
+                                    }
+                                } else {
+                                    StepFilesystem(state, viewModel::update)
+                                }
                         9    -> StepEntropy(state, viewModel::addEntropyPoint)
                         STEP_CREATING -> StepCreating(state)
                         11   -> if (state.volumeType == VolumeType.HIDDEN) {
@@ -334,7 +344,13 @@ fun CreateContainerScreen(
                             else                    -> stringResource(R.string.create_btn_next)
                         }
                         Button(
-                            onClick  = viewModel::nextStep,
+                            onClick  = {
+                                // The question shares the filesystem step's number, so Next
+                                // walks from it to the picker before it leaves the step.
+                                if (state.currentStep == 8 && !state.portabilityAnswered)
+                                    viewModel.update { copy(portabilityAnswered = true) }
+                                else viewModel.nextStep()
+                            },
                             enabled  = isStepValid(state, availableSpaceMb),
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape    = CircleShape

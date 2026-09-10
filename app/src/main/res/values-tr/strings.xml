@@ -536,6 +536,12 @@
     <string name="create_format_est_text">Tahmini süre: ~%1$s</string>
     <string name="create_step7_title">Dosya Sistemi</string>
     <string name="create_fs_subtitle">Kasanın içindeki dosyaların nasıl düzenleneceğini seçin</string>
+    <string name="create_portability_title">Bu kasa nerede açılacak?</string>
+    <string name="create_portability_subtitle">Bir sonraki adımda hangi dosya sisteminin önerileceğini bu belirler.</string>
+    <string name="create_portability_here">Yalnızca Android ya da Linux\'ta</string>
+    <string name="create_portability_here_desc">ext4 önerir: izinleri ve bağlantıları korur, tek bir dosya 4 GB ile sınırlı değildir.</string>
+    <string name="create_portability_other">Windows ya da macOS\'ta da</string>
+    <string name="create_portability_other_desc">FAT32 ya da exFAT önerir; her bilgisayar hiçbir şey kurmadan açar.</string>
     <string name="create_fs_recommended">Önerilen</string>
     <string name="create_fs_coming_soon">Yakında</string>
     <string name="create_fs_coming_soon_toast">Yakında</string>

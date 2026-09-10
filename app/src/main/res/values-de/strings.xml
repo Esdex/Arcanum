@@ -536,6 +536,12 @@
     <string name="create_format_est_text">Geschätzte Zeit: ~%1$s</string>
     <string name="create_step7_title">Dateisystem</string>
     <string name="create_fs_subtitle">Wählen Sie, wie Dateien innerhalb des Tresors organisiert werden</string>
+    <string name="create_portability_title">Wo wird dieser Tresor geöffnet?</string>
+    <string name="create_portability_subtitle">Davon hängt ab, welches Dateisystem als Nächstes vorgeschlagen wird.</string>
+    <string name="create_portability_here">Nur unter Android oder Linux</string>
+    <string name="create_portability_here_desc">Schlägt ext4 vor: es behält Rechte und Verknüpfungen, und keine einzelne Datei ist auf 4 GB begrenzt.</string>
+    <string name="create_portability_other">Auch unter Windows oder macOS</string>
+    <string name="create_portability_other_desc">Schlägt FAT32 oder exFAT vor, die jeder Rechner ohne zusätzliche Software öffnet.</string>
     <string name="create_fs_recommended">Empfohlen</string>
     <string name="create_fs_coming_soon">Demnächst</string>
     <string name="create_fs_coming_soon_toast">Demnächst</string>

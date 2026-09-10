@@ -530,6 +530,12 @@
     <string name="create_format_est_text">预计时间：~%1$s</string>
     <string name="create_step7_title">文件系统</string>
     <string name="create_fs_subtitle">选择保险库内文件的组织方式</string>
+    <string name="create_portability_title">这个保险库将在哪里打开？</string>
+    <string name="create_portability_subtitle">下一步推荐哪种文件系统由此决定。</string>
+    <string name="create_portability_here">只在 Android 或 Linux 上</string>
+    <string name="create_portability_here_desc">推荐 ext4：保留权限和链接，单个文件也不受 4 GB 限制。</string>
+    <string name="create_portability_other">也在 Windows 或 macOS 上</string>
+    <string name="create_portability_other_desc">推荐 FAT32 或 exFAT，任何电脑无需安装任何东西就能打开。</string>
     <string name="create_fs_recommended">推荐</string>
     <string name="create_fs_coming_soon">即将推出</string>
     <string name="create_fs_coming_soon_toast">即将推出</string>

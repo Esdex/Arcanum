@@ -989,6 +989,12 @@
     <string name="create_format_est_text">Estimated time: ~%1$s</string>
     <string name="create_step7_title">Filesystem</string>
     <string name="create_fs_subtitle">Choose how files are organized inside the vault</string>
+    <string name="create_portability_title">Where will this vault be opened?</string>
+    <string name="create_portability_subtitle">It decides which filesystem is suggested next.</string>
+    <string name="create_portability_here">Only on Android or Linux</string>
+    <string name="create_portability_here_desc">Suggests ext4: it keeps permissions and links, and no single file is capped at 4 GB.</string>
+    <string name="create_portability_other">On Windows or macOS as well</string>
+    <string name="create_portability_other_desc">Suggests FAT32 or exFAT, which every computer opens without installing anything.</string>
     <string name="create_fs_recommended">Recommended</string>
     <string name="create_fs_coming_soon">Coming soon</string>
     <string name="create_fs_coming_soon_toast">Coming soon</string>

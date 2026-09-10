@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Close
@@ -392,11 +394,38 @@ fun StepFormatMode(state: CreateContainerState, onUpdate: (CreateContainerState.
 // ─── Step 7: Filesystem ───────────────────────────────────────────────────────
 
 @Composable
+fun StepPortability(
+    state: CreateContainerState,
+    onSelect: (Boolean) -> Unit
+) {
+    StepContent(
+        title    = stringResource(R.string.create_portability_title),
+        subtitle = stringResource(R.string.create_portability_subtitle)
+    ) {
+        SelectionCard(
+            selected    = !state.crossPlatform,
+            icon        = Icons.Outlined.PhoneAndroid,
+            title       = stringResource(R.string.create_portability_here),
+            description = stringResource(R.string.create_portability_here_desc),
+            onClick     = { onSelect(false) }
+        )
+        Spacer(Modifier.height(12.dp))
+        SelectionCard(
+            selected    = state.crossPlatform,
+            icon        = Icons.Outlined.Devices,
+            title       = stringResource(R.string.create_portability_other),
+            description = stringResource(R.string.create_portability_other_desc),
+            onClick     = { onSelect(true) }
+        )
+    }
+}
+
+@Composable
 fun StepFilesystem(
     state: CreateContainerState,
     onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit
 ) {
-    val recommended = recommendedFilesystemFor(state.sizeMb)
+    val recommended = recommendedFilesystemFor(state.sizeMb, state.crossPlatform)
 
     // Only until the user picks for themselves: this step is destroyed on the way to any
     // other one and built again on the way back, so an unconditional effect here replaced

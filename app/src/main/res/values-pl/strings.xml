@@ -548,6 +548,12 @@
     <string name="create_format_est_text">Szacowany czas: ~%1$s</string>
     <string name="create_step7_title">System plików</string>
     <string name="create_fs_subtitle">Wybierz sposób organizacji plików wewnątrz skarbca</string>
+    <string name="create_portability_title">Gdzie ten skarbiec będzie otwierany?</string>
+    <string name="create_portability_subtitle">Od tego zależy, jaki system plików zostanie zaproponowany dalej.</string>
+    <string name="create_portability_here">Tylko na Androidzie lub Linuksie</string>
+    <string name="create_portability_here_desc">Proponuje ext4: zachowuje uprawnienia i dowiązania, a żaden plik nie jest ograniczony do 4 GB.</string>
+    <string name="create_portability_other">Także na Windowsie lub macOS</string>
+    <string name="create_portability_other_desc">Proponuje FAT32 lub exFAT, które każdy komputer otworzy bez instalowania czegokolwiek.</string>
     <string name="create_fs_recommended">Zalecany</string>
     <string name="create_fs_coming_soon">Wkrótce</string>
     <string name="create_fs_coming_soon_toast">Wkrótce</string>

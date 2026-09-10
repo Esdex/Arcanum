@@ -40,13 +40,20 @@ import zip.arcanum.core.components.AppDialog
 /**
  * Which filesystem to suggest for a volume of [sizeMb].
  *
+ * [crossPlatform] is the answer to the step before this one. A vault that will only ever be
+ * opened on Android or Linux is better off as ext4 - it keeps permissions and links and has
+ * no per-file limit - and the size then decides nothing. The rule below applies to a vault
+ * that has to open on Windows or macOS as well, where FAT and exFAT are what is read without
+ * installing anything.
+ *
  * 4 GB is FAT's per-file limit, and the only number that makes this choice mean anything:
  * a volume smaller than that cannot hold a file FAT would refuse, so exFAT buys nothing
  * and costs compatibility. (This once read two terabytes, so exFAT was never recommended
  * to anyone.) The hidden volume asks the same question about its own size.
  */
-fun recommendedFilesystemFor(sizeMb: Long): FilesystemType =
-    if (sizeMb > 4L * 1024L) FilesystemType.EXFAT else FilesystemType.FAT32
+fun recommendedFilesystemFor(sizeMb: Long, crossPlatform: Boolean = true): FilesystemType =
+    if (!crossPlatform) FilesystemType.EXT4
+    else if (sizeMb > 4L * 1024L) FilesystemType.EXFAT else FilesystemType.FAT32
 
 /**
  * The three filesystem cards and the dialog behind their info buttons.

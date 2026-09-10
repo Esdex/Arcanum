@@ -542,6 +542,12 @@
     <string name="create_format_est_text">Tiempo estimado: ~%1$s</string>
     <string name="create_step7_title">Sistema de archivos</string>
     <string name="create_fs_subtitle">Elija cómo se organizan los archivos dentro de la bóveda</string>
+    <string name="create_portability_title">¿Dónde se abrirá esta bóveda?</string>
+    <string name="create_portability_subtitle">De eso depende qué sistema de archivos se sugiere a continuación.</string>
+    <string name="create_portability_here">Solo en Android o Linux</string>
+    <string name="create_portability_here_desc">Sugiere ext4: conserva permisos y enlaces, y ningún archivo queda limitado a 4 GB.</string>
+    <string name="create_portability_other">También en Windows o macOS</string>
+    <string name="create_portability_other_desc">Sugiere FAT32 o exFAT, que cualquier ordenador abre sin instalar nada.</string>
     <string name="create_fs_recommended">Recomendado</string>
     <string name="create_fs_coming_soon">Próximamente</string>
     <string name="create_fs_coming_soon_toast">Próximamente</string>

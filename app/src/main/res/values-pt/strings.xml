@@ -542,6 +542,12 @@
     <string name="create_format_est_text">Tempo estimado: ~%1$s</string>
     <string name="create_step7_title">Sistema de ficheiros</string>
     <string name="create_fs_subtitle">Escolha como os ficheiros são organizados dentro do cofre</string>
+    <string name="create_portability_title">Onde é que este cofre vai ser aberto?</string>
+    <string name="create_portability_subtitle">É isso que decide qual o sistema de ficheiros sugerido a seguir.</string>
+    <string name="create_portability_here">Apenas no Android ou Linux</string>
+    <string name="create_portability_here_desc">Sugere ext4: mantém permissões e ligações, e nenhum ficheiro fica limitado a 4 GB.</string>
+    <string name="create_portability_other">Também no Windows ou macOS</string>
+    <string name="create_portability_other_desc">Sugere FAT32 ou exFAT, que qualquer computador abre sem instalar nada.</string>
     <string name="create_fs_recommended">Recomendado</string>
     <string name="create_fs_coming_soon">Brevemente</string>
     <string name="create_fs_coming_soon_toast">Brevemente</string>

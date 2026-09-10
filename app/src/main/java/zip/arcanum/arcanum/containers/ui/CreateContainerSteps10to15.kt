@@ -523,7 +523,7 @@ fun StepHiddenPassword(
 fun StepHiddenFilesystem(state: CreateContainerState, onUpdate: (CreateContainerState.() -> CreateContainerState) -> Unit) {
     // The recommendation follows the HIDDEN volume's size, not the outer one's: this is a
     // question about the volume being made now.
-    val recommended = recommendedFilesystemFor(state.hiddenSizeMb)
+    val recommended = recommendedFilesystemFor(state.hiddenSizeMb, state.crossPlatform)
 
     // Only until the user picks for themselves - the step is destroyed on the way to any
     // other one and built again on the way back (same reason as on the outer step).

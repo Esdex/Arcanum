@@ -548,6 +548,12 @@
     <string name="create_format_est_text">Орієнтовний час: ~%1$s</string>
     <string name="create_step7_title">Файлова система</string>
     <string name="create_fs_subtitle">Виберіть, як файли організовано всередині сховища</string>
+    <string name="create_portability_title">Де відкриватиметься це сховище?</string>
+    <string name="create_portability_subtitle">Від цього залежить, яку файлову систему запропонує наступний крок.</string>
+    <string name="create_portability_here">Лише на Android або Linux</string>
+    <string name="create_portability_here_desc">Запропонує ext4: зберігає права та посилання, і жоден файл не впирається в 4 ГБ.</string>
+    <string name="create_portability_other">Ще й на Windows або macOS</string>
+    <string name="create_portability_other_desc">Запропонує FAT32 або exFAT — їх відкриває будь-який комп\'ютер, нічого не встановлюючи.</string>
     <string name="create_fs_recommended">Рекомендовано</string>
     <string name="create_fs_coming_soon">Незабаром</string>
     <string name="create_fs_coming_soon_toast">Незабаром</string>

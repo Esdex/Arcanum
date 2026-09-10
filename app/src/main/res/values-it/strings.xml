@@ -542,6 +542,12 @@
     <string name="create_format_est_text">Tempo stimato: ~%1$s</string>
     <string name="create_step7_title">File system</string>
     <string name="create_fs_subtitle">Scegli come organizzare i file all\'interno della cassaforte</string>
+    <string name="create_portability_title">Dove verrà aperta questa cassaforte?</string>
+    <string name="create_portability_subtitle">Da questo dipende quale file system viene proposto al passo successivo.</string>
+    <string name="create_portability_here">Solo su Android o Linux</string>
+    <string name="create_portability_here_desc">Propone ext4: conserva permessi e collegamenti, e nessun file è limitato a 4 GB.</string>
+    <string name="create_portability_other">Anche su Windows o macOS</string>
+    <string name="create_portability_other_desc">Propone FAT32 o exFAT, che qualsiasi computer apre senza installare nulla.</string>
     <string name="create_fs_recommended">Consigliato</string>
     <string name="create_fs_coming_soon">Prossimamente</string>
     <string name="create_fs_coming_soon_toast">Prossimamente</string>

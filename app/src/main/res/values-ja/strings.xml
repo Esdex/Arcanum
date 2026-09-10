@@ -530,6 +530,12 @@
     <string name="create_format_est_text">推定時間: 約%1$s</string>
     <string name="create_step7_title">ファイルシステム</string>
     <string name="create_fs_subtitle">ボールト内のファイルの整理方法を選択</string>
+    <string name="create_portability_title">このボールトはどこで開きますか？</string>
+    <string name="create_portability_subtitle">次の手順で勧めるファイルシステムがこれで決まります。</string>
+    <string name="create_portability_here">Android か Linux だけ</string>
+    <string name="create_portability_here_desc">ext4 を勧めます。権限とリンクを保ち、1 ファイル 4 GB の上限もありません。</string>
+    <string name="create_portability_other">Windows や macOS でも</string>
+    <string name="create_portability_other_desc">FAT32 か exFAT を勧めます。どのパソコンでも何も入れずに開けます。</string>
     <string name="create_fs_recommended">推奨</string>
     <string name="create_fs_coming_soon">近日公開</string>
     <string name="create_fs_coming_soon_toast">近日公開</string>

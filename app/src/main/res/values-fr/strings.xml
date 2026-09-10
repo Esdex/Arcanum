@@ -542,6 +542,12 @@
     <string name="create_format_est_text">Temps estimé : ~%1$s</string>
     <string name="create_step7_title">Système de fichiers</string>
     <string name="create_fs_subtitle">Choisissez comment les fichiers sont organisés à l\'intérieur du coffre</string>
+    <string name="create_portability_title">Où ce coffre sera-t-il ouvert ?</string>
+    <string name="create_portability_subtitle">C\'est ce qui décide du système de fichiers proposé à l\'étape suivante.</string>
+    <string name="create_portability_here">Uniquement sous Android ou Linux</string>
+    <string name="create_portability_here_desc">Propose ext4 : il conserve les droits et les liens, et aucun fichier n\'est limité à 4 Go.</string>
+    <string name="create_portability_other">Aussi sous Windows ou macOS</string>
+    <string name="create_portability_other_desc">Propose FAT32 ou exFAT, que tout ordinateur ouvre sans rien installer.</string>
     <string name="create_fs_recommended">Recommandé</string>
     <string name="create_fs_coming_soon">Bientôt disponible</string>
     <string name="create_fs_coming_soon_toast">Bientôt disponible</string>
