@@ -99,6 +99,7 @@ sealed class Screen(val route: String) {
     // somewhere without the user hunting through About.
     object Donations : Screen("donations")
     object Premium   : Screen("premium")
+    object About     : Screen("about")
 
     object ChangePassword : Screen("change_password/{containerId}") {
         const val ARG = "containerId"

@@ -175,6 +175,7 @@ fun VaultScreen(
     onCreateContainer: () -> Unit,
     onGenerateKeyfile: () -> Unit = {},
     onOpenSettings: () -> Unit,
+    onOpenAbout: () -> Unit = {},
     onVaultInfo: (containerId: String) -> Unit,
     onOpenVault: (containerId: String) -> Unit = {},
     onMountContainer: (containerId: String) -> Unit = {},
@@ -440,7 +441,18 @@ fun VaultScreen(
                         TopAppBar(
                             modifier = topBarHazeMod,
                             colors   = topBarColors,
-                            title   = { Text(stringResource(R.string.vault_title), fontWeight = FontWeight.SemiBold) },
+                            /* The app's own name is where people look for what the app is,
+                               so it opens About rather than being decoration. */
+                            title   = {
+                                Text(
+                                    text       = stringResource(R.string.vault_title),
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier   = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { fabExpanded = false; onOpenAbout() }
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            },
                             actions = {
                                 IconButton(onClick = { showSortSheet = true }) {
                                     Icon(Icons.Outlined.FilterList, contentDescription = stringResource(R.string.vault_cd_sort_group))

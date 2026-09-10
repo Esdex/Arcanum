@@ -283,6 +283,9 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
                 onOpenSettings = {
                     navController.navigate(Screen.AppSettings.route)
                 },
+                onOpenAbout = {
+                    navController.navigate(Screen.About.route)
+                },
                 onVaultInfo = { containerId ->
                     navController.navigate(Screen.VaultInfo.buildRoute(containerId))
                 },
@@ -497,6 +500,18 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
                 onBack         = { navController.popBackStack() },
                 viewModel      = settingsViewModel,
                 openDonations  = true
+            )
+        }
+
+        composable(
+            route             = Screen.About.route,
+            enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
+            popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
+        ) {
+            SettingsScreen(
+                onBack    = { navController.popBackStack() },
+                viewModel = settingsViewModel,
+                openAbout = true
             )
         }
 

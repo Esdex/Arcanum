@@ -83,7 +83,8 @@ fun SettingsScreen(
     panicViewModel: PanicModeViewModel = hiltViewModel(),
     openWhatsNew:   Boolean = false,
     openDonations:  Boolean = false,
-    openPremium:    Boolean = false
+    openPremium:    Boolean = false,
+    openAbout:      Boolean = false
 ) {
     var subScreen by remember { mutableStateOf<SubScreen?>(null) }
     // Where a screen with two entrances came from. Null means the main list, which is
@@ -93,6 +94,7 @@ fun SettingsScreen(
     LaunchedEffect(openWhatsNew)  { if (openWhatsNew)  subScreen = SubScreen.WHATS_NEW }
     LaunchedEffect(openDonations) { if (openDonations) subScreen = SubScreen.DONATIONS }
     LaunchedEffect(openPremium)   { if (openPremium)   subScreen = SubScreen.PREMIUM }
+    LaunchedEffect(openAbout)     { if (openAbout)     subScreen = SubScreen.ABOUT }
     val autoLockEnabled         by viewModel.autoLockEnabled.collectAsState()
     val autoLockDelayIndex      by viewModel.autoLockDelayIndex.collectAsState()
     val unmountOnAutoLock       by viewModel.unmountOnAutoLock.collectAsState()
