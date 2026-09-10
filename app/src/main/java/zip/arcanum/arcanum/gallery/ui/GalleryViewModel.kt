@@ -147,8 +147,17 @@ class GalleryViewModel @Inject constructor(
      */
     private val _folderFilter = MutableStateFlow<Set<String>>(emptySet())
 
-    /** What the root folder is called in the sheet - the vault's own name. */
-    private var vaultName: String = ""
+    /**
+     * What the root folder is called in the sheet - the vault's own name.
+     *
+     * A flow rather than a field because it is read from the database while the media list
+     * is already arriving: whichever lands first, the folder list has to be built again once
+     * the name is known. Otherwise the root folder carries an empty name, which sorts it to
+     * the top of the sheet, and the first row after "All folders" is blank until something
+     * else rebuilds the list.
+     */
+    private val vaultNameFlow = MutableStateFlow("")
+    private val vaultName: String get() = vaultNameFlow.value
 
     private val _allFiles = MutableStateFlow<List<MediaFileEntity>>(emptyList())
 
@@ -208,16 +217,18 @@ class GalleryViewModel @Inject constructor(
         // A vault that has just been closed and another opened must not inherit a filter
         // naming folders of the one before it.
         _folderFilter.value = emptySet()
+        vaultNameFlow.value = ""
         viewModelScope.launch {
-            vaultName = repo.getContainerById(containerId)?.name.orEmpty()
+            vaultNameFlow.value = repo.getContainerById(containerId)?.name.orEmpty()
         }
 
         viewModelScope.launch(Dispatchers.Default) {
             combine(
                 mediaFileDao.getMediaForContainer(containerId),
                 _filter,
-                _folderFilter
-            ) { files, filter, folders -> Triple(files, filter, folders) }
+                _folderFilter,
+                vaultNameFlow
+            ) { files, filter, folders, _ -> Triple(files, filter, folders) }
                 .collect { (files, filter, folders) ->
                     _allFiles.value = files
                     val groups = visible(files, filter = filter, folders = folders)
