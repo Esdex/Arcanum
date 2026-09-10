@@ -59,7 +59,7 @@
 - 🛡️ Hidden-volume protection while writing to the outer volume
 - 📦 Move a vault between app storage and external storage
 - 📊 Storage usage breakdown per vault
-- 🔌 Vaults on USB flash drives over OTG — *ships in the next release*
+- 🔌 Vaults on USB flash drives over OTG
 
 **Privacy**
 - 🫥 Hidden volumes for plausible deniability
