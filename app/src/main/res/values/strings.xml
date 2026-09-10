@@ -1347,6 +1347,7 @@
 
     <string name="vault_storage_usb">USB drive</string>
     <string name="vault_last_opened">Opened %1$s</string>
+    <string name="vault_card_mounted">Mounted</string>
     <string name="vault_info_usb_id">Volume %1$s</string>
     <string name="vault_storage_usb_partition">USB partition</string>
     <string name="vault_storage_usb_hint">A flash drive, or one partition of it</string>

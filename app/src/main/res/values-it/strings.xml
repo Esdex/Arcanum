@@ -1263,6 +1263,7 @@
     <string name="vault_config_delete_desc">Elimina per sempre il file della cassaforte</string>
     <string name="vault_storage_usb">Unità USB</string>
     <string name="vault_last_opened">Aperta %1$s</string>
+    <string name="vault_card_mounted">Montata</string>
     <string name="vault_info_usb_id">Volume %1$s</string>
     <string name="vault_storage_usb_partition">Partizione USB</string>
     <string name="vault_storage_usb_hint">Una chiavetta USB, o una sua partizione</string>

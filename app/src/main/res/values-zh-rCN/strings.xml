@@ -1247,6 +1247,7 @@
     <string name="vault_config_delete_desc">永久删除保险库文件</string>
     <string name="vault_storage_usb">USB 驱动器</string>
     <string name="vault_last_opened">上次打开 %1$s</string>
+    <string name="vault_card_mounted">已挂载</string>
     <string name="vault_info_usb_id">卷 %1$s</string>
     <string name="vault_storage_usb_partition">USB 分区</string>
     <string name="vault_storage_usb_hint">一个 U 盘，或它的一个分区</string>

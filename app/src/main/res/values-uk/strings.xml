@@ -1271,6 +1271,7 @@
     <string name="vault_config_delete_desc">Видалити файл сховища назавжди</string>
     <string name="vault_storage_usb">USB-носій</string>
     <string name="vault_last_opened">Відкривали %1$s</string>
+    <string name="vault_card_mounted">Підключено</string>
     <string name="vault_info_usb_id">Том %1$s</string>
     <string name="vault_storage_usb_partition">Розділ USB</string>
     <string name="vault_storage_usb_hint">Флеш-носій або один його розділ</string>

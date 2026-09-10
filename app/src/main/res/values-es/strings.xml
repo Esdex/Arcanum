@@ -1263,6 +1263,7 @@
     <string name="vault_config_delete_desc">Borrar el archivo de la bóveda para siempre</string>
     <string name="vault_storage_usb">Unidad USB</string>
     <string name="vault_last_opened">Abierta %1$s</string>
+    <string name="vault_card_mounted">Montada</string>
     <string name="vault_info_usb_id">Volumen %1$s</string>
     <string name="vault_storage_usb_partition">Partición USB</string>
     <string name="vault_storage_usb_hint">Una memoria USB, o una partición suya</string>

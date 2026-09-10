@@ -1271,6 +1271,7 @@
     <string name="vault_config_delete_desc">Удалить файл хранилища навсегда</string>
     <string name="vault_storage_usb">USB-накопитель</string>
     <string name="vault_last_opened">Открывали %1$s</string>
+    <string name="vault_card_mounted">Подключено</string>
     <string name="vault_info_usb_id">Том %1$s</string>
     <string name="vault_storage_usb_partition">Раздел USB</string>
     <string name="vault_storage_usb_hint">Флеш-накопитель или один его раздел</string>

@@ -1247,6 +1247,7 @@
     <string name="vault_config_delete_desc">ボールトのファイルを完全に削除します</string>
     <string name="vault_storage_usb">USB ドライブ</string>
     <string name="vault_last_opened">最終利用 %1$s</string>
+    <string name="vault_card_mounted">マウント中</string>
     <string name="vault_info_usb_id">ボリューム %1$s</string>
     <string name="vault_storage_usb_partition">USB パーティション</string>
     <string name="vault_storage_usb_hint">USB メモリ、またはそのパーティションの一つ</string>

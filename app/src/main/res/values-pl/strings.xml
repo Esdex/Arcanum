@@ -1271,6 +1271,7 @@
     <string name="vault_config_delete_desc">Usuń plik skarbca na zawsze</string>
     <string name="vault_storage_usb">Nośnik USB</string>
     <string name="vault_last_opened">Otwierano %1$s</string>
+    <string name="vault_card_mounted">Zamontowany</string>
     <string name="vault_info_usb_id">Wolumin %1$s</string>
     <string name="vault_storage_usb_partition">Partycja USB</string>
     <string name="vault_storage_usb_hint">Pendrive albo jedna jego partycja</string>

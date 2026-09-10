@@ -1255,6 +1255,7 @@
     <string name="vault_config_delete_desc">Die Tresordatei endgültig löschen</string>
     <string name="vault_storage_usb">USB-Laufwerk</string>
     <string name="vault_last_opened">Geöffnet %1$s</string>
+    <string name="vault_card_mounted">Eingebunden</string>
     <string name="vault_info_usb_id">Volume %1$s</string>
     <string name="vault_storage_usb_partition">USB-Partition</string>
     <string name="vault_storage_usb_hint">Ein USB-Stick oder eine seiner Partitionen</string>

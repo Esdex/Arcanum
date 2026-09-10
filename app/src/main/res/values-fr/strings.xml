@@ -1263,6 +1263,7 @@
     <string name="vault_config_delete_desc">Supprimer définitivement le fichier du coffre</string>
     <string name="vault_storage_usb">Clé USB</string>
     <string name="vault_last_opened">Ouvert %1$s</string>
+    <string name="vault_card_mounted">Monté</string>
     <string name="vault_info_usb_id">Volume %1$s</string>
     <string name="vault_storage_usb_partition">Partition USB</string>
     <string name="vault_storage_usb_hint">Une clé USB, ou l\'une de ses partitions</string>

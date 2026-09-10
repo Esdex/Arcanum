@@ -1255,6 +1255,7 @@
     <string name="vault_config_delete_desc">Kasa dosyasını temelli sil</string>
     <string name="vault_storage_usb">USB sürücü</string>
     <string name="vault_last_opened">Açıldı: %1$s</string>
+    <string name="vault_card_mounted">Bağlı</string>
     <string name="vault_info_usb_id">Birim %1$s</string>
     <string name="vault_storage_usb_partition">USB bölümü</string>
     <string name="vault_storage_usb_hint">Bir USB bellek ya da onun bir bölümü</string>

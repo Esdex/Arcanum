@@ -1247,6 +1247,7 @@
     <string name="vault_config_delete_desc">永久刪除保險庫檔案</string>
     <string name="vault_storage_usb">USB 磁碟機</string>
     <string name="vault_last_opened">上次開啟 %1$s</string>
+    <string name="vault_card_mounted">已掛載</string>
     <string name="vault_info_usb_id">磁碟區 %1$s</string>
     <string name="vault_storage_usb_partition">USB 分割區</string>
     <string name="vault_storage_usb_hint">一支隨身碟，或它的一個分割區</string>

@@ -1359,8 +1359,12 @@ private fun VaultCard(
      * when the vault was last opened. Android's own relative wording, so it follows the
      * phone's language and turns into a date once "days ago" stops meaning anything.
      */
-    val openedLabel = if (cardShape != null && container.lastAccessedAt > 0L) {
-        stringResource(
+    val openedLabel = when {
+        cardShape == null -> null
+        // An open vault says so. When it was last opened is history the moment it is open
+        // again, and the card's own colour already draws the eye to it.
+        container.isMounted -> stringResource(R.string.vault_card_mounted)
+        container.lastAccessedAt > 0L -> stringResource(
             R.string.vault_last_opened,
             remember(container.lastAccessedAt) {
                 android.text.format.DateUtils.getRelativeTimeSpanString(
@@ -1370,7 +1374,8 @@ private fun VaultCard(
                 ).toString()
             }
         )
-    } else null
+        else -> null
+    }
 
     val bgColor by animateColorAsState(
         targetValue   = when {

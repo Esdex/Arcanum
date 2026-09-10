@@ -1247,6 +1247,7 @@
     <string name="vault_config_delete_desc">보관함 파일을 영구히 삭제합니다</string>
     <string name="vault_storage_usb">USB 드라이브</string>
     <string name="vault_last_opened">%1$s에 열었음</string>
+    <string name="vault_card_mounted">마운트됨</string>
     <string name="vault_info_usb_id">볼륨 %1$s</string>
     <string name="vault_storage_usb_partition">USB 파티션</string>
     <string name="vault_storage_usb_hint">USB 메모리 또는 그 파티션 하나</string>

@@ -1263,6 +1263,7 @@
     <string name="vault_config_delete_desc">Apagar o ficheiro do cofre para sempre</string>
     <string name="vault_storage_usb">Unidade USB</string>
     <string name="vault_last_opened">Aberto %1$s</string>
+    <string name="vault_card_mounted">Montado</string>
     <string name="vault_info_usb_id">Volume %1$s</string>
     <string name="vault_storage_usb_partition">Partição USB</string>
     <string name="vault_storage_usb_hint">Uma pen USB, ou uma partição dela</string>
