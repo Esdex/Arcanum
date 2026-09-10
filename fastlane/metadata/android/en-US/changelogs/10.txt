@@ -1,0 +1,10 @@
+- New: Settings can be carried to another phone
+- New: A vault can stay open in the background
+- New: Text files open in the app
+- New: PDFs open inside the app
+- New: A hidden volume can go on a USB drive
+- New: Argon2id, a derivation that costs memory
+- New: Vaults on USB flash drives
+- Security: What is in a vault no longer reaches the system log
+- Fix: Renaming a vault could lose it
+- Improvement: ext4 vaults are much faster to fill
