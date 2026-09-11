@@ -100,9 +100,10 @@
                 android:resource="@xml/file_provider_paths" />
         </provider>
 
-        <!-- Read-only SAF access to opted-in, mounted vaults. Exported so the system DocumentsUI
-             can bind, but guarded by MANAGE_DOCUMENTS (held only by the system); other apps reach
-             a file only through a user-granted URI from the picker. -->
+        <!-- SAF access to opted-in, mounted vaults: read, write, create, delete and rename, all
+             refused on a read-only mount. Exported so the system DocumentsUI can bind, but guarded
+             by MANAGE_DOCUMENTS (held only by the system); other apps reach a file only through a
+             user-granted URI from the picker. -->
         <provider
             android:name=".arcanum.saf.VaultDocumentsProvider"
             android:authorities="${applicationId}.documents"

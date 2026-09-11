@@ -8,6 +8,7 @@
 #     truth for the What's New screen, the F-Droid changelog, and GitHub release notes)
 #   - Working tree must be clean
 #   - gh CLI and jq installed; gh authenticated; git GPG signing configured
+#   - local.properties holds the signing keys (it is copied into the build clone)
 
 set -euo pipefail
 
@@ -150,24 +151,54 @@ COMMIT=$(git rev-parse "${TAG}^{}")
 log "Tag $TAG → $COMMIT"
 
 # ── 5. Build APK from tag ────────────────────────────────────────────────────
+#
+# In a fresh clone of the tag, never in this working tree. F-Droid rebuilds the
+# tag from scratch and publishes our APK only if the two match byte for byte,
+# and a build here reuses whatever app/build already holds: 1.6 went out with
+# Kotlin compiled incrementally on top of earlier builds, its dex came out a few
+# hundred bytes off a clean one, and F-Droid refused it. The native libraries
+# matched - only the Kotlin side carries that state. For the same reason: no
+# build cache, no configuration cache, no daemon - nothing from an earlier build.
 
-log "Checking out $TAG for clean build..."
-git checkout "$TAG"
+[[ -f local.properties ]] || die "local.properties not found - it holds the signing keys."
+ROOT=$(git rev-parse --show-toplevel)
+BUILD_DIR=$(mktemp -d)
+trap 'rm -f "$GH_NOTES_FILE"; rm -rf "$BUILD_DIR"' EXIT
 
-log "Building release APK..."
-./gradlew assembleFdroidRelease
+log "Cloning $TAG into $BUILD_DIR for a clean build..."
+git clone --quiet "$ROOT" "$BUILD_DIR" || die "Could not clone the repository."
+git -C "$BUILD_DIR" -c advice.detachedHead=false checkout --quiet "$TAG" \
+    || die "Could not check out $TAG in the build clone."
 
-APK_PATH=$(find app/build/outputs/apk/fdroid/release -name "*.apk" | head -1)
-[[ -z "$APK_PATH" ]] && { git checkout main; die "APK not found after build."; }
+# KEYSTORE_PATH is resolved against the project root, so a relative one would
+# point into the clone. Made absolute; every other line is copied as it is.
+while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+        KEYSTORE_PATH=/*) printf '%s\n' "$line" ;;
+        KEYSTORE_PATH=*)  printf 'KEYSTORE_PATH=%s/%s\n' "$ROOT" "${line#KEYSTORE_PATH=}" ;;
+        *)                printf '%s\n' "$line" ;;
+    esac
+done < local.properties > "$BUILD_DIR/local.properties"
+
+log "Building release APK from scratch (about ten minutes)..."
+(cd "$BUILD_DIR" && ./gradlew --no-daemon --no-build-cache --no-configuration-cache assembleFdroidRelease)
+
+BUILT_APK=$(find "$BUILD_DIR/app/build/outputs/apk/fdroid/release" -name "*.apk" 2>/dev/null | head -1 || true)
+[[ -z "$BUILT_APK" ]] && die "APK not found after build."
+
+# Copied back to where it always landed, so it outlives the clone.
+mkdir -p app/build/outputs/apk/fdroid/release
+APK_PATH="app/build/outputs/apk/fdroid/release/$(basename "$BUILT_APK")"
+cp "$BUILT_APK" "$APK_PATH"
 log "APK: $APK_PATH"
 
 # ── 5b. Archive the unstripped native libraries ──────────────────────────────
 #
 # The APK ships STRIPPED .so, so a native crash report from a user is nothing
 # but module offsets - unreadable without the unstripped libraries from THIS
-# exact build (offsets do not carry across builds). The only copies live under
-# app/build, which the next `clean` or release destroys, so they are archived
-# here, outside the build tree, one directory per version.
+# exact build (offsets do not carry across builds). The only copies live in the
+# build clone, which is deleted when this script exits, so they are archived
+# here, outside it, one directory per version.
 #
 # This is not fatal: the release is already tagged and built by now, and losing
 # symbols must not fail it. A missing archive is a warning, loudly.
@@ -179,7 +210,7 @@ SYMBOL_DIR="${HOME}/Arcanum-symbols/${TAG}"
 # and a failing command substitution in an assignment kills the script under
 # `set -e`. Without it, a missing build tree does not warn - it silently ends
 # the release right here, after the tag has already been pushed.
-MERGED_LIBS=$(find app/build/intermediates/merged_native_libs -type d -path "*fdroidRelease*/out/lib" 2>/dev/null | head -1 || true)
+MERGED_LIBS=$(find "$BUILD_DIR/app/build/intermediates/merged_native_libs" -type d -path "*fdroidRelease*/out/lib" 2>/dev/null | head -1 || true)
 
 if [[ -n "$MERGED_LIBS" ]]; then
     log "Archiving native symbols to $SYMBOL_DIR..."
@@ -193,7 +224,7 @@ if [[ -n "$MERGED_LIBS" ]]; then
     done
 
     # AGP's own bundle: our library plus libc++_shared, both ABIs.
-    SYM_ZIP=$(find app/build/outputs/native-debug-symbols -name "native-debug-symbols.zip" 2>/dev/null | head -1 || true)
+    SYM_ZIP=$(find "$BUILD_DIR/app/build/outputs/native-debug-symbols" -name "native-debug-symbols.zip" 2>/dev/null | head -1 || true)
     if [[ -n "$SYM_ZIP" ]]; then
         cp "$SYM_ZIP" "$SYMBOL_DIR/"
     fi
@@ -226,12 +257,10 @@ EOF
     log "Symbols archived: $SYM_COUNT unstripped .so + README."
 else
     warn "Merged native libs not found - symbols were NOT archived."
-    warn "A native crash report from $VERSION will not be symbolizable. Archive"
-    warn "app/build/intermediates/merged_native_libs/**/out/lib by hand before cleaning."
+    warn "A native crash report from $VERSION will not be symbolizable. The build"
+    warn "clone is kept: archive $BUILD_DIR/app/build/intermediates/merged_native_libs/**/out/lib by hand."
+    trap 'rm -f "$GH_NOTES_FILE"' EXIT
 fi
-
-log "Returning to main..."
-git checkout main
 
 # ── 6. Create GitHub Release (draft — review notes before publishing) ────────
 
