@@ -125,6 +125,11 @@ fun GalleryScreen(
     LaunchedEffect(containerId) {
         if (containerId != null) viewModel.loadForContainer(containerId)
     }
+    // Every way into the viewer passes the grid over first, so its swipe walks the grid.
+    val openMedia: (MediaFileEntity) -> Unit = { file ->
+        viewModel.handOverOrder()
+        onMediaClick(file)
+    }
 
     val sortSheetState    = rememberModalBottomSheetState()
     val folderSheetState  = rememberModalBottomSheetState()
@@ -237,7 +242,7 @@ fun GalleryScreen(
                 isPreloading       = isPreloading,
                 preloadDone        = preloadState.done,
                 preloadTotal       = preloadState.total,
-                onMediaClick       = onMediaClick,
+                onMediaClick       = openMedia,
                 onThumbnailRequest = { viewModel.requestThumbnail(it) },
                 onPhotoSelect      = { viewModel.togglePhotoSelection(it) },
                 onDaySelect        = { viewModel.toggleDaySelection(it) },
@@ -256,7 +261,7 @@ fun GalleryScreen(
             isPreloading       = isPreloading,
             preloadDone        = preloadState.done,
             preloadTotal       = preloadState.total,
-            onMediaClick       = onMediaClick,
+            onMediaClick       = openMedia,
             onThumbnailRequest = { viewModel.requestThumbnail(it) },
             onPhotoSelect      = { viewModel.togglePhotoSelection(it) },
             onDaySelect        = { viewModel.toggleDaySelection(it) },

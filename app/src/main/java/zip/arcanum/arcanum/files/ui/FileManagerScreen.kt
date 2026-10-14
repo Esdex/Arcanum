@@ -389,6 +389,10 @@ fun FileManagerScreen(
                             modifier  = Modifier.fillMaxSize()
                         )
                     }
+                    // Nothing yet, but the search is still walking: "no results" would be a guess.
+                    state.files.isEmpty() && state.isSearching -> Box(Modifier.fillMaxSize().padding(top = topPadding)) {
+                        CircularProgressIndicator(Modifier.align(Alignment.Center))
+                    }
                     state.files.isEmpty() -> Box(Modifier.fillMaxSize().padding(top = topPadding)) {
                         EmptyStateView(
                             lottieRes = R.raw.empty_files,
@@ -415,6 +419,7 @@ fun FileManagerScreen(
                         ) {
                             FileListContent(
                                 files                = state.files,
+                                currentPath          = state.currentPath,
                                 selectedItems        = state.selectedItems,
                                 isSelectionMode      = state.isSelectionMode,
                                 isReadOnly           = state.isReadOnly,
@@ -1260,6 +1265,7 @@ private fun BreadcrumbRow(
 @Composable
 private fun FileListContent(
     files: List<NativeFileInfo>,
+    currentPath: String,
     selectedItems: Set<String>,
     isSelectionMode: Boolean,
     isReadOnly: Boolean,
@@ -1285,6 +1291,7 @@ private fun FileListContent(
         items(files, key = { it.path }) { file ->
             FileListItem(
                 file               = file,
+                location           = searchLocation(file.path, currentPath),
                 isSelected         = file.path in selectedItems,
                 isSelectionMode    = isSelectionMode,
                 isReadOnly         = isReadOnly,
@@ -1303,6 +1310,17 @@ private fun FileListContent(
             )
         }
     }
+}
+
+/**
+ * Where a search result sits, relative to the folder the search started in - "Trips/2024" -
+ * or null when it is in that folder itself and the row needs no more than its name.
+ */
+private fun searchLocation(path: String, currentPath: String): String? {
+    val parent = path.substringBeforeLast('/', "").ifEmpty { "/" }
+    if (parent == currentPath) return null
+    val prefix = if (currentPath == "/") "/" else "$currentPath/"
+    return parent.removePrefix(prefix)
 }
 
 /**
@@ -1339,6 +1357,7 @@ private fun BoxScope.MediaBadge(fileName: String, size: Dp) {
 @Composable
 private fun FileListItem(
     file: NativeFileInfo,
+    location: String? = null,
     isSelected: Boolean,
     isSelectionMode: Boolean,
     isReadOnly: Boolean,
@@ -1430,6 +1449,17 @@ private fun FileListItem(
                 maxLines  = 1,
                 overflow  = TextOverflow.Ellipsis
             )
+            // A search result from a subfolder says where it is, or two files with one
+            // name in two folders would be two identical rows (#151).
+            if (location != null) {
+                Text(
+                    text     = stringResource(R.string.files_search_found_in, location),
+                    style    = MaterialTheme.typography.bodySmall,
+                    color    = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.StartEllipsis
+                )
+            }
             Spacer(Modifier.height(2.dp))
             Text(
                 text  = when {

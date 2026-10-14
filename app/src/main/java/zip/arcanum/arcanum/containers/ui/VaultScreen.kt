@@ -153,6 +153,7 @@ import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.LocalNotifications
+import zip.arcanum.core.utils.NaturalOrder
 import java.text.DecimalFormat
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -382,7 +383,7 @@ fun VaultScreen(
                         else             -> !entry.name.startsWith(".")
                     }
                 }
-                .sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+                .sortedWith(compareBy<java.io.File> { !it.isDirectory }.thenBy(NaturalOrder) { it.name })
         }
     }
 

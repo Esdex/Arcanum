@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.gallery.MediaScanner
 import zip.arcanum.arcanum.gallery.ThumbnailManager
 import zip.arcanum.arcanum.gallery.ThumbnailPreloader
+import zip.arcanum.arcanum.gallery.ViewerOrder
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileEntity
@@ -26,6 +27,8 @@ import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.crypto.VeraCryptEngine
+import zip.arcanum.core.utils.NaturalOrder
+import zip.arcanum.core.utils.MediaExtensions
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import java.time.Instant
@@ -46,7 +49,8 @@ class GalleryViewModel @Inject constructor(
     private val repo: ContainerRepository,
     private val engine: VeraCryptEngine,
     private val prefs: AppPreferences,
-    private val notifications: NotificationCenter
+    private val notifications: NotificationCenter,
+    private val viewerOrder: ViewerOrder
 ) : ViewModel() {
 
     enum class MediaFilter { ALL, PHOTOS, VIDEOS }
@@ -474,6 +478,19 @@ class GalleryViewModel @Inject constructor(
 
     fun getHandle(): Long? = currentContainerId?.let { repo.getContainerHandle(it) }
 
+    /**
+     * Hands the grid, exactly as it is on screen, to the viewer about to open (#151): with
+     * the folder filter, the photos/videos filter and the search box applied, in the grid's
+     * order. A swipe then goes to the picture beside it in the grid and nowhere else.
+     */
+    fun handOverOrder() {
+        val cid = currentContainerId ?: return
+        viewerOrder.set(
+            cid,
+            _uiState.value.monthGroups.flatMap { m -> m.days.flatMap { d -> d.photos.map { it.relativePath } } }
+        )
+    }
+
     // ── Grouping ──────────────────────────────────────────────────────────────
 
     private fun applyFilter(files: List<MediaFileEntity>, filter: MediaFilter) = when (filter) {
@@ -518,17 +535,9 @@ class GalleryViewModel @Inject constructor(
             return if (shuffled.isEmpty()) emptyList()
                    else listOf(MonthGroup("", listOf(DayGroup(LocalDate.MIN, "", shuffled))))
         }
-        if (sortBy == SortBy.DATE && !ascending) return groupByMonthAndDay(result)
-
-        val comparator: Comparator<MediaFileEntity> = when (sortBy) {
-            SortBy.NAME -> compareBy { it.fileName.lowercase() }
-            SortBy.SIZE -> compareBy { it.size }
-            SortBy.TYPE -> compareBy { it.fileName.substringAfterLast('.', "").lowercase() }
-            SortBy.DATE -> compareBy { it.dateCreated }
-            SortBy.RANDOM -> compareBy { it.id }      // unreachable, handled above
-        }
+        val comparator = comparatorFor(sortBy)
         val ordered = if (ascending) result.sortedWith(comparator) else result.sortedWith(comparator.reversed())
-        if (sortBy == SortBy.DATE) return groupByMonthAndDay(ordered, alreadyOrdered = true)
+        if (sortBy == SortBy.DATE) return groupByMonthAndDay(ordered)
 
         // One unnamed group so the grid keeps its existing shape - rows of three, selection,
         // thumbnail loading - while the screen leaves the headers out for a flat order.
@@ -569,7 +578,7 @@ class GalleryViewModel @Inject constructor(
                     covers = inIt.sortedByDescending { it.dateCreated }.take(4)
                 )
             }
-            .sortedBy { it.name.lowercase() }
+            .sortedWith(compareBy(NaturalOrder) { it.name })
 
     fun setFolderSheet(open: Boolean) = _uiState.update { it.copy(showFolderSheet = open) }
 
@@ -607,13 +616,14 @@ class GalleryViewModel @Inject constructor(
         }
     }
 
-    private fun groupByMonthAndDay(files: List<MediaFileEntity>, alreadyOrdered: Boolean = false): List<MonthGroup> {
+    /** Headings over a list already in the order asked for; nothing here re-sorts it. */
+    private fun groupByMonthAndDay(files: List<MediaFileEntity>): List<MonthGroup> {
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
         val yesterday = today.minusDays(1)
         val dayFmt = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())
 
-        return (if (alreadyOrdered) files else files.sortedByDescending { it.dateCreated })
+        return files
             .groupBy { file ->
                 val zdt = Instant.ofEpochMilli(file.dateCreated).atZone(zone)
                 "${zdt.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${zdt.year}"
@@ -631,12 +641,32 @@ class GalleryViewModel @Inject constructor(
                         }
                         DayGroup(date = date, displayDate = displayDate, photos = dayFiles)
                     }
-                    .sortedByDescending { it.date }
+                // No re-sort of the days: groupBy keeps the list's order, which is already
+                // the one asked for. A sortedByDescending here turned every month of an
+                // oldest-first timeline back to front.
                 MonthGroup(month = monthLabel, days = days)
             }
     }
 
     companion object {
         private const val MAX_THUMBNAILS = 80
+
+        /**
+         * The grid's order for one sort setting, which the viewer also uses when it has to
+         * work the order out itself (#151). Names compare naturally - "2" before "10". The
+         * path breaks every remaining tie: the media list arrives in different orders from
+         * different queries, and without a last word two photos with the same date or name
+         * would swap places between one refresh of the grid and the next.
+         */
+        fun comparatorFor(sortBy: SortBy): Comparator<MediaFileEntity> {
+            val byPath = compareBy(NaturalOrder) { f: MediaFileEntity -> f.relativePath }
+            val byName = compareBy(NaturalOrder) { f: MediaFileEntity -> f.fileName }.then(byPath)
+            return when (sortBy) {
+                SortBy.NAME -> byName
+                SortBy.SIZE -> compareBy<MediaFileEntity> { it.size }.then(byPath)
+                SortBy.TYPE -> compareBy<MediaFileEntity> { MediaExtensions.of(it.fileName) }.then(byName)
+                SortBy.DATE, SortBy.RANDOM -> compareBy<MediaFileEntity> { it.dateCreated }.then(byPath)
+            }
+        }
     }
 }

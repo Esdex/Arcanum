@@ -16,6 +16,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -37,11 +40,13 @@ import zip.arcanum.arcanum.files.data.fileManagerPrefs
 import zip.arcanum.arcanum.gallery.AudioPlayerQueue
 import zip.arcanum.arcanum.gallery.MediaScanner
 import zip.arcanum.arcanum.gallery.ThumbnailManager
+import zip.arcanum.arcanum.gallery.ViewerOrder
 import zip.arcanum.arcanum.saf.VaultDocumentsProvider
 import zip.arcanum.R
 import kotlinx.coroutines.coroutineScope
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.core.utils.MediaExtensions
+import zip.arcanum.core.utils.NaturalOrder
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.core.security.SessionState
@@ -63,6 +68,7 @@ class FileManagerViewModel @Inject constructor(
     private val engine: VeraCryptEngine,
     private val repo: ContainerRepository,
     private val audioQueue: AudioPlayerQueue,
+    private val viewerOrder: ViewerOrder,
     private val thumbnailManager: ThumbnailManager,
     private val mediaScanner: MediaScanner,
     private val mediaFileDao: MediaFileDao,
@@ -255,7 +261,11 @@ class FileManagerViewModel @Inject constructor(
         val isSelectionMode: Boolean = false,
         val searchQuery: String = "",
         val isSearchActive: Boolean = false,
-        val isSearchRecursive: Boolean = false,
+        /* What the search found under the current folder, subfolders included (#151), or
+         * null when no search is running. Sorting and the other list settings apply to this
+         * instead of [rawFiles] while it is there. Partial while [isSearching]. */
+        val searchHits: List<NativeFileInfo>? = null,
+        val isSearching: Boolean = false,
         /* Whether the filesystem underneath can hold a second name for one file.
          * Only ext4 can; FAT and exFAT have nothing to offer but a copy, and a
          * menu entry that silently copied would be the opposite of the ask (#128). */
@@ -404,6 +414,26 @@ class FileManagerViewModel @Inject constructor(
 
     companion object {
         private const val MAX_FM_THUMBNAILS = 80
+        /** How long typing has to pause before a search walks the tree. */
+        private const val SEARCH_DEBOUNCE_MS = 250L
+        /** How often a running search shows what it has found so far. */
+        private const val SEARCH_PUBLISH_MS = 150L
+
+        /**
+         * The browser's order for one sort setting. The viewer sorts a folder with this same
+         * comparator when it has to work the order out itself, so the two cannot drift (#151).
+         * Names compare naturally - "2" before "10" - and break every other tie, so files with
+         * the same date, size or type keep one order instead of whatever the vault listed.
+         */
+        fun comparatorFor(sortBy: SortBy): Comparator<NativeFileInfo> {
+            val byName = compareBy(NaturalOrder) { f: NativeFileInfo -> f.name }
+            return when (sortBy) {
+                SortBy.NAME -> byName
+                SortBy.DATE -> compareBy<NativeFileInfo> { it.lastModified }.then(byName)
+                SortBy.SIZE -> compareBy<NativeFileInfo> { it.size }.then(byName)
+                SortBy.TYPE -> compareBy<NativeFileInfo> { MediaExtensions.of(it.name) }.then(byName)
+            }
+        }
     }
 
     fun requestThumbnail(file: NativeFileInfo) {
@@ -478,6 +508,10 @@ class FileManagerViewModel @Inject constructor(
     // scan hasn't reached it yet. Result is delivered on the main thread; null means unresolvable.
     fun openMediaFile(clickedFile: NativeFileInfo, onResult: (String?) -> Unit) {
         val cid = _state.value.containerId
+        // The list as it stands on screen - searched, sorted, hidden files left out - is
+        // what a swipe in the viewer walks (#151). Anything in it that is not a picture or
+        // a video simply has no place in the viewer and drops out there.
+        viewerOrder.set(cid, _state.value.files.filter { !it.isDirectory }.map { it.path })
         viewModelScope.launch {
             val id = withContext(Dispatchers.IO) {
                 mediaFileDao.getByPath(cid, clickedFile.path)?.id
@@ -559,11 +593,14 @@ class FileManagerViewModel @Inject constructor(
     // ── Navigation ────────────────────────────────────────────────────────
 
     fun navigateTo(path: String) {
+        searchJob?.cancel()
         _state.update { it.copy(
             selectedItems   = emptySet(),
             isSelectionMode = false,
             isSearchActive  = false,
-            searchQuery     = ""
+            searchQuery     = "",
+            searchHits      = null,
+            isSearching     = false
         ) }
         loadDirectory(path)
     }
@@ -599,7 +636,7 @@ class FileManagerViewModel @Inject constructor(
         _state.update { it.copy(sortBy = sortBy) }
         viewModelScope.launch(Dispatchers.Default) {
             val s = _state.value
-            val files = applyFiltersAndSort(s.rawFiles, sortBy, s.sortAscending, s.showHidden, s.foldersFirst, s.searchQuery)
+            val files = applyFiltersAndSort(listed(s), sortBy, s.sortAscending, s.showHidden, s.foldersFirst, s.searchQuery)
             _state.update { it.copy(files = files) }
         }
         savePrefs()
@@ -610,7 +647,7 @@ class FileManagerViewModel @Inject constructor(
         _state.update { it.copy(sortAscending = asc) }
         viewModelScope.launch(Dispatchers.Default) {
             val s = _state.value
-            val files = applyFiltersAndSort(s.rawFiles, s.sortBy, asc, s.showHidden, s.foldersFirst, s.searchQuery)
+            val files = applyFiltersAndSort(listed(s), s.sortBy, asc, s.showHidden, s.foldersFirst, s.searchQuery)
             _state.update { it.copy(files = files) }
         }
         savePrefs()
@@ -621,7 +658,7 @@ class FileManagerViewModel @Inject constructor(
         _state.update { it.copy(foldersFirst = ff) }
         viewModelScope.launch(Dispatchers.Default) {
             val s = _state.value
-            val files = applyFiltersAndSort(s.rawFiles, s.sortBy, s.sortAscending, s.showHidden, ff, s.searchQuery)
+            val files = applyFiltersAndSort(listed(s), s.sortBy, s.sortAscending, s.showHidden, ff, s.searchQuery)
             _state.update { it.copy(files = files) }
         }
         savePrefs()
@@ -630,7 +667,9 @@ class FileManagerViewModel @Inject constructor(
     fun toggleShowHidden() {
         val sh = !_state.value.showHidden
         _state.update { it.copy(showHidden = sh) }
-        viewModelScope.launch(Dispatchers.Default) {
+        // A search has to walk again: hidden folders are either entered or skipped.
+        if (_state.value.searchQuery.isNotBlank()) startSearch(_state.value.searchQuery)
+        else viewModelScope.launch(Dispatchers.Default) {
             val s = _state.value
             val files = applyFiltersAndSort(s.rawFiles, s.sortBy, s.sortAscending, sh, s.foldersFirst, s.searchQuery)
             _state.update { it.copy(files = files) }
@@ -641,25 +680,13 @@ class FileManagerViewModel @Inject constructor(
     // ── Search ────────────────────────────────────────────────────────────
 
     fun toggleSearch() {
-        val active = !_state.value.isSearchActive
-        _state.update { it.copy(isSearchActive = active, searchQuery = if (!active) "" else it.searchQuery) }
-        if (!active) {
-            viewModelScope.launch(Dispatchers.Default) {
-                val s = _state.value
-                val files = applyFiltersAndSort(s.rawFiles, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, "")
-                _state.update { it.copy(files = files) }
-            }
-        }
+        setSearchActive(!_state.value.isSearchActive)
     }
 
     fun setSearchActive(active: Boolean) {
         if (!active) {
             _state.update { it.copy(isSearchActive = false, searchQuery = "") }
-            viewModelScope.launch(Dispatchers.Default) {
-                val s = _state.value
-                val files = applyFiltersAndSort(s.rawFiles, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, "")
-                _state.update { it.copy(files = files) }
-            }
+            startSearch("")
         } else {
             _state.update { it.copy(isSearchActive = true) }
         }
@@ -667,15 +694,80 @@ class FileManagerViewModel @Inject constructor(
 
     fun setSearchQuery(query: String) {
         _state.update { it.copy(searchQuery = query) }
-        viewModelScope.launch(Dispatchers.Default) {
-            val s = _state.value
-            val files = applyFiltersAndSort(s.rawFiles, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, query)
-            _state.update { it.copy(files = files) }
-        }
+        startSearch(query)
     }
 
-    fun toggleSearchRecursive() {
-        _state.update { it.copy(isSearchRecursive = !it.isSearchRecursive) }
+    /** What the list settings apply to: the search's finds while there are any, else the folder. */
+    private fun listed(s: FileManagerState): List<NativeFileInfo> =
+        if (s.searchQuery.isNotBlank()) s.searchHits ?: s.rawFiles else s.rawFiles
+
+    private var searchJob: Job? = null
+
+    /**
+     * Searches the current folder and everything under it (#151). It used to filter the
+     * folder on screen only, so a file one level down could not be found without first
+     * knowing where it was - which is what a search is for.
+     *
+     * The folder's own matches show at once from the listing already in hand; the walk
+     * then goes breadth first, so the nearer a match the sooner it appears, and the list
+     * is published as it grows rather than only at the end. Every keystroke cancels the
+     * walk before it and waits a moment first, so typing a word does not start a walk per
+     * letter. Links are not followed - a link to a folder above itself would walk forever -
+     * and hidden folders are skipped unless hidden files are shown, as they are on screen.
+     */
+    private fun startSearch(query: String) {
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            _state.update { s ->
+                s.copy(
+                    searchHits  = null,
+                    isSearching = false,
+                    files       = applyFiltersAndSort(s.rawFiles, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, "")
+                )
+            }
+            return
+        }
+        val start  = _state.value
+        val handle = repo.getContainerHandle(start.containerId) ?: return
+        val root   = start.currentPath
+        val showHidden = start.showHidden
+
+        fun publish(hits: List<NativeFileInfo>, done: Boolean) = _state.update { s ->
+            // Only into the search it was started for; anything else has moved on.
+            if (s.searchQuery != query || s.currentPath != root) s
+            else s.copy(
+                searchHits  = hits,
+                isSearching = !done,
+                files       = applyFiltersAndSort(hits, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, query)
+            )
+        }
+
+        searchJob = viewModelScope.launch(Dispatchers.IO) {
+            publish(start.rawFiles.filter { it.name.contains(query, ignoreCase = true) }, done = false)
+            delay(SEARCH_DEBOUNCE_MS)
+            val hits  = mutableListOf<NativeFileInfo>()
+            val queue = ArrayDeque<String>().apply { add(root) }
+            var published = android.os.SystemClock.uptimeMillis()
+            while (queue.isNotEmpty()) {
+                ensureActive()
+                val dir = queue.removeFirst()
+                val entries = runCatching { engine.listFilesOrNull(handle, dir) }.getOrNull() ?: continue
+                for (entry in entries) {
+                    if (!showHidden && entry.name.startsWith(".")) continue
+                    if (entry.name.contains(query, ignoreCase = true)) hits += entry
+                    // isDirectory is false for a link, whatever it points at.
+                    if (entry.isDirectory) queue.addLast(if (dir == "/") "/${entry.name}" else "$dir/${entry.name}")
+                }
+                val now = android.os.SystemClock.uptimeMillis()
+                if (now - published >= SEARCH_PUBLISH_MS) {
+                    ensureActive()
+                    publish(hits.toList(), done = false)
+                    published = now
+                }
+            }
+            ensureActive()
+            publish(hits.toList(), done = true)
+        }
     }
 
     // ── Selection ─────────────────────────────────────────────────────────
@@ -2307,9 +2399,15 @@ class FileManagerViewModel @Inject constructor(
             val rawFiles = engine.listFilesOrNull(handle, s.currentPath)
                 ?: return  // null = disk error, not empty dir
             _state.update { st ->
-                val files = applyFiltersAndSort(rawFiles.toList(), st.sortBy, st.sortAscending, st.showHidden, st.foldersFirst, st.searchQuery)
-                st.copy(rawFiles = rawFiles.toList(), files = files)
+                // A search on screen is walked again below instead of being cut back to
+                // this folder's matches.
+                if (st.searchQuery.isNotBlank()) st.copy(rawFiles = rawFiles.toList())
+                else st.copy(
+                    rawFiles = rawFiles.toList(),
+                    files    = applyFiltersAndSort(rawFiles.toList(), st.sortBy, st.sortAscending, st.showHidden, st.foldersFirst, "")
+                )
             }
+            _state.value.searchQuery.takeIf { it.isNotBlank() }?.let { startSearch(it) }
         }
     }
 
@@ -2329,15 +2427,18 @@ class FileManagerViewModel @Inject constructor(
                 }
                 val rawList = rawFiles.toList()
                 _state.update { s ->
-                    val files = applyFiltersAndSort(rawList, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, s.searchQuery)
+                    val searching = s.searchQuery.isNotBlank() && s.currentPath == path
                     s.copy(
                         rawFiles        = rawList,
-                        files           = files,
+                        files           = if (searching) s.files
+                                          else applyFiltersAndSort(rawList, s.sortBy, s.sortAscending, s.showHidden, s.foldersFirst, s.searchQuery),
                         isLoading       = false,
                         currentPath     = path,
                         pathSegments    = buildPathSegments(path)
                     )
                 }
+                // A refresh of the folder being searched walks the search again (#151).
+                _state.value.let { s -> if (s.searchQuery.isNotBlank() && s.currentPath == path) startSearch(s.searchQuery) }
             } catch (_: Exception) {
                 _state.update { it.copy(isLoading = false, error = "Failed to list directory") }
             }
@@ -2355,12 +2456,7 @@ class FileManagerViewModel @Inject constructor(
         var result = rawFiles
         if (!showHidden) result = result.filter { !it.name.startsWith(".") }
         if (query.isNotBlank()) result = result.filter { it.name.contains(query, ignoreCase = true) }
-        val comparator: Comparator<NativeFileInfo> = when (sortBy) {
-            SortBy.NAME -> compareBy { it.name.lowercase() }
-            SortBy.DATE -> compareBy { it.lastModified }
-            SortBy.SIZE -> compareBy { it.size }
-            SortBy.TYPE -> compareBy { it.name.substringAfterLast('.', "").lowercase() }
-        }
+        val comparator = comparatorFor(sortBy)
         result = if (ascending) result.sortedWith(comparator) else result.sortedWith(comparator.reversed())
         return if (foldersFirst) result.sortedWith(compareByDescending { it.isDirectory }) else result
     }

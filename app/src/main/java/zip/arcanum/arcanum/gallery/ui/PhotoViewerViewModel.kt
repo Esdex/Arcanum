@@ -25,6 +25,7 @@ import kotlinx.coroutines.withContext
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.crypto.NativeFileInfo
 import zip.arcanum.arcanum.files.data.FileBrowserPrefs
+import zip.arcanum.arcanum.files.ui.FileManagerViewModel
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.gallery.AnimatedImages
 import zip.arcanum.arcanum.gallery.ExifJpegPatcher
@@ -34,6 +35,7 @@ import zip.arcanum.arcanum.gallery.NativeFileInputStream
 import zip.arcanum.arcanum.gallery.StillDecoder
 import zip.arcanum.arcanum.gallery.readWholeFile
 import zip.arcanum.arcanum.gallery.ThumbnailManager
+import zip.arcanum.arcanum.gallery.ViewerOrder
 import zip.arcanum.core.database.dao.MediaFileDao
 import zip.arcanum.core.database.entities.MediaFileEntity
 import zip.arcanum.core.database.entities.MediaFileType
@@ -56,7 +58,8 @@ class PhotoViewerViewModel @Inject constructor(
     private val thumbnailManager: ThumbnailManager,
     private val idleMonitor: IdleMonitor,
     private val prefs: AppPreferences,
-    private val notifications: NotificationCenter
+    private val notifications: NotificationCenter,
+    private val viewerOrder: ViewerOrder
 ) : ViewModel() {
 
     private val fileId: String = savedStateHandle[Screen.PhotoViewer.ARG] ?: ""
@@ -117,6 +120,14 @@ class PhotoViewerViewModel @Inject constructor(
     // All visual media in the container, narrowed to [file]'s folder when folderScope is on.
     private suspend fun loadSiblings(file: MediaFileEntity): List<MediaFileEntity> {
         val all = mediaFileDao.getVisualMediaOnce(file.containerId)
+        // The list the tap came from, when the screen handed it over: that is the order
+        // and the selection on screen, filters and search included (#151). Working it out
+        // below is the fallback for when nothing was handed over - after a process death,
+        // or for the editor's saved copy, which no list on screen held.
+        viewerOrder.forFile(file.containerId, file.relativePath)?.let { paths ->
+            val byPath = all.associateBy { it.relativePath }
+            return paths.mapNotNull { byPath[it] }
+        }
         // Opened from the Gallery: follow the Gallery's order, which is its own setting.
         if (!folderScope) return orderLikeGallery(all)
         val dir = parentDir(file.relativePath)
@@ -131,21 +142,17 @@ class PhotoViewerViewModel @Inject constructor(
      */
     private suspend fun orderLikeGallery(media: List<MediaFileEntity>): List<MediaFileEntity> {
         if (media.size < 2) return media
-        val by  = runCatching { prefs.gallerySortBy.first() }.getOrNull() ?: return media
-        val asc = runCatching { prefs.gallerySortAscending.first() }.getOrDefault(false)
-        if (by == "RANDOM") {
+        val name = runCatching { prefs.gallerySortBy.first() }.getOrNull() ?: return media
+        val by   = runCatching { GalleryViewModel.SortBy.valueOf(name) }.getOrDefault(GalleryViewModel.SortBy.DATE)
+        val asc  = runCatching { prefs.gallerySortAscending.first() }.getOrDefault(false)
+        if (by == GalleryViewModel.SortBy.RANDOM) {
             // The same seed the grid used, so the swipe walks the arrangement on screen
             // rather than a second, unrelated shuffle (#122). Sorted by id first for the same
             // reason it is there: the shuffle has to start from a fixed order.
             val seed = runCatching { prefs.galleryRandomSeed.first() }.getOrDefault(1L)
             return media.sortedBy { it.id }.shuffled(Random(seed))
         }
-        val comparator: Comparator<MediaFileEntity> = when (by) {
-            "NAME" -> compareBy { it.fileName.lowercase() }
-            "SIZE" -> compareBy { it.size }
-            "TYPE" -> compareBy { it.fileName.substringAfterLast('.', "").lowercase() }
-            else   -> compareBy { it.dateCreated }       // DATE, and anything unrecognised
-        }
+        val comparator = GalleryViewModel.comparatorFor(by)
         return if (asc) media.sortedWith(comparator) else media.sortedWith(comparator.reversed())
     }
 
@@ -173,14 +180,11 @@ class PhotoViewerViewModel @Inject constructor(
             .getOrNull() ?: return media
         val sort    = runCatching { FileBrowserPrefs.sortOnce(context) }.getOrNull() ?: return media
 
-        // Mirrors FileManagerViewModel.applyFiltersAndSort; foldersFirst does not apply
-        // here because a folder is never one of the swipe siblings.
-        val comparator: Comparator<NativeFileInfo> = when (sort.by) {
-            "NAME" -> compareBy { it.name.lowercase() }
-            "SIZE" -> compareBy { it.size }
-            "TYPE" -> compareBy { it.name.substringAfterLast('.', "").lowercase() }
-            else   -> compareBy { it.lastModified }      // DATE, and anything unrecognised
-        }
+        // The browser's own comparator; foldersFirst does not apply here because a folder
+        // is never one of the swipe siblings.
+        val by = runCatching { FileManagerViewModel.SortBy.valueOf(sort.by) }
+            .getOrDefault(FileManagerViewModel.SortBy.DATE)
+        val comparator = FileManagerViewModel.comparatorFor(by)
         val ordered = if (sort.ascending) listing.sortedWith(comparator)
                       else listing.sortedWith(comparator.reversed())
 

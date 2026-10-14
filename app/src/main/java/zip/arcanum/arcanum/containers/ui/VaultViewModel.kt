@@ -45,6 +45,7 @@ import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
 import zip.arcanum.usb.UsbBlockDevice
 import zip.arcanum.usb.UsbVolumeManager
+import zip.arcanum.core.utils.NaturalOrder
 import javax.crypto.Cipher
 import javax.inject.Inject
 
@@ -187,7 +188,7 @@ class VaultViewModel @Inject constructor(
 
     val containers = combine(repo.getAllContainersRaw(), _sortState) { list, sort ->
         var sorted = when (sort.sortBy) {
-            SortBy.NAME        -> list.sortedBy { it.name.lowercase() }
+            SortBy.NAME        -> list.sortedWith(compareBy(NaturalOrder) { it.name })
             SortBy.SIZE        -> list.sortedBy { it.size }
             SortBy.LAST_OPENED -> list.sortedBy { it.lastAccessedAt }
         }

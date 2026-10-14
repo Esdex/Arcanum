@@ -355,6 +355,7 @@
     <string name="files_empty_no_results_title">No results</string>
     <string name="files_empty_folder_title">Empty folder</string>
     <string name="files_empty_no_results_subtitle">Try a different search term</string>
+    <string name="files_search_found_in">in %1$s</string>
     <string name="files_empty_folder_subtitle">Tap + to import files or create a folder</string>
     <string name="files_error_cannot_browse">Cannot browse files</string>
     <string name="files_type_folder">Folder</string>
