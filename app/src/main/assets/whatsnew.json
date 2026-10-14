@@ -1,6 +1,20 @@
 {
   "versions": [
     {
+      "version": "0.0.0",
+      "versionCode": 11,
+      "entries": [
+        { "type": "fix", "title": "Swiping through photos stays in the list you opened", "description": "Opening a photo or video from the gallery and swiping used to walk every picture in the vault in an order of its own, ignoring the folders picked in Folders to show, the photos or videos filter and the search box - so the next picture could be one that was not on screen at all. The viewer now walks exactly the list it was opened from, in the same order. The same goes for Files, where a search or hidden files changed the list too. (#151)" },
+        { "type": "improvement", "title": "Numbers in names sort by value", "description": "Sorting by name compared names letter by letter, so 10 landed between 1 and 2 and 100 came straight after 10. Numbers are now compared as numbers - 1, 2, 10, 100, and IMG_9 before IMG_10 - in Files, in the gallery and in the vault list, and names no longer need padding with zeros to come out in order. (#151)" },
+        { "type": "fix", "title": "Oldest first shows each month in order", "description": "With the gallery sorted by date, oldest first, the months were in order but the days inside each month still ran newest first. They now run oldest to newest all the way down." },
+        { "type": "new", "title": "Search in Files looks inside subfolders", "description": "Searching in Files used to look only at the folder on screen, so a file one level down could not be found without first knowing where it was. The search now covers the folder you are in and everything under it, shows results as it finds them, and says under each one which folder it is in. (#151)" },
+        { "type": "new", "title": "Lock the video player", "description": "A lock beside the seek bar stops the video from answering touches, so a stray finger cannot pause it, seek or swipe to the next file. Tap the screen, or press back, and an Unlock button appears. (#151)" },
+        { "type": "new", "title": "Swipe for volume and brightness, hold for 2x", "description": "Swiping up or down on the right of a video changes the volume, and on the left the brightness - of the player only, which goes back to normal when you leave the video. Holding a finger on the video plays it at twice the speed until you let go. (#151)" },
+        { "type": "new", "title": "Playback speed and loop", "description": "The video menu can set a speed from 0.25x to 2x and loop the video. Both last until the video is closed, and while they are on they stay in sight beside the time. (#151)" },
+        { "type": "new", "title": "Settings for the video player", "description": "Each of the player's new features has its own switch under Settings, Video player, for anyone who would rather do without it. All of them start switched on." }
+      ]
+    },
+    {
       "version": "1.6",
       "versionCode": 10,
       "entries": [
