@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.SmartDisplay
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Palette
@@ -72,7 +73,7 @@ import zip.arcanum.core.components.GroupedRoundIcon
 // Each sub-screen lives in a file of its own beside this one.
 
 private enum class SubScreen {
-    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, TEXT_EDITOR, BACKUP, BACKUP_SAVE, ABOUT, LICENSES, WHATS_NEW, DONATIONS, PREMIUM, DEBUG
+    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, TEXT_EDITOR, VIDEO_PLAYER, BACKUP, BACKUP_SAVE, ABOUT, LICENSES, WHATS_NEW, DONATIONS, PREMIUM, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -188,6 +189,19 @@ fun SettingsScreen(
                     onBack        = { subScreen = null }
                 )
             }
+            SubScreen.VIDEO_PLAYER -> {
+                val playerPrefs by viewModel.videoPlayer.collectAsState()
+                VideoPlayerSubScreen(
+                    prefs             = playerPrefs,
+                    onSwipeVolume     = viewModel::setPlayerSwipeVolume,
+                    onSwipeBrightness = viewModel::setPlayerSwipeBrightness,
+                    onHoldForSpeed    = viewModel::setPlayerHoldForSpeed,
+                    onLockButton      = viewModel::setPlayerLockButton,
+                    onSpeedMenu       = viewModel::setPlayerSpeedMenu,
+                    onLoop            = viewModel::setPlayerLoop,
+                    onBack            = { subScreen = null }
+                )
+            }
 
             SubScreen.CHANGE_PIN -> ChangePinScreen(onBack = { subScreen = null })
             SubScreen.BACKUP    -> BackupSubScreen(
@@ -255,6 +269,7 @@ private object SettingsHue {
     val Panic      = SectionHue(Color(0xFFFFB3AE), Color(0xFF8A1A16))
     val Appearance = SectionHue(Color(0xFFFFB683), Color(0xFF753403))
     val Editor     = SectionHue(Color(0xFF7FD8C8), Color(0xFF00504A))
+    val Player     = SectionHue(Color(0xFFF2B8D8), Color(0xFF6B1F4C))
     val About      = SectionHue(Color(0xFFC7C7C7), Color(0xFF474747))
     val Debug      = SectionHue(Color(0xFF80DA88), Color(0xFF00522C))
     val Donate     = SectionHue(Color(0xFFFFC107), Color(0xFF5D4200))
@@ -361,6 +376,21 @@ private fun MainSettingsScreen(
                             )
                         },
                         onClick  = { onNavigate(SubScreen.TEXT_EDITOR) }
+                    )
+                }
+                row { shape ->
+                    GroupedRow(
+                        shape    = shape,
+                        title    = stringResource(R.string.settings_card_player),
+                        subtitle = stringResource(R.string.settings_card_player_desc),
+                        leading  = {
+                            GroupedRoundIcon(
+                                icon      = Icons.Outlined.SmartDisplay,
+                                color     = SettingsHue.Player.circle,
+                                iconColor = SettingsHue.Player.glyph
+                            )
+                        },
+                        onClick  = { onNavigate(SubScreen.VIDEO_PLAYER) }
                     )
                 }
             }

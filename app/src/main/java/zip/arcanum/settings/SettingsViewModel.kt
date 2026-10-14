@@ -24,6 +24,7 @@ import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.core.navigation_components.DefaultContainerTab
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.TextEditorPrefs
+import zip.arcanum.core.security.VideoPlayerPrefs
 import zip.arcanum.core.security.BiometricAuth
 import zip.arcanum.core.security.DisguiseManager
 import zip.arcanum.core.security.IdleMonitor
@@ -97,6 +98,19 @@ class SettingsViewModel @Inject constructor(
     fun setEditorWhitespace(on: Boolean) { viewModelScope.launch { prefs.setEditorShowWhitespace(on) } }
     fun setEditorOpenNew(on: Boolean)    { viewModelScope.launch { prefs.setEditorOpenAfterCreate(on) } }
     fun setEditorHideIme(on: Boolean)    { viewModelScope.launch { prefs.setEditorHideImeOnScroll(on) } }
+
+    // ── Video player (#151) ───────────────────────────────────────────────────
+
+    val videoPlayer = prefs.videoPlayer.stateIn(
+        viewModelScope, SharingStarted.Eagerly, VideoPlayerPrefs()
+    )
+
+    fun setPlayerLockButton(on: Boolean)      { viewModelScope.launch { prefs.setPlayerLockButton(on) } }
+    fun setPlayerSwipeVolume(on: Boolean)     { viewModelScope.launch { prefs.setPlayerSwipeVolume(on) } }
+    fun setPlayerSwipeBrightness(on: Boolean) { viewModelScope.launch { prefs.setPlayerSwipeBrightness(on) } }
+    fun setPlayerHoldForSpeed(on: Boolean)    { viewModelScope.launch { prefs.setPlayerHoldForSpeed(on) } }
+    fun setPlayerSpeedMenu(on: Boolean)       { viewModelScope.launch { prefs.setPlayerSpeedMenu(on) } }
+    fun setPlayerLoop(on: Boolean)            { viewModelScope.launch { prefs.setPlayerLoop(on) } }
 
     fun setReceiveShares(enabled: Boolean) {
         viewModelScope.launch { prefs.setReceiveShares(enabled) }

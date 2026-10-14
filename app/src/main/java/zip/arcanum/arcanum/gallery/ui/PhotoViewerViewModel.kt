@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.core.security.AppPreferences
+import zip.arcanum.core.security.VideoPlayerPrefs
 import zip.arcanum.crypto.NativeFileInfo
 import zip.arcanum.arcanum.files.data.FileBrowserPrefs
 import zip.arcanum.arcanum.files.ui.FileManagerViewModel
@@ -87,6 +88,10 @@ class PhotoViewerViewModel @Inject constructor(
     /** Whether what is playing may be named outside the app - see AppPreferences. */
     val mediaSessionContent = prefs.mediaSessionContent
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, false)
+
+    /** Which of the player's extras are switched on (#151) - see VideoPlayerPrefs. */
+    val playerPrefs = prefs.videoPlayer
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, VideoPlayerPrefs())
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState = _uiState.asStateFlow()

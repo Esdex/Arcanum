@@ -67,6 +67,12 @@ class AppPreferences @Inject constructor(
         val EDITOR_WHITESPACE         = booleanPreferencesKey("editor_whitespace")
         val EDITOR_OPEN_NEW           = booleanPreferencesKey("editor_open_new")
         val EDITOR_HIDE_IME           = booleanPreferencesKey("editor_hide_ime_on_scroll")
+        val PLAYER_LOCK               = booleanPreferencesKey("player_lock_button")
+        val PLAYER_SWIPE_VOLUME       = booleanPreferencesKey("player_swipe_volume")
+        val PLAYER_SWIPE_BRIGHTNESS   = booleanPreferencesKey("player_swipe_brightness")
+        val PLAYER_HOLD_SPEED         = booleanPreferencesKey("player_hold_for_speed")
+        val PLAYER_SPEED_MENU         = booleanPreferencesKey("player_speed_menu")
+        val PLAYER_LOOP               = booleanPreferencesKey("player_loop")
 
         /** Survives panic mode's "Clear app settings" - see [clearSettingsForPanic]. */
         val PANIC_KEEP: List<Preferences.Key<*>> = listOf(
@@ -456,7 +462,43 @@ class AppPreferences @Inject constructor(
     suspend fun setEditorHideImeOnScroll(on: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.EDITOR_HIDE_IME] = on }
     }
+
+    // ── Video player (#151) ──────────────────────────────────────────────────
+
+    /** Every video player switch at once - the viewer and its settings screen read them all. */
+    val videoPlayer: Flow<VideoPlayerPrefs> = context.appPrefsDataStore.data.map { p ->
+        VideoPlayerPrefs(
+            lockButton      = p[Keys.PLAYER_LOCK]             ?: true,
+            swipeVolume     = p[Keys.PLAYER_SWIPE_VOLUME]     ?: true,
+            swipeBrightness = p[Keys.PLAYER_SWIPE_BRIGHTNESS] ?: true,
+            holdForSpeed    = p[Keys.PLAYER_HOLD_SPEED]       ?: true,
+            speedMenu       = p[Keys.PLAYER_SPEED_MENU]       ?: true,
+            loop            = p[Keys.PLAYER_LOOP]             ?: true
+        )
+    }
+
+    suspend fun setPlayerLockButton(on: Boolean)      { context.appPrefsDataStore.edit { it[Keys.PLAYER_LOCK] = on } }
+    suspend fun setPlayerSwipeVolume(on: Boolean)     { context.appPrefsDataStore.edit { it[Keys.PLAYER_SWIPE_VOLUME] = on } }
+    suspend fun setPlayerSwipeBrightness(on: Boolean) { context.appPrefsDataStore.edit { it[Keys.PLAYER_SWIPE_BRIGHTNESS] = on } }
+    suspend fun setPlayerHoldForSpeed(on: Boolean)    { context.appPrefsDataStore.edit { it[Keys.PLAYER_HOLD_SPEED] = on } }
+    suspend fun setPlayerSpeedMenu(on: Boolean)       { context.appPrefsDataStore.edit { it[Keys.PLAYER_SPEED_MENU] = on } }
+    suspend fun setPlayerLoop(on: Boolean)            { context.appPrefsDataStore.edit { it[Keys.PLAYER_LOOP] = on } }
 }
+
+/**
+ * Which of the video player's extras are switched on (#151). One switch each, because each
+ * one changes what a touch on the video does or adds a control to it, and not everybody
+ * wants every one of them. All on by default: the switch is there to take a feature away,
+ * not to hide it from the people who asked for it.
+ */
+data class VideoPlayerPrefs(
+    val lockButton: Boolean = true,
+    val swipeVolume: Boolean = true,
+    val swipeBrightness: Boolean = true,
+    val holdForSpeed: Boolean = true,
+    val speedMenu: Boolean = true,
+    val loop: Boolean = true
+)
 
 /** The editor's look and behaviour, as one thing to pass around. */
 data class TextEditorPrefs(

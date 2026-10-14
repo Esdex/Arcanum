@@ -121,6 +121,20 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.RepeatOne
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.BrightnessMedium
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
+import androidx.compose.material.icons.automirrored.outlined.VolumeOff
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
+import androidx.compose.ui.input.pointer.positionChange
+import android.media.AudioManager
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -211,7 +225,10 @@ fun MediaViewerScreen(
             ContextCompat.getMainExecutor(appContext)
         )
         onDispose {
-            mc?.run { stop(); clearMediaItems() }
+            /* Speed and loop belong to the player the audio screen shares, and neither is
+               reset by a new media item: left as they were, the next song would play at the
+               speed this video was watched at. */
+            mc?.run { setPlaybackSpeed(1f); repeatMode = Player.REPEAT_MODE_OFF; stop(); clearMediaItems() }
             MediaController.releaseFuture(controllerFuture)
         }
     }
@@ -236,6 +253,24 @@ fun MediaViewerScreen(
     // never offers the button.
     val isWideVideo = videoAspect > 1.05f
     var isFullscreen by remember { mutableStateOf(false) }
+
+    // ── Player extras (#151), each behind its own switch in Settings ──────
+    val playerPrefs by viewModel.playerPrefs.collectAsState()
+    // Chosen for this viewing only: the viewer opens at 1x and playing once every time.
+    var playbackSpeed by remember { mutableFloatStateOf(1f) }
+    var looping       by remember { mutableStateOf(false) }
+    // Held down for 2x; whether the hold started the video, so letting go can pause it again.
+    var holdingFast   by remember { mutableStateOf(false) }
+    var holdResumed   by remember { mutableStateOf(false) }
+    var isLocked      by remember { mutableStateOf(false) }
+    var showUnlock    by remember { mutableStateOf(false) }
+    var unlockToken   by remember { mutableStateOf(0) }
+    // What a vertical swipe is changing, how far along it is, and whether it is on screen.
+    var swipeKind     by remember { mutableStateOf(SwipeKind.VOLUME) }
+    var swipeLevel    by remember { mutableFloatStateOf(0f) }
+    var swipeVisible  by remember { mutableStateOf(false) }
+    var swipeActive   by remember { mutableStateOf(false) }
+    var swipeEndToken by remember { mutableStateOf(0) }
 
     DisposableEffect(mc) {
         val controller = mc ?: return@DisposableEffect onDispose {}
@@ -278,6 +313,78 @@ fun MediaViewerScreen(
 
     // A video that stops being wide (next item in the pager) has nothing to be fullscreen for.
     LaunchedEffect(isWideVideo) { if (!isWideVideo) isFullscreen = false }
+
+    // A switch turned off in Settings takes its effect away at once, not at the next video.
+    val effectiveSpeed = when {
+        holdingFast             -> 2f
+        playerPrefs.speedMenu   -> playbackSpeed
+        else                    -> 1f
+    }
+    val effectiveLoop = playerPrefs.loop && looping
+    // Keyed on the file too: a new media item is set for every video, and the speed and
+    // repeat mode are re-applied to it rather than trusted to carry over.
+    LaunchedEffect(mc, effectiveSpeed, uiState.currentFile?.id) { mc?.setPlaybackSpeed(effectiveSpeed) }
+    LaunchedEffect(mc, effectiveLoop, uiState.currentFile?.id) {
+        mc?.repeatMode = if (effectiveLoop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+    }
+
+    // Locked: the system back shows the way out instead of leaving, since a stray back
+    // gesture is exactly the kind of touch the lock is for.
+    BackHandler(enabled = isLocked) { showUnlock = true; unlockToken++ }
+    LaunchedEffect(unlockToken) { if (showUnlock) { delay(3_000); showUnlock = false } }
+    LaunchedEffect(swipeEndToken) { if (swipeEndToken > 0) { delay(600); swipeVisible = false } }
+
+    // Volume is the media stream's own, as the hardware keys would set it. Brightness is the
+    // window's only and is handed back to the system when the viewer goes, so leaving the
+    // video can never strand the phone at the level it was watched at.
+    val audioManager = remember { context.getSystemService(AudioManager::class.java) }
+    DisposableEffect(activity) {
+        onDispose {
+            activity?.window?.let { w ->
+                val lp = w.attributes
+                if (lp.screenBrightness != WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
+                    lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                    w.attributes = lp
+                }
+            }
+        }
+    }
+    val onSwipeStart: (Boolean) -> Unit = start@{ left ->
+        // A finger already holding for 2x that then slides is still holding, not swiping.
+        swipeActive = !holdingFast
+        if (!swipeActive) return@start
+        if (left) {
+            val current = activity?.window?.attributes?.screenBrightness ?: -1f
+            swipeKind  = SwipeKind.BRIGHTNESS
+            swipeLevel = if (current >= 0f) current else runCatching {
+                android.provider.Settings.System.getInt(
+                    context.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS
+                ) / 255f
+            }.getOrDefault(0.5f).coerceIn(0f, 1f)
+        } else {
+            val max = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 0
+            swipeKind  = SwipeKind.VOLUME
+            swipeLevel = if (max > 0) audioManager!!.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max else 0f
+        }
+        swipeVisible = true
+    }
+    val onSwipe: (Float) -> Unit = swipe@{ fraction ->
+        if (!swipeActive) return@swipe
+        swipeLevel = (swipeLevel + fraction * SWIPE_GAIN).coerceIn(0f, 1f)
+        when (swipeKind) {
+            SwipeKind.BRIGHTNESS -> activity?.window?.let { w ->
+                // Never quite 0: a window at zero brightness reads as a phone that died.
+                w.attributes = w.attributes.apply { screenBrightness = swipeLevel.coerceAtLeast(0.01f) }
+            }
+            SwipeKind.VOLUME -> audioManager?.let { am ->
+                val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                val index = Math.round(swipeLevel * max)
+                if (index != am.getStreamVolume(AudioManager.STREAM_MUSIC)) {
+                    runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, index, 0) }
+                }
+            }
+        }
+    }
 
     // Sampled once per frame rather than on a 200 ms timer, which advanced the seek bar in
     // five visible steps a second. MediaController extrapolates its position locally between
@@ -363,14 +470,16 @@ fun MediaViewerScreen(
     // Declared up here because the auto-hide below has to know about it: the video menu is
     // anchored inside the top bar, so hiding the bar takes the open menu down with it (#138).
     var videoMenuExpanded by remember { mutableStateOf(false) }
-    LaunchedEffect(showBars, barsPokeToken, videoMenuExpanded) {
+    var speedMenuExpanded by remember { mutableStateOf(false) }
+    val anyVideoMenu = videoMenuExpanded || speedMenuExpanded
+    LaunchedEffect(showBars, barsPokeToken, anyVideoMenu) {
         val window = (context as? Activity)?.window ?: return@LaunchedEffect
         val wic = WindowCompat.getInsetsController(window, view)
         if (showBars) {
             wic.show(WindowInsetsCompat.Type.statusBars())
             // The menu lives in the bar - leave both up until it is dismissed, then the effect
             // re-runs on videoMenuExpanded and the countdown starts over from the full 3s.
-            if (videoMenuExpanded) return@LaunchedEffect
+            if (anyVideoMenu) return@LaunchedEffect
             delay(3_000); showBars = false
         } else {
             /*
@@ -511,7 +620,7 @@ fun MediaViewerScreen(
             // ── Pager ────────────────────────────────────────────────────
             HorizontalPager(
                 state             = pagerState,
-                userScrollEnabled = !isImageZoomed && !isVideoZoomed,
+                userScrollEnabled = !isImageZoomed && !isVideoZoomed && !isLocked,
                 modifier          = Modifier.fillMaxSize()
             ) { page ->
                 val isCurrent = page == pagerState.currentPage
@@ -546,6 +655,25 @@ fun MediaViewerScreen(
                             mc?.let { p -> p.seekTo(p.currentPosition + 10_000L) }
                             seekRightToken++
                             if (showBars) barsPokeToken++
+                        },
+                        swipeLeft    = playerPrefs.swipeBrightness,
+                        swipeRight   = playerPrefs.swipeVolume,
+                        onSwipeStart = onSwipeStart,
+                        onSwipe      = onSwipe,
+                        onSwipeEnd   = { if (swipeActive) { swipeActive = false; swipeEndToken++ } },
+                        onHoldStart  = if (!playerPrefs.holdForSpeed) null else {
+                            {
+                                holdResumed = !isPlaying
+                                holdingFast = true
+                                if (holdResumed) mc?.play()
+                            }
+                        },
+                        onHoldEnd    = {
+                            if (holdingFast) {
+                                holdingFast = false
+                                if (holdResumed) mc?.pause()
+                                holdResumed = false
+                            }
                         }
                     )
                     else -> Box(Modifier.fillMaxSize().background(Color.Black))
@@ -690,6 +818,78 @@ fun MediaViewerScreen(
                 }
             }
 
+            // ── Hold for 2x: says why the video is running fast ──────────
+            AnimatedVisibility(
+                visible  = holdingFast,
+                enter    = fadeIn(tween(120)),
+                exit     = fadeOut(tween(200)),
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 56.dp)
+            ) {
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50))
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text(stringResource(R.string.player_hold_speed), color = Color.White, style = MaterialTheme.typography.labelLarge)
+                    Icon(Icons.Filled.FastForward, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            // ── Volume / brightness level while a swipe changes it ────────
+            AnimatedVisibility(
+                visible  = swipeVisible,
+                enter    = fadeIn(tween(100)),
+                exit     = fadeOut(tween(250)),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                SwipeLevelIndicator(kind = swipeKind, level = swipeLevel)
+            }
+
+            // ── Lock: everything under it stops answering touches ────────
+            if (isLocked) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false).consume()
+                                do {
+                                    val event = awaitPointerEvent()
+                                    event.changes.forEach { it.consume() }
+                                } while (event.changes.any { it.pressed })
+                                showUnlock = true
+                                unlockToken++
+                            }
+                        }
+                )
+            }
+            AnimatedVisibility(
+                visible  = isLocked && showUnlock,
+                enter    = fadeIn(tween(150)),
+                exit     = fadeOut(tween(250)),
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 32.dp)
+            ) {
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .clickable {
+                            isLocked   = false
+                            showUnlock = false
+                            showBars   = true
+                            barsPokeToken++
+                        }
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                ) {
+                    Icon(Icons.Outlined.LockOpen, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    Text(stringResource(R.string.player_unlock), color = Color.White, style = MaterialTheme.typography.labelLarge)
+                }
+            }
+
             // ── Top bar ───────────────────────────────────────────────────
             AnimatedVisibility(
                 visible  = showBars,
@@ -724,6 +924,22 @@ fun MediaViewerScreen(
                                     expanded         = videoMenuExpanded,
                                     onDismissRequest = { videoMenuExpanded = false }
                                 ) {
+                                    if (playerPrefs.speedMenu) {
+                                        DropdownMenuItem(
+                                            leadingIcon  = { Icon(Icons.Outlined.Speed, null) },
+                                            text         = { Text(stringResource(R.string.player_speed)) },
+                                            trailingIcon = { Text(speedLabel(playbackSpeed)) },
+                                            onClick      = { videoMenuExpanded = false; speedMenuExpanded = true }
+                                        )
+                                    }
+                                    if (playerPrefs.loop) {
+                                        DropdownMenuItem(
+                                            leadingIcon  = { Icon(Icons.Outlined.RepeatOne, null) },
+                                            text         = { Text(stringResource(R.string.player_loop)) },
+                                            trailingIcon = { if (looping) Icon(Icons.Outlined.Check, null) },
+                                            onClick      = { looping = !looping; videoMenuExpanded = false }
+                                        )
+                                    }
                                     DropdownMenuItem(
                                         leadingIcon = { Icon(Icons.Filled.Share, null) },
                                         text        = { Text(stringResource(R.string.viewer_action_export)) },
@@ -739,6 +955,23 @@ fun MediaViewerScreen(
                                         text        = { Text(stringResource(R.string.viewer_action_details)) },
                                         onClick     = { showInfoSheet = true; videoMenuExpanded = false }
                                     )
+                                }
+                                // Opened from the item above, in the same place, so the choice
+                                // is made where it was asked for.
+                                DropdownMenu(
+                                    expanded         = speedMenuExpanded,
+                                    onDismissRequest = { speedMenuExpanded = false }
+                                ) {
+                                    PLAYBACK_SPEEDS.forEach { speed ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(if (speed == 1f) stringResource(R.string.player_speed_normal)
+                                                     else speedLabel(speed))
+                                            },
+                                            trailingIcon = { if (speed == playbackSpeed) Icon(Icons.Outlined.Check, null) },
+                                            onClick      = { playbackSpeed = speed; speedMenuExpanded = false }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -764,7 +997,12 @@ fun MediaViewerScreen(
                         onSliderChange         = { f -> val ms = (f * durationMs).toLong(); isScrubbing = true; scrubMs = ms; mc?.seekTo(ms); showBars = true; barsPokeToken++ },
                         onSliderChangeFinished = { mc?.seekTo(scrubMs); isScrubbing = false; showBars = true; barsPokeToken++ },
                         isFullscreen           = isFullscreen,
-                        onExitFullscreen       = { isFullscreen = false; showBars = true; barsPokeToken++ }
+                        onExitFullscreen       = { isFullscreen = false; showBars = true; barsPokeToken++ },
+                        speedLabel             = effectiveSpeed.takeIf { it != 1f && !holdingFast }?.let { speedLabel(it) },
+                        looping                = effectiveLoop,
+                        onLock                 = if (!playerPrefs.lockButton) null else {
+                            { isLocked = true; showBars = false; showUnlock = true; unlockToken++ }
+                        }
                     )
                 } else {
                     Box(
@@ -926,8 +1164,23 @@ private fun VideoSurfacePage(
     onTap: () -> Unit,
     onDoubleTapLeft: () -> Unit,
     onDoubleTapRight: () -> Unit,
-    onZoomChanged: (Float) -> Unit
+    onZoomChanged: (Float) -> Unit,
+    swipeLeft: Boolean = false,
+    swipeRight: Boolean = false,
+    onSwipeStart: (left: Boolean) -> Unit = {},
+    onSwipe: (fraction: Float) -> Unit = {},
+    onSwipeEnd: () -> Unit = {},
+    onHoldStart: (() -> Unit)? = null,
+    onHoldEnd: () -> Unit = {}
 ) {
+    // The gesture detectors below are keyed on what is switched on, not on these lambdas,
+    // so they read the current ones through here rather than the ones they started with.
+    val swipeStart by rememberUpdatedState(onSwipeStart)
+    val swipeBy    by rememberUpdatedState(onSwipe)
+    val swipeEnd   by rememberUpdatedState(onSwipeEnd)
+    val holdStart  by rememberUpdatedState(onHoldStart)
+    val holdEnd    by rememberUpdatedState(onHoldEnd)
+    val canHold    = onHoldStart != null
     var width         by remember { mutableStateOf(0) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     val scale         = remember { Animatable(1f) }
@@ -976,15 +1229,49 @@ private fun VideoSurfacePage(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { width = it.width; containerSize = it }
-            .pointerInput(Unit) {
+            .pointerInput(canHold) {
                 detectTapGestures(
                     onTap = { onTap() },
                     // No double-tap zoom here, unlike a photo: on a video that gesture is a
                     // seek, and one of the two has to give way.
                     onDoubleTap = { offset ->
                         if (offset.x < width / 2f) onDoubleTapLeft() else onDoubleTapRight()
-                    }
+                    },
+                    // Hold for 2x (#151). Giving onLongPress a handler is also what stops the
+                    // release at the end of a hold from counting as a tap and toggling the
+                    // controls. Every press ends the hold; the screen ignores the ones that
+                    // never started one.
+                    onLongPress = if (canHold) { _ -> holdStart?.invoke() } else null,
+                    onPress = { if (canHold) { tryAwaitRelease(); holdEnd() } }
                 )
+            }
+            // Vertical swipes for brightness (left half) and volume (right half), #151.
+            // Inner to the zoom, so it sees a drag first - which is why it stands aside
+            // entirely while zoomed, where a vertical drag pans, and the moment a second
+            // finger lands, where it is a pinch.
+            .pointerInput(swipeLeft, swipeRight) {
+                if (!swipeLeft && !swipeRight) return@pointerInput
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val left = down.position.x < size.width / 2f
+                    if (scale.value > 1.05f || (left && !swipeLeft) || (!left && !swipeRight)) return@awaitEachGesture
+                    val start = awaitVerticalTouchSlopOrCancellation(down.id) { change, _ ->
+                        if (currentEvent.changes.count { it.pressed } == 1) change.consume()
+                    } ?: return@awaitEachGesture
+                    swipeStart(left)
+                    while (true) {
+                        val event  = awaitPointerEvent()
+                        if (event.changes.count { it.pressed } != 1) break
+                        val change = event.changes.firstOrNull { it.id == start.id } ?: break
+                        val dy = change.positionChange().y
+                        if (dy != 0f) {
+                            change.consume()
+                            // Up is more; a swipe the full height of the picture is the whole range.
+                            swipeBy(-dy / size.height)
+                        }
+                    }
+                    swipeEnd()
+                }
             }
             .transformable(state = transformState, canPan = { scale.value > 1.05f })
             .pointerInput(Unit) {
@@ -1054,7 +1341,10 @@ private fun VideoBottomBar(
     onSliderChange: (Float) -> Unit,
     onSliderChangeFinished: () -> Unit,
     isFullscreen: Boolean,
-    onExitFullscreen: () -> Unit
+    onExitFullscreen: () -> Unit,
+    speedLabel: String? = null,
+    looping: Boolean = false,
+    onLock: (() -> Unit)? = null
 ) {
     Box(
         modifier = Modifier
@@ -1072,6 +1362,17 @@ private fun VideoBottomBar(
                 .padding(start = 8.dp, end = 16.dp, bottom = 12.dp, top = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (onLock != null) {
+                IconButton(onClick = onLock, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        imageVector        = Icons.Outlined.Lock,
+                        contentDescription = stringResource(R.string.player_lock),
+                        tint               = Color.White.copy(alpha = 0.85f),
+                        modifier           = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+            }
             Slider(
                 value                 = sliderValue,
                 onValueChange         = onSliderChange,
@@ -1119,6 +1420,16 @@ private fun VideoBottomBar(
                 style    = MaterialTheme.typography.labelSmall,
                 maxLines = 1
             )
+            // A speed other than normal and a loop are both easy to forget having set, and
+            // both change what the video does next - so they stay in sight while they hold.
+            if (speedLabel != null) {
+                Spacer(Modifier.width(8.dp))
+                Text(speedLabel, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelSmall)
+            }
+            if (looping) {
+                Spacer(Modifier.width(6.dp))
+                Icon(Icons.Outlined.RepeatOne, null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(16.dp))
+            }
             // Exit only. Entering lives over the video, where there is still video to sit
             // on; in fullscreen there is not, so the way out belongs beside the timecode.
             if (isFullscreen) {
@@ -1737,6 +2048,52 @@ private fun VideoGlyphButton(
             contentDescription = contentDescription,
             tint               = Color.White,
             modifier           = Modifier.size(20.dp)
+        )
+    }
+}
+
+// ── Player extras (#151) ──────────────────────────────────────────────────
+
+private enum class SwipeKind { VOLUME, BRIGHTNESS }
+
+/** How much of the range one picture-height of swipe covers; above 1 so a thumb's reach is enough. */
+private const val SWIPE_GAIN = 1.5f
+
+private val PLAYBACK_SPEEDS = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+/** "1.5x", "2x", "0.25x" - a whole number without its ".0". */
+private fun speedLabel(speed: Float): String =
+    (if (speed % 1f == 0f) speed.toInt().toString() else speed.toString()) + "x"
+
+@Composable
+private fun SwipeLevelIndicator(kind: SwipeKind, level: Float) {
+    Row(
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50))
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        Icon(
+            imageVector = when {
+                kind == SwipeKind.BRIGHTNESS -> Icons.Outlined.BrightnessMedium
+                level <= 0f                  -> Icons.AutoMirrored.Outlined.VolumeOff
+                else                         -> Icons.AutoMirrored.Outlined.VolumeUp
+            },
+            contentDescription = null,
+            tint     = Color.White,
+            modifier = Modifier.size(20.dp)
+        )
+        LinearProgressIndicator(
+            progress   = { level },
+            color      = Color.White,
+            trackColor = Color.White.copy(alpha = 0.3f),
+            modifier   = Modifier.width(120.dp)
+        )
+        Text(
+            text  = "${Math.round(level * 100)}%",
+            color = Color.White,
+            style = MaterialTheme.typography.labelLarge
         )
     }
 }
