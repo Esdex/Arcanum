@@ -20,6 +20,8 @@ import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.service.ContainerCreationParams
 import zip.arcanum.arcanum.containers.service.ContainerCreationService
+import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.KeyfileGenerator
@@ -229,6 +231,7 @@ class CreateContainerViewModel @Inject constructor(
     private val creationParams: ContainerCreationParams,
     private val keyfileGenerator: KeyfileGenerator,
     private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
+    private val notifications: NotificationCenter,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -410,6 +413,8 @@ class CreateContainerViewModel @Inject constructor(
     }
 
     fun addKeyfile(bytes: ByteArray, displayName: String) {
+        // A new header never takes an empty keyfile: VeraCrypt would refuse it (#193).
+        if (bytes.isEmpty()) { notifications.notify(InAppNotification.KeyfileEmpty(added = false)); return }
         _state.update { it.copy(
             keyfileData       = it.keyfileData + bytes,
             keyfileDisplayNames = it.keyfileDisplayNames + displayName
@@ -472,6 +477,8 @@ class CreateContainerViewModel @Inject constructor(
     }
 
     fun addHiddenKeyfile(bytes: ByteArray, displayName: String) {
+        // A new header never takes an empty keyfile: VeraCrypt would refuse it (#193).
+        if (bytes.isEmpty()) { notifications.notify(InAppNotification.KeyfileEmpty(added = false)); return }
         _state.update { it.copy(
             hiddenKeyfileData        = it.hiddenKeyfileData + bytes,
             hiddenKeyfileDisplayNames = it.hiddenKeyfileDisplayNames + displayName

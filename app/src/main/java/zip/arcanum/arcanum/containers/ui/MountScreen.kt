@@ -177,6 +177,7 @@ private fun MountScreenContent(
         runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         keyfileScope.launch {
             val (bytes, name) = withContext(Dispatchers.IO) { FileUtils.readKeyfileBytes(context, uri) } ?: return@launch
+            viewModel.noteKeyfilePicked(bytes)
             keyfiles = keyfiles + KeyfileEntry(bytes, name, uri.toString())
         }
     }
@@ -185,6 +186,7 @@ private fun MountScreenContent(
         runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         keyfileScope.launch {
             val (bytes, name) = withContext(Dispatchers.IO) { FileUtils.readKeyfileBytes(context, uri) } ?: return@launch
+            viewModel.noteKeyfilePicked(bytes)
             hiddenKeyfiles = hiddenKeyfiles + KeyfileEntry(bytes, name, uri.toString())
         }
     }
@@ -796,6 +798,7 @@ private fun MountScreenContent(
                                     Icon(ArcanumIcons.Keyfile, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(6.dp))
                                     Text(entry.displayName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                    if (entry.content.isEmpty()) EmptyKeyfileBadge(R.string.keyfile_empty_help_body)
                                     IconButton(
                                         onClick  = {
                                             val updated = keyfiles.toMutableList()
@@ -991,6 +994,7 @@ private fun MountScreenContent(
                                                     Icon(ArcanumIcons.Keyfile, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                                     Spacer(Modifier.width(6.dp))
                                                     Text(entry.displayName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                                    if (entry.content.isEmpty()) EmptyKeyfileBadge(R.string.keyfile_empty_help_body)
                                                     IconButton(
                                                         onClick  = {
                                                             val updated = hiddenKeyfiles.toMutableList()

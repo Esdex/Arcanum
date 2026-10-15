@@ -394,7 +394,8 @@ private fun ChKfStep1(
         KeyfileSection(
             displayNames = state.oldKeyfileDisplayNames,
             onAdd        = onAddKeyfile,
-            onRemove     = onRemoveKeyfile
+            onRemove     = onRemoveKeyfile,
+            emptyAt      = state.oldKeyfileData.emptyIndices()
         )
     }
 }

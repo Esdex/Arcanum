@@ -143,6 +143,13 @@
     <string name="notif_document_created">Document created</string>
     <string name="notif_document_saved">Document saved</string>
     <string name="notif_name_taken">Name already taken</string>
+    <string name="notif_keyfile_empty_refused">Empty keyfile not added</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt refuses 0-byte keyfiles</string>
+    <string name="notif_keyfile_empty_used">This keyfile is empty</string>
+    <string name="notif_keyfile_empty_used_subtitle">Replace it in Change Keyfiles</string>
+    <string name="keyfile_empty_help_title">Empty keyfile</string>
+    <string name="keyfile_empty_current_body">This keyfile is 0 bytes. If it is the keyfile this vault was made with, continue, and replace it with a real keyfile in the next step.</string>
+    <string name="keyfile_empty_help_body">The file you picked is empty (0 bytes). It adds nothing to the vault\'s protection, and VeraCrypt refuses empty keyfiles, so a vault made with one may open only in Arcanum.\n\nTo fix it, open Vault Info and choose Change Keyfiles. Add this file under Current Credentials, then pick a real keyfile under New Keyfiles, or turn Add Keyfiles off to unlock with the password alone.</string>
     <string name="notif_files_imported_subtitle">Encrypted and stored in vault</string>
     <string name="notif_import_cancelled">Import stopped</string>
     <plurals name="notif_import_cancelled_body">

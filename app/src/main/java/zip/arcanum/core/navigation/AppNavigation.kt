@@ -15,6 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,6 +50,9 @@ import zip.arcanum.arcanum.gallery.editor.PhotoEditorScreen
 import zip.arcanum.calculator.ui.CalculatorScreen
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.InAppNotificationBanner
+import zip.arcanum.core.components.AppDialog
+import androidx.compose.ui.res.stringResource
+import zip.arcanum.R
 import zip.arcanum.core.notifications.LocalNotifications
 import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.security.AppPreferences
@@ -199,6 +204,8 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
     LaunchedEffect(isUnlockedArea) { notifications.setDelivering(isUnlockedArea) }
 
     val currentNotification by notifications.current.collectAsState()
+    // The banner fits one line, so what an empty keyfile means is told on tap (#193).
+    var showEmptyKeyfileHelp by remember { mutableStateOf(false) }
 
     CompositionLocalProvider(LocalNotifications provides notifications) {
     Box(Modifier.fillMaxSize()) {
@@ -684,6 +691,7 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
                 }
                 is InAppNotification.SupportDeveloper -> navController.navigate(Screen.Donations.route)
                 is InAppNotification.GoPremium        -> navController.navigate(Screen.Premium.route)
+                is InAppNotification.KeyfileEmpty     -> if (notif.added) showEmptyKeyfileHelp = true
                 else -> Unit
             }
             notifications.dismiss()
@@ -693,6 +701,17 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
             .statusBarsPadding()
             .zIndex(50f)
     )
+
+    if (showEmptyKeyfileHelp) {
+        AppDialog(
+            onDismissRequest = { showEmptyKeyfileHelp = false },
+            title            = { Text(stringResource(R.string.keyfile_empty_help_title)) },
+            text             = { Text(stringResource(R.string.keyfile_empty_help_body)) },
+            confirmButton    = {
+                TextButton(onClick = { showEmptyKeyfileHelp = false }) { Text(stringResource(R.string.common_ok)) }
+            }
+        )
+    }
 
     } // outer Box
     }

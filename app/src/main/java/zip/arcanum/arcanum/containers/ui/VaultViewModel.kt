@@ -63,6 +63,7 @@ class VaultViewModel @Inject constructor(
     private val fingerprint: zip.arcanum.core.security.VolumeFingerprint,
     private val displayPrefs: zip.arcanum.core.security.VaultDisplayPrefs,
     private val traceCleaner: zip.arcanum.core.security.VaultTraceCleaner,
+    private val notifications: zip.arcanum.core.notifications.NotificationCenter,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -998,6 +999,11 @@ class VaultViewModel @Inject constructor(
     fun saveBiometricCredentials(containerId: String, cipher: Cipher, password: String, pim: Int) {
         biometricCryptoManager.saveEncryptedCredentials(containerId, cipher, password, pim)
         viewModelScope.launch { repo.updateBiometric(containerId, true) }
+    }
+
+    /** Mount takes an empty keyfile, since a vault made with one needs it to open, but says so (#193). */
+    fun noteKeyfilePicked(bytes: ByteArray) {
+        if (bytes.isEmpty()) notifications.notify(InAppNotification.KeyfileEmpty(added = true))
     }
 
     fun saveKeyfileUrisForBiometric(containerId: String, uris: List<String>) {

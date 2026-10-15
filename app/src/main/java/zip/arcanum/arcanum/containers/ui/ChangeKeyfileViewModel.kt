@@ -14,6 +14,8 @@ import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.service.ChangeKeyfileParams
 import zip.arcanum.arcanum.containers.service.ChangeKeyfileService
+import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.VeraCryptEngine
 import zip.arcanum.crypto.KeyfileGenerator
@@ -55,6 +57,7 @@ class ChangeKeyfileViewModel @Inject constructor(
     private val fingerprint: zip.arcanum.core.security.VolumeFingerprint,
     private val changeKeyfileParams: ChangeKeyfileParams,
     private val keyfileGenerator: KeyfileGenerator,
+    private val notifications: NotificationCenter,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -88,11 +91,13 @@ class ChangeKeyfileViewModel @Inject constructor(
 
     // ── Old Keyfiles ──────────────────────────────────────────────────────
 
-    fun addOldKeyfile(bytes: ByteArray, displayName: String) =
+    // An empty file is taken here: a vault made with one needs it to open. The row says so (#193).
+    fun addOldKeyfile(bytes: ByteArray, displayName: String) {
         _state.update { it.copy(
             oldKeyfileData        = it.oldKeyfileData + bytes,
             oldKeyfileDisplayNames = it.oldKeyfileDisplayNames + displayName
         ) }
+    }
 
     fun removeOldKeyfile(index: Int) {
         val paths = _state.value.oldKeyfileData.toMutableList()
@@ -106,11 +111,14 @@ class ChangeKeyfileViewModel @Inject constructor(
 
     // ── New Keyfiles ──────────────────────────────────────────────────────
 
-    fun addNewKeyfile(bytes: ByteArray, displayName: String) =
+    fun addNewKeyfile(bytes: ByteArray, displayName: String) {
+        // A new header never takes an empty keyfile: VeraCrypt would refuse it (#193).
+        if (bytes.isEmpty()) { notifications.notify(InAppNotification.KeyfileEmpty(added = false)); return }
         _state.update { it.copy(
             newKeyfileData        = it.newKeyfileData + bytes,
             newKeyfileDisplayNames = it.newKeyfileDisplayNames + displayName
         ) }
+    }
 
     /**
      * Generates a fresh keyfile into the folder the user just picked and adds it

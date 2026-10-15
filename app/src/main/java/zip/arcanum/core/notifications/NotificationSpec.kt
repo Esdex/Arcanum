@@ -90,6 +90,7 @@ val InAppNotification.severity: NotificationSeverity
         is InAppNotification.HiddenVolumeWriteProtection,
         is InAppNotification.SavedAs,
         is InAppNotification.NameTaken,
+        is InAppNotification.KeyfileEmpty,
         is InAppNotification.OperationRefusedLocked  -> NotificationSeverity.WARNING
 
         /* Prompts, not failures. All three used to be red, which put "no vault is open" in
@@ -193,6 +194,7 @@ private val InAppNotification.icon: ImageVector
         is InAppNotification.DocumentCreated         -> Icons.Outlined.Description
         is InAppNotification.DocumentSaved           -> Icons.Outlined.SaveAs
         is InAppNotification.NameTaken               -> Icons.Outlined.Warning
+        is InAppNotification.KeyfileEmpty            -> Icons.Outlined.Warning
         is InAppNotification.FilesMoved              -> Icons.AutoMirrored.Outlined.DriveFileMove
         is InAppNotification.ReadOnlyError           -> Icons.Outlined.AutoStories
         is InAppNotification.AppUpdated              -> Icons.Outlined.NewReleases
@@ -225,6 +227,8 @@ private fun InAppNotification.title(ctx: Context): String = when (this) {
     is InAppNotification.DocumentCreated        -> ctx.getString(R.string.notif_document_created)
     is InAppNotification.DocumentSaved          -> ctx.getString(R.string.notif_document_saved)
     is InAppNotification.NameTaken              -> ctx.getString(R.string.notif_name_taken)
+    is InAppNotification.KeyfileEmpty           -> ctx.getString(
+        if (added) R.string.notif_keyfile_empty_used else R.string.notif_keyfile_empty_refused)
     is InAppNotification.HiddenVolumeWriteProtection -> ctx.getString(R.string.notif_hidden_write_protection)
     is InAppNotification.ImportFailed           -> ctx.getString(R.string.notif_import_failed)
     is InAppNotification.ReadOnlyError          -> ctx.getString(R.string.notif_read_only_error)
@@ -266,6 +270,8 @@ private fun InAppNotification.subtitle(ctx: Context): String = when (this) {
     is InAppNotification.DocumentCreated        -> name
     is InAppNotification.DocumentSaved          -> name
     is InAppNotification.NameTaken              -> name
+    is InAppNotification.KeyfileEmpty           -> ctx.getString(
+        if (added) R.string.notif_keyfile_empty_used_subtitle else R.string.notif_keyfile_empty_refused_subtitle)
     is InAppNotification.FilesDeleted           -> ctx.getString(R.string.notif_files_deleted_subtitle)
     is InAppNotification.HiddenVolumeWriteProtection -> ctx.getString(R.string.notif_hidden_write_protection_subtitle)
     is InAppNotification.ReadOnlyError          -> ctx.getString(R.string.notif_read_only_error_subtitle)

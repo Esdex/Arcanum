@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.core.notifications.InAppNotification
+import zip.arcanum.core.notifications.NotificationCenter
 import zip.arcanum.core.utils.FileUtils
 import zip.arcanum.crypto.CryptoResult
 import zip.arcanum.crypto.VeraCryptEngine
@@ -38,6 +40,7 @@ class RestoreHeaderViewModel @Inject constructor(
     private val fingerprint: zip.arcanum.core.security.VolumeFingerprint,
     private val engine: VeraCryptEngine,
     private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
+    private val notifications: NotificationCenter,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -64,11 +67,14 @@ class RestoreHeaderViewModel @Inject constructor(
     fun update(block: RestoreHeaderState.() -> RestoreHeaderState) =
         _state.update { it.block() }
 
-    fun addKeyfile(bytes: ByteArray, displayName: String) =
+    fun addKeyfile(bytes: ByteArray, displayName: String) {
+        // Taken anyway: a vault made with an empty keyfile needs it to open (#193).
+        if (bytes.isEmpty()) notifications.notify(InAppNotification.KeyfileEmpty(added = true))
         _state.update { it.copy(
             keyfileData        = it.keyfileData + bytes,
             keyfileDisplayNames = it.keyfileDisplayNames + displayName
         ) }
+    }
 
     fun removeKeyfile(index: Int) {
         val paths = _state.value.keyfileData.toMutableList()

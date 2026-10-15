@@ -1,6 +1,7 @@
 package zip.arcanum.arcanum.containers.ui
 
 import android.view.HapticFeedbackConstants
+import androidx.annotation.StringRes
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,6 +33,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ErrorOutline
 
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -370,7 +372,8 @@ private fun ChPwdStep1(
         KeyfileSection(
             displayNames = state.oldKeyfileDisplayNames,
             onAdd        = onAddKeyfile,
-            onRemove     = onRemoveKeyfile
+            onRemove     = onRemoveKeyfile,
+            emptyAt      = state.oldKeyfileData.emptyIndices()
         )
     }
 }
@@ -735,11 +738,40 @@ private fun ChPwdStep4Error(error: String, onBack: () -> Unit) {
 
 // ─── Shared: Keyfile section ──────────────────────────────────────────────────
 
+internal fun List<ByteArray>.emptyIndices(): Set<Int> = indices.filterTo(mutableSetOf()) { this[it].isEmpty() }
+
+/** The orange mark beside a 0-byte keyfile in a list; tapping it explains, with [body] (#193). */
+@Composable
+internal fun EmptyKeyfileBadge(@StringRes body: Int) {
+    var showHelp by remember { mutableStateOf(false) }
+    IconButton(onClick = { showHelp = true }, modifier = Modifier.size(32.dp)) {
+        Icon(
+            Icons.Outlined.ErrorOutline,
+            contentDescription = stringResource(R.string.keyfile_empty_help_title),
+            modifier = Modifier.size(18.dp),
+            tint     = Color(0xFFF59E0B)
+        )
+    }
+    if (showHelp) {
+        AppDialog(
+            onDismissRequest = { showHelp = false },
+            title            = { Text(stringResource(R.string.keyfile_empty_help_title)) },
+            text             = { Text(stringResource(body)) },
+            confirmButton    = {
+                TextButton(onClick = { showHelp = false }) { Text(stringResource(R.string.common_ok)) }
+            }
+        )
+    }
+}
+
 @Composable
 internal fun KeyfileSection(
     displayNames: List<String>,
     onAdd: () -> Unit,
-    onRemove: (Int) -> Unit
+    onRemove: (Int) -> Unit,
+    /* Rows whose file is 0 bytes (#193). Only the current set passes them: a new set
+       refuses an empty file, and a vault made with one has to be able to name it. */
+    emptyAt: Set<Int> = emptySet()
 ) {
     if (displayNames.isNotEmpty()) {
         Card(
@@ -765,6 +797,7 @@ internal fun KeyfileSection(
                             style    = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.weight(1f)
                         )
+                        if (index in emptyAt) EmptyKeyfileBadge(R.string.keyfile_empty_current_body)
                         IconButton(onClick = { onRemove(index) }, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(16.dp))
                         }

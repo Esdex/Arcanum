@@ -195,6 +195,18 @@ sealed class InAppNotification {
      */
     data class NameTaken(val name: String) : InAppNotification()
 
+    /**
+     * A 0-byte keyfile was picked (#193). VeraCrypt refuses one outright, while we used to
+     * take it, and with it the password was padded into the keyfile pool - for Argon2id, and
+     * for a long password under a 64-byte-block PRF, that is a different key. A vault made
+     * that way opened only here, and only with the same empty file.
+     *
+     * [added] false: picked for a new header (create, the new set in a change) and refused.
+     * [added] true: picked to open or prove an existing vault, and taken anyway, because a
+     * vault already made with an empty file needs it to open; the user is told to replace it.
+     */
+    data class KeyfileEmpty(val added: Boolean) : InAppNotification()
+
     /** [skipped] counts names that were already taken and left alone at the user's word (#157). */
     data class FilesImported(val count: Int, val skipped: Int = 0) : InAppNotification()
 
