@@ -11,7 +11,8 @@
         { "type": "new", "title": "Lock the video player", "description": "A lock beside the seek bar stops the video from answering touches, so a stray finger cannot pause it, seek or swipe to the next file. Tap the screen, or press back, and an Unlock button appears. (#151)" },
         { "type": "new", "title": "Swipe for volume and brightness, hold for 2x", "description": "Swiping up or down on the right of a video changes the volume, and on the left the brightness - of the player only, which goes back to normal when you leave the video. Holding a finger on the video plays it at twice the speed until you let go. (#151)" },
         { "type": "new", "title": "Playback speed and loop", "description": "The video menu can set a speed from 0.25x to 2x and loop the video. Both last until the video is closed, and while they are on they stay in sight beside the time. (#151)" },
-        { "type": "new", "title": "Settings for the video player", "description": "Each of the player's new features has its own switch under Settings, Video player, for anyone who would rather do without it. All of them start switched on." }
+        { "type": "new", "title": "Settings for the video player", "description": "Each of the player's new features has its own switch under Settings, Video player, for anyone who would rather do without it. All of them start switched on." },
+        { "type": "fix", "title": "Empty keyfiles are refused", "description": "A keyfile of 0 bytes used to be accepted without a word. It adds nothing to a vault's protection, VeraCrypt refuses it, and with some settings it still changed the key, so a vault made with one opened only in Arcanum. Creating a vault, or choosing new keyfiles for one, now refuses an empty file. When an existing vault is opened, an empty keyfile is still accepted, because a vault made with one needs it, and an orange mark beside it explains how to replace it. (#193)" }
       ]
     },
     {
