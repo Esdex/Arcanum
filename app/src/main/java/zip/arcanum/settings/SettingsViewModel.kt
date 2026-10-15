@@ -111,6 +111,7 @@ class SettingsViewModel @Inject constructor(
     fun setPlayerHoldForSpeed(on: Boolean)    { viewModelScope.launch { prefs.setPlayerHoldForSpeed(on) } }
     fun setPlayerSpeedMenu(on: Boolean)       { viewModelScope.launch { prefs.setPlayerSpeedMenu(on) } }
     fun setPlayerLoop(on: Boolean)            { viewModelScope.launch { prefs.setPlayerLoop(on) } }
+    fun setPlayerResumeMusic(on: Boolean)     { viewModelScope.launch { prefs.setPlayerResumeMusic(on) } }
 
     fun setReceiveShares(enabled: Boolean) {
         viewModelScope.launch { prefs.setReceiveShares(enabled) }

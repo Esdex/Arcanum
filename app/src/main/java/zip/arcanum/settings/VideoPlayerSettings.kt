@@ -29,6 +29,7 @@ internal fun VideoPlayerSubScreen(
     onLockButton: (Boolean) -> Unit,
     onSpeedMenu: (Boolean) -> Unit,
     onLoop: (Boolean) -> Unit,
+    onResumeMusic: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     SubScreenScaffold(title = stringResource(R.string.settings_player_title), onBack = onBack) { innerPadding ->
@@ -91,6 +92,18 @@ internal fun VideoPlayerSubScreen(
                         title           = stringResource(R.string.settings_player_loop),
                         checked         = prefs.loop,
                         onCheckedChange = onLoop
+                    )
+                }
+            }
+
+            SettingsGroup(title = stringResource(R.string.settings_player_group_music)) {
+                row { shape ->
+                    GroupedSwitch(
+                        shape           = shape,
+                        title           = stringResource(R.string.settings_player_resume_music),
+                        info            = stringResource(R.string.settings_player_resume_music_desc),
+                        checked         = prefs.resumeMusic,
+                        onCheckedChange = onResumeMusic
                     )
                 }
             }

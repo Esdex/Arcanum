@@ -199,6 +199,7 @@ fun SettingsScreen(
                     onLockButton      = viewModel::setPlayerLockButton,
                     onSpeedMenu       = viewModel::setPlayerSpeedMenu,
                     onLoop            = viewModel::setPlayerLoop,
+                    onResumeMusic     = viewModel::setPlayerResumeMusic,
                     onBack            = { subScreen = null }
                 )
             }

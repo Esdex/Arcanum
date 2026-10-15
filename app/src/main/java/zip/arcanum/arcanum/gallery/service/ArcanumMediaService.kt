@@ -9,6 +9,7 @@ import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ShuffleOrder
@@ -36,8 +37,14 @@ val NEUTRAL_METADATA: MediaMetadata = MediaMetadata.Builder()
     .setTitle(SESSION_TITLE)
     .build()
 
-/** The one title the shared MediaSession may carry. */
+/** The one title the media sessions may carry. */
 const val SESSION_TITLE = "Arcanum"
+
+/** Set to true in a controller's connection hints to be handed the video session (#194). */
+const val HINT_VIDEO_SESSION = "zip.arcanum.VIDEO_SESSION"
+
+private const val SESSION_ID_AUDIO = "audio"
+private const val SESSION_ID_VIDEO = "video"
 
 /** Asks the service to lay the shuffled order out again, starting from what is playing. */
 const val COMMAND_RESHUFFLE = "zip.arcanum.RESHUFFLE"
@@ -53,28 +60,35 @@ class ArcanumMediaService : MediaSessionService() {
     /* Read on every metadata query, from a player callback, so it is a plain volatile rather
      * than something suspending. */
     @Volatile private var publishContent = false
+    @Volatile private var resumeMusic = true
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private lateinit var player: ExoPlayer
-    private lateinit var mediaSession: MediaSession
+    /*
+     * Two players, one for music and one for video (#194). They used to be one, shared by the
+     * audio screen and the viewer, so opening a video threw the playlist away, leaving it
+     * cleared the player and the notification with it, and a photo was enough to pause the
+     * music. Each screen now drives its own, and which of them is heard is decided here.
+     */
+    private lateinit var audioPlayer: ExoPlayer
+    private lateinit var videoPlayer: ExoPlayer
+    private lateinit var audioSession: MediaSession
+    private lateinit var videoSession: MediaSession
+
+    /*
+     * A video that starts playing takes over: the music is paused and the notification is the
+     * video's. When the video is left - its queue emptied, which is what the viewer does on a
+     * swipe to a photo and on the way out - the music comes back, playing again if it was the
+     * video that paused it and the setting allows. Music started while a video holds the
+     * screen (a headset button, say) takes over the other way.
+     */
+    private var videoHasPriority = false
+    private var musicPausedByVideo = false
 
     override fun onCreate() {
         super.onCreate()
-        player = ExoPlayer.Builder(this)
-            // Tolerates files with a bogus declared frame rate (e.g. 720p @ ~1324 fps) that
-            // would otherwise fail decoder init and show a black screen (#104).
-            .setRenderersFactory(SafeVideoRenderersFactory(this))
-            .setMediaSourceFactory(DefaultMediaSourceFactory(ServiceEncryptedDataSourceFactory(engine, repo)))
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                    .build(),
-                /* handleAudioFocus = */ true
-            )
-            .setHandleAudioBecomingNoisy(true)
-            .build()
+        audioPlayer = buildPlayer(C.AUDIO_CONTENT_TYPE_MUSIC)
+        videoPlayer = buildPlayer(C.AUDIO_CONTENT_TYPE_MOVIE)
 
         val sessionActivity = packageManager
             .getLaunchIntentForPackage(packageName)
@@ -96,7 +110,8 @@ class ArcanumMediaService : MediaSessionService() {
          * and this also covers what the app never sets at all, since ExoPlayer merges the
          * tags it parses out of the file itself into the metadata it reports.
          */
-        mediaSession = MediaSession.Builder(this, NeutralMetadataPlayer(player) { publishContent })
+        audioSession = MediaSession.Builder(this, NeutralMetadataPlayer(audioPlayer) { publishContent })
+            .setId(SESSION_ID_AUDIO)
             .setCallback(object : MediaSession.Callback {
                 override fun onConnect(
                     session: MediaSession,
@@ -123,8 +138,41 @@ class ArcanumMediaService : MediaSessionService() {
             })
             .apply { sessionActivity?.let { setSessionActivity(it) } }
             .build()
+        videoSession = MediaSession.Builder(this, NeutralMetadataPlayer(videoPlayer) { publishContent })
+            .setId(SESSION_ID_VIDEO)
+            .apply { sessionActivity?.let { setSessionActivity(it) } }
+            .build()
+        // Both up front, so the notification manager knows the music's session even when only
+        // the viewer has connected since the service started.
+        addSession(audioSession)
+        addSession(videoSession)
+
+        /* Decided from the state on every change, not from the change itself: stop() and an
+           emptied queue leave playWhenReady true, so the next video sets it to what it already
+           is and no playWhenReady change is ever reported - the second video in a row took
+           nothing over, found on device. */
+        videoPlayer.addListener(object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                when {
+                    videoPlayer.mediaItemCount == 0 -> videoLeft()
+                    videoPlayer.playWhenReady       -> videoTakesOver()
+                }
+            }
+        })
+        audioPlayer.addListener(object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                when {
+                    playWhenReady && videoHasPriority -> musicTakesOver()
+                    /* The video's audio focus request can reach the music before the listener
+                       above has paused it; a pause for that reason is still the video's. */
+                    !playWhenReady && videoHasPriority &&
+                        reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> musicPausedByVideo = true
+                }
+            }
+        })
 
         serviceScope.launch { prefs.mediaSessionContent.collect { publishContent = it } }
+        serviceScope.launch { prefs.videoPlayer.collect { resumeMusic = it.resumeMusic } }
 
         /*
          * Nothing from an unmounted vault may stay in the queue. Checking only the item that
@@ -134,15 +182,76 @@ class ArcanumMediaService : MediaSessionService() {
          */
         serviceScope.launch {
             repo.mountedContainerIds.collect { mounted ->
-                val playingGone = player.currentMediaItem?.containerId()
-                    ?.let { it !in mounted } == true
-                if (playingGone) player.stop()
+                for (player in listOf(audioPlayer, videoPlayer)) {
+                    val playingGone = player.currentMediaItem?.containerId()
+                        ?.let { it !in mounted } == true
+                    if (playingGone) player.stop()
 
-                for (i in player.mediaItemCount - 1 downTo 0) {
-                    val cid = player.getMediaItemAt(i).containerId()
-                    if (cid != null && cid !in mounted) player.removeMediaItem(i)
+                    for (i in player.mediaItemCount - 1 downTo 0) {
+                        val cid = player.getMediaItemAt(i).containerId()
+                        if (cid != null && cid !in mounted) player.removeMediaItem(i)
+                    }
                 }
             }
+        }
+    }
+
+    private fun buildPlayer(contentType: Int): ExoPlayer = ExoPlayer.Builder(this)
+        // Tolerates files with a bogus declared frame rate (e.g. 720p @ ~1324 fps) that
+        // would otherwise fail decoder init and show a black screen (#104).
+        .setRenderersFactory(SafeVideoRenderersFactory(this))
+        .setMediaSourceFactory(DefaultMediaSourceFactory(ServiceEncryptedDataSourceFactory(engine, repo)))
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(contentType)
+                .build(),
+            /* handleAudioFocus = */ true
+        )
+        .setHandleAudioBecomingNoisy(true)
+        .build()
+
+    private fun videoTakesOver() {
+        if (videoHasPriority) return
+        videoHasPriority = true
+        if (audioPlayer.playWhenReady) {
+            musicPausedByVideo = true
+            audioPlayer.pause()
+        }
+    }
+
+    private fun videoLeft() {
+        if (!videoHasPriority) return
+        videoHasPriority = false
+        val resume = musicPausedByVideo && resumeMusic
+        musicPausedByVideo = false
+        if (resume) audioPlayer.play()
+    }
+
+    private fun musicTakesOver() {
+        videoHasPriority = false
+        musicPausedByVideo = false
+        videoPlayer.pause()
+    }
+
+    /*
+     * Media3 1.2 gives every session of a service the same notification, and whichever session
+     * changed last is the one it shows. So a change in the session that is not in charge must
+     * not reach it: the music pausing for a video would take the notification back from the
+     * video, and the video pausing or emptying after it was left would take it from the music
+     * - an emptied session cancels the notification outright, and that arrives after the
+     * music has already been told to come back. Such a change shows the music again instead.
+     * With no music at all the video's own update goes through, so its notification goes.
+     */
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        when {
+            session === audioSession && videoHasPriority -> return
+            session === videoSession && !videoHasPriority && audioPlayer.mediaItemCount > 0 -> {
+                val musicPlaying = audioPlayer.playWhenReady &&
+                    (audioPlayer.playbackState == Player.STATE_READY || audioPlayer.playbackState == Player.STATE_BUFFERING)
+                super.onUpdateNotification(audioSession, musicPlaying)
+            }
+            else -> super.onUpdateNotification(session, startInForegroundRequired)
         }
     }
 
@@ -151,10 +260,12 @@ class ArcanumMediaService : MediaSessionService() {
     // (this includes Media3's in-process media-notification controller, which binds under our own
     // package) and trusted system UI may connect. Every third-party MediaController is rejected —
     // an accepted controller can observe the session's MediaMetadata and hijack playback.
+    // The viewer asks for the video session by a connection hint; everyone else gets the music.
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         val isSelf   = controllerInfo.packageName == packageName
         val isSystem = controllerInfo.uid == Process.SYSTEM_UID
-        return if (isSelf || isSystem) mediaSession else null
+        if (!isSelf && !isSystem) return null
+        return if (controllerInfo.connectionHints.getBoolean(HINT_VIDEO_SESSION)) videoSession else audioSession
     }
 
     /**
@@ -169,12 +280,12 @@ class ArcanumMediaService : MediaSessionService() {
      * screen asks for it through a session command instead of doing it itself.
      */
     private fun reshuffleFromCurrent() {
-        val count = player.mediaItemCount
+        val count = audioPlayer.mediaItemCount
         if (count <= 1) return
-        val current = player.currentMediaItemIndex
+        val current = audioPlayer.currentMediaItemIndex
         val rest = (0 until count).filter { it != current }.shuffled()
         val order = (listOf(current) + rest).toIntArray()
-        player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(order, System.nanoTime()))
+        audioPlayer.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(order, System.nanoTime()))
     }
 
     private fun MediaItem.containerId(): String? =
@@ -197,13 +308,16 @@ class ArcanumMediaService : MediaSessionService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (!player.playWhenReady || player.mediaItemCount == 0) stopSelf()
+        val playing = listOf(audioPlayer, videoPlayer).any { it.playWhenReady && it.mediaItemCount > 0 }
+        if (!playing) stopSelf()
     }
 
     override fun onDestroy() {
         serviceScope.cancel()
-        mediaSession.release()
-        player.release()
+        audioSession.release()
+        videoSession.release()
+        audioPlayer.release()
+        videoPlayer.release()
         super.onDestroy()
     }
 }

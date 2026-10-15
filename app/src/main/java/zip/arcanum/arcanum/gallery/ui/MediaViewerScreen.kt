@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.gallery.JniMediaDataSource
 import android.net.Uri
+import android.os.Bundle
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
@@ -29,6 +30,7 @@ import androidx.media3.ui.PlayerView
 import zip.arcanum.arcanum.gallery.ServiceEncryptedDataSource
 import zip.arcanum.arcanum.gallery.service.NEUTRAL_METADATA
 import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
+import zip.arcanum.arcanum.gallery.service.HINT_VIDEO_SESSION
 import zip.arcanum.core.database.entities.MediaFileType
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -216,7 +218,12 @@ fun MediaViewerScreen(
     // ── Video player (service-backed for notification) ────────────────────
     val appContext   = context.applicationContext
     val sessionToken = remember { SessionToken(appContext, ComponentName(appContext, ArcanumMediaService::class.java)) }
-    val controllerFuture = remember { MediaController.Builder(appContext, sessionToken).buildAsync() }
+    // The video session, not the music's: the service keeps a player for each (#194).
+    val controllerFuture = remember {
+        MediaController.Builder(appContext, sessionToken)
+            .setConnectionHints(Bundle().apply { putBoolean(HINT_VIDEO_SESSION, true) })
+            .buildAsync()
+    }
     var mc by remember { mutableStateOf<MediaController?>(null) }
 
     DisposableEffect(Unit) {
@@ -225,10 +232,9 @@ fun MediaViewerScreen(
             ContextCompat.getMainExecutor(appContext)
         )
         onDispose {
-            /* Speed and loop belong to the player the audio screen shares, and neither is
-               reset by a new media item: left as they were, the next song would play at the
-               speed this video was watched at. */
-            mc?.run { setPlaybackSpeed(1f); repeatMode = Player.REPEAT_MODE_OFF; stop(); clearMediaItems() }
+            // Emptied, not paused: an empty video player is how the service knows the video
+            // was left, and gives the music back.
+            mc?.run { stop(); clearMediaItems() }
             MediaController.releaseFuture(controllerFuture)
         }
     }
@@ -548,8 +554,9 @@ fun MediaViewerScreen(
                 .appendQueryParameter("path", "/" + file.relativePath.trimStart('/'))
                 .appendQueryParameter("size", file.size.toString())
                 .build()
+            /* Replaced, never emptied on the way: an empty queue means the video was left,
+               and the music would come back for a moment between two videos (#194). */
             controller.stop()
-            controller.clearMediaItems()
             /* Neutral unless the user asked for the opposite: the name of a file inside a
                vault on a lock screen is a decision, not a default. The session refuses
                anything else while the setting is off anyway - see NeutralMetadataPlayer -
@@ -587,8 +594,9 @@ fun MediaViewerScreen(
                     }
                 }
             }
-        } else if (file.fileType != MediaFileType.VIDEO) {
-            mc?.pause()
+        } else {
+            // A photo is leaving the video: emptying the player gives the music back (#194).
+            mc?.run { stop(); clearMediaItems() }
         }
     }
 

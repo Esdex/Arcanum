@@ -73,6 +73,7 @@ class AppPreferences @Inject constructor(
         val PLAYER_HOLD_SPEED         = booleanPreferencesKey("player_hold_for_speed")
         val PLAYER_SPEED_MENU         = booleanPreferencesKey("player_speed_menu")
         val PLAYER_LOOP               = booleanPreferencesKey("player_loop")
+        val PLAYER_RESUME_MUSIC       = booleanPreferencesKey("player_resume_music")
 
         /** Survives panic mode's "Clear app settings" - see [clearSettingsForPanic]. */
         val PANIC_KEEP: List<Preferences.Key<*>> = listOf(
@@ -473,7 +474,8 @@ class AppPreferences @Inject constructor(
             swipeBrightness = p[Keys.PLAYER_SWIPE_BRIGHTNESS] ?: true,
             holdForSpeed    = p[Keys.PLAYER_HOLD_SPEED]       ?: true,
             speedMenu       = p[Keys.PLAYER_SPEED_MENU]       ?: true,
-            loop            = p[Keys.PLAYER_LOOP]             ?: true
+            loop            = p[Keys.PLAYER_LOOP]             ?: true,
+            resumeMusic     = p[Keys.PLAYER_RESUME_MUSIC]     ?: true
         )
     }
 
@@ -483,6 +485,7 @@ class AppPreferences @Inject constructor(
     suspend fun setPlayerHoldForSpeed(on: Boolean)    { context.appPrefsDataStore.edit { it[Keys.PLAYER_HOLD_SPEED] = on } }
     suspend fun setPlayerSpeedMenu(on: Boolean)       { context.appPrefsDataStore.edit { it[Keys.PLAYER_SPEED_MENU] = on } }
     suspend fun setPlayerLoop(on: Boolean)            { context.appPrefsDataStore.edit { it[Keys.PLAYER_LOOP] = on } }
+    suspend fun setPlayerResumeMusic(on: Boolean)     { context.appPrefsDataStore.edit { it[Keys.PLAYER_RESUME_MUSIC] = on } }
 }
 
 /**
@@ -497,7 +500,9 @@ data class VideoPlayerPrefs(
     val swipeBrightness: Boolean = true,
     val holdForSpeed: Boolean = true,
     val speedMenu: Boolean = true,
-    val loop: Boolean = true
+    val loop: Boolean = true,
+    /** Music a video paused plays on when the video is left (#194); off, it comes back paused. */
+    val resumeMusic: Boolean = true
 )
 
 /** The editor's look and behaviour, as one thing to pass around. */
