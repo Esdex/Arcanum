@@ -26,7 +26,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import zip.arcanum.MainActivity
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.gallery.PlayerOpenRequest
 import zip.arcanum.arcanum.gallery.ServiceEncryptedDataSourceFactory
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.crypto.VeraCryptEngine
@@ -110,8 +112,17 @@ class ArcanumMediaService : MediaSessionService() {
          * and this also covers what the app never sets at all, since ExoPlayer merges the
          * tags it parses out of the file itself into the metadata it reports.
          */
+        // A tap on the music's notification opens its player, not just the app.
+        val openPlayer = PendingIntent.getActivity(
+            this, 1,
+            Intent(this, MainActivity::class.java)
+                .setAction(PlayerOpenRequest.ACTION)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         audioSession = MediaSession.Builder(this, NeutralMetadataPlayer(audioPlayer) { publishContent })
             .setId(SESSION_ID_AUDIO)
+            .setSessionActivity(openPlayer)
             .setCallback(object : MediaSession.Callback {
                 override fun onConnect(
                     session: MediaSession,
@@ -136,7 +147,6 @@ class ArcanumMediaService : MediaSessionService() {
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
             })
-            .apply { sessionActivity?.let { setSessionActivity(it) } }
             .build()
         videoSession = MediaSession.Builder(this, NeutralMetadataPlayer(videoPlayer) { publishContent })
             .setId(SESSION_ID_VIDEO)

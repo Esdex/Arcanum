@@ -159,7 +159,7 @@ class AudioPlayerDirectViewModel @Inject constructor(
             mediaController = mc
             mc.addListener(playerListener)
             startProgressTracking()
-            startQueue(mc, queue.currentIndex)
+            if (isPlayingThisQueue(mc)) attachQueue(mc) else startQueue(mc, queue.currentIndex)
         }, ContextCompat.getMainExecutor(appContext))
     }
 
@@ -215,6 +215,35 @@ class AudioPlayerDirectViewModel @Inject constructor(
         mc.prepare()
         mc.playWhenReady = true
         // A fresh queue: whatever was loaded before belongs to the old one.
+        loadedIndex = -1
+        onTrackChanged()
+    }
+
+    /**
+     * Whether the player already holds exactly the queue this screen would put on it - as it
+     * does when the screen is opened from the music's notification, or onto the track that
+     * is playing. Then it is taken as it is: starting it again would throw away the position,
+     * the track the player has moved on to, and the shuffled order.
+     */
+    private fun isPlayingThisQueue(mc: MediaController): Boolean {
+        val paths = if (playlist.isEmpty()) listOf(navPath) else playlist.map { "/" + it.path.trimStart('/') }
+        if (mc.mediaItemCount != paths.size) return false
+        return paths.indices.all { i ->
+            val uri = mc.getMediaItemAt(i).localConfiguration?.uri
+            uri?.getQueryParameter("cid") == containerId && uri.getQueryParameter("path") == paths[i]
+        }
+    }
+
+    private fun attachQueue(mc: MediaController) {
+        _state.update { it.copy(
+            isShuffled = mc.shuffleModeEnabled,
+            repeatMode = when (mc.repeatMode) {
+                Player.REPEAT_MODE_ALL -> RepeatMode.ALL
+                Player.REPEAT_MODE_ONE -> RepeatMode.ONE
+                else                   -> RepeatMode.NONE
+            },
+            isPlaying  = mc.isPlaying
+        ) }
         loadedIndex = -1
         onTrackChanged()
     }

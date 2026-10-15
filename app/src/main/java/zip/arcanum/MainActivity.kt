@@ -40,12 +40,16 @@ class MainActivity : AppCompatActivity() {
     @Inject lateinit var notifications: NotificationCenter
     @Inject lateinit var traceCleaner: VaultTraceCleaner
     @Inject lateinit var appPrefs: AppPreferences
+    @Inject lateinit var playerOpen: zip.arcanum.arcanum.gallery.PlayerOpenRequest
+    @Inject lateinit var audioQueue: zip.arcanum.arcanum.gallery.AudioPlayerQueue
 
     private val settingsViewModel: SettingsViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleShareIntent(intent)
+        // Not on a recreation: the intent is the old one, and its tap was already acted on.
+        if (savedInstanceState == null) handlePlayerIntent(intent)
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.setFlags(
@@ -99,7 +103,12 @@ class MainActivity : AppCompatActivity() {
                 amoledMode   = isAmoledGlass,
                 dynamicColor = isDynamicColor
             ) {
-                AppNavigation(pinManager = pinManager, notifications = notifications)
+                AppNavigation(
+                    pinManager    = pinManager,
+                    notifications = notifications,
+                    playerOpen    = playerOpen,
+                    audioQueue    = audioQueue
+                )
 
                 if (showDisguiseOverlay) {
                     DisguiseOverlay(
@@ -163,6 +172,11 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleShareIntent(intent)
+        handlePlayerIntent(intent)
+    }
+
+    private fun handlePlayerIntent(intent: Intent?) {
+        if (intent?.action == zip.arcanum.arcanum.gallery.PlayerOpenRequest.ACTION) playerOpen.request()
     }
 
     // Files shared into Arcanum are stashed until the user unlocks and picks a destination.

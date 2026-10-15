@@ -71,7 +71,12 @@ import zip.arcanum.setup.PinEntryScreen
 import zip.arcanum.setup.SetupPinScreen
 
 @Composable
-fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
+fun AppNavigation(
+    pinManager: PinManager,
+    notifications: NotificationCenter,
+    playerOpen: zip.arcanum.arcanum.gallery.PlayerOpenRequest,
+    audioQueue: zip.arcanum.arcanum.gallery.AudioPlayerQueue
+) {
     val isPinSet          by pinManager.isPinSetFlow.collectAsState()
     val navController      = rememberNavController()
     val settingsViewModel: SettingsViewModel = hiltViewModel()
@@ -164,6 +169,25 @@ fun AppNavigation(pinManager: PinManager, notifications: NotificationCenter) {
         if (pendingShare.isNotEmpty() && isUnlockedArea && currentRoute != Screen.ShareTarget.route) {
             navController.navigate(Screen.ShareTarget.route)
         }
+    }
+
+    /*
+     * A tap on the music's notification: open its player, once the user is past the lock.
+     * The queue the player was last given is the one playing, and the screen picks it up
+     * where it is rather than starting it again. Nothing to open if that vault has closed
+     * since - closing it took the music with it.
+     */
+    val openPlayer by playerOpen.pending.collectAsState()
+    LaunchedEffect(openPlayer, isUnlockedArea) {
+        if (!openPlayer || !isUnlockedArea) return@LaunchedEffect
+        playerOpen.consume()
+        if (currentRoute == Screen.AudioPlayerDirect.route) return@LaunchedEffect
+        val cid  = audioQueue.containerId
+        val file = audioQueue.playlist.getOrNull(audioQueue.currentIndex) ?: return@LaunchedEffect
+        if (cid !in mountedIds) return@LaunchedEffect
+        navController.navigate(
+            Screen.AudioPlayerDirect.buildRoute(cid, "/" + file.path.trimStart('/'), file.name, file.size)
+        )
     }
 
     // The phase this composition saw, captured - see the effect below for why.
