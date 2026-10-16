@@ -37,6 +37,7 @@ import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.domain.Container
 import zip.arcanum.arcanum.files.data.FileBrowserPrefs
 import zip.arcanum.arcanum.files.data.fileManagerPrefs
+import zip.arcanum.arcanum.files.VaultPaths
 import zip.arcanum.arcanum.gallery.AudioPlayerQueue
 import zip.arcanum.arcanum.gallery.MediaScanner
 import zip.arcanum.arcanum.gallery.ThumbnailManager
@@ -508,18 +509,42 @@ class FileManagerViewModel @Inject constructor(
     // scan hasn't reached it yet. Result is delivered on the main thread; null means unresolvable.
     fun openMediaFile(clickedFile: NativeFileInfo, onResult: (String?) -> Unit) {
         val cid = _state.value.containerId
-        // The list as it stands on screen - searched, sorted, hidden files left out - is
-        // what a swipe in the viewer walks (#151). Anything in it that is not a picture or
-        // a video simply has no place in the viewer and drops out there.
-        viewerOrder.set(cid, _state.value.files.filter { !it.isDirectory }.map { it.path })
+        val onScreen = _state.value.files.filter { !it.isDirectory }.map { it.path }
         viewModelScope.launch {
             val id = withContext(Dispatchers.IO) {
-                mediaFileDao.getByPath(cid, clickedFile.path)?.id
-                    ?: repo.getContainerHandle(cid)?.let { handle ->
-                        mediaScanner.indexFile(handle, cid, clickedFile.path, clickedFile.size)?.id
-                    }
+                val handle = repo.getContainerHandle(cid) ?: return@withContext null
+                /* Through a link to a folder, a file's path is the link's, and the gallery
+                 * keeps no such paths: it leaves symbolic links out, so a picture is not in
+                 * it twice. The file itself is there under its own path, so that is the one
+                 * opened - indexing the link's path on the spot put it in the gallery until
+                 * the next mount took it out again (#188). */
+                val real = RealPaths(handle)
+                // The list as it stands on screen - searched, sorted, hidden files left out -
+                // is what a swipe in the viewer walks (#151). Anything in it that is not a
+                // picture or a video simply has no place in the viewer and drops out there.
+                viewerOrder.set(cid, onScreen.map { real.of(it) })
+                val path = real.of(clickedFile.path)
+                mediaFileDao.getByPath(cid, path)?.id
+                    ?: mediaScanner.indexFile(handle, cid, path, clickedFile.size)?.id
             }
             onResult(id)
+        }
+    }
+
+    /**
+     * Resolves paths with [VaultPaths.resolve] against the vault's own listings, keeping each
+     * listing for the life of one instance: a list of search results asks about the same
+     * folders many times. A path that cannot be resolved is given back as it came.
+     */
+    private inner class RealPaths(private val handle: Long) {
+        private val listings = HashMap<String, Map<String, NativeFileInfo>?>()
+
+        fun of(path: String): String =
+            VaultPaths.resolve(path) { dir, name -> listing(dir)?.get(name) } ?: path
+
+        private fun listing(dir: String) = listings.getOrPut(dir) {
+            runCatching { engine.listFilesOrNull(handle, dir) }.getOrNull()
+                ?.filterNotNull()?.associateBy { it.name }
         }
     }
 
@@ -820,6 +845,7 @@ class FileManagerViewModel @Inject constructor(
             val taken = runCatching {
                 engine.listFilesOrNull(handle, destPath)?.map { it.name }?.toMutableSet()
             }.getOrNull() ?: mutableSetOf()
+            val linkedFiles = mutableListOf<Pair<String, Long>>()
 
             for (item in items) {
                 val name = freeName(item.name, taken)
@@ -827,8 +853,18 @@ class FileManagerViewModel @Inject constructor(
                 val linkPath = if (destPath == "/") "/$name" else "$destPath/$name"
                 val rc = runCatching { engine.createLink(handle, linkPath, item.path) }
                     .getOrDefault(VeraCryptEngine.ERR_FS)
-                if (rc == VeraCryptEngine.ERR_OK) count++ else failed++
+                if (rc == VeraCryptEngine.ERR_OK) {
+                    count++
+                    if (!item.isDirectory) linkedFiles += linkPath to item.size
+                } else failed++
             }
+
+            /* A file's link is a hard link - a second name for the file, which the gallery
+             * shows like any other once a mount has scanned it. Until then it was missing
+             * from the gallery and from a swipe, and turned up only after being opened once
+             * (#188). Indexed here, the way a copy is; indexFile passes over what is not
+             * media. A folder's link is symbolic and the gallery leaves those out on purpose. */
+            if (linkedFiles.isNotEmpty()) indexAndThumbnail(handle, containerId, linkedFiles)
 
             /* What was linked decides what may be promised about it: a file gets
              * a hard link and cannot come apart, a folder gets a symbolic one and
