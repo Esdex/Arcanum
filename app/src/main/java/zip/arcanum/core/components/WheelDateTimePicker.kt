@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,9 +67,18 @@ fun WheelDateTimePicker(
         }
     }
     val years      = remember { (1970..2099).map { it.toString() } }
-    val hourItems  = remember { (1..12).map { it.toString() } }
+    // The clock the phone is set to: a 24-hour wheel without AM/PM where that is what the user
+    // reads every day, and the locale's own words for AM and PM where it is not.
+    val context    = LocalContext.current
+    val is24       = remember { android.text.format.DateFormat.is24HourFormat(context) }
+    val hourItems  = remember(is24) {
+        if (is24) (0..23).map { "%02d".format(it) } else (1..12).map { it.toString() }
+    }
     val minItems   = remember { (0..59).map { "%02d".format(it) } }
-    val amPmItems  = listOf("AM", "PM")
+    // Seconds as well (#192): several photos taken in the same minute could not otherwise be
+    // put back in the order they were taken.
+    val secItems   = minItems
+    val amPmItems  = remember { java.text.DateFormatSymbols.getInstance(Locale.getDefault()).amPmStrings.toList() }
 
     var selMonth  by remember { mutableIntStateOf(zdt.monthValue - 1) }
     var selDay    by remember { mutableIntStateOf(zdt.dayOfMonth - 1) }
@@ -76,8 +86,9 @@ fun WheelDateTimePicker(
 
     val initHour = zdt.hour
     val initH12  = when (initHour) { 0 -> 12; in 1..11 -> initHour; 12 -> 12; else -> initHour - 12 }
-    var selHour   by remember { mutableIntStateOf(initH12 - 1) }
+    var selHour   by remember { mutableIntStateOf(if (is24) initHour else initH12 - 1) }
     var selMin    by remember { mutableIntStateOf(zdt.minute) }
+    var selSec    by remember { mutableIntStateOf(zdt.second) }
     var selAmPm   by remember { mutableIntStateOf(if (initHour < 12) 0 else 1) }
 
     val daysInMonth by remember(selMonth, selYear) {
@@ -94,7 +105,8 @@ fun WheelDateTimePicker(
     var activeTab by remember { mutableIntStateOf(0) }
 
     val dateLabel = "${months[selMonth]} ${selDay + 1}"
-    val timeLabel = "${selHour + 1}:${minItems[selMin]} ${amPmItems[selAmPm]}"
+    val timeLabel = if (is24) "${hourItems[selHour]}:${minItems[selMin]}:${secItems[selSec]}"
+                    else "${hourItems[selHour]}:${minItems[selMin]}:${secItems[selSec]} ${amPmItems[selAmPm]}"
 
     Column(
         modifier = Modifier
@@ -115,14 +127,14 @@ fun WheelDateTimePicker(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             WheelTab(
-                label    = "Date",
+                label    = stringResource(R.string.viewer_edit_date_tab_date),
                 subtitle = dateLabel,
                 active   = activeTab == 0,
                 onClick  = { activeTab = 0 },
                 modifier = Modifier.weight(1f)
             )
             WheelTab(
-                label    = "Time",
+                label    = stringResource(R.string.viewer_edit_date_tab_time),
                 subtitle = timeLabel,
                 active   = activeTab == 1,
                 onClick  = { activeTab = 1 },
@@ -171,6 +183,12 @@ fun WheelDateTimePicker(
                         modifier          = Modifier.weight(1.5f)
                     )
                     WheelColumn(
+                        items             = secItems,
+                        selectedIndex     = selSec,
+                        onSelectedChanged = { selSec = it },
+                        modifier          = Modifier.weight(1.5f)
+                    )
+                    if (!is24) WheelColumn(
                         items             = amPmItems,
                         selectedIndex     = selAmPm,
                         onSelectedChanged = { selAmPm = it },
@@ -207,14 +225,17 @@ fun WheelDateTimePicker(
                 val year   = years[selYear].toInt()
                 val month  = selMonth + 1
                 val day    = (selDay + 1).coerceAtMost(daysInMonth)
-                val hVal   = selHour + 1  // 1..12
+                val hVal   = selHour + 1  // 1..12 on the 12-hour wheel
                 val hour24 = when {
+                    is24                       -> selHour
                     selAmPm == 0 && hVal == 12 -> 0
                     selAmPm == 0               -> hVal
                     hVal == 12                 -> 12
                     else                       -> hVal + 12
                 }
-                val millis = java.time.LocalDateTime.of(year, month, day, hour24, selMin, 0)
+                /* The fraction of a second is the file's own and is kept: no wheel shows it,
+                   and dropping it would make a save that changed nothing change the order. */
+                val millis = java.time.LocalDateTime.of(year, month, day, hour24, selMin, selSec, zdt.nano)
                     .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
                 onSave(millis)
             }) { Text(stringResource(R.string.common_save)) }

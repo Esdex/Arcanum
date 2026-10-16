@@ -319,6 +319,8 @@
     <string name="viewer_sheet_info_title">Details</string>
     <string name="viewer_description_placeholder">Add a description…</string>
     <string name="viewer_edit_date_title">Edit Date &amp; Time</string>
+    <string name="viewer_edit_date_tab_date">Date</string>
+    <string name="viewer_edit_date_tab_time">Time</string>
     <string name="viewer_edit_date_warning">⚠ This will update the EXIF data inside the file and move it in the timeline.</string>
     <string name="viewer_exif_title">EXIF Data</string>
     <string name="viewer_exif_empty">No EXIF data available for this file.</string>

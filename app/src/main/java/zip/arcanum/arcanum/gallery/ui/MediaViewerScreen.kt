@@ -1650,7 +1650,8 @@ private fun MediaInfoSheetContent(
 
         // Date row
         val dateMillis = exifData?.dateTimeOriginal ?: file.dateCreated
-        val (dateStr, timeStr) = formatDateParts(dateMillis)
+        val is24 = android.text.format.DateFormat.is24HourFormat(LocalContext.current)
+        val (dateStr, timeStr) = formatDateParts(dateMillis, is24)
         InfoRow(
             icon     = Icons.Outlined.CalendarMonth,
             onClick  = if (isReadOnly) null else onEditDate,
@@ -1990,15 +1991,15 @@ private fun Long.formatFileSize(): String {
     }
 }
 
-private fun formatDateParts(millis: Long): Pair<String, String> {
+private fun formatDateParts(millis: Long, is24: Boolean): Pair<String, String> {
     if (millis == 0L) return Pair("—", "—")
     val zdt  = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault())
     val dow  = zdt.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
     val mon  = zdt.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())
     val date = "$dow, $mon ${zdt.dayOfMonth}, ${zdt.year}"
-    val h12  = if (zdt.hour % 12 == 0) 12 else zdt.hour % 12
-    val ampm = if (zdt.hour < 12) "AM" else "PM"
-    val time = "%d:%02d %s".format(h12, zdt.minute, ampm)
+    // Seconds shown, since they can be set (#192), on the clock the phone is set to.
+    val time = zdt.format(java.time.format.DateTimeFormatter.ofPattern(
+        if (is24) "HH:mm:ss" else "h:mm:ss a", Locale.getDefault()))
     return Pair(date, time)
 }
 
