@@ -200,6 +200,15 @@ class CodeEditText @JvmOverloads constructor(
         // A text editor is not a form field: no suggestions rewriting what was typed, no
         // capitalisation of a line of code, and the top of the text is where it starts.
         setHorizontallyScrolling(false)
+        /* Filling its parent, said here rather than left to whoever adds the view: Compose
+           adds it as WRAP_CONTENT, and a text view that wraps its width asks for a new layout
+           on every keystroke. Keeping the caret in sight is put off while a layout is pending
+           and put off again from inside that layout, so at the right edge the text did not
+           follow the typing at all and caught up in one jump once the typing stopped (#183). */
+        layoutParams = android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+        )
         gravity = android.view.Gravity.TOP or android.view.Gravity.START
         setTextIsSelectable(true)
         includeFontPadding = false
