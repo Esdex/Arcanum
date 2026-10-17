@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.SmartDisplay
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Save
@@ -73,7 +74,7 @@ import zip.arcanum.core.components.GroupedRoundIcon
 // Each sub-screen lives in a file of its own beside this one.
 
 private enum class SubScreen {
-    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, TEXT_EDITOR, VIDEO_PLAYER, BACKUP, BACKUP_SAVE, ABOUT, LICENSES, WHATS_NEW, DONATIONS, PREMIUM, DEBUG
+    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, GALLERY, TEXT_EDITOR, VIDEO_PLAYER, BACKUP, BACKUP_SAVE, ABOUT, LICENSES, WHATS_NEW, DONATIONS, PREMIUM, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -189,6 +190,14 @@ fun SettingsScreen(
                     onBack        = { subScreen = null }
                 )
             }
+            SubScreen.GALLERY -> {
+                val fastScroll by viewModel.galleryFastScroll.collectAsState()
+                GallerySubScreen(
+                    fastScroll   = fastScroll,
+                    onFastScroll = viewModel::setGalleryFastScroll,
+                    onBack       = { subScreen = null }
+                )
+            }
             SubScreen.VIDEO_PLAYER -> {
                 val playerPrefs by viewModel.videoPlayer.collectAsState()
                 VideoPlayerSubScreen(
@@ -271,6 +280,7 @@ private object SettingsHue {
     val Appearance = SectionHue(Color(0xFFFFB683), Color(0xFF753403))
     val Editor     = SectionHue(Color(0xFF7FD8C8), Color(0xFF00504A))
     val Player     = SectionHue(Color(0xFFF2B8D8), Color(0xFF6B1F4C))
+    val Gallery    = SectionHue(Color(0xFFD0BCFF), Color(0xFF381E72))
     val About      = SectionHue(Color(0xFFC7C7C7), Color(0xFF474747))
     val Debug      = SectionHue(Color(0xFF80DA88), Color(0xFF00522C))
     val Donate     = SectionHue(Color(0xFFFFC107), Color(0xFF5D4200))
@@ -362,6 +372,21 @@ private fun MainSettingsScreen(
                             )
                         },
                         onClick  = { onNavigate(SubScreen.APPEARANCE) }
+                    )
+                }
+                row { shape ->
+                    GroupedRow(
+                        shape    = shape,
+                        title    = stringResource(R.string.settings_card_gallery),
+                        subtitle = stringResource(R.string.settings_card_gallery_desc),
+                        leading  = {
+                            GroupedRoundIcon(
+                                icon      = Icons.Outlined.PhotoLibrary,
+                                color     = SettingsHue.Gallery.circle,
+                                iconColor = SettingsHue.Gallery.glyph
+                            )
+                        },
+                        onClick  = { onNavigate(SubScreen.GALLERY) }
                     )
                 }
                 row { shape ->

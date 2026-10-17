@@ -74,6 +74,7 @@ class AppPreferences @Inject constructor(
         val PLAYER_SPEED_MENU         = booleanPreferencesKey("player_speed_menu")
         val PLAYER_LOOP               = booleanPreferencesKey("player_loop")
         val PLAYER_RESUME_MUSIC       = booleanPreferencesKey("player_resume_music")
+        val GALLERY_FAST_SCROLL       = booleanPreferencesKey("gallery_fast_scroll")
 
         /** Survives panic mode's "Clear app settings" - see [clearSettingsForPanic]. */
         val PANIC_KEEP: List<Preferences.Key<*>> = listOf(
@@ -463,6 +464,13 @@ class AppPreferences @Inject constructor(
     suspend fun setEditorHideImeOnScroll(on: Boolean) {
         context.appPrefsDataStore.edit { it[Keys.EDITOR_HIDE_IME] = on }
     }
+
+    // ── Gallery (#191) ───────────────────────────────────────────────────────
+
+    /** The handle that drags through the whole grid. On by default; the switch takes it away. */
+    val galleryFastScroll: Flow<Boolean> = context.appPrefsDataStore.data.map { it[Keys.GALLERY_FAST_SCROLL] ?: true }
+
+    suspend fun setGalleryFastScroll(on: Boolean) { context.appPrefsDataStore.edit { it[Keys.GALLERY_FAST_SCROLL] = on } }
 
     // ── Video player (#151) ──────────────────────────────────────────────────
 

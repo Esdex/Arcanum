@@ -99,6 +99,11 @@ class SettingsViewModel @Inject constructor(
     fun setEditorOpenNew(on: Boolean)    { viewModelScope.launch { prefs.setEditorOpenAfterCreate(on) } }
     fun setEditorHideIme(on: Boolean)    { viewModelScope.launch { prefs.setEditorHideImeOnScroll(on) } }
 
+    // ── Gallery (#191) ────────────────────────────────────────────────────────
+
+    val galleryFastScroll = prefs.galleryFastScroll.stateIn(viewModelScope, SharingStarted.Eagerly, true)
+    fun setGalleryFastScroll(on: Boolean) { viewModelScope.launch { prefs.setGalleryFastScroll(on) } }
+
     // ── Video player (#151) ───────────────────────────────────────────────────
 
     val videoPlayer = prefs.videoPlayer.stateIn(

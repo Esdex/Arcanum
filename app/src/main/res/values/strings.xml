@@ -451,6 +451,12 @@
     <string name="editor_encoding_convert">Convert to UTF-8</string>
 
     <!-- Text editor settings -->
+    <string name="settings_card_gallery">Gallery</string>
+    <string name="settings_card_gallery_desc">Fast scroll</string>
+    <string name="settings_gallery_title">Gallery</string>
+    <string name="settings_gallery_group_scrolling">Scrolling</string>
+    <string name="settings_gallery_fast_scroll">Fast scroll</string>
+    <string name="settings_gallery_fast_scroll_desc">A handle on the right edge appears while you scroll. Drag it to move through the whole gallery, with the month shown as you go.</string>
     <string name="settings_card_editor">Text editor</string>
     <string name="settings_card_editor_desc">Line numbers, colouring, font</string>
     <string name="settings_editor_title">Text editor</string>

@@ -91,6 +91,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -139,6 +140,7 @@ fun GalleryScreen(
     val selectedIds       by viewModel.selectedIds.collectAsState()
     val preloadState      by viewModel.preloadState.collectAsState()
     val showResyncButton  by viewModel.showResyncButton.collectAsState()
+    val fastScroll        by viewModel.fastScroll.collectAsState()
 
     if (uiState.showOptionsSheet) {
         AppSheet(
@@ -247,7 +249,8 @@ fun GalleryScreen(
                 onPhotoSelect      = { viewModel.togglePhotoSelection(it) },
                 onDaySelect        = { viewModel.toggleDaySelection(it) },
                 onMonthSelect      = { viewModel.toggleMonthSelection(it) },
-                onOpenFolder       = { viewModel.showOnlyFolder(it) }
+                onOpenFolder       = { viewModel.showOnlyFolder(it) },
+                fastScroll         = fastScroll
             )
         }
     } else {
@@ -266,7 +269,8 @@ fun GalleryScreen(
             onPhotoSelect      = { viewModel.togglePhotoSelection(it) },
             onDaySelect        = { viewModel.toggleDaySelection(it) },
             onMonthSelect      = { viewModel.toggleMonthSelection(it) },
-            onOpenFolder       = { viewModel.showOnlyFolder(it) }
+            onOpenFolder       = { viewModel.showOnlyFolder(it) },
+            fastScroll         = fastScroll
         )
     }
 }
@@ -391,7 +395,8 @@ private fun GalleryContent(
     onPhotoSelect: (MediaFileEntity) -> Unit,
     onDaySelect: (GalleryViewModel.DayGroup) -> Unit,
     onMonthSelect: (GalleryViewModel.MonthGroup) -> Unit,
-    onOpenFolder: (String) -> Unit
+    onOpenFolder: (String) -> Unit,
+    fastScroll: Boolean = true
 ) {
     val gridState = rememberLazyGridState()
 
@@ -418,6 +423,15 @@ private fun GalleryContent(
      * visible cells too, and gives every photograph a key of its own, which is what
      * animateItem needs.
      */
+    val context = LocalContext.current
+    val grouped = uiState.sortBy == GalleryViewModel.SortBy.DATE
+    val leadingItems = (if (uiState.isScanning) 1 else 0) + (if (isPreloading) 1 else 0) +
+        (if (uiState.matchingFolders.isNotEmpty()) 1 + uiState.matchingFolders.size else 0)
+    val gridIndex = remember(uiState.monthGroups, grouped, leadingItems, uiState.sortBy) {
+        buildGridIndex(uiState.monthGroups, grouped, leadingItems, uiState.sortBy, context)
+    }
+
+    Box(Modifier.fillMaxSize()) {
     LazyVerticalGrid(
         columns        = GridCells.Fixed(3),
         state          = gridState,
@@ -481,7 +495,6 @@ private fun GalleryContent(
         // Headers only for the date sort. "March 2026" and its select-all checkbox describe a
         // timeline; ordered by name or size the same headers would be one meaningless band
         // across the whole grid (#122).
-        val grouped = uiState.sortBy == GalleryViewModel.SortBy.DATE
 
         uiState.monthGroups.forEach { monthGroup ->
             if (grouped) item(key = "month_${monthGroup.month}", span = { GridItemSpan(maxLineSpan) }) {
@@ -549,6 +562,48 @@ private fun GalleryContent(
         }
 
         item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(16.dp)) }
+    }
+
+    if (fastScroll) {
+        GalleryFastScroller(
+            state         = gridState,
+            index         = gridIndex,
+            topPadding    = innerPadding.calculateTopPadding(),
+            bottomPadding = bottomPadding,
+            modifier      = Modifier.align(Alignment.TopEnd)
+        )
+    }
+    }
+}
+
+/**
+ * The fast scroller's map of the grid above (#191): [layOutGrid] for the rows, and what to
+ * call each place for the sort in use - the month by date, the first letter by name.
+ */
+private fun buildGridIndex(
+    months: List<GalleryViewModel.MonthGroup>,
+    grouped: Boolean,
+    leadingItems: Int,
+    sortBy: GalleryViewModel.SortBy,
+    context: android.content.Context
+): GridIndex {
+    val layout  = layOutGrid(months, grouped, leadingItems)
+    val files   = layout.files
+    val monthOf = layout.monthOf
+    // The ruler of years only makes sense on a timeline.
+    val yearMarks = if (sortBy == GalleryViewModel.SortBy.DATE)
+        layout.yearStarts.map { (year, line) -> year.toString() to line } else emptyList()
+    return GridIndex(layout.lineOf, layout.totalLines, yearMarks) { i ->
+        val file = files.getOrNull(i)
+        when (sortBy) {
+            GalleryViewModel.SortBy.DATE   -> monthOf.getOrNull(i)
+            GalleryViewModel.SortBy.NAME   -> file?.fileName?.firstOrNull()?.let { c ->
+                if (c.isLetterOrDigit()) c.uppercaseChar().toString() else "#"
+            }
+            GalleryViewModel.SortBy.SIZE   -> file?.let { android.text.format.Formatter.formatShortFileSize(context, it.size) }
+            GalleryViewModel.SortBy.TYPE   -> file?.fileName?.substringAfterLast('.', "")?.uppercase()?.ifEmpty { null }
+            GalleryViewModel.SortBy.RANDOM -> null
+        }
     }
 }
 

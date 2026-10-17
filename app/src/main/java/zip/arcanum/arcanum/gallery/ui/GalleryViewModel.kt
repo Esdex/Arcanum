@@ -63,6 +63,10 @@ class GalleryViewModel @Inject constructor(
      */
     enum class SortBy { NAME, DATE, SIZE, TYPE, RANDOM }
 
+    /** Whether the grid has its fast scroller (#191), from Settings > Gallery. */
+    val fastScroll = prefs.galleryFastScroll
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, true)
+
     data class DayGroup(
         val date: LocalDate,
         val displayDate: String,
