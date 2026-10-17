@@ -5,8 +5,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -176,9 +176,9 @@ fun StepHiddenAlgorithm(state: CreateContainerState, onUpdate: (CreateContainerS
         Spacer(Modifier.height(16.dp))
         Text(stringResource(R.string.create_step3_hash), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
-        Row(
-            modifier              = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement   = Arrangement.spacedBy(8.dp)
         ) {
             HashAlgorithm.entries.forEach { hash ->
                 FilterChip(
@@ -215,9 +215,9 @@ fun StepHiddenSize(state: CreateContainerState, onUpdate: (CreateContainerState.
         )
         Spacer(Modifier.height(12.dp))
 
-        Row(
-            modifier              = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement   = Arrangement.spacedBy(8.dp)
         ) {
             hiddenPresets.filter { it < maxHiddenMb }.forEach { mb ->
                 val label = if (mb >= 1024) "${mb / 1024} GB" else "$mb MB"
