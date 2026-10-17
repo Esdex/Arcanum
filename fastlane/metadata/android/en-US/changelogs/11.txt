@@ -1,0 +1,11 @@
+- New: Search in Files looks inside subfolders
+- New: Lock the video player
+- New: Swipe for volume and brightness, hold for 2x
+- New: Playback speed and loop
+- New: Fast scroll in the gallery
+- Fix: Empty keyfiles are refused
+- Fix: Music keeps playing while you browse
+- Fix: Linked photos and videos show up straight away
+- Fix: Every size and hash can be seen at once
+- Improvement: Numbers in names sort by value
+- Improvement: Seconds in the date and time editor
