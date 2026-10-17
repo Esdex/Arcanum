@@ -175,8 +175,16 @@ class MainActivity : AppCompatActivity() {
         handlePlayerIntent(intent)
     }
 
+    /*
+     * Only the music notification's own intent, which names this activity itself. The launcher
+     * entries are aliases of it and are exported, so any app could send them the same action;
+     * through an alias the component is the alias, and that is not a tap on our notification
+     * (1.6.1 leak check).
+     */
     private fun handlePlayerIntent(intent: Intent?) {
-        if (intent?.action == zip.arcanum.arcanum.gallery.PlayerOpenRequest.ACTION) playerOpen.request()
+        if (intent?.action != zip.arcanum.arcanum.gallery.PlayerOpenRequest.ACTION) return
+        if (intent.component?.className != MainActivity::class.java.name) return
+        playerOpen.request()
     }
 
     // Files shared into Arcanum are stashed until the user unlocks and picks a destination.

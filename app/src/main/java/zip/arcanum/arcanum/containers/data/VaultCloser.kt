@@ -24,13 +24,20 @@ import javax.inject.Singleton
 class VaultCloser @Inject constructor(
     private val repo: ContainerRepository,
     private val engine: VeraCryptEngine,
-    private val usbVolumes: UsbVolumeManager
+    private val usbVolumes: UsbVolumeManager,
+    private val viewerOrder: zip.arcanum.arcanum.gallery.ViewerOrder,
+    private val audioQueue: zip.arcanum.arcanum.gallery.AudioPlayerQueue
 ) {
 
     /** Closes one mounted vault. A vault that is not mounted is not an error. */
     suspend fun close(id: String) {
         repo.getContainerHandle(id)?.let { closeByHandle(it) }
         repo.unmountContainer(id)
+        /* The lists the viewer and the player were handed name the vault's files by path, and
+           nothing would ever take them away: a closed vault leaves nothing of itself behind in
+           the process either (1.6.1 leak check). */
+        viewerOrder.clear(id)
+        audioQueue.clear(id)
     }
 
     /**

@@ -26,6 +26,11 @@ class ViewerOrder @Inject constructor() {
         current = containerId to paths
     }
 
+    /** Forgets the list if it is [containerId]'s: a closed vault's paths are not kept about. */
+    fun clear(containerId: String) {
+        if (current.first == containerId) current = "" to emptyList()
+    }
+
     /**
      * The handed-over list, if it is the one [path] was opened from. A list from another
      * vault, or one that does not hold the file at all (the editor's saved copy, say),
