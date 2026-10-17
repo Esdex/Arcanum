@@ -1368,4 +1368,44 @@
         <item quantity="other">%d 件のファイルをボールトに保存しました</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">空のキーファイルは追加されませんでした</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt は 0 バイトのキーファイルを受け付けません</string>
+    <string name="notif_keyfile_empty_used">このキーファイルは空です</string>
+    <string name="notif_keyfile_empty_used_subtitle">「キーファイルの変更」で置き換えてください</string>
+    <string name="keyfile_empty_help_title">空のキーファイル</string>
+    <string name="keyfile_empty_current_body">このキーファイルは 0 バイトです。このボールトがこのファイルで作成されたものなら、そのまま進み、次のステップで本物のキーファイルに置き換えてください。</string>
+    <string name="keyfile_empty_help_body">選んだファイルは空です（0 バイト）。ボールトの保護には何も加わらず、VeraCrypt は空のキーファイルを受け付けないため、これで作成したボールトは Arcanum でしか開けない可能性があります。\n\n直すには「ボールト情報」を開き、「キーファイルの変更」を選んでください。「現在の資格情報」にこのファイルを追加し、「新しいキーファイル」で本物のキーファイルを選ぶか、パスワードだけで開くなら「キーファイルを追加」をオフにしてください。</string>
+    <string name="viewer_edit_date_tab_date">日付</string>
+    <string name="viewer_edit_date_tab_time">時刻</string>
+    <string name="files_search_found_in">%1$s 内</string>
+    <string name="settings_card_gallery">ギャラリー</string>
+    <string name="settings_card_gallery_desc">高速スクロール</string>
+    <string name="settings_gallery_title">ギャラリー</string>
+    <string name="settings_gallery_group_scrolling">スクロール</string>
+    <string name="settings_gallery_fast_scroll">高速スクロール</string>
+    <string name="settings_gallery_fast_scroll_desc">スクロール中に右端につまみが表示されます。ドラッグするとギャラリー全体を移動でき、移動中は月が表示されます。</string>
+    <string name="settings_card_player">動画プレーヤー</string>
+    <string name="settings_card_player_desc">ジェスチャー、ロック、速度、ループ</string>
+    <string name="settings_player_title">動画プレーヤー</string>
+    <string name="settings_player_group_gestures">ジェスチャー</string>
+    <string name="settings_player_group_controls">コントロール</string>
+    <string name="settings_player_swipe_volume">右側のスワイプで音量</string>
+    <string name="settings_player_swipe_brightness">左側のスワイプで明るさ</string>
+    <string name="settings_player_swipe_brightness_desc">明るさが変わるのはプレーヤーだけで、システムの明るさはそのままです。動画を離れると元に戻ります。</string>
+    <string name="settings_player_hold_speed">長押しで 2 倍速再生</string>
+    <string name="settings_player_lock">ロックボタン</string>
+    <string name="settings_player_lock_desc">動画のコントロールにロックを追加します。ロック中は動画に触れても何も起きないので、うっかり触れても一時停止、シーク、スワイプは起きません。画面をタップするとロック解除ボタンが戻ります。</string>
+    <string name="settings_player_speed">再生速度</string>
+    <string name="settings_player_loop">ループ</string>
+    <string name="settings_player_group_music">音楽</string>
+    <string name="settings_player_resume_music">動画のあとに音楽を再開</string>
+    <string name="settings_player_resume_music_desc">動画で一時停止した音楽は、動画を離れると再生を続けます。オフにすると一時停止のまま戻ります。</string>
+    <string name="player_lock">コントロールをロック</string>
+    <string name="player_unlock">ロック解除</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">再生速度</string>
+    <string name="player_speed_normal">標準</string>
+    <string name="player_loop">ループ</string>
+
 </resources>

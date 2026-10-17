@@ -1412,4 +1412,44 @@
         <item quantity="other">%d fichiers enregistrés dans le coffre</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">Fichier clé vide non ajouté</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt refuse les fichiers clés de 0 octet</string>
+    <string name="notif_keyfile_empty_used">Ce fichier clé est vide</string>
+    <string name="notif_keyfile_empty_used_subtitle">Remplacez-le dans « Changer les fichiers clés »</string>
+    <string name="keyfile_empty_help_title">Fichier clé vide</string>
+    <string name="keyfile_empty_current_body">Ce fichier clé fait 0 octet. Si c\'est celui avec lequel ce coffre a été créé, continuez, puis remplacez-le par un vrai fichier clé à l\'étape suivante.</string>
+    <string name="keyfile_empty_help_body">Le fichier choisi est vide (0 octet). Il n\'ajoute rien à la protection du coffre, et VeraCrypt refuse les fichiers clés vides : un coffre créé avec un tel fichier risque de ne s\'ouvrir que dans Arcanum.\n\nPour corriger cela, ouvrez « Infos du coffre » et choisissez « Changer les fichiers clés ». Ajoutez ce fichier dans « Identifiants actuels », puis choisissez un vrai fichier clé dans « Nouveaux fichiers clés », ou désactivez « Ajouter des fichiers clés » pour déverrouiller avec le seul mot de passe.</string>
+    <string name="viewer_edit_date_tab_date">Date</string>
+    <string name="viewer_edit_date_tab_time">Heure</string>
+    <string name="files_search_found_in">dans %1$s</string>
+    <string name="settings_card_gallery">Galerie</string>
+    <string name="settings_card_gallery_desc">Défilement rapide</string>
+    <string name="settings_gallery_title">Galerie</string>
+    <string name="settings_gallery_group_scrolling">Défilement</string>
+    <string name="settings_gallery_fast_scroll">Défilement rapide</string>
+    <string name="settings_gallery_fast_scroll_desc">Une poignée apparaît sur le bord droit pendant le défilement. Faites-la glisser pour parcourir toute la galerie ; le mois s\'affiche en chemin.</string>
+    <string name="settings_card_player">Lecteur vidéo</string>
+    <string name="settings_card_player_desc">Gestes, verrou, vitesse, boucle</string>
+    <string name="settings_player_title">Lecteur vidéo</string>
+    <string name="settings_player_group_gestures">Gestes</string>
+    <string name="settings_player_group_controls">Commandes</string>
+    <string name="settings_player_swipe_volume">Balayer à droite pour le volume</string>
+    <string name="settings_player_swipe_brightness">Balayer à gauche pour la luminosité</string>
+    <string name="settings_player_swipe_brightness_desc">Seul le lecteur devient plus clair ou plus sombre, la luminosité du système n\'est pas touchée. Tout redevient normal quand vous quittez la vidéo.</string>
+    <string name="settings_player_hold_speed">Maintenir pour lire en 2x</string>
+    <string name="settings_player_lock">Bouton de verrouillage</string>
+    <string name="settings_player_lock_desc">Ajoute un verrou aux commandes de la vidéo. Tant qu\'il est fermé, toucher la vidéo ne fait rien : un doigt égaré ne peut ni mettre en pause, ni avancer, ni passer au fichier suivant. Touchez l\'écran pour faire revenir le bouton de déverrouillage.</string>
+    <string name="settings_player_speed">Vitesse de lecture</string>
+    <string name="settings_player_loop">Boucle</string>
+    <string name="settings_player_group_music">Musique</string>
+    <string name="settings_player_resume_music">Reprendre la musique après une vidéo</string>
+    <string name="settings_player_resume_music_desc">La musique mise en pause par une vidéo reprend quand vous quittez la vidéo. Désactivé, elle revient en pause.</string>
+    <string name="player_lock">Verrouiller les commandes</string>
+    <string name="player_unlock">Déverrouiller</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">Vitesse de lecture</string>
+    <string name="player_speed_normal">Normale</string>
+    <string name="player_loop">Boucle</string>
+
 </resources>

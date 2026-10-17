@@ -1390,4 +1390,44 @@
         <item quantity="other">%d Dateien im Tresor gespeichert</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">Leere Schlüsseldatei nicht hinzugefügt</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt lehnt 0-Byte-Schlüsseldateien ab</string>
+    <string name="notif_keyfile_empty_used">Diese Schlüsseldatei ist leer</string>
+    <string name="notif_keyfile_empty_used_subtitle">Ersetze sie unter „Schlüsseldateien ändern“</string>
+    <string name="keyfile_empty_help_title">Leere Schlüsseldatei</string>
+    <string name="keyfile_empty_current_body">Diese Schlüsseldatei ist 0 Byte groß. Wenn der Tresor mit ihr erstellt wurde, mach weiter und ersetze sie im nächsten Schritt durch eine echte Schlüsseldatei.</string>
+    <string name="keyfile_empty_help_body">Die gewählte Datei ist leer (0 Byte). Sie trägt nichts zum Schutz des Tresors bei, und VeraCrypt lehnt leere Schlüsseldateien ab, sodass sich ein damit erstellter Tresor womöglich nur in Arcanum öffnen lässt.\n\nUm das zu beheben, öffne „Tresor-Info“ und wähle „Schlüsseldateien ändern“. Füge diese Datei unter „Aktuelle Zugangsdaten“ hinzu und wähle dann unter „Neue Schlüsseldateien“ eine echte Schlüsseldatei, oder schalte „Schlüsseldateien hinzufügen“ aus, um nur mit dem Passwort zu entsperren.</string>
+    <string name="viewer_edit_date_tab_date">Datum</string>
+    <string name="viewer_edit_date_tab_time">Uhrzeit</string>
+    <string name="files_search_found_in">in %1$s</string>
+    <string name="settings_card_gallery">Galerie</string>
+    <string name="settings_card_gallery_desc">Schnelles Scrollen</string>
+    <string name="settings_gallery_title">Galerie</string>
+    <string name="settings_gallery_group_scrolling">Scrollen</string>
+    <string name="settings_gallery_fast_scroll">Schnelles Scrollen</string>
+    <string name="settings_gallery_fast_scroll_desc">Beim Scrollen erscheint am rechten Rand ein Griff. Zieh ihn, um dich durch die ganze Galerie zu bewegen; dabei wird der Monat angezeigt.</string>
+    <string name="settings_card_player">Videoplayer</string>
+    <string name="settings_card_player_desc">Gesten, Sperre, Tempo, Wiederholen</string>
+    <string name="settings_player_title">Videoplayer</string>
+    <string name="settings_player_group_gestures">Gesten</string>
+    <string name="settings_player_group_controls">Steuerung</string>
+    <string name="settings_player_swipe_volume">Rechts wischen für die Lautstärke</string>
+    <string name="settings_player_swipe_brightness">Links wischen für die Helligkeit</string>
+    <string name="settings_player_swipe_brightness_desc">Nur der Player wird heller oder dunkler, die Systemhelligkeit bleibt unverändert. Wenn du das Video verlässt, ist alles wieder wie vorher.</string>
+    <string name="settings_player_hold_speed">Halten für 2-fache Geschwindigkeit</string>
+    <string name="settings_player_lock">Sperrtaste</string>
+    <string name="settings_player_lock_desc">Fügt der Videosteuerung ein Schloss hinzu. Solange es gesperrt ist, bewirken Berührungen auf dem Video nichts, sodass ein versehentlicher Finger weder pausiert noch spult noch weiterwischt. Tippe auf den Bildschirm, um die Entsperrtaste wieder anzuzeigen.</string>
+    <string name="settings_player_speed">Wiedergabegeschwindigkeit</string>
+    <string name="settings_player_loop">Wiederholen</string>
+    <string name="settings_player_group_music">Musik</string>
+    <string name="settings_player_resume_music">Musik nach einem Video fortsetzen</string>
+    <string name="settings_player_resume_music_desc">Musik, die ein Video angehalten hat, spielt weiter, wenn du das Video verlässt. Ist das aus, kommt sie pausiert zurück.</string>
+    <string name="player_lock">Steuerung sperren</string>
+    <string name="player_unlock">Entsperren</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">Wiedergabegeschwindigkeit</string>
+    <string name="player_speed_normal">Normal</string>
+    <string name="player_loop">Wiederholen</string>
+
 </resources>

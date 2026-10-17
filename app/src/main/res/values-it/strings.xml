@@ -1412,4 +1412,44 @@
         <item quantity="other">%d file salvati nella cassaforte</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">File chiave vuoto non aggiunto</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt rifiuta i file chiave di 0 byte</string>
+    <string name="notif_keyfile_empty_used">Questo file chiave è vuoto</string>
+    <string name="notif_keyfile_empty_used_subtitle">Sostituiscilo in «Cambia i file chiave»</string>
+    <string name="keyfile_empty_help_title">File chiave vuoto</string>
+    <string name="keyfile_empty_current_body">Questo file chiave pesa 0 byte. Se è quello con cui è stata creata questa cassaforte, continua e sostituiscilo con un vero file chiave nel passaggio successivo.</string>
+    <string name="keyfile_empty_help_body">Il file scelto è vuoto (0 byte). Non aggiunge nulla alla protezione della cassaforte, e VeraCrypt rifiuta i file chiave vuoti, quindi una cassaforte creata con uno di essi potrebbe aprirsi solo in Arcanum.\n\nPer rimediare, apri «Info cassaforte» e scegli «Cambia i file chiave». Aggiungi questo file in «Credenziali attuali», poi scegli un vero file chiave in «Nuovi file chiave», oppure disattiva «Aggiungi file chiave» per sbloccare con la sola password.</string>
+    <string name="viewer_edit_date_tab_date">Data</string>
+    <string name="viewer_edit_date_tab_time">Ora</string>
+    <string name="files_search_found_in">in %1$s</string>
+    <string name="settings_card_gallery">Galleria</string>
+    <string name="settings_card_gallery_desc">Scorrimento rapido</string>
+    <string name="settings_gallery_title">Galleria</string>
+    <string name="settings_gallery_group_scrolling">Scorrimento</string>
+    <string name="settings_gallery_fast_scroll">Scorrimento rapido</string>
+    <string name="settings_gallery_fast_scroll_desc">Mentre scorri compare una maniglia sul bordo destro. Trascinala per muoverti in tutta la galleria; intanto viene mostrato il mese.</string>
+    <string name="settings_card_player">Lettore video</string>
+    <string name="settings_card_player_desc">Gesti, blocco, velocità, ripetizione</string>
+    <string name="settings_player_title">Lettore video</string>
+    <string name="settings_player_group_gestures">Gesti</string>
+    <string name="settings_player_group_controls">Controlli</string>
+    <string name="settings_player_swipe_volume">Scorri a destra per il volume</string>
+    <string name="settings_player_swipe_brightness">Scorri a sinistra per la luminosità</string>
+    <string name="settings_player_swipe_brightness_desc">Solo il lettore diventa più chiaro o più scuro, la luminosità di sistema resta com\'è. Tutto torna normale quando esci dal video.</string>
+    <string name="settings_player_hold_speed">Tieni premuto per riprodurre a 2x</string>
+    <string name="settings_player_lock">Pulsante di blocco</string>
+    <string name="settings_player_lock_desc">Aggiunge un lucchetto ai controlli del video. Finché è bloccato, toccare il video non fa nulla, quindi un dito distratto non può mettere in pausa, cercare o passare oltre. Tocca lo schermo per far tornare il pulsante di sblocco.</string>
+    <string name="settings_player_speed">Velocità di riproduzione</string>
+    <string name="settings_player_loop">Ripeti</string>
+    <string name="settings_player_group_music">Musica</string>
+    <string name="settings_player_resume_music">Riprendi la musica dopo un video</string>
+    <string name="settings_player_resume_music_desc">La musica messa in pausa da un video riprende quando esci dal video. Se disattivato, torna in pausa.</string>
+    <string name="player_lock">Blocca i controlli</string>
+    <string name="player_unlock">Sblocca</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">Velocità di riproduzione</string>
+    <string name="player_speed_normal">Normale</string>
+    <string name="player_loop">Ripeti</string>
+
 </resources>

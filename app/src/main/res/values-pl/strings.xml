@@ -1434,4 +1434,44 @@
         <item quantity="other">Zapisano %d pliku w skarbcu</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">Nie dodano pustego pliku klucza</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt odrzuca pliki klucza o rozmiarze 0 bajtów</string>
+    <string name="notif_keyfile_empty_used">Ten plik klucza jest pusty</string>
+    <string name="notif_keyfile_empty_used_subtitle">Zastąp go w „Zmiana plików klucza”</string>
+    <string name="keyfile_empty_help_title">Pusty plik klucza</string>
+    <string name="keyfile_empty_current_body">Ten plik klucza ma 0 bajtów. Jeśli skarbiec został utworzony właśnie z nim, kontynuuj i zastąp go prawdziwym plikiem klucza w następnym kroku.</string>
+    <string name="keyfile_empty_help_body">Wybrany plik jest pusty (0 bajtów). Nic nie dodaje do ochrony skarbca, a VeraCrypt odrzuca puste pliki klucza, więc skarbiec utworzony z takim plikiem może otwierać się tylko w Arcanum.\n\nAby to naprawić, otwórz „Informacje o skarbcu” i wybierz „Zmiana plików klucza”. Dodaj ten plik w „Obecne poświadczenia”, potem wybierz prawdziwy plik klucza w „Nowe pliki klucza” albo wyłącz „Dodaj pliki klucza”, aby odblokowywać samym hasłem.</string>
+    <string name="viewer_edit_date_tab_date">Data</string>
+    <string name="viewer_edit_date_tab_time">Godzina</string>
+    <string name="files_search_found_in">w %1$s</string>
+    <string name="settings_card_gallery">Galeria</string>
+    <string name="settings_card_gallery_desc">Szybkie przewijanie</string>
+    <string name="settings_gallery_title">Galeria</string>
+    <string name="settings_gallery_group_scrolling">Przewijanie</string>
+    <string name="settings_gallery_fast_scroll">Szybkie przewijanie</string>
+    <string name="settings_gallery_fast_scroll_desc">Podczas przewijania przy prawej krawędzi pojawia się uchwyt. Przeciągnij go, aby przejść przez całą galerię; po drodze widać miesiąc.</string>
+    <string name="settings_card_player">Odtwarzacz wideo</string>
+    <string name="settings_card_player_desc">Gesty, blokada, prędkość, zapętlenie</string>
+    <string name="settings_player_title">Odtwarzacz wideo</string>
+    <string name="settings_player_group_gestures">Gesty</string>
+    <string name="settings_player_group_controls">Sterowanie</string>
+    <string name="settings_player_swipe_volume">Przesuń po prawej, aby zmienić głośność</string>
+    <string name="settings_player_swipe_brightness">Przesuń po lewej, aby zmienić jasność</string>
+    <string name="settings_player_swipe_brightness_desc">Jaśniejszy lub ciemniejszy staje się tylko odtwarzacz, jasność systemu się nie zmienia. Po wyjściu z wideo wszystko wraca do normy.</string>
+    <string name="settings_player_hold_speed">Przytrzymaj, aby odtwarzać 2x</string>
+    <string name="settings_player_lock">Przycisk blokady</string>
+    <string name="settings_player_lock_desc">Dodaje kłódkę do sterowania wideo. Gdy jest zablokowane, dotykanie wideo nic nie robi, więc przypadkowy palec nie zatrzyma, nie przewinie ani nie przełączy dalej. Dotknij ekranu, aby wrócił przycisk odblokowania.</string>
+    <string name="settings_player_speed">Prędkość odtwarzania</string>
+    <string name="settings_player_loop">Zapętl</string>
+    <string name="settings_player_group_music">Muzyka</string>
+    <string name="settings_player_resume_music">Wznów muzykę po wideo</string>
+    <string name="settings_player_resume_music_desc">Muzyka wstrzymana przez wideo gra dalej, gdy wyjdziesz z wideo. Gdy to wyłączone, wraca wstrzymana.</string>
+    <string name="player_lock">Zablokuj sterowanie</string>
+    <string name="player_unlock">Odblokuj</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">Prędkość odtwarzania</string>
+    <string name="player_speed_normal">Normalna</string>
+    <string name="player_loop">Zapętl</string>
+
 </resources>

@@ -1390,4 +1390,44 @@
         <item quantity="other">%d dosya kasaya kaydedildi</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">Boş anahtar dosyası eklenmedi</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt 0 baytlık anahtar dosyalarını kabul etmez</string>
+    <string name="notif_keyfile_empty_used">Bu anahtar dosyası boş</string>
+    <string name="notif_keyfile_empty_used_subtitle">«Anahtar dosyalarını değiştir» bölümünden değiştirin</string>
+    <string name="keyfile_empty_help_title">Boş anahtar dosyası</string>
+    <string name="keyfile_empty_current_body">Bu anahtar dosyası 0 bayt. Bu kasa bu dosyayla oluşturulduysa devam edin ve sonraki adımda dosyayı gerçek bir anahtar dosyasıyla değiştirin.</string>
+    <string name="keyfile_empty_help_body">Seçtiğiniz dosya boş (0 bayt). Kasanın korumasına hiçbir şey katmaz ve VeraCrypt boş anahtar dosyalarını kabul etmez; bu yüzden böyle bir dosyayla oluşturulan kasa yalnızca Arcanum\'da açılabilir.\n\nBunu düzeltmek için «Kasa bilgisi»ni açın ve «Anahtar dosyalarını değiştir»i seçin. Bu dosyayı «Geçerli kimlik bilgileri» altına ekleyin, ardından «Yeni anahtar dosyaları» altında gerçek bir anahtar dosyası seçin ya da yalnızca parolayla açmak için «Anahtar dosyası ekle»yi kapatın.</string>
+    <string name="viewer_edit_date_tab_date">Tarih</string>
+    <string name="viewer_edit_date_tab_time">Saat</string>
+    <string name="files_search_found_in">%1$s içinde</string>
+    <string name="settings_card_gallery">Galeri</string>
+    <string name="settings_card_gallery_desc">Hızlı kaydırma</string>
+    <string name="settings_gallery_title">Galeri</string>
+    <string name="settings_gallery_group_scrolling">Kaydırma</string>
+    <string name="settings_gallery_fast_scroll">Hızlı kaydırma</string>
+    <string name="settings_gallery_fast_scroll_desc">Kaydırırken sağ kenarda bir tutamaç belirir. Tüm galeride gezinmek için onu sürükleyin; bu sırada ay gösterilir.</string>
+    <string name="settings_card_player">Video oynatıcı</string>
+    <string name="settings_card_player_desc">Hareketler, kilit, hız, döngü</string>
+    <string name="settings_player_title">Video oynatıcı</string>
+    <string name="settings_player_group_gestures">Hareketler</string>
+    <string name="settings_player_group_controls">Kontroller</string>
+    <string name="settings_player_swipe_volume">Ses için sağda kaydırın</string>
+    <string name="settings_player_swipe_brightness">Parlaklık için solda kaydırın</string>
+    <string name="settings_player_swipe_brightness_desc">Yalnızca oynatıcı aydınlanır ya da kararır, sistem parlaklığına dokunulmaz. Videodan çıktığınızda her şey eski haline döner.</string>
+    <string name="settings_player_hold_speed">2x hızda oynatmak için basılı tutun</string>
+    <string name="settings_player_lock">Kilit düğmesi</string>
+    <string name="settings_player_lock_desc">Video kontrollerine bir kilit ekler. Kilitliyken videoya dokunmak hiçbir şey yapmaz; böylece kazara bir dokunuş duraklatamaz, sardıramaz ya da sonrakine geçiremez. Kilidi açma düğmesini geri getirmek için ekrana dokunun.</string>
+    <string name="settings_player_speed">Oynatma hızı</string>
+    <string name="settings_player_loop">Döngü</string>
+    <string name="settings_player_group_music">Müzik</string>
+    <string name="settings_player_resume_music">Videodan sonra müziği sürdür</string>
+    <string name="settings_player_resume_music_desc">Bir videonun duraklattığı müzik, videodan çıktığınızda çalmaya devam eder. Kapalıysa duraklatılmış olarak geri gelir.</string>
+    <string name="player_lock">Kontrolleri kilitle</string>
+    <string name="player_unlock">Kilidi aç</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">Oynatma hızı</string>
+    <string name="player_speed_normal">Normal</string>
+    <string name="player_loop">Döngü</string>
+
 </resources>

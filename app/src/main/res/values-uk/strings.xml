@@ -1434,4 +1434,44 @@
         <item quantity="other">%d файлів збережено у сховище</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">Порожній ключовий файл не додано</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt не приймає файли по 0 байтів</string>
+    <string name="notif_keyfile_empty_used">Цей ключовий файл порожній</string>
+    <string name="notif_keyfile_empty_used_subtitle">Замініть його в «Зміні ключових файлів»</string>
+    <string name="keyfile_empty_help_title">Порожній ключовий файл</string>
+    <string name="keyfile_empty_current_body">Цей ключовий файл має 0 байтів. Якщо сховище створено саме з ним, продовжуйте, а на наступному кроці замініть його справжнім ключовим файлом.</string>
+    <string name="keyfile_empty_help_body">Вибраний файл порожній (0 байтів). Він нічого не додає до захисту сховища, а VeraCrypt не приймає порожні ключові файли, тому сховище, створене з таким файлом, може відкриватися лише в Arcanum.\n\nЩоб це виправити, відкрийте «Відомості про сховище» і виберіть «Зміна ключових файлів». Додайте цей файл у розділі «Поточні облікові дані», потім виберіть справжній ключовий файл у розділі «Нові ключові файли» або вимкніть «Додати ключові файли», щоб відкривати сховище лише паролем.</string>
+    <string name="viewer_edit_date_tab_date">Дата</string>
+    <string name="viewer_edit_date_tab_time">Час</string>
+    <string name="files_search_found_in">у %1$s</string>
+    <string name="settings_card_gallery">Галерея</string>
+    <string name="settings_card_gallery_desc">Швидке прокручування</string>
+    <string name="settings_gallery_title">Галерея</string>
+    <string name="settings_gallery_group_scrolling">Прокручування</string>
+    <string name="settings_gallery_fast_scroll">Швидке прокручування</string>
+    <string name="settings_gallery_fast_scroll_desc">Під час прокручування біля правого краю з\'являється повзунок. Перетягуйте його, щоб переміщатися всією галереєю; поки ви тягнете, показується місяць.</string>
+    <string name="settings_card_player">Відеоплеєр</string>
+    <string name="settings_card_player_desc">Жести, блокування, швидкість, повтор</string>
+    <string name="settings_player_title">Відеоплеєр</string>
+    <string name="settings_player_group_gestures">Жести</string>
+    <string name="settings_player_group_controls">Керування</string>
+    <string name="settings_player_swipe_volume">Свайп праворуч змінює гучність</string>
+    <string name="settings_player_swipe_brightness">Свайп ліворуч змінює яскравість</string>
+    <string name="settings_player_swipe_brightness_desc">Змінюється яскравість лише плеєра, системна яскравість лишається як є. Коли ви виходите з відео, усе повертається як було.</string>
+    <string name="settings_player_hold_speed">Утримання для швидкості 2x</string>
+    <string name="settings_player_lock">Кнопка блокування</string>
+    <string name="settings_player_lock_desc">Додає замок до керування відео. Поки його закрито, дотики до відео нічого не роблять, тож випадковий дотик не поставить паузу, не перемотає й не перегорне. Торкніться екрана, щоб знову показати кнопку розблокування.</string>
+    <string name="settings_player_speed">Швидкість відтворення</string>
+    <string name="settings_player_loop">Повтор</string>
+    <string name="settings_player_group_music">Музика</string>
+    <string name="settings_player_resume_music">Продовжувати музику після відео</string>
+    <string name="settings_player_resume_music_desc">Музика, яку призупинило відео, гратиме далі, коли ви вийдете з відео. Якщо вимкнено, вона повернеться на паузі.</string>
+    <string name="player_lock">Заблокувати керування</string>
+    <string name="player_unlock">Розблокувати</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">Швидкість відтворення</string>
+    <string name="player_speed_normal">Звичайна</string>
+    <string name="player_loop">Повтор</string>
+
 </resources>

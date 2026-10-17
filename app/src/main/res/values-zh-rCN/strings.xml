@@ -1368,4 +1368,44 @@
         <item quantity="other">已把 %d 个文件保存到保险库</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">未添加空的密钥文件</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt 不接受 0 字节的密钥文件</string>
+    <string name="notif_keyfile_empty_used">此密钥文件为空</string>
+    <string name="notif_keyfile_empty_used_subtitle">请在“更改密钥文件”中替换它</string>
+    <string name="keyfile_empty_help_title">空的密钥文件</string>
+    <string name="keyfile_empty_current_body">此密钥文件为 0 字节。如果这个保险库就是用它创建的，请继续，并在下一步把它换成真正的密钥文件。</string>
+    <string name="keyfile_empty_help_body">所选文件为空（0 字节）。它对保险库的保护毫无帮助，而且 VeraCrypt 不接受空的密钥文件，因此用它创建的保险库可能只能在 Arcanum 中打开。\n\n要解决此问题，请打开“保险库信息”并选择“更改密钥文件”。在“当前凭据”下添加此文件，然后在“新的密钥文件”下选择真正的密钥文件，或者关闭“添加密钥文件”，只用密码解锁。</string>
+    <string name="viewer_edit_date_tab_date">日期</string>
+    <string name="viewer_edit_date_tab_time">时间</string>
+    <string name="files_search_found_in">在 %1$s 中</string>
+    <string name="settings_card_gallery">图库</string>
+    <string name="settings_card_gallery_desc">快速滚动</string>
+    <string name="settings_gallery_title">图库</string>
+    <string name="settings_gallery_group_scrolling">滚动</string>
+    <string name="settings_gallery_fast_scroll">快速滚动</string>
+    <string name="settings_gallery_fast_scroll_desc">滚动时右侧边缘会出现一个滑块。拖动它即可在整个图库中移动，拖动时会显示月份。</string>
+    <string name="settings_card_player">视频播放器</string>
+    <string name="settings_card_player_desc">手势、锁定、速度、循环</string>
+    <string name="settings_player_title">视频播放器</string>
+    <string name="settings_player_group_gestures">手势</string>
+    <string name="settings_player_group_controls">控制</string>
+    <string name="settings_player_swipe_volume">在右侧滑动调节音量</string>
+    <string name="settings_player_swipe_brightness">在左侧滑动调节亮度</string>
+    <string name="settings_player_swipe_brightness_desc">只改变播放器的亮度，系统亮度保持不变。离开视频后会恢复原样。</string>
+    <string name="settings_player_hold_speed">长按以 2 倍速播放</string>
+    <string name="settings_player_lock">锁定按钮</string>
+    <string name="settings_player_lock_desc">为视频控制添加一把锁。锁定时触摸视频不会有任何反应，误触也不会暂停、跳转或切换。点按屏幕即可重新显示解锁按钮。</string>
+    <string name="settings_player_speed">播放速度</string>
+    <string name="settings_player_loop">循环</string>
+    <string name="settings_player_group_music">音乐</string>
+    <string name="settings_player_resume_music">离开视频后继续播放音乐</string>
+    <string name="settings_player_resume_music_desc">被视频暂停的音乐会在你离开视频后继续播放。关闭后，音乐会以暂停状态返回。</string>
+    <string name="player_lock">锁定控制</string>
+    <string name="player_unlock">解锁</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">播放速度</string>
+    <string name="player_speed_normal">正常</string>
+    <string name="player_loop">循环</string>
+
 </resources>

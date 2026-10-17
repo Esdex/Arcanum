@@ -1412,4 +1412,44 @@
         <item quantity="other">%d archivos guardados en la bóveda</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">Archivo clave vacío no añadido</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt rechaza archivos clave de 0 bytes</string>
+    <string name="notif_keyfile_empty_used">Este archivo clave está vacío</string>
+    <string name="notif_keyfile_empty_used_subtitle">Cámbialo en «Cambiar los archivos clave»</string>
+    <string name="keyfile_empty_help_title">Archivo clave vacío</string>
+    <string name="keyfile_empty_current_body">Este archivo clave ocupa 0 bytes. Si es el archivo con el que se creó esta bóveda, continúa y sustitúyelo por un archivo clave real en el siguiente paso.</string>
+    <string name="keyfile_empty_help_body">El archivo elegido está vacío (0 bytes). No añade nada a la protección de la bóveda, y VeraCrypt rechaza los archivos clave vacíos, así que una bóveda creada con uno quizá solo se abra en Arcanum.\n\nPara arreglarlo, abre «Info de la bóveda» y elige «Cambiar los archivos clave». Añade este archivo en «Credenciales actuales» y luego elige un archivo clave real en «Archivos clave nuevos», o desactiva «Añadir archivos clave» para desbloquear solo con la contraseña.</string>
+    <string name="viewer_edit_date_tab_date">Fecha</string>
+    <string name="viewer_edit_date_tab_time">Hora</string>
+    <string name="files_search_found_in">en %1$s</string>
+    <string name="settings_card_gallery">Galería</string>
+    <string name="settings_card_gallery_desc">Desplazamiento rápido</string>
+    <string name="settings_gallery_title">Galería</string>
+    <string name="settings_gallery_group_scrolling">Desplazamiento</string>
+    <string name="settings_gallery_fast_scroll">Desplazamiento rápido</string>
+    <string name="settings_gallery_fast_scroll_desc">Al desplazarte aparece un asa en el borde derecho. Arrástrala para moverte por toda la galería; mientras tanto se muestra el mes.</string>
+    <string name="settings_card_player">Reproductor de vídeo</string>
+    <string name="settings_card_player_desc">Gestos, bloqueo, velocidad, bucle</string>
+    <string name="settings_player_title">Reproductor de vídeo</string>
+    <string name="settings_player_group_gestures">Gestos</string>
+    <string name="settings_player_group_controls">Controles</string>
+    <string name="settings_player_swipe_volume">Desliza a la derecha para el volumen</string>
+    <string name="settings_player_swipe_brightness">Desliza a la izquierda para el brillo</string>
+    <string name="settings_player_swipe_brightness_desc">Solo el reproductor se aclara u oscurece; el brillo del sistema no cambia. Todo vuelve a la normalidad al salir del vídeo.</string>
+    <string name="settings_player_hold_speed">Mantén pulsado para reproducir a 2x</string>
+    <string name="settings_player_lock">Botón de bloqueo</string>
+    <string name="settings_player_lock_desc">Añade un candado a los controles del vídeo. Mientras está bloqueado, tocar el vídeo no hace nada, así que un dedo despistado no puede pausar, avanzar ni pasar al siguiente. Toca la pantalla para que vuelva el botón de desbloqueo.</string>
+    <string name="settings_player_speed">Velocidad de reproducción</string>
+    <string name="settings_player_loop">Bucle</string>
+    <string name="settings_player_group_music">Música</string>
+    <string name="settings_player_resume_music">Reanudar la música tras un vídeo</string>
+    <string name="settings_player_resume_music_desc">La música que un vídeo pausó sigue sonando cuando sales del vídeo. Si está desactivado, vuelve en pausa.</string>
+    <string name="player_lock">Bloquear controles</string>
+    <string name="player_unlock">Desbloquear</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">Velocidad de reproducción</string>
+    <string name="player_speed_normal">Normal</string>
+    <string name="player_loop">Bucle</string>
+
 </resources>

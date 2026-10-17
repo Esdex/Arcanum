@@ -1368,4 +1368,44 @@
         <item quantity="other">파일 %d개를 보관함에 저장했습니다</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">빈 키 파일은 추가되지 않았습니다</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt는 0바이트 키 파일을 받지 않습니다</string>
+    <string name="notif_keyfile_empty_used">이 키 파일은 비어 있습니다</string>
+    <string name="notif_keyfile_empty_used_subtitle">「키 파일 변경」에서 바꾸세요</string>
+    <string name="keyfile_empty_help_title">빈 키 파일</string>
+    <string name="keyfile_empty_current_body">이 키 파일은 0바이트입니다. 이 보관함을 이 파일로 만들었다면 계속 진행하고 다음 단계에서 진짜 키 파일로 바꾸세요.</string>
+    <string name="keyfile_empty_help_body">고른 파일이 비어 있습니다(0바이트). 보관함 보호에 아무것도 더하지 않으며, VeraCrypt는 빈 키 파일을 받지 않으므로 이런 파일로 만든 보관함은 Arcanum에서만 열릴 수 있습니다.\n\n고치려면 「보관함 정보」를 열고 「키 파일 변경」을 고르세요. 「현재 자격 증명」에 이 파일을 추가한 다음 「새 키 파일」에서 진짜 키 파일을 고르거나, 비밀번호만으로 열려면 「키 파일 추가」를 끄세요.</string>
+    <string name="viewer_edit_date_tab_date">날짜</string>
+    <string name="viewer_edit_date_tab_time">시간</string>
+    <string name="files_search_found_in">%1$s 안</string>
+    <string name="settings_card_gallery">갤러리</string>
+    <string name="settings_card_gallery_desc">빠른 스크롤</string>
+    <string name="settings_gallery_title">갤러리</string>
+    <string name="settings_gallery_group_scrolling">스크롤</string>
+    <string name="settings_gallery_fast_scroll">빠른 스크롤</string>
+    <string name="settings_gallery_fast_scroll_desc">스크롤하는 동안 오른쪽 가장자리에 손잡이가 나타납니다. 끌면 갤러리 전체를 오갈 수 있고, 그동안 월이 표시됩니다.</string>
+    <string name="settings_card_player">동영상 플레이어</string>
+    <string name="settings_card_player_desc">제스처, 잠금, 속도, 반복</string>
+    <string name="settings_player_title">동영상 플레이어</string>
+    <string name="settings_player_group_gestures">제스처</string>
+    <string name="settings_player_group_controls">컨트롤</string>
+    <string name="settings_player_swipe_volume">오른쪽 스와이프로 음량 조절</string>
+    <string name="settings_player_swipe_brightness">왼쪽 스와이프로 밝기 조절</string>
+    <string name="settings_player_swipe_brightness_desc">플레이어만 밝아지거나 어두워지고 시스템 밝기는 그대로입니다. 동영상을 나가면 원래대로 돌아옵니다.</string>
+    <string name="settings_player_hold_speed">길게 눌러 2배속 재생</string>
+    <string name="settings_player_lock">잠금 버튼</string>
+    <string name="settings_player_lock_desc">동영상 컨트롤에 잠금을 추가합니다. 잠긴 동안에는 동영상을 터치해도 아무 일도 일어나지 않아 실수로 닿아도 일시정지, 탐색, 넘기기가 되지 않습니다. 화면을 탭하면 잠금 해제 버튼이 다시 나타납니다.</string>
+    <string name="settings_player_speed">재생 속도</string>
+    <string name="settings_player_loop">반복</string>
+    <string name="settings_player_group_music">음악</string>
+    <string name="settings_player_resume_music">동영상 후 음악 다시 재생</string>
+    <string name="settings_player_resume_music_desc">동영상이 일시정지한 음악은 동영상을 나가면 계속 재생됩니다. 끄면 일시정지된 상태로 돌아옵니다.</string>
+    <string name="player_lock">컨트롤 잠금</string>
+    <string name="player_unlock">잠금 해제</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">재생 속도</string>
+    <string name="player_speed_normal">보통</string>
+    <string name="player_loop">반복</string>
+
 </resources>

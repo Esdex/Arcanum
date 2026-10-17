@@ -1434,4 +1434,44 @@
         <item quantity="other">%d файлов сохранено в хранилище</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">Пустой ключевой файл не добавлен</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt не принимает файлы по 0 байт</string>
+    <string name="notif_keyfile_empty_used">Этот ключевой файл пуст</string>
+    <string name="notif_keyfile_empty_used_subtitle">Замените его в «Смене ключевых файлов»</string>
+    <string name="keyfile_empty_help_title">Пустой ключевой файл</string>
+    <string name="keyfile_empty_current_body">Этот ключевой файл весит 0 байт. Если хранилище создано именно с ним, продолжайте, а на следующем шаге замените его настоящим ключевым файлом.</string>
+    <string name="keyfile_empty_help_body">Выбранный файл пуст (0 байт). Он ничего не добавляет к защите хранилища, а VeraCrypt не принимает пустые ключевые файлы, поэтому хранилище, созданное с таким файлом, может открываться только в Arcanum.\n\nЧтобы это исправить, откройте «Сведения о хранилище» и выберите «Смена ключевых файлов». Добавьте этот файл в разделе «Текущие учётные данные», затем выберите настоящий ключевой файл в разделе «Новые ключевые файлы» или выключите «Добавить ключевые файлы», чтобы открывать хранилище только паролем.</string>
+    <string name="viewer_edit_date_tab_date">Дата</string>
+    <string name="viewer_edit_date_tab_time">Время</string>
+    <string name="files_search_found_in">в %1$s</string>
+    <string name="settings_card_gallery">Галерея</string>
+    <string name="settings_card_gallery_desc">Быстрая прокрутка</string>
+    <string name="settings_gallery_title">Галерея</string>
+    <string name="settings_gallery_group_scrolling">Прокрутка</string>
+    <string name="settings_gallery_fast_scroll">Быстрая прокрутка</string>
+    <string name="settings_gallery_fast_scroll_desc">Во время прокрутки у правого края появляется ползунок. Перетаскивайте его, чтобы перемещаться по всей галерее; по ходу показывается месяц.</string>
+    <string name="settings_card_player">Видеоплеер</string>
+    <string name="settings_card_player_desc">Жесты, блокировка, скорость, повтор</string>
+    <string name="settings_player_title">Видеоплеер</string>
+    <string name="settings_player_group_gestures">Жесты</string>
+    <string name="settings_player_group_controls">Управление</string>
+    <string name="settings_player_swipe_volume">Свайп справа меняет громкость</string>
+    <string name="settings_player_swipe_brightness">Свайп слева меняет яркость</string>
+    <string name="settings_player_swipe_brightness_desc">Меняется яркость только плеера, системная яркость остаётся прежней. Когда вы уходите с видео, всё возвращается как было.</string>
+    <string name="settings_player_hold_speed">Удержание для скорости 2x</string>
+    <string name="settings_player_lock">Кнопка блокировки</string>
+    <string name="settings_player_lock_desc">Добавляет замок к управлению видео. Пока он закрыт, касания видео ничего не делают, так что случайное касание не поставит паузу, не перемотает и не перелистнёт. Коснитесь экрана, чтобы снова показать кнопку разблокировки.</string>
+    <string name="settings_player_speed">Скорость воспроизведения</string>
+    <string name="settings_player_loop">Повтор</string>
+    <string name="settings_player_group_music">Музыка</string>
+    <string name="settings_player_resume_music">Продолжать музыку после видео</string>
+    <string name="settings_player_resume_music_desc">Музыка, которую приостановило видео, продолжит играть, когда вы уйдёте с видео. Если выключено, она вернётся на паузе.</string>
+    <string name="player_lock">Заблокировать управление</string>
+    <string name="player_unlock">Разблокировать</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">Скорость воспроизведения</string>
+    <string name="player_speed_normal">Обычная</string>
+    <string name="player_loop">Повтор</string>
+
 </resources>

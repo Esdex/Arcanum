@@ -1412,4 +1412,44 @@
         <item quantity="other">%d ficheiros guardados no cofre</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">Ficheiro de chave vazio não adicionado</string>
+    <string name="notif_keyfile_empty_refused_subtitle">O VeraCrypt recusa ficheiros de chave de 0 bytes</string>
+    <string name="notif_keyfile_empty_used">Este ficheiro de chave está vazio</string>
+    <string name="notif_keyfile_empty_used_subtitle">Substitua-o em «Mudar os ficheiros de chave»</string>
+    <string name="keyfile_empty_help_title">Ficheiro de chave vazio</string>
+    <string name="keyfile_empty_current_body">Este ficheiro de chave tem 0 bytes. Se é o ficheiro com que este cofre foi criado, continue e substitua-o por um ficheiro de chave verdadeiro no passo seguinte.</string>
+    <string name="keyfile_empty_help_body">O ficheiro escolhido está vazio (0 bytes). Não acrescenta nada à proteção do cofre, e o VeraCrypt recusa ficheiros de chave vazios, por isso um cofre criado com um deles pode abrir-se só no Arcanum.\n\nPara corrigir, abra «Info do cofre» e escolha «Mudar os ficheiros de chave». Adicione este ficheiro em «Credenciais atuais» e depois escolha um ficheiro de chave verdadeiro em «Novos ficheiros de chave», ou desative «Adicionar ficheiros de chave» para desbloquear só com a palavra-passe.</string>
+    <string name="viewer_edit_date_tab_date">Data</string>
+    <string name="viewer_edit_date_tab_time">Hora</string>
+    <string name="files_search_found_in">em %1$s</string>
+    <string name="settings_card_gallery">Galeria</string>
+    <string name="settings_card_gallery_desc">Deslocamento rápido</string>
+    <string name="settings_gallery_title">Galeria</string>
+    <string name="settings_gallery_group_scrolling">Deslocamento</string>
+    <string name="settings_gallery_fast_scroll">Deslocamento rápido</string>
+    <string name="settings_gallery_fast_scroll_desc">Ao deslocar, aparece uma pega na margem direita. Arraste-a para percorrer toda a galeria; pelo caminho é mostrado o mês.</string>
+    <string name="settings_card_player">Leitor de vídeo</string>
+    <string name="settings_card_player_desc">Gestos, bloqueio, velocidade, repetição</string>
+    <string name="settings_player_title">Leitor de vídeo</string>
+    <string name="settings_player_group_gestures">Gestos</string>
+    <string name="settings_player_group_controls">Controlos</string>
+    <string name="settings_player_swipe_volume">Deslizar à direita para o volume</string>
+    <string name="settings_player_swipe_brightness">Deslizar à esquerda para o brilho</string>
+    <string name="settings_player_swipe_brightness_desc">Só o leitor fica mais claro ou mais escuro; o brilho do sistema não muda. Tudo volta ao normal quando sai do vídeo.</string>
+    <string name="settings_player_hold_speed">Manter premido para reproduzir a 2x</string>
+    <string name="settings_player_lock">Botão de bloqueio</string>
+    <string name="settings_player_lock_desc">Acrescenta um cadeado aos controlos do vídeo. Enquanto está bloqueado, tocar no vídeo não faz nada, por isso um dedo distraído não pode pausar, avançar nem passar ao seguinte. Toque no ecrã para voltar a ver o botão de desbloqueio.</string>
+    <string name="settings_player_speed">Velocidade de reprodução</string>
+    <string name="settings_player_loop">Repetir</string>
+    <string name="settings_player_group_music">Música</string>
+    <string name="settings_player_resume_music">Retomar a música depois de um vídeo</string>
+    <string name="settings_player_resume_music_desc">A música que um vídeo pausou continua quando sai do vídeo. Desativado, volta em pausa.</string>
+    <string name="player_lock">Bloquear controlos</string>
+    <string name="player_unlock">Desbloquear</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">Velocidade de reprodução</string>
+    <string name="player_speed_normal">Normal</string>
+    <string name="player_loop">Repetir</string>
+
 </resources>

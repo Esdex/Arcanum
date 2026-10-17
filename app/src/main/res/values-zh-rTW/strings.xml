@@ -1368,4 +1368,44 @@
         <item quantity="other">已把 %d 個檔案儲存到保險庫</item>
     </plurals>
 
+    <!-- 1.6.1 -->
+    <string name="notif_keyfile_empty_refused">未加入空白的金鑰檔案</string>
+    <string name="notif_keyfile_empty_refused_subtitle">VeraCrypt 不接受 0 位元組的金鑰檔案</string>
+    <string name="notif_keyfile_empty_used">這個金鑰檔案是空的</string>
+    <string name="notif_keyfile_empty_used_subtitle">請在「變更金鑰檔案」中替換它</string>
+    <string name="keyfile_empty_help_title">空白的金鑰檔案</string>
+    <string name="keyfile_empty_current_body">這個金鑰檔案為 0 位元組。如果這個保險庫就是用它建立的，請繼續，並在下一步把它換成真正的金鑰檔案。</string>
+    <string name="keyfile_empty_help_body">所選的檔案是空的（0 位元組）。它對保險庫的保護毫無幫助，而且 VeraCrypt 不接受空白的金鑰檔案，因此用它建立的保險庫可能只能在 Arcanum 中開啟。\n\n要修正此問題，請開啟「保險庫資訊」並選擇「變更金鑰檔案」。在「目前的憑證」下加入這個檔案，然後在「新的金鑰檔案」下選擇真正的金鑰檔案，或關閉「加入金鑰檔案」，只用密碼解鎖。</string>
+    <string name="viewer_edit_date_tab_date">日期</string>
+    <string name="viewer_edit_date_tab_time">時間</string>
+    <string name="files_search_found_in">在 %1$s 中</string>
+    <string name="settings_card_gallery">相簿</string>
+    <string name="settings_card_gallery_desc">快速捲動</string>
+    <string name="settings_gallery_title">相簿</string>
+    <string name="settings_gallery_group_scrolling">捲動</string>
+    <string name="settings_gallery_fast_scroll">快速捲動</string>
+    <string name="settings_gallery_fast_scroll_desc">捲動時右側邊緣會出現一個控點。拖曳它即可在整個相簿中移動，拖曳時會顯示月份。</string>
+    <string name="settings_card_player">影片播放器</string>
+    <string name="settings_card_player_desc">手勢、鎖定、速度、循環</string>
+    <string name="settings_player_title">影片播放器</string>
+    <string name="settings_player_group_gestures">手勢</string>
+    <string name="settings_player_group_controls">控制項</string>
+    <string name="settings_player_swipe_volume">在右側滑動調整音量</string>
+    <string name="settings_player_swipe_brightness">在左側滑動調整亮度</string>
+    <string name="settings_player_swipe_brightness_desc">只改變播放器的亮度，系統亮度保持不變。離開影片後會恢復原狀。</string>
+    <string name="settings_player_hold_speed">長按以 2 倍速播放</string>
+    <string name="settings_player_lock">鎖定按鈕</string>
+    <string name="settings_player_lock_desc">為影片控制項加上一把鎖。鎖定時觸碰影片不會有任何反應，誤觸也不會暫停、跳轉或切換。輕觸螢幕即可再次顯示解鎖按鈕。</string>
+    <string name="settings_player_speed">播放速度</string>
+    <string name="settings_player_loop">循環</string>
+    <string name="settings_player_group_music">音樂</string>
+    <string name="settings_player_resume_music">離開影片後繼續播放音樂</string>
+    <string name="settings_player_resume_music_desc">被影片暫停的音樂會在你離開影片後繼續播放。關閉後，音樂會以暫停狀態返回。</string>
+    <string name="player_lock">鎖定控制項</string>
+    <string name="player_unlock">解鎖</string>
+    <string name="player_hold_speed">2x</string>
+    <string name="player_speed">播放速度</string>
+    <string name="player_speed_normal">正常</string>
+    <string name="player_loop">循環</string>
+
 </resources>
