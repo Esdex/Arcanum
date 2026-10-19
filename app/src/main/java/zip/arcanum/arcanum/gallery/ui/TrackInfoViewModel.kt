@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.gallery.JniMediaDataSource
+import zip.arcanum.arcanum.gallery.tags.Id3v2Tag
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.crypto.VeraCryptEngine
 import javax.inject.Inject
@@ -40,6 +41,8 @@ class TrackInfoViewModel @Inject constructor(
         val genre: String?,
         val year: String?,
         val trackNumber: String?,
+        val lyricist: String?,
+        val lyrics: String?,
         val cover: Bitmap?,
         val durationMs: Long?,
         val sampleRateHz: Int?,
@@ -77,16 +80,22 @@ class TrackInfoViewModel @Inject constructor(
             retriever.setDataSource(JniMediaDataSource(engine, h, path, size))
             fun tag(key: Int) = retriever.extractMetadata(key)?.trim()?.takeIf { it.isNotEmpty() }
             val (sampleRate, channels) = audioFormat(h)
+            // Our own reading of an ID3v2 tag comes first: it has the full date where the
+            // platform gives only the year, and the lyrics, which the platform does not give
+            // at all. The platform fills in for everything else - ID3v1, FLAC, M4A.
+            val id3 = readId3(h)
             State.Loaded(TrackInfo(
-                title        = tag(MediaMetadataRetriever.METADATA_KEY_TITLE),
-                artist       = tag(MediaMetadataRetriever.METADATA_KEY_ARTIST),
-                album        = tag(MediaMetadataRetriever.METADATA_KEY_ALBUM),
-                albumArtist  = tag(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST),
-                genre        = tag(MediaMetadataRetriever.METADATA_KEY_GENRE),
-                year         = tag(MediaMetadataRetriever.METADATA_KEY_YEAR),
+                title        = id3?.title ?: tag(MediaMetadataRetriever.METADATA_KEY_TITLE),
+                artist       = id3?.artist ?: tag(MediaMetadataRetriever.METADATA_KEY_ARTIST),
+                album        = id3?.album ?: tag(MediaMetadataRetriever.METADATA_KEY_ALBUM),
+                albumArtist  = id3?.albumArtist ?: tag(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST),
+                genre        = id3?.genre ?: tag(MediaMetadataRetriever.METADATA_KEY_GENRE),
+                year         = id3?.year ?: tag(MediaMetadataRetriever.METADATA_KEY_YEAR),
                 // "1/12" in the tag; AIMP shows the track's own number, and so do we.
-                trackNumber  = tag(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)?.substringBefore('/'),
-                cover        = retriever.embeddedPicture?.let { BitmapFactory.decodeByteArray(it, 0, it.size) },
+                trackNumber  = id3?.trackNumber ?: tag(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)?.substringBefore('/'),
+                lyricist     = id3?.lyricist,
+                lyrics       = id3?.lyrics,
+                cover        = (id3?.cover ?: retriever.embeddedPicture)?.let { BitmapFactory.decodeByteArray(it, 0, it.size) },
                 durationMs   = tag(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull(),
                 sampleRateHz = sampleRate,
                 bitrateBps   = tag(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull(),
@@ -98,6 +107,25 @@ class TrackInfoViewModel @Inject constructor(
         } finally {
             runCatching { retriever.release() }
         }
+    }
+
+    /**
+     * The ID3v2 tag at the start of the file, if there is one. Read in pieces: a single read
+     * of more than 16 MB out of the vault comes back empty, and a cover can be that large.
+     */
+    private fun readId3(h: Long): Id3v2Tag? {
+        val header = engine.readFile(h, path, 0L, Id3v2Tag.HEADER_SIZE) ?: return null
+        val total = Id3v2Tag.sizeFromHeader(header)
+        if (total <= 0 || total > MAX_TAG_SIZE || total > size) return null
+        val bytes = ByteArray(total)
+        var at = 0
+        while (at < total) {
+            val chunk = engine.readFile(h, path, at.toLong(), minOf(READ_CHUNK, total - at))
+            if (chunk == null || chunk.isEmpty()) return null
+            chunk.copyInto(bytes, at)
+            at += chunk.size
+        }
+        return Id3v2Tag.parse(bytes)
     }
 
     /** Sample rate and channel count, which the retriever only reports from Android 12. */
@@ -115,6 +143,12 @@ class TrackInfoViewModel @Inject constructor(
         } finally {
             runCatching { extractor.release() }
         }
+    }
+
+    private companion object {
+        const val READ_CHUNK = 4 * 1024 * 1024
+        /** A tag larger than this is not a tag anyone made on purpose; the platform reads it instead. */
+        const val MAX_TAG_SIZE = 64 * 1024 * 1024
     }
 
     private fun modifiedAt(h: Long): Long? {

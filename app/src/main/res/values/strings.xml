@@ -574,6 +574,10 @@
     <string name="track_info_tag_genre">Genre</string>
     <string name="track_info_tag_year">Year</string>
     <string name="track_info_tag_track">Track number</string>
+    <string name="track_info_tag_lyricist">Lyricist</string>
+    <string name="track_info_tab_basic">Basic</string>
+    <string name="track_info_tab_lyrics">Lyrics</string>
+    <string name="track_info_no_lyrics">No lyrics</string>
     <string name="track_info_khz">%s kHz</string>
     <string name="track_info_kbps">%d kbps</string>
     <string name="track_info_mono">Mono</string>

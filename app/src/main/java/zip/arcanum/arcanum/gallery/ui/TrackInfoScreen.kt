@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -22,19 +21,26 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.LibraryMusic
+import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,7 +82,7 @@ fun TrackInfoScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding()
+                // No navigationBarsPadding: the tab bar at the bottom takes the inset itself.
         ) {
             Row(
                 modifier = Modifier
@@ -118,14 +124,31 @@ fun TrackInfoScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                is TrackInfoViewModel.State.Loaded -> TrackInfoContent(s.info, viewModel)
+                is TrackInfoViewModel.State.Loaded -> {
+                    var tab by rememberSaveable { mutableIntStateOf(TAB_BASIC) }
+                    Box(Modifier.weight(1f)) { TrackInfoContent(s.info, viewModel, tab) }
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                        NavigationBarItem(
+                            selected = tab == TAB_BASIC,
+                            onClick  = { tab = TAB_BASIC },
+                            icon     = { Icon(Icons.Outlined.MusicNote, null) },
+                            label    = { Text(stringResource(R.string.track_info_tab_basic)) }
+                        )
+                        NavigationBarItem(
+                            selected = tab == TAB_LYRICS,
+                            onClick  = { tab = TAB_LYRICS },
+                            icon     = { Icon(Icons.Outlined.Lyrics, null) },
+                            label    = { Text(stringResource(R.string.track_info_tab_lyrics)) }
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun TrackInfoContent(info: TrackInfoViewModel.TrackInfo, viewModel: TrackInfoViewModel) {
+private fun TrackInfoContent(info: TrackInfoViewModel.TrackInfo, viewModel: TrackInfoViewModel, tab: Int) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -151,13 +174,24 @@ private fun TrackInfoContent(info: TrackInfoViewModel.TrackInfo, viewModel: Trac
 
         Spacer(Modifier.height(20.dp))
 
-        TagRow(Icons.Outlined.MusicNote, R.string.track_info_tag_title, info.title)
-        TagRow(Icons.Outlined.Person, R.string.track_info_tag_artist, info.artist)
-        TagRow(Icons.Outlined.Album, R.string.track_info_tag_album, info.album)
-        TagRow(Icons.Outlined.Groups, R.string.track_info_tag_album_artist, info.albumArtist)
-        TagRow(Icons.Outlined.LibraryMusic, R.string.track_info_tag_genre, info.genre)
-        TagRow(Icons.Outlined.CalendarToday, R.string.track_info_tag_year, info.year)
-        TagRow(Icons.Outlined.Tag, R.string.track_info_tag_track, info.trackNumber)
+        if (tab == TAB_BASIC) {
+            TagRow(Icons.Outlined.MusicNote, R.string.track_info_tag_title, info.title)
+            TagRow(Icons.Outlined.Person, R.string.track_info_tag_artist, info.artist)
+            TagRow(Icons.Outlined.Album, R.string.track_info_tag_album, info.album)
+            TagRow(Icons.Outlined.Groups, R.string.track_info_tag_album_artist, info.albumArtist)
+            TagRow(Icons.Outlined.LibraryMusic, R.string.track_info_tag_genre, info.genre)
+            TagRow(Icons.Outlined.CalendarToday, R.string.track_info_tag_year, info.year)
+            TagRow(Icons.Outlined.Tag, R.string.track_info_tag_track, info.trackNumber)
+        } else {
+            TagRow(Icons.Outlined.EditNote, R.string.track_info_tag_lyricist, info.lyricist)
+            Spacer(Modifier.height(8.dp))
+            // Not selectable on purpose: a selection offers Copy, and the clipboard is not ours.
+            Text(
+                info.lyrics ?: stringResource(R.string.track_info_no_lyrics),
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (info.lyrics == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+            )
+        }
 
         Spacer(Modifier.height(24.dp))
         Text(
@@ -222,6 +256,9 @@ private fun TagRow(icon: ImageVector, @StringRes label: Int, value: String?) {
         )
     }
 }
+
+private const val TAB_BASIC = 0
+private const val TAB_LYRICS = 1
 
 /** "48 kHz, 320 kbps, Stereo", from whatever of it the file reports. */
 @Composable
