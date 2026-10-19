@@ -28,6 +28,13 @@ import androidx.media3.exoplayer.video.VideoRendererEventListener
 @UnstableApi
 class SafeVideoRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
 
+    init {
+        // When the first decoder for a stream fails to start, try the next one on the list instead
+        // of failing playback. That list includes Android's own software decoders, so a stream the
+        // chip's decoder refuses (a 4K format it was not built for) can still play in software (#185).
+        setEnableDecoderFallback(true)
+    }
+
     override fun buildVideoRenderers(
         context: Context,
         extensionRendererMode: Int,
