@@ -611,6 +611,12 @@ class AudioPlayerDirectViewModel @Inject constructor(
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
+    /** A track as File info is told about it: where it lies, what it is called, how big it is. */
+    data class TrackRef(val path: String, val name: String, val size: Long)
+
+    /** The track on screen - the one the player is on, which the list may have moved past. */
+    fun currentTrack(): TrackRef = currentIndex.let { TrackRef(pathAt(it), nameAt(it), sizeAt(it)) }
+
     private fun pathAt(index: Int): String =
         playlist.getOrNull(index)?.path?.let { "/" + it.trimStart('/') } ?: navPath
 

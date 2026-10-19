@@ -42,6 +42,7 @@ import zip.arcanum.arcanum.containers.ui.VaultInfoScreen
 import zip.arcanum.arcanum.containers.ui.VaultScreen
 import zip.arcanum.arcanum.containers.ui.VaultViewModel
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerDirectScreen
+import zip.arcanum.arcanum.gallery.ui.TrackInfoScreen
 import zip.arcanum.arcanum.files.pdf.PdfViewerScreen
 import zip.arcanum.arcanum.files.text.TextEditorScreen
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerScreen
@@ -463,7 +464,25 @@ fun AppNavigation(
                 navArgument(Screen.AudioPlayerDirect.ARG_RESUME)    { type = NavType.BoolType; defaultValue = false }
             )
         ) {
-            AudioPlayerDirectScreen(onBack = { navController.popBackStack() })
+            AudioPlayerDirectScreen(
+                onBack     = { navController.popBackStack() },
+                onFileInfo = { cid, track ->
+                    navController.navigate(Screen.TrackInfo.buildRoute(cid, track.path, track.name, track.size))
+                }
+            )
+        }
+
+        // ── Track info (File info from the music player) ─────────────────
+        composable(
+            route     = Screen.TrackInfo.route,
+            arguments = listOf(
+                navArgument(Screen.TrackInfo.ARG_CONTAINER) { type = NavType.StringType },
+                navArgument(Screen.TrackInfo.ARG_PATH)      { type = NavType.StringType },
+                navArgument(Screen.TrackInfo.ARG_NAME)      { type = NavType.StringType },
+                navArgument(Screen.TrackInfo.ARG_SIZE)      { type = NavType.StringType }
+            )
+        ) {
+            TrackInfoScreen(onBack = { navController.popBackStack() })
         }
 
         // ── PDF viewer (files - direct path) ─────────────────────────────

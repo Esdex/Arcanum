@@ -563,6 +563,28 @@
     <string name="audio_cd_next">Next</string>
     <string name="audio_cd_album_art">Album art</string>
     <string name="audio_cd_more">More</string>
+    <string name="audio_menu_file_info">File info</string>
+
+    <!-- Track info (File info from the music player) -->
+    <string name="track_info_title">Track info</string>
+    <string name="track_info_tag_title">Title</string>
+    <string name="track_info_tag_artist">Artist</string>
+    <string name="track_info_tag_album">Album</string>
+    <string name="track_info_tag_album_artist">Album artist</string>
+    <string name="track_info_tag_genre">Genre</string>
+    <string name="track_info_tag_year">Year</string>
+    <string name="track_info_tag_track">Track number</string>
+    <string name="track_info_khz">%s kHz</string>
+    <string name="track_info_kbps">%d kbps</string>
+    <string name="track_info_mono">Mono</string>
+    <string name="track_info_stereo">Stereo</string>
+    <plurals name="track_info_channels">
+        <item quantity="one">%d channel</item>
+        <item quantity="other">%d channels</item>
+    </plurals>
+    <string name="track_info_modified">Modified %s</string>
+    <string name="track_info_no_cover">No cover</string>
+    <string name="track_info_failed">This track could not be read. Its vault may have been closed.</string>
 
     <!-- Vault screen -->
     <string name="vault_title">Arcanum</string>

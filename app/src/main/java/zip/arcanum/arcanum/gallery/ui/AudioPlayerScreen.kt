@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.RepeatOne
@@ -104,6 +105,7 @@ import zip.arcanum.core.components.BackButton
 @Composable
 fun AudioPlayerDirectScreen(
     onBack: () -> Unit,
+    onFileInfo: (containerId: String, track: AudioPlayerDirectViewModel.TrackRef) -> Unit,
     viewModel: AudioPlayerDirectViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -177,12 +179,25 @@ fun AudioPlayerDirectScreen(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
                 )
-                IconButton(onClick = { /* stub */ }) {
-                    Icon(
-                        Icons.Outlined.MoreVert,
-                        contentDescription = stringResource(R.string.audio_cd_more),
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
+                Box {
+                    var showMenu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(
+                            Icons.Outlined.MoreVert,
+                            contentDescription = stringResource(R.string.audio_cd_more),
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                    androidx.compose.material3.DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text        = { Text(stringResource(R.string.audio_menu_file_info)) },
+                            leadingIcon = { Icon(Icons.Outlined.Info, null) },
+                            onClick     = {
+                                showMenu = false
+                                onFileInfo(viewModel.containerId, viewModel.currentTrack())
+                            }
+                        )
+                    }
                 }
             }
 
