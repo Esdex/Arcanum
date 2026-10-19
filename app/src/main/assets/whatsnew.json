@@ -4,6 +4,7 @@
       "version": "0.0.0",
       "versionCode": 12,
       "entries": [
+        { "type": "fix", "title": "The music waveform shows the shape of the song", "description": "The waveform under the music player was measured from 80 moments of a few hundredths of a second each, so it came out as noise, and on some tracks as one tall bar at the start with everything else flattened. It is now worked out from the whole track: quiet intros, drops and breakdowns are where they are in the song. Waveforms already worked out the old way are drawn again the next time the track is played." },
         { "type": "fix", "title": "Picking another track plays it", "description": "With music playing, picking a different track from the same folder opened the player on the track that was already playing, and the one you picked never started. It now plays the track you pick. Picking the track that is playing still opens it where it is, without starting it again." }
       ]
     },
