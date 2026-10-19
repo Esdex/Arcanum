@@ -34,17 +34,19 @@ sealed class Screen(val route: String) {
         fun buildRoute(fileId: String) = "audio_player/$fileId"
     }
 
-    object AudioPlayerDirect : Screen("audio_player_direct?cid={cid}&path={path}&name={name}&size={size}") {
+    object AudioPlayerDirect : Screen("audio_player_direct?cid={cid}&path={path}&name={name}&size={size}&resume={resume}") {
         const val ARG_CONTAINER = "cid"
         const val ARG_PATH      = "path"
         const val ARG_NAME      = "name"
         const val ARG_SIZE      = "size"
+        /** Opened from the music's notification: show what is playing, never start anything. */
+        const val ARG_RESUME    = "resume"
 
-        fun buildRoute(containerId: String, path: String, name: String, size: Long): String {
+        fun buildRoute(containerId: String, path: String, name: String, size: Long, resume: Boolean = false): String {
             val encodedPath = android.net.Uri.encode(path)
             val encodedName = android.net.Uri.encode(name)
             // size passed as StringType to avoid LongType/Int coercion bugs in SavedStateHandle
-            return "audio_player_direct?cid=$containerId&path=$encodedPath&name=$encodedName&size=$size"
+            return "audio_player_direct?cid=$containerId&path=$encodedPath&name=$encodedName&size=$size&resume=$resume"
         }
     }
 

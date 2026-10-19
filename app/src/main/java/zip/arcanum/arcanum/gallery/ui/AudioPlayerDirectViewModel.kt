@@ -79,6 +79,7 @@ class AudioPlayerDirectViewModel @Inject constructor(
     private val navPath: String = "/" + (savedStateHandle.get<String>(Screen.AudioPlayerDirect.ARG_PATH) ?: "").trimStart('/')
     private val navName: String = savedStateHandle[Screen.AudioPlayerDirect.ARG_NAME] ?: ""
     private val navSize: Long = savedStateHandle.get<String>(Screen.AudioPlayerDirect.ARG_SIZE)?.toLongOrNull() ?: 0L
+    private val navResume: Boolean = savedStateHandle[Screen.AudioPlayerDirect.ARG_RESUME] ?: false
 
     private val _state = MutableStateFlow(PlayerState(
         playlistSize = queue.playlist.size.coerceAtLeast(1),
@@ -159,7 +160,7 @@ class AudioPlayerDirectViewModel @Inject constructor(
             mediaController = mc
             mc.addListener(playerListener)
             startProgressTracking()
-            if (isPlayingThisQueue(mc)) attachQueue(mc) else startQueue(mc, queue.currentIndex)
+            if (shouldAttach(mc)) attachQueue(mc) else startQueue(mc, queue.currentIndex)
         }, ContextCompat.getMainExecutor(appContext))
     }
 
@@ -220,11 +221,16 @@ class AudioPlayerDirectViewModel @Inject constructor(
     }
 
     /**
-     * Whether the player already holds exactly the queue this screen would put on it - as it
-     * does when the screen is opened from the music's notification, or onto the track that
-     * is playing. Then it is taken as it is: starting it again would throw away the position,
-     * the track the player has moved on to, and the shuffled order.
+     * Whether the player is taken as it is rather than started again - which would throw away
+     * the position, the track the player has moved on to, and the shuffled order. That is so
+     * when the screen is opened from the music's notification, or onto the track that is
+     * playing. A different track picked from the same folder brings the same queue with it,
+     * so the queue alone cannot tell: matching it only used to keep the old track playing.
      */
+    private fun shouldAttach(mc: MediaController): Boolean =
+        isPlayingThisQueue(mc) && (navResume || mc.currentMediaItemIndex == queue.currentIndex)
+
+    /** Whether the player already holds exactly the queue this screen would put on it. */
     private fun isPlayingThisQueue(mc: MediaController): Boolean {
         val paths = if (playlist.isEmpty()) listOf(navPath) else playlist.map { "/" + it.path.trimStart('/') }
         if (mc.mediaItemCount != paths.size) return false

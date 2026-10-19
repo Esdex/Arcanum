@@ -186,7 +186,7 @@ fun AppNavigation(
         val file = audioQueue.playlist.getOrNull(audioQueue.currentIndex) ?: return@LaunchedEffect
         if (cid !in mountedIds) return@LaunchedEffect
         navController.navigate(
-            Screen.AudioPlayerDirect.buildRoute(cid, "/" + file.path.trimStart('/'), file.name, file.size)
+            Screen.AudioPlayerDirect.buildRoute(cid, "/" + file.path.trimStart('/'), file.name, file.size, resume = true)
         )
     }
 
@@ -459,7 +459,8 @@ fun AppNavigation(
                 navArgument(Screen.AudioPlayerDirect.ARG_CONTAINER) { type = NavType.StringType },
                 navArgument(Screen.AudioPlayerDirect.ARG_PATH)      { type = NavType.StringType },
                 navArgument(Screen.AudioPlayerDirect.ARG_NAME)      { type = NavType.StringType },
-                navArgument(Screen.AudioPlayerDirect.ARG_SIZE)      { type = NavType.StringType }
+                navArgument(Screen.AudioPlayerDirect.ARG_SIZE)      { type = NavType.StringType },
+                navArgument(Screen.AudioPlayerDirect.ARG_RESUME)    { type = NavType.BoolType; defaultValue = false }
             )
         ) {
             AudioPlayerDirectScreen(onBack = { navController.popBackStack() })
