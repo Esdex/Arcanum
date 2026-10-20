@@ -55,18 +55,26 @@ class Id3v2Tag private constructor(
     val trackNumber: String? get() = text("TRCK")?.substringBefore('/')?.trim()?.ifEmpty { null }
 
     /** Unsynchronised lyrics: the English ones when there are several, else the first. */
-    val lyrics: String?
-        get() {
-            val all = frames.filter { it.id == "USLT" && it.readable }.mapNotNull { parseLyrics(it.content) }
-            return (all.firstOrNull { it.first == "eng" } ?: all.firstOrNull())?.second
-        }
+    val lyrics: String? get() = lyricsFrame?.let { parseLyrics(it.content)?.text }
 
     /** The front cover, or the first picture when none is marked as the front. */
-    val cover: ByteArray?
+    val cover: ByteArray? get() = coverFrame?.let { parsePicture(it.content)?.second }
+
+    /** The USLT frame [lyrics] comes from: an edit replaces this one and leaves the others. */
+    internal val lyricsFrame: Frame?
         get() {
-            val all = frames.filter { it.id == "APIC" && it.readable }.mapNotNull { parsePicture(it.content) }
-            return (all.firstOrNull { it.first == PICTURE_FRONT_COVER } ?: all.firstOrNull())?.second
+            val all = frames.filter { it.id == "USLT" && it.readable }.mapNotNull { f -> parseLyrics(f.content)?.let { f to it } }
+            return (all.firstOrNull { it.second.language == "eng" } ?: all.firstOrNull())?.first
         }
+
+    /** The APIC frame [cover] comes from. */
+    internal val coverFrame: Frame?
+        get() {
+            val all = frames.filter { it.id == "APIC" && it.readable }.mapNotNull { f -> parsePicture(f.content)?.let { f to it.first } }
+            return (all.firstOrNull { it.second == PICTURE_FRONT_COVER } ?: all.firstOrNull())?.first
+        }
+
+    internal class Lyrics(val language: String, val description: String, val text: String)
 
     companion object {
         const val HEADER_SIZE = 10
@@ -162,13 +170,13 @@ class Id3v2Tag private constructor(
             return values.takeIf { it.isNotEmpty() }?.joinToString("; ")
         }
 
-        private fun parseLyrics(body: ByteArray): Pair<String, String>? {
+        internal fun parseLyrics(body: ByteArray): Lyrics? {
             if (body.size < 4) return null
             val enc = body[0].toInt()
             val language = String(body, 1, 3, Charsets.ISO_8859_1)
-            val (_, textAt) = readString(enc, body, 4)               // the description
+            val (description, textAt) = readString(enc, body, 4)
             val text = decode(enc, body, textAt, body.size).trimEnd('\u0000').trim()
-            return text.takeIf { it.isNotEmpty() }?.let { language to it }
+            return text.takeIf { it.isNotEmpty() }?.let { Lyrics(language, description, it) }
         }
 
         private fun parsePicture(body: ByteArray): Pair<Int, ByteArray>? {
