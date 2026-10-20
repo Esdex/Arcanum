@@ -595,6 +595,14 @@
     <string name="track_info_keep_editing">Keep editing</string>
     <string name="track_info_save_failed_title">Tags not saved</string>
     <string name="track_info_save_failed_message">The tags could not be written to the file. The vault may have been closed, or it may be out of space.</string>
+    <string name="track_info_cover_title">Cover</string>
+    <string name="track_info_cover_change">Change cover</string>
+    <string name="track_info_cover_from_vault">From this vault</string>
+    <string name="track_info_cover_from_phone">From the phone</string>
+    <string name="track_info_cover_remove">Remove cover</string>
+    <string name="track_info_cover_vault_empty">There are no pictures in this vault\'s gallery.</string>
+    <string name="track_info_cover_refused_title">Not a picture</string>
+    <string name="track_info_cover_refused_message">That file could not be opened as a picture, so the cover is as it was.</string>
     <string name="track_info_unsupported_title">This tag cannot be edited</string>
     <string name="track_info_unsupported_message">It is stored in a form Arcanum cannot write back without losing part of it, so the file is left as it is.</string>
 

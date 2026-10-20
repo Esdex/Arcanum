@@ -1,28 +1,41 @@
 package zip.arcanum.arcanum.gallery.ui
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.gallery.ExifReader
 import zip.arcanum.arcanum.gallery.JniMediaDataSource
+import zip.arcanum.arcanum.gallery.ThumbnailManager
+import zip.arcanum.arcanum.gallery.data.MediaRepository
+import zip.arcanum.arcanum.gallery.domain.MediaFile
+import zip.arcanum.arcanum.gallery.tags.CoverImage
 import zip.arcanum.arcanum.gallery.tags.Id3v2Tag
 import zip.arcanum.arcanum.gallery.tags.Id3v2Writer
 import zip.arcanum.arcanum.gallery.tags.TrackTagEvents
 import zip.arcanum.arcanum.gallery.tags.VaultTagWriter
+import zip.arcanum.core.database.entities.MediaFileType
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.NotificationCenter
@@ -44,7 +57,11 @@ class TrackInfoViewModel @Inject constructor(
     private val repo: ContainerRepository,
     private val tagWriter: VaultTagWriter,
     private val tagEvents: TrackTagEvents,
-    private val notifications: NotificationCenter
+    private val notifications: NotificationCenter,
+    private val media: MediaRepository,
+    private val thumbnails: ThumbnailManager,
+    private val exifReader: ExifReader,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     data class TrackInfo(
@@ -86,6 +103,13 @@ class TrackInfoViewModel @Inject constructor(
     /** The fields while they are being edited; null when the screen only shows them. */
     data class Editor(
         val values: Id3v2Writer.Values,
+        val cover: Id3v2Writer.CoverEdit = Id3v2Writer.CoverEdit.Keep,
+        /** The picked cover as it will be stored; shown in place of the file's own. */
+        val coverPreview: Bitmap? = null,
+        /** A picked picture is being read and made ready. */
+        val preparingCover: Boolean = false,
+        /** The picked file was not a picture this phone can open. */
+        val coverRefused: Boolean = false,
         val saving: Boolean = false,
         /** The last save did not land. The fields keep what was typed. */
         val failed: Boolean = false
@@ -108,6 +132,11 @@ class TrackInfoViewModel @Inject constructor(
     /** Set when the pencil was tapped on a tag that cannot be written back. */
     private val _unsupportedTag = MutableStateFlow(false)
     val unsupportedTag = _unsupportedTag.asStateFlow()
+
+    /** The pictures this vault's gallery knows of, newest first, for picking a cover. */
+    val vaultImages: StateFlow<List<MediaFile>> = media.getMediaForContainer(containerId)
+        .map { all -> all.filter { it.fileType == MediaFileType.IMAGE }.sortedByDescending { it.dateCreated } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** What the screen showed before editing: a field typed back to this was not edited. */
     private var shown = Id3v2Writer.Values()
@@ -191,7 +220,69 @@ class TrackInfoViewModel @Inject constructor(
     }
 
     /** Whether anything on screen differs from what the file said. */
-    fun hasChanges(): Boolean = _editor.value?.let { differs(it.values, shown) } ?: false
+    fun hasChanges(): Boolean = _editor.value?.let { changed(it) } ?: false
+
+    private fun changed(e: Editor) = e.cover != Id3v2Writer.CoverEdit.Keep || differs(e.values, shown)
+
+    // ── Cover ─────────────────────────────────────────────────────────────
+
+    /** A picture's thumbnail for the picker, from the gallery's own cache. */
+    suspend fun thumbnail(file: MediaFile): Bitmap? = withContext(Dispatchers.IO) {
+        val h = repo.getContainerHandle(containerId) ?: return@withContext null
+        runCatching { thumbnails.getThumbnail(engine, h, file.containerId, file.relativePath, file.fileType, file.size) }.getOrNull()
+    }
+
+    fun pickVaultImage(file: MediaFile) = pickCover {
+        val h = repo.getContainerHandle(containerId) ?: return@pickCover null
+        if (file.size <= 0 || file.size > MAX_PICTURE) return@pickCover null
+        val bytes = ByteArray(file.size.toInt())
+        var at = 0
+        while (at < bytes.size) {
+            val chunk = engine.readFile(h, file.relativePath, at.toLong(), minOf(READ_CHUNK, bytes.size - at))
+            if (chunk == null || chunk.isEmpty()) return@pickCover null
+            chunk.copyInto(bytes, at)
+            at += chunk.size
+        }
+        bytes
+    }
+
+    fun pickPhoneImage(uri: Uri) = pickCover {
+        appContext.contentResolver.openInputStream(uri)?.use { input ->
+            val out = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                out.write(buffer, 0, n)
+                if (out.size() > MAX_PICTURE) return@use null
+            }
+            out.toByteArray()
+        }
+    }
+
+    fun removeCover() {
+        _editor.update { it?.copy(cover = Id3v2Writer.CoverEdit.Remove, coverPreview = null) }
+    }
+
+    fun dismissCoverRefused() { _editor.update { it?.copy(coverRefused = false) } }
+
+    private fun pickCover(read: () -> ByteArray?) {
+        if (_editor.value == null) return
+        _editor.update { it?.copy(preparingCover = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val prepared = runCatching {
+                read()?.let { CoverImage.prepare(it, exifReader.readOrientation(it)) }
+            }.getOrNull()
+            val preview = prepared?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+            _editor.update { e ->
+                when {
+                    e == null -> null
+                    prepared == null || preview == null -> e.copy(preparingCover = false, coverRefused = true)
+                    else -> e.copy(preparingCover = false, cover = Id3v2Writer.CoverEdit.Replace(prepared), coverPreview = preview)
+                }
+            }
+        }
+    }
 
     fun cancelEditing() { _editor.value = null }
 
@@ -203,11 +294,11 @@ class TrackInfoViewModel @Inject constructor(
      */
     fun save(onSaved: () -> Unit) {
         val e = _editor.value ?: return
-        if (e.saving) return
-        if (!differs(e.values, shown)) { _editor.value = null; onSaved(); return }
+        if (e.saving || e.preparingCover) return
+        if (!changed(e)) { _editor.value = null; onSaved(); return }
         _editor.value = e.copy(saving = true, failed = false)
         saver.launch {
-            val ok = runCatching { write(e.values) }.getOrDefault(false)
+            val ok = runCatching { write(e.values, e.cover) }.getOrDefault(false)
             withContext(Dispatchers.Main) {
                 if (ok) { _editor.value = null; onSaved() }
                 else _editor.update { it?.copy(saving = false, failed = true) }
@@ -225,15 +316,16 @@ class TrackInfoViewModel @Inject constructor(
      * platform reads either ID3v2 or ID3v1, not a mix, so a new tag holding only the edited
      * title would lose the artist and the album from every other player.
      */
-    private fun write(edited: Id3v2Writer.Values): Boolean {
+    private fun write(edited: Id3v2Writer.Values, cover: Id3v2Writer.CoverEdit): Boolean {
         val h = repo.getContainerHandle(containerId) ?: return false
         val size = stat(h)?.size ?: return false
         val read = readId3(h, size)
         val old = read.tag
         if (read.size > 0 && old?.rewritable != true) return false
         val values = if (old == null) edited else merge(Id3v2Writer.valuesOf(old), edited)
-        val rendered = Id3v2Writer.render(old, values)
+        val rendered = Id3v2Writer.render(old, values, cover)
         val newSize = tagWriter.write(h, path, size, old?.totalSize ?: 0, rendered) ?: return false
+        if (cover != Id3v2Writer.CoverEdit.Keep) thumbnails.notifyFileChanged(containerId, path)
         tagEvents.notifySaved(TrackTagEvents.Saved(containerId, path, size, newSize))
         return true
     }
@@ -307,6 +399,8 @@ class TrackInfoViewModel @Inject constructor(
         const val READ_CHUNK = 4 * 1024 * 1024
         /** A tag larger than this is not a tag anyone made on purpose; the platform reads it instead. */
         const val MAX_TAG_SIZE = 64 * 1024 * 1024
+        /** A picture larger than this is not read in whole to become a cover. */
+        const val MAX_PICTURE = 64 * 1024 * 1024
     }
 
     /** The file's entry in its folder: its size as it is now, and its date. */

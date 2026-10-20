@@ -411,6 +411,19 @@ class FileManagerViewModel @Inject constructor(
     private val loadingThumbnails = mutableSetOf<String>()
     private val thumbnailSemaphore = Semaphore(4)
 
+    init {
+        // A track's cover changed under the same name. The row asks for a thumbnail only when
+        // it first appears, so the old picture is dropped here and the new one asked for.
+        viewModelScope.launch {
+            thumbnailManager.changedFiles.collect { (containerId, path) ->
+                if (containerId != _state.value.containerId) return@collect
+                loadingThumbnails.remove(path)
+                _state.update { s -> if (path in s.thumbnails) s.copy(thumbnails = s.thumbnails - path) else s }
+                _state.value.files.firstOrNull { it.path == path }?.let(::requestThumbnail)
+            }
+        }
+    }
+
     private val prefs = context.fileManagerPrefs
 
     companion object {

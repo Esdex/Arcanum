@@ -357,6 +357,17 @@ class ThumbnailManager @Inject constructor(
         cacheFile(containerId, filePath).delete()
     }
 
+    // Emits (containerId, path) when a file keeps its name but not its picture - a track
+    // whose cover was changed in File info. FileManagerViewModel collects this: it keys its
+    // thumbnails by path, and the row would otherwise go on showing the old cover.
+    private val _changedFiles = MutableSharedFlow<Pair<String, String>>(extraBufferCapacity = 16)
+    val changedFiles: SharedFlow<Pair<String, String>> = _changedFiles.asSharedFlow()
+
+    fun notifyFileChanged(containerId: String, filePath: String) {
+        cacheFile(containerId, filePath).delete()
+        _changedFiles.tryEmit(containerId to filePath)
+    }
+
     fun clearCache(containerId: String) {
         File(cacheRoot, containerId).deleteRecursively()
     }

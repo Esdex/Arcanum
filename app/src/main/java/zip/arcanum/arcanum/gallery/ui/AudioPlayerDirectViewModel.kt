@@ -45,6 +45,7 @@ import zip.arcanum.arcanum.gallery.domain.AudioMetadata
 import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
 import zip.arcanum.arcanum.gallery.service.COMMAND_RESHUFFLE
 import zip.arcanum.arcanum.gallery.service.NEUTRAL_METADATA
+import zip.arcanum.arcanum.gallery.tags.Id3v2Tag
 import zip.arcanum.arcanum.gallery.tags.TrackTagEvents
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.core.security.IdleMonitor
@@ -54,6 +55,9 @@ import kotlin.coroutines.cancellation.CancellationException
 
 /** Leads a cached waveform. Raised whenever the way bars are worked out changes. */
 private const val WAVEFORM_CACHE_VERSION = 0x57460002
+
+/** Well inside the 16 MB a single read out of the vault can return. */
+private const val MAX_TAGS_READ = 8L * 1024 * 1024
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @HiltViewModel
@@ -316,7 +320,11 @@ class AudioPlayerDirectViewModel @Inject constructor(
     /** Reads the playing track's tags for the screen, and for the session if it may show them. */
     private suspend fun loadTags(h: Long, path: String, size: Long, name: String) {
         val headerBytes = runCatching {
-            engine.readFile(h, path, 0L, minOf(size, 524288L).toInt())
+            // Half a megabyte, or the whole tag and a little audio after it when the tag is
+            // longer: a cover ahead of the title would otherwise leave the title unread.
+            val tagSize = engine.readFile(h, path, 0L, Id3v2Tag.HEADER_SIZE)?.let(Id3v2Tag::sizeFromHeader) ?: 0
+            val wanted = maxOf(524288L, tagSize + 65536L).coerceAtMost(MAX_TAGS_READ)
+            engine.readFile(h, path, 0L, minOf(size, wanted).toInt())
         }.getOrNull()
 
         val metadata = parseMetadata(headerBytes, name)

@@ -1,23 +1,34 @@
 package zip.arcanum.arcanum.gallery.ui
 
+import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -27,13 +38,17 @@ import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.HideImage
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,17 +58,20 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -62,6 +80,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -69,8 +88,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import zip.arcanum.R
+import zip.arcanum.arcanum.gallery.domain.MediaFile
 import zip.arcanum.arcanum.gallery.tags.Id3v2Writer
 import zip.arcanum.core.components.AppDialog
+import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.BackButton
 import java.text.DateFormat
 import java.util.Date
@@ -134,6 +155,16 @@ fun TrackInfoScreen(
             }
         )
     }
+    if (editor?.coverRefused == true) {
+        AppDialog(
+            onDismissRequest = viewModel::dismissCoverRefused,
+            title = { Text(stringResource(R.string.track_info_cover_refused_title)) },
+            text  = { Text(stringResource(R.string.track_info_cover_refused_message)) },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissCoverRefused) { Text(stringResource(R.string.common_ok)) }
+            }
+        )
+    }
     if (unsupportedTag) {
         AppDialog(
             onDismissRequest = viewModel::dismissUnsupportedTag,
@@ -185,7 +216,7 @@ fun TrackInfoScreen(
                     val loaded = state as? TrackInfoViewModel.State.Loaded
                     when {
                         e?.saving == true -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                        e != null -> FilledTonalIconButton(onClick = { viewModel.save(onSaved = onBack) }) {
+                        e != null -> FilledTonalIconButton(onClick = { viewModel.save(onSaved = onBack) }, enabled = !e.preparingCover) {
                             Icon(Icons.Outlined.Save, stringResource(R.string.common_save))
                         }
                         // No pencil where there is no writer; the space keeps the titles centred.
@@ -238,6 +269,33 @@ private fun TrackInfoContent(
     tab: Int,
     editor: TrackInfoViewModel.Editor?
 ) {
+    var coverSheet by remember { mutableStateOf(false) }
+    var vaultSheet by remember { mutableStateOf(false) }
+    val phonePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(viewModel::pickPhoneImage)
+    }
+    if (coverSheet && editor != null) {
+        val hasCover = when (editor.cover) {
+            is Id3v2Writer.CoverEdit.Replace -> true
+            Id3v2Writer.CoverEdit.Remove -> false
+            Id3v2Writer.CoverEdit.Keep -> info.cover != null
+        }
+        CoverSheet(
+            hasCover  = hasCover,
+            onVault   = { coverSheet = false; vaultSheet = true },
+            onPhone   = { coverSheet = false; phonePicker.launch(arrayOf("image/*")) },
+            onRemove  = { coverSheet = false; viewModel.removeCover() },
+            onDismiss = { coverSheet = false }
+        )
+    }
+    if (vaultSheet) {
+        VaultPictureSheet(
+            viewModel = viewModel,
+            onPick    = { vaultSheet = false; viewModel.pickVaultImage(it) },
+            onDismiss = { vaultSheet = false }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -245,7 +303,10 @@ private fun TrackInfoContent(
             .padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.Top) {
-            Cover(info)
+            Cover(
+                info, editor,
+                onClick = editor?.takeIf { !it.saving && !it.preparingCover }?.let { { coverSheet = true } }
+            )
             Spacer(Modifier.width(16.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 info.durationMs?.let {
@@ -293,25 +354,31 @@ private fun TrackInfoContent(
     }
 }
 
+/** The cover: the file's own, or the one picked in the editor, where a tap changes it. */
 @Composable
-private fun Cover(info: TrackInfoViewModel.TrackInfo) {
-    val shape = RoundedCornerShape(20.dp)
-    val cover = info.cover
-    if (cover != null) {
-        Image(
-            bitmap = cover.asImageBitmap(),
-            contentDescription = stringResource(R.string.audio_cd_album_art),
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(150.dp).clip(shape)
-        )
-    } else {
-        Box(
-            modifier = Modifier
-                .size(150.dp)
-                .clip(shape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-            contentAlignment = Alignment.Center
-        ) {
+private fun Cover(info: TrackInfoViewModel.TrackInfo, editor: TrackInfoViewModel.Editor?, onClick: (() -> Unit)?) {
+    val cover: Bitmap? = when (editor?.cover) {
+        is Id3v2Writer.CoverEdit.Replace -> editor.coverPreview
+        Id3v2Writer.CoverEdit.Remove -> null
+        else -> info.cover
+    }
+    val changeLabel = stringResource(R.string.track_info_cover_change)
+    Box(
+        modifier = Modifier
+            .size(150.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .then(if (onClick != null) Modifier.clickable(onClickLabel = changeLabel, onClick = onClick) else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
+        if (cover != null) {
+            Image(
+                bitmap = cover.asImageBitmap(),
+                contentDescription = stringResource(R.string.audio_cd_album_art),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
             Icon(
                 Icons.Outlined.MusicNote,
                 contentDescription = stringResource(R.string.track_info_no_cover),
@@ -319,6 +386,113 @@ private fun Cover(info: TrackInfoViewModel.TrackInfo) {
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        // In the editor the cover says that it can be changed, and shows when a picked one is being made ready.
+        if (editor != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.55f)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (editor.preparingCover) {
+                    CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Outlined.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+    }
+}
+
+/** Where a new cover comes from, and the way to have none. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CoverSheet(
+    hasCover: Boolean,
+    onVault: () -> Unit,
+    onPhone: () -> Unit,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AppSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.padding(bottom = 32.dp)) {
+            SheetTitle(R.string.track_info_cover_title)
+            SheetOption(Icons.Outlined.PhotoLibrary, R.string.track_info_cover_from_vault, onVault)
+            SheetOption(Icons.Outlined.Smartphone, R.string.track_info_cover_from_phone, onPhone)
+            if (hasCover) SheetOption(Icons.Outlined.HideImage, R.string.track_info_cover_remove, onRemove)
+        }
+    }
+}
+
+/**
+ * The pictures in this vault's gallery, newest first. The grid bounds and scrolls itself: a
+ * sheet scrolls nothing of its own.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VaultPictureSheet(viewModel: TrackInfoViewModel, onPick: (MediaFile) -> Unit, onDismiss: () -> Unit) {
+    val pictures by viewModel.vaultImages.collectAsState()
+    AppSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        SheetTitle(R.string.track_info_cover_from_vault)
+        if (pictures.isEmpty()) {
+            Text(
+                stringResource(R.string.track_info_cover_vault_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 32.dp)
+            )
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp).padding(horizontal = 12.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(pictures, key = { it.id }) { picture ->
+                    val thumb by produceState<Bitmap?>(null, picture.id) { value = viewModel.thumbnail(picture) }
+                    Box(
+                        Modifier
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .clickable { onPick(picture) }
+                    ) {
+                        thumb?.let {
+                            Image(it.asImageBitmap(), picture.fileName, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetTitle(@StringRes title: Int) {
+    Text(
+        stringResource(title),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+    )
+}
+
+@Composable
+private fun SheetOption(icon: ImageVector, @StringRes label: Int, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(20.dp))
+        Text(stringResource(label), style = MaterialTheme.typography.bodyLarge)
     }
 }
 
