@@ -53,4 +53,41 @@ class WaveformBuilderTest {
         assertEquals(List(3) { 0f }, builderOf(0.0 to 100).bars(3))
         assertNull(WaveformBuilder(10).bars(3))
     }
+
+    // ── While the track is still being decoded ────────────────────────────
+
+    @Test
+    fun halfwayThroughTheFirstHalfOfTheBarsIsDrawnAsTheWholeTrackWillDrawIt() {
+        // A rising track: 8 steps of 100 frames, 10 frames a block.
+        val steps = (1..8).map { it / 10.0 to 100 }.toTypedArray()
+        val whole = builderOf(*steps).bars(8)!!
+        val half = builderOf(*steps.copyOf(4).requireNoNulls()).partialBars(8, 0.5)
+        assertEquals(4, half.size)
+        // The same shape, scaled to the loudest bar heard so far rather than to the drop to come.
+        val max = whole.take(4).max()
+        half.forEachIndexed { i, h -> assertEquals(whole[i] / max, h, 1e-6f) }
+    }
+
+    @Test
+    fun onlyBarsHeardInFullAreGiven() {
+        // 35 % of a track of 4 bars: the first bar is done, the second is not.
+        val b = builderOf(0.5 to 350)
+        assertEquals(1, b.partialBars(4, 0.35).size)
+        assertEquals(0, builderOf(0.5 to 350).partialBars(4, 0.0).size)
+        assertEquals(0, WaveformBuilder(10).partialBars(4, 0.5).size)
+        assertEquals(0, builderOf(0.5 to 350).partialBars(4, -0.1).size)
+    }
+
+    @Test
+    fun atTheEndThePartialBarsAreTheBars() {
+        val steps = arrayOf(0.2 to 300, 0.9 to 200, 0.4 to 500)
+        val whole = builderOf(*steps).bars(10)!!
+        val end = builderOf(*steps).partialBars(10, 1.0)
+        assertEquals(10, end.size)
+        end.forEachIndexed { i, h -> assertEquals(whole[i], h, 1e-6f) }
+        // Fewer blocks than bars: each bar still has one, as in the finished waveform.
+        val short = builderOf(0.5 to 30).partialBars(10, 1.0)
+        assertEquals(10, short.size)
+        short.forEach { assertEquals(1f, it, 1e-6f) }
+    }
 }

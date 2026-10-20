@@ -56,6 +56,12 @@ import kotlin.coroutines.cancellation.CancellationException
 /** Leads a cached waveform. Raised whenever the way bars are worked out changes. */
 private const val WAVEFORM_CACHE_VERSION = 0x57460002
 
+/** How many bars a waveform has. */
+internal const val WAVEFORM_BARS = 80
+
+/** How often a waveform still being worked out is shown as far as it has got: four times a second. */
+private const val PARTIAL_WAVEFORM_EVERY_NS = 250_000_000L
+
 /** Well inside the 16 MB a single read out of the vault can return. */
 private const val MAX_TAGS_READ = 8L * 1024 * 1024
 
@@ -76,7 +82,9 @@ class AudioPlayerDirectViewModel @Inject constructor(
 
     data class PlayerState(
         val metadata: AudioMetadata? = null,
+        /** The bars worked out so far: fewer than [WAVEFORM_BARS] while [waveformComplete] is false. */
         val waveformBars: List<Float>? = null,
+        val waveformComplete: Boolean = false,
         val isPlaying: Boolean = false,
         val progress: Float = 0f,
         val currentPositionMs: Long = 0L,
@@ -303,17 +311,27 @@ class AudioPlayerDirectViewModel @Inject constructor(
          */
         if (index == loadedIndex) return
         loadedIndex = index
-        _state.update { it.copy(waveformBars = null, error = null, currentIndex = index) }
+        _state.update { it.copy(waveformBars = null, waveformComplete = false, error = null, currentIndex = index) }
         loadJob?.cancel()
         loadJob = viewModelScope.launch(Dispatchers.IO) {
             val path = pathAt(index)
             val size = sizeAt(index)
             val h    = handle
             loadTags(h, path, size, nameAt(index))
-            val bars = generateWaveform(h, path, size)
+            val bars = generateWaveform(h, path, size, onPartial = partialWaveformFor(index))
             // The track may have changed while it was decoding; its bars are not this one's.
             ensureActive()
-            _state.update { it.copy(waveformBars = bars) }
+            _state.update { it.copy(waveformBars = bars, waveformComplete = true) }
+        }
+    }
+
+    /**
+     * Shows a waveform as far as it has been worked out, for the track at [index] only: a
+     * decoding cancelled because the track changed may still deliver once on its way out.
+     */
+    private fun partialWaveformFor(index: Int): (List<Float>) -> Unit = { bars ->
+        if (bars.isNotEmpty()) _state.update { s ->
+            if (s.currentIndex == index && !s.waveformComplete) s.copy(waveformBars = bars) else s
         }
     }
 
@@ -384,7 +402,8 @@ class AudioPlayerDirectViewModel @Inject constructor(
         }
         if (pathAt(currentIndex) != e.path) return
         val index = currentIndex
-        val bars = _state.value.waveformBars
+        // A waveform still being worked out is started again rather than kept half done.
+        val bars = _state.value.let { if (it.waveformComplete) it.waveformBars else null }
         loadJob?.cancel()
         loadJob = viewModelScope.launch(Dispatchers.IO) {
             // The audio is the same audio, so the waveform is too: it moves to the new size
@@ -395,9 +414,10 @@ class AudioPlayerDirectViewModel @Inject constructor(
             }
             loadTags(handle, e.path, sizeAt(index), nameAt(index))
             if (bars == null) {
-                val fresh = generateWaveform(handle, e.path, sizeAt(index))
+                _state.update { it.copy(waveformBars = null, waveformComplete = false) }
+                val fresh = generateWaveform(handle, e.path, sizeAt(index), onPartial = partialWaveformFor(index))
                 ensureActive()
-                _state.update { it.copy(waveformBars = fresh) }
+                _state.update { it.copy(waveformBars = fresh, waveformComplete = true) }
             }
         }
     }
@@ -435,11 +455,17 @@ class AudioPlayerDirectViewModel @Inject constructor(
      * measured the raw bytes of the file as if they were samples, which for any compressed
      * format is noise.
      */
-    private suspend fun generateWaveform(h: Long, path: String, fileSize: Long, barCount: Int = 80): List<Float> {
+    private suspend fun generateWaveform(
+        h: Long,
+        path: String,
+        fileSize: Long,
+        barCount: Int = WAVEFORM_BARS,
+        onPartial: ((List<Float>) -> Unit)? = null
+    ): List<Float> {
         if (fileSize <= 0) return List(barCount) { 0.5f }
         // Return cached result instantly on repeated plays
         loadCachedWaveform(path, fileSize, barCount)?.let { return it }
-        val bars = decodeWaveform(h, path, fileSize, barCount)
+        val bars = decodeWaveform(h, path, fileSize, barCount, onPartial)
         // Cancelled because another track came on: nothing to show and nothing to keep.
         currentCoroutineContext().ensureActive()
         if (bars == null) return List(barCount) { 0.5f }
@@ -456,7 +482,13 @@ class AudioPlayerDirectViewModel @Inject constructor(
      * before it, so the first one after a jump comes out too quiet: every bar but the first was
      * low, and the first stood alone at full height.
      */
-    private suspend fun decodeWaveform(h: Long, path: String, fileSize: Long, barCount: Int): List<Float>? {
+    private suspend fun decodeWaveform(
+        h: Long,
+        path: String,
+        fileSize: Long,
+        barCount: Int,
+        onPartial: ((List<Float>) -> Unit)?
+    ): List<Float>? {
         val job = currentCoroutineContext()
         var extractor: MediaExtractor? = null
         var codec: MediaCodec? = null
@@ -468,6 +500,10 @@ class AudioPlayerDirectViewModel @Inject constructor(
             } ?: return null
             val format = extractor.getTrackFormat(track)
             extractor.selectTrack(track)
+            // How far through the track the decoding is, for the waveform shown as it grows;
+            // without a duration it is shown only once it is done.
+            val durationUs = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
+            var lastPartial = System.nanoTime()
 
             codec = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
             codec.configure(format, null, null, 0)
@@ -511,6 +547,10 @@ class AudioPlayerDirectViewModel @Inject constructor(
                             moved = true
                             if (info.size > 0) pcm.read(codec.getOutputBuffer(outIdx)!!, info, builder)
                             codec.releaseOutputBuffer(outIdx, false)
+                            if (onPartial != null && durationUs > 0 && System.nanoTime() - lastPartial >= PARTIAL_WAVEFORM_EVERY_NS) {
+                                lastPartial = System.nanoTime()
+                                onPartial(builder.partialBars(barCount, info.presentationTimeUs.toDouble() / durationUs))
+                            }
                             if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) return builder.bars(barCount)
                         }
                         outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {

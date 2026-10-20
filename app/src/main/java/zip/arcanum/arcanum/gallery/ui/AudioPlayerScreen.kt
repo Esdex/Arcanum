@@ -314,20 +314,15 @@ fun AudioPlayerDirectScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // ── Waveform — fades in once bars are ready ───────────────────
-            val waveformAlpha by animateFloatAsState(
-                targetValue = if (state.waveformBars != null) 1f else 0.35f,
-                animationSpec = tween(500),
-                label = "waveform_alpha"
-            )
+            // ── Waveform — grows as it is worked out ──────────────────────
             WaveformView(
                 waveformBars = state.waveformBars,
+                complete = state.waveformComplete,
                 progress = state.progress,
                 onSeek = viewModel::seekTo,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(72.dp)
-                    .alpha(waveformAlpha)
             )
 
             // ── Time codes ────────────────────────────────────────────────
@@ -459,9 +454,16 @@ private fun AlbumArtView(
 
 // ── Waveform ──────────────────────────────────────────────────────────────────
 
+/**
+ * The waveform, drawn as far as it has been worked out: the bars known so far rise into place,
+ * and the rest of the track shimmers until its bars arrive. Their heights move while the track
+ * is decoded - a louder stretch further on scales down what came before - so each bar glides
+ * to its new height rather than jumping. Seeking works as soon as there is a bar to see.
+ */
 @Composable
 private fun WaveformView(
     waveformBars: List<Float>?,
+    complete: Boolean,
     progress: Float,
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier
@@ -480,11 +482,20 @@ private fun WaveformView(
         label         = "waveform_progress"
     )
 
-    if (waveformBars == null) {
-        // Shimmer skeleton
-        val shimmerBars = remember { List(80) { Random.nextFloat().coerceIn(0.1f, 0.9f) } }
+    val known = waveformBars?.size ?: 0
+    val heights = List(WAVEFORM_BARS) { i ->
+        animateFloatAsState(
+            targetValue   = waveformBars?.getOrNull(i) ?: 0f,
+            animationSpec = tween(durationMillis = 300),
+            label         = "waveform_bar"
+        )
+    }
+
+    // Shimmer for the bars still to come
+    val shimmerBars = remember { List(WAVEFORM_BARS) { Random.nextFloat().coerceIn(0.1f, 0.9f) } }
+    val shimmerX = if (complete) 0f else {
         val transition = rememberInfiniteTransition(label = "shimmer")
-        val shimmerX by transition.animateFloat(
+        val x by transition.animateFloat(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
@@ -493,55 +504,50 @@ private fun WaveformView(
             ),
             label = "shimmerX"
         )
-        Canvas(modifier = modifier) {
-            val barCount = shimmerBars.size
-            val barWidth = size.width / barCount
-            val centerY = size.height / 2f
-            shimmerBars.forEachIndexed { i, amp ->
-                val x = i * barWidth + barWidth / 2f
-                val frac = x / size.width
-                val dist = kotlin.math.abs(frac - shimmerX)
-                val alpha = (0.15f + (1f - (dist * 6f).coerceIn(0f, 1f)) * 0.35f)
-                val barH = amp * size.height * 0.8f
+        x
+    }
+
+    val seekable = if (waveformBars == null) Modifier else Modifier
+        .pointerInput(Unit) {
+            detectTapGestures { offset ->
+                onSeek((offset.x / size.width).coerceIn(0f, 1f))
+            }
+        }
+        .pointerInput(Unit) {
+            detectDragGestures { change, _ ->
+                onSeek((change.position.x / size.width).coerceIn(0f, 1f))
+            }
+        }
+
+    Canvas(modifier = modifier.then(seekable)) {
+        val barWidth = size.width / WAVEFORM_BARS
+        val centerY = size.height / 2f
+        val progressX = size.width * animatedProgress
+        val stroke = (barWidth * 0.6f).coerceAtLeast(2.5f)
+        for (i in 0 until WAVEFORM_BARS) {
+            val x = i * barWidth + barWidth / 2f
+            if (i < known) {
+                val barH = heights[i].value * size.height * 0.9f
+                drawLine(
+                    color = if (x <= progressX) progressColor else inactiveColor,
+                    start = Offset(x, centerY - barH / 2f),
+                    end   = Offset(x, centerY + barH / 2f),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round
+                )
+            } else {
+                val dist = kotlin.math.abs(x / size.width - shimmerX)
+                // As faint as the whole skeleton used to be drawn while nothing was known.
+                val alpha = (0.15f + (1f - (dist * 6f).coerceIn(0f, 1f)) * 0.35f) * 0.35f
+                val barH = shimmerBars[i] * size.height * 0.8f
                 drawLine(
                     color = Color.White.copy(alpha = alpha),
                     start = Offset(x, centerY - barH / 2f),
                     end   = Offset(x, centerY + barH / 2f),
-                    strokeWidth = (barWidth * 0.6f).coerceAtLeast(2.5f),
+                    strokeWidth = stroke,
                     cap = StrokeCap.Round
                 )
             }
-        }
-        return
-    }
-
-    Canvas(
-        modifier = modifier
-            .pointerInput(Unit) {
-                detectTapGestures { offset ->
-                    onSeek((offset.x / size.width).coerceIn(0f, 1f))
-                }
-            }
-            .pointerInput(Unit) {
-                detectDragGestures { change, _ ->
-                    onSeek((change.position.x / size.width).coerceIn(0f, 1f))
-                }
-            }
-    ) {
-        val bars = waveformBars
-        val barWidth = size.width / bars.size
-        val centerY = size.height / 2f
-        val progressX = size.width * animatedProgress
-        bars.forEachIndexed { i, amp ->
-            val x = i * barWidth + barWidth / 2f
-            val barH = amp * size.height * 0.9f
-            drawLine(
-                color = if (x <= progressX) progressColor else inactiveColor,
-                start = Offset(x, centerY - barH / 2f),
-                end   = Offset(x, centerY + barH / 2f),
-                strokeWidth = (barWidth * 0.6f).coerceAtLeast(2.5f),
-                cap = StrokeCap.Round
-            )
         }
     }
 }

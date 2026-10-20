@@ -42,17 +42,47 @@ class WaveformBuilder(private val framesPerBlock: Int) {
         require(count > 0)
         if (blockFrames > 0) closeBlock()
         if (blockCount == 0) return null
-        val rms = FloatArray(count) { bar ->
-            // Every bar gets at least one block, so a track shorter than [count] blocks repeats
-            // its blocks rather than leaving bars empty.
+        // Every bar gets at least one block, so a track shorter than [count] blocks repeats
+        // its blocks rather than leaving bars empty.
+        return normalised(FloatArray(count) { bar ->
             val from = (bar.toLong() * blockCount / count).toInt()
-            val to   = maxOf(from + 1, ((bar + 1).toLong() * blockCount / count).toInt())
-            var sum = 0.0
-            for (i in from until to) sum += sums[i]
-            sqrt(sum / ((to - from).toDouble() * framesPerBlock)).toFloat()
+            rms(from, maxOf(from + 1, ((bar + 1).toLong() * blockCount / count).toInt()))
+        })
+    }
+
+    /**
+     * The first of [count] bars while the track is still being decoded, [done] (0..1) being
+     * how much of it has been: only the bars whose stretch has been heard in full, scaled to
+     * the loudest of them. The track's length comes from [done], since the blocks so far are
+     * that share of all there will be. Empty until the first bar is complete.
+     *
+     * The heights move as the track goes on - a quiet intro is full height until the drop
+     * arrives - and [bars] has the last word once the decoding ends.
+     */
+    fun partialBars(count: Int, done: Double): List<Float> {
+        require(count > 0)
+        if (done <= 0.0 || blockCount == 0) return emptyList()
+        val total = blockCount / minOf(done, 1.0)
+        val rms = ArrayList<Float>(count)
+        for (bar in 0 until count) {
+            val from = (bar * total / count).toInt()
+            val to = maxOf(from + 1, ((bar + 1) * total / count).toInt())
+            if (to > blockCount) break
+            rms += rms(from, to)
         }
+        return normalised(rms.toFloatArray())
+    }
+
+    private fun rms(from: Int, to: Int): Float {
+        var sum = 0.0
+        for (i in from until to) sum += sums[i]
+        return sqrt(sum / ((to - from).toDouble() * framesPerBlock)).toFloat()
+    }
+
+    private fun normalised(rms: FloatArray): List<Float> {
+        if (rms.isEmpty()) return emptyList()
         val max = rms.max()
-        if (max <= 0f) return List(count) { 0f }
+        if (max <= 0f) return List(rms.size) { 0f }
         return rms.map { it / max }
     }
 }
