@@ -75,8 +75,11 @@ class ExifReader @Inject constructor() {
                         .contentEquals(byteArrayOf(0x45, 0x78, 0x69, 0x66, 0x00, 0x00))
                 ) {
                     val segEnd = minOf(i + 2 + segLen, bytes.size)
+                    // Closed with an end-of-image marker: without one the reader runs off
+                    // the end of the segment, throws, and every orientation came back as 1.
                     return byteArrayOf(0xFF.toByte(), 0xD8.toByte()) +
-                           bytes.copyOfRange(i, segEnd)
+                           bytes.copyOfRange(i, segEnd) +
+                           byteArrayOf(0xFF.toByte(), 0xD9.toByte())
                 }
             }
             if (marker == 0xDA || marker == 0xD9) break  // SOS / EOI

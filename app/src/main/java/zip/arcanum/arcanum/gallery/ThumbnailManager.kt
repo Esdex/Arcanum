@@ -61,10 +61,16 @@ class ThumbnailManager @Inject constructor(
             .build()
     }
 
+    // v6: thumbnails made before it ignored EXIF orientation - a portrait photo stored on its
+    // side was cached on its side - so none of them is used again.
     private fun cacheFile(containerId: String, filePath: String): File {
-        val key = md5("$containerId:$filePath:v5")
+        val key = md5("$containerId:$filePath:v6")
         return File(cacheRoot, "$containerId/$key.enc")
     }
+
+    /** The thumbnail of [filePath] from before v6, removed when the file gets its new one. */
+    private fun staleCacheFile(containerId: String, filePath: String): File =
+        File(cacheRoot, "$containerId/${md5("$containerId:$filePath:v5")}.enc")
 
     suspend fun getThumbnail(
         engine: VeraCryptEngine,
@@ -86,6 +92,7 @@ class ThumbnailManager @Inject constructor(
             if (bmp != null) return bmp
             cached.delete()  // Corrupted or wrong key — regenerate
         }
+        staleCacheFile(containerId, relativePath).delete()
         return when (type) {
             MediaFileType.IMAGE -> generateImageThumbnail(engine, handle, relativePath, size, cached)
             MediaFileType.VIDEO -> generateVideoThumbnail(engine, handle, relativePath, size, cached)
