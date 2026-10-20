@@ -18,6 +18,12 @@ class AudioPlayerQueue @Inject constructor() {
         this.currentIndex = 0
     }
 
+    /** [path] has a new size: its tags were written and the audio moved. */
+    fun resize(containerId: String, path: String, size: Long) {
+        if (this.containerId != containerId) return
+        playlist = playlist.map { if ("/" + it.path.trimStart('/') == path) it.copy(size = size) else it }
+    }
+
     fun set(containerId: String, files: List<NativeFileInfo>, startIndex: Int) {
         this.containerId = containerId
         this.playlist = files

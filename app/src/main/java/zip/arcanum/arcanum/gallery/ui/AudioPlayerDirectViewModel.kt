@@ -45,6 +45,7 @@ import zip.arcanum.arcanum.gallery.domain.AudioMetadata
 import zip.arcanum.arcanum.gallery.service.ArcanumMediaService
 import zip.arcanum.arcanum.gallery.service.COMMAND_RESHUFFLE
 import zip.arcanum.arcanum.gallery.service.NEUTRAL_METADATA
+import zip.arcanum.arcanum.gallery.tags.TrackTagEvents
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.core.security.IdleMonitor
 import zip.arcanum.crypto.VeraCryptEngine
@@ -63,6 +64,7 @@ class AudioPlayerDirectViewModel @Inject constructor(
     private val queue: AudioPlayerQueue,
     private val idleMonitor: IdleMonitor,
     private val prefs: zip.arcanum.core.security.AppPreferences,
+    tagEvents: TrackTagEvents,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
@@ -86,7 +88,8 @@ class AudioPlayerDirectViewModel @Inject constructor(
     val containerId: String = savedStateHandle[Screen.AudioPlayerDirect.ARG_CONTAINER] ?: ""
     private val navPath: String = "/" + (savedStateHandle.get<String>(Screen.AudioPlayerDirect.ARG_PATH) ?: "").trimStart('/')
     private val navName: String = savedStateHandle[Screen.AudioPlayerDirect.ARG_NAME] ?: ""
-    private val navSize: Long = savedStateHandle.get<String>(Screen.AudioPlayerDirect.ARG_SIZE)?.toLongOrNull() ?: 0L
+    /** Changes when File info rewrites the file this screen was opened on without a list. */
+    private var navSize: Long = savedStateHandle.get<String>(Screen.AudioPlayerDirect.ARG_SIZE)?.toLongOrNull() ?: 0L
     private val navResume: Boolean = savedStateHandle[Screen.AudioPlayerDirect.ARG_RESUME] ?: false
 
     private val _state = MutableStateFlow(PlayerState(
@@ -157,6 +160,10 @@ class AudioPlayerDirectViewModel @Inject constructor(
                     )
                 }
             }
+        }
+
+        viewModelScope.launch {
+            tagEvents.saved.collect { if (it.containerId == containerId) onTagsSaved(it) }
         }
 
         controllerFuture = MediaController.Builder(appContext, token).buildAsync()
@@ -297,38 +304,93 @@ class AudioPlayerDirectViewModel @Inject constructor(
         loadJob = viewModelScope.launch(Dispatchers.IO) {
             val path = pathAt(index)
             val size = sizeAt(index)
-            val name = nameAt(index)
             val h    = handle
-
-            val headerBytes = runCatching {
-                engine.readFile(h, path, 0L, minOf(size, 524288L).toInt())
-            }.getOrNull()
-
-            val metadata = parseMetadata(headerBytes, name)
-            val dominantColor = metadata.artwork?.let { bmp ->
-                runCatching { Palette.from(bmp).generate().getDominantColor(0) }.getOrNull()
-            }
-            _state.update { it.copy(metadata = metadata, dominantColor = dominantColor) }
-
-            withContext(Dispatchers.Main) {
-                if (!showContent) return@withContext
-                val mc = mediaController ?: return@withContext
-                // Tags are read for the track that is playing, not for the whole list: the
-                // list can be long, and each one costs half a megabyte read out of the vault.
-                val item = mc.currentMediaItem ?: return@withContext
-                val wanted = sessionMetadata()
-                if (item.mediaMetadata != wanted) {
-                    mc.replaceMediaItem(
-                        mc.currentMediaItemIndex,
-                        item.buildUpon().setMediaMetadata(wanted).build()
-                    )
-                }
-            }
-
+            loadTags(h, path, size, nameAt(index))
             val bars = generateWaveform(h, path, size)
             // The track may have changed while it was decoding; its bars are not this one's.
             ensureActive()
             _state.update { it.copy(waveformBars = bars) }
+        }
+    }
+
+    /** Reads the playing track's tags for the screen, and for the session if it may show them. */
+    private suspend fun loadTags(h: Long, path: String, size: Long, name: String) {
+        val headerBytes = runCatching {
+            engine.readFile(h, path, 0L, minOf(size, 524288L).toInt())
+        }.getOrNull()
+
+        val metadata = parseMetadata(headerBytes, name)
+        val dominantColor = metadata.artwork?.let { bmp ->
+            runCatching { Palette.from(bmp).generate().getDominantColor(0) }.getOrNull()
+        }
+        _state.update { it.copy(metadata = metadata, dominantColor = dominantColor) }
+
+        withContext(Dispatchers.Main) {
+            if (!showContent) return@withContext
+            val mc = mediaController ?: return@withContext
+            // Tags are read for the track that is playing, not for the whole list: the
+            // list can be long, and each one costs half a megabyte read out of the vault.
+            val item = mc.currentMediaItem ?: return@withContext
+            val wanted = sessionMetadata()
+            if (item.mediaMetadata != wanted) {
+                mc.replaceMediaItem(
+                    mc.currentMediaItemIndex,
+                    item.buildUpon().setMediaMetadata(wanted).build()
+                )
+            }
+        }
+    }
+
+    /**
+     * File info has written a track's tags. The track shows them at once if it is the one
+     * playing, and wherever it is in the list it is told its new size.
+     *
+     * When the size changed the tag grew and the audio moved, so a player still reading at
+     * the old offsets would read the wrong bytes: the track is handed to the player again and
+     * goes on from where it was. When the size is the same the tag was written over the old
+     * one, and nothing under the player moved.
+     */
+    private fun onTagsSaved(e: TrackTagEvents.Saved) {
+        val mc = mediaController
+        val moved = e.newSize != e.oldSize
+        if (moved) {
+            queue.resize(containerId, e.path, e.newSize)
+            if (e.path == navPath) navSize = e.newSize
+            if (mc != null) for (i in 0 until mc.mediaItemCount) {
+                val item = mc.getMediaItemAt(i)
+                val uri = item.localConfiguration?.uri ?: continue
+                if (uri.getQueryParameter("cid") != containerId || uri.getQueryParameter("path") != e.path) continue
+                val playing = i == mc.currentMediaItemIndex
+                val position = mc.currentPosition
+                val playWhenReady = mc.playWhenReady
+                mc.replaceMediaItem(i, mediaItemFor(e.path, e.newSize).buildUpon().setMediaMetadata(item.mediaMetadata).build())
+                if (playing) {
+                    mc.seekTo(i, position)
+                    // A read that fell between the old file going and the new one arriving
+                    // stops the player; this is where it starts again.
+                    if (mc.playbackState == Player.STATE_IDLE) mc.prepare()
+                    mc.playWhenReady = playWhenReady
+                    _state.update { it.copy(error = null) }
+                }
+            }
+        }
+        if (pathAt(currentIndex) != e.path) return
+        val index = currentIndex
+        val bars = _state.value.waveformBars
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch(Dispatchers.IO) {
+            // The audio is the same audio, so the waveform is too: it moves to the new size
+            // under the cache rather than being decoded again.
+            if (moved && bars != null) {
+                saveWaveformCache(e.path, e.newSize, bars)
+                waveformCacheFile(e.path, e.oldSize).delete()
+            }
+            loadTags(handle, e.path, sizeAt(index), nameAt(index))
+            if (bars == null) {
+                val fresh = generateWaveform(handle, e.path, sizeAt(index))
+                ensureActive()
+                _state.update { it.copy(waveformBars = fresh) }
+            }
         }
     }
 

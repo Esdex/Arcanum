@@ -1,5 +1,6 @@
 package zip.arcanum.arcanum.gallery.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -11,34 +12,43 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,18 +62,23 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import zip.arcanum.R
+import zip.arcanum.arcanum.gallery.tags.Id3v2Writer
+import zip.arcanum.core.components.AppDialog
 import zip.arcanum.core.components.BackButton
 import java.text.DateFormat
 import java.util.Date
 
 /**
  * File info for a track, laid out after AIMP's: the cover with the file's format beside it,
- * then its tags, then where it lies in the vault. Read-only for now; editing comes next.
+ * then its tags, then where it lies in the vault. The pencil turns the tags into fields, and
+ * the save button writes them and goes back to the player, which shows them at once.
  *
  * There is no play count and no "last played", which AIMP keeps in its library: keeping them
  * would mean a record, outside the vault, of what was listened to inside it. And no button to
@@ -75,6 +90,60 @@ fun TrackInfoScreen(
     viewModel: TrackInfoViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val editor by viewModel.editor.collectAsState()
+    val unsupportedTag by viewModel.unsupportedTag.collectAsState()
+    var askDiscard by remember { mutableStateOf(false) }
+
+    // Back out of the editor, not out of the screen; edits are not dropped on a stray touch,
+    // and nothing leaves while a save is being written.
+    fun back() {
+        val e = editor
+        when {
+            e == null -> onBack()
+            e.saving -> Unit
+            viewModel.hasChanges() -> askDiscard = true
+            else -> viewModel.cancelEditing()
+        }
+    }
+    BackHandler(enabled = editor != null) { back() }
+
+    if (askDiscard) {
+        AppDialog(
+            onDismissRequest = { askDiscard = false },
+            title = { Text(stringResource(R.string.track_info_discard_title)) },
+            text  = { Text(stringResource(R.string.track_info_discard_message)) },
+            confirmButton = {
+                TextButton(onClick = { askDiscard = false; viewModel.cancelEditing() }) {
+                    Text(stringResource(R.string.track_info_discard))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { askDiscard = false }) {
+                    Text(stringResource(R.string.track_info_keep_editing))
+                }
+            }
+        )
+    }
+    if (editor?.failed == true) {
+        AppDialog(
+            onDismissRequest = viewModel::dismissSaveFailure,
+            title = { Text(stringResource(R.string.track_info_save_failed_title)) },
+            text  = { Text(stringResource(R.string.track_info_save_failed_message)) },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissSaveFailure) { Text(stringResource(R.string.common_ok)) }
+            }
+        )
+    }
+    if (unsupportedTag) {
+        AppDialog(
+            onDismissRequest = viewModel::dismissUnsupportedTag,
+            title = { Text(stringResource(R.string.track_info_unsupported_title)) },
+            text  = { Text(stringResource(R.string.track_info_unsupported_message)) },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissUnsupportedTag) { Text(stringResource(R.string.common_ok)) }
+            }
+        )
+    }
 
     // A hand-rolled header goes black on a dark theme without a Surface to take its colour from.
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -82,7 +151,9 @@ fun TrackInfoScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                // No navigationBarsPadding: the tab bar at the bottom takes the inset itself.
+                // No navigationBarsPadding: the tab bar at the bottom takes the inset itself,
+                // and the keyboard's inset is taken here so the field being typed in stays in view.
+                .imePadding()
         ) {
             Row(
                 modifier = Modifier
@@ -90,7 +161,7 @@ fun TrackInfoScreen(
                     .padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                BackButton(onClick = onBack)
+                BackButton(onClick = ::back)
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -109,8 +180,21 @@ fun TrackInfoScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                // Keeps the titles centred until the edit button takes this place.
-                Spacer(Modifier.width(48.dp))
+                Box(Modifier.size(48.dp), Alignment.Center) {
+                    val e = editor
+                    val loaded = state as? TrackInfoViewModel.State.Loaded
+                    when {
+                        e?.saving == true -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                        e != null -> FilledTonalIconButton(onClick = { viewModel.save(onSaved = onBack) }) {
+                            Icon(Icons.Outlined.Save, stringResource(R.string.common_save))
+                        }
+                        // No pencil where there is no writer; the space keeps the titles centred.
+                        loaded != null && loaded.editability != TrackInfoViewModel.Editability.NO_WRITER ->
+                            FilledTonalIconButton(onClick = viewModel::startEditing) {
+                                Icon(Icons.Outlined.Edit, stringResource(R.string.common_edit))
+                            }
+                    }
+                }
             }
 
             when (val s = state) {
@@ -126,7 +210,7 @@ fun TrackInfoScreen(
                 }
                 is TrackInfoViewModel.State.Loaded -> {
                     var tab by rememberSaveable { mutableIntStateOf(TAB_BASIC) }
-                    Box(Modifier.weight(1f)) { TrackInfoContent(s.info, viewModel, tab) }
+                    Box(Modifier.weight(1f)) { TrackInfoContent(s.info, viewModel, tab, editor) }
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                         NavigationBarItem(
                             selected = tab == TAB_BASIC,
@@ -148,7 +232,12 @@ fun TrackInfoScreen(
 }
 
 @Composable
-private fun TrackInfoContent(info: TrackInfoViewModel.TrackInfo, viewModel: TrackInfoViewModel, tab: Int) {
+private fun TrackInfoContent(
+    info: TrackInfoViewModel.TrackInfo,
+    viewModel: TrackInfoViewModel,
+    tab: Int,
+    editor: TrackInfoViewModel.Editor?
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -174,7 +263,9 @@ private fun TrackInfoContent(info: TrackInfoViewModel.TrackInfo, viewModel: Trac
 
         Spacer(Modifier.height(20.dp))
 
-        if (tab == TAB_BASIC) {
+        if (editor != null) {
+            EditFields(editor, tab, viewModel::onEdit)
+        } else if (tab == TAB_BASIC) {
             TagRow(Icons.Outlined.MusicNote, R.string.track_info_tag_title, info.title)
             TagRow(Icons.Outlined.Person, R.string.track_info_tag_artist, info.artist)
             TagRow(Icons.Outlined.Album, R.string.track_info_tag_album, info.album)
@@ -234,6 +325,61 @@ private fun Cover(info: TrackInfoViewModel.TrackInfo) {
 @Composable
 private fun TechLine(text: String) {
     Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** The tags as fields: the same rows, in the same order, as the screen shows them. */
+@Composable
+private fun EditFields(editor: TrackInfoViewModel.Editor, tab: Int, onEdit: (Id3v2Writer.Values) -> Unit) {
+    val v = editor.values
+    val enabled = !editor.saving
+    if (tab == TAB_BASIC) {
+        EditRow(Icons.Outlined.MusicNote, R.string.track_info_tag_title, v.title, enabled) { onEdit(v.copy(title = it)) }
+        EditRow(Icons.Outlined.Person, R.string.track_info_tag_artist, v.artist, enabled) { onEdit(v.copy(artist = it)) }
+        EditRow(Icons.Outlined.Album, R.string.track_info_tag_album, v.album, enabled) { onEdit(v.copy(album = it)) }
+        EditRow(Icons.Outlined.Groups, R.string.track_info_tag_album_artist, v.albumArtist, enabled) { onEdit(v.copy(albumArtist = it)) }
+        EditRow(Icons.Outlined.LibraryMusic, R.string.track_info_tag_genre, v.genre, enabled) { onEdit(v.copy(genre = it)) }
+        EditRow(Icons.Outlined.CalendarToday, R.string.track_info_tag_year, v.year, enabled, KeyboardType.Number) { onEdit(v.copy(year = it)) }
+        EditRow(Icons.Outlined.Tag, R.string.track_info_tag_track, v.trackNumber, enabled, KeyboardType.Number) { onEdit(v.copy(trackNumber = it)) }
+    } else {
+        EditRow(Icons.Outlined.EditNote, R.string.track_info_tag_lyricist, v.lyricist, enabled) { onEdit(v.copy(lyricist = it)) }
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = v.lyrics.orEmpty(),
+            onValueChange = { onEdit(v.copy(lyrics = it)) },
+            label = { Text(stringResource(R.string.track_info_tab_lyrics)) },
+            enabled = enabled,
+            minLines = 8,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun EditRow(
+    icon: ImageVector,
+    @StringRes label: Int,
+    value: String?,
+    enabled: Boolean,
+    keyboard: KeyboardType = KeyboardType.Text,
+    onChange: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(20.dp))
+        OutlinedTextField(
+            value = value.orEmpty(),
+            onValueChange = onChange,
+            label = { Text(stringResource(label)) },
+            enabled = enabled,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboard),
+            modifier = Modifier.weight(1f)
+        )
+    }
 }
 
 /** One tag: its icon and its value, with the tag's name read out for TalkBack. */

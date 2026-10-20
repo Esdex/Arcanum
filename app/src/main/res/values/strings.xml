@@ -589,6 +589,14 @@
     <string name="track_info_modified">Modified %s</string>
     <string name="track_info_no_cover">No cover</string>
     <string name="track_info_failed">This track could not be read. Its vault may have been closed.</string>
+    <string name="track_info_discard_title">Discard changes?</string>
+    <string name="track_info_discard_message">The tags stay as they are in the file.</string>
+    <string name="track_info_discard">Discard</string>
+    <string name="track_info_keep_editing">Keep editing</string>
+    <string name="track_info_save_failed_title">Tags not saved</string>
+    <string name="track_info_save_failed_message">The tags could not be written to the file. The vault may have been closed, or it may be out of space.</string>
+    <string name="track_info_unsupported_title">This tag cannot be edited</string>
+    <string name="track_info_unsupported_message">It is stored in a form Arcanum cannot write back without losing part of it, so the file is left as it is.</string>
 
     <!-- Vault screen -->
     <string name="vault_title">Arcanum</string>
