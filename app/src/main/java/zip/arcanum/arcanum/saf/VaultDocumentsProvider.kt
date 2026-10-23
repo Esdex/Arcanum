@@ -163,15 +163,30 @@ class VaultDocumentsProvider : DocumentsProvider() {
         // truncate below, which is what would delete it.
         if (stat(cid, path)?.isSymlink == true) throw FileNotFoundException("A link: $documentId")
 
-        // "w"/"wt" mean truncate-on-open; "wa" (append) and "rw" do NOT. We have no in-place
-        // truncate, so for a truncating open we drop the file first and rebuild it from the incoming
-        // writes - all non-truncating (writeAt), so a later backward seek to offset 0 can't wipe it.
+        // "w"/"wt" mean truncate-on-open; "wa" (append) and "rw" do NOT. A truncating open empties
+        // the file where it stands and the incoming writes rebuild it - all non-truncating
+        // (writeAt), so a later backward seek to offset 0 can't wipe it. Emptied, not deleted and
+        // recreated: a hard-linked file would come apart, the written name getting the new
+        // contents and every other name keeping the old ones as a file of their own.
         // ParcelFileDescriptor.parseMode only sets TRUNCATE for "w"/"wt"/"rwt": a bare 'w' with no
         // 'r' and no 'a', or an explicit 't'. "rw" (read-write, edit-in-place) must be preserved, so
-        // the 'r' guard is mandatory - without it "rw" would delete the file and lose its contents.
+        // the 'r' guard is mandatory - without it "rw" would empty the file and lose its contents.
         val truncate = mode.contains('t') ||
             (mode.contains('w') && !mode.contains('a') && !mode.contains('r'))
-        if (truncate) runCatching { engine.deleteFile(handle, path) }
+        if (truncate) {
+            when (engine.emptyFile(handle, path)) {
+                VeraCryptEngine.ERR_OK, VeraCryptEngine.ERR_FILE -> {}   // emptied, or not there yet
+                VeraCryptEngine.ERR_READ_ONLY -> throw FileNotFoundException("Read-only vault: $cid")
+                // A file from elsewhere with no extent tree cannot be emptied in place. With one
+                // name, a new file under that name is the same thing, and the writes below can
+                // then reach it, which they could not reach the old one.
+                VeraCryptEngine.ERR_UNSUPPORTED ->
+                    if ((stat(cid, path)?.nameCount ?: 1) > 1 ||
+                        engine.deleteFile(handle, path) != VeraCryptEngine.ERR_OK)
+                        throw FileNotFoundException("Could not empty $documentId")
+                else -> throw FileNotFoundException("Could not empty $documentId")
+            }
+        }
         // Make sure the document exists so onGetSize/onRead are well-defined even before any write.
         engine.writeAt(handle, path, EMPTY, 0L)
 

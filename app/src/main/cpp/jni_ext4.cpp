@@ -63,6 +63,8 @@ extern "C" {
 #define INODE_MODE_OFF        0x00
 #define INODE_MTIME_OFF       0x10
 #define INODE_LINKS_COUNT_OFF 0x1A
+#define INODE_FLAGS_OFF       0x20
+#define EXT4_INODE_FLAG_EXTENTS 0x00080000u
 #define EXT4_S_IFMT     0xF000
 #define EXT4_S_IFDIR    0x4000
 #define EXT4_S_IFREG    0x8000
@@ -954,6 +956,60 @@ jint ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
      * path asks of an empty write. */
 
     return result;
+}
+
+/* ─── ext4jni_empty_file ─────────────────────────────────────────────── */
+/*
+ * Cuts a file to nothing where it stands: the truncate of a SAF "w" open. The
+ * provider used to get it by deleting the file and creating a new one under the
+ * same name, which is the same thing only for a file with one name. A hard-linked
+ * file was split in two by it - the name that was written got the new contents,
+ * and every other name kept the old ones as a separate file. Emptying the inode
+ * keeps it one file, the way O_TRUNC does on Linux.
+ *
+ * ERR_FILE when there is no such name, for the caller to create it. The same
+ * no-follow lookup and the same refusals as ext4jni_write_at, for the same
+ * reasons, plus a file without an extent tree (an ext3-style one from elsewhere),
+ * whose blocks ext4_truncate_blocks cannot release. None of those refusals tears:
+ * nothing has been written by then.
+ */
+jint ext4jni_empty_file(JNIEnv *env, jlong handle, jstring jFilePath) {
+    std::string path = jstring_to_string(env, jFilePath);
+
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    int pdrv = ext4_pdrv(handle);
+    if (pdrv < 0) return ERR_NO_SLOT;
+    if (is_read_only(pdrv)) return ERR_READ_ONLY;
+
+    ext4_fs *r = nullptr;
+    if (!open_reader(pdrv, &r)) return ERR_FS;
+
+    uint32_t dir_ino = 0;
+    char name[256];
+    int prc = ext4_resolve_parent(r, path.c_str(), &dir_ino, name, sizeof(name));
+    if (prc != EXT4_PATH_OK) return path_error(prc);
+
+    uint32_t ino = 0;
+    int lrc = ext4_dir_lookup(r, dir_ino, name, &ino);
+    if (lrc == EXT4_DIRW_ERR_ABSENT) return ERR_FILE;
+    if (lrc != EXT4_DIRW_OK) return ERR_FS;
+
+    uint8_t inode[EXT4_MAX_INODE_SIZE];
+    memset(inode, 0, sizeof(inode));
+    if (ext4_read_inode_raw(r, ino, inode, sizeof(inode)) != EXT4_OK) return ERR_FS;
+    uint16_t type = rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT;
+    if (type == EXT4_S_IFDIR) return ERR_FS;
+    if (type != EXT4_S_IFREG) return ERR_UNSUPPORTED;
+    if (!(rd32(inode + INODE_FLAGS_OFF) & EXT4_INODE_FLAG_EXTENTS)) return ERR_UNSUPPORTED;
+
+    WriteSession s(pdrv);
+    if (!s.ok()) return ERR_FS;
+    if (ext4_truncate_blocks(s.fs(), ino, 0) != EXTW_OK) {
+        s.tear();
+        return write_error(pdrv, ERR_FS);
+    }
+    ext4_set_mtime(s.fs(), ino, now_seconds());   /* best-effort, as in write_chunk */
+    return ERR_OK;
 }
 
 /* ─── ext4jni_create_directory ───────────────────────────────────────── */

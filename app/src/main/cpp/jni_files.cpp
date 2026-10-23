@@ -507,6 +507,41 @@ Java_zip_arcanum_crypto_VeraCryptEngine_nativeWriteAt(
     return write_result_code(fr, bw, len, pdrv);
 }
 
+/* ─── JNI: nativeEmptyFile ───────────────────────────────────────────── */
+
+/* Cuts an existing file to zero bytes in place, for a SAF "w" open (see
+ * ext4jni_empty_file for why not delete-and-recreate). ERR_FILE when the file is not
+ * there; nothing is created. */
+extern "C" JNIEXPORT jint JNICALL
+Java_zip_arcanum_crypto_VeraCryptEngine_nativeEmptyFile(
+        JNIEnv *env, jobject /*thiz*/,
+        jlong handle, jstring jFilePath)
+{
+    if (ext4jni_is_container(handle))
+        return ext4jni_empty_file(env, handle, jFilePath);
+
+    std::string path = jstring_to_string(env, jFilePath);
+
+    FIL fil;
+    std::lock_guard<std::mutex> lock(g_fatfs_mutex);
+    int pdrv = decode_handle(handle);
+    if (pdrv < 0) return ERR_NO_SLOT;
+    { auto it = g_ctxMap.find(pdrv); if (it != g_ctxMap.end() && it->second->readOnly) return ERR_READ_ONLY; }
+    invalidate_read_cache_for_pdrv(pdrv);   // the file's clusters are about to be freed
+
+    char fullPath[512];
+    int n = snprintf(fullPath, sizeof(fullPath), "%d:%s", pdrv, path.c_str());
+    if (n < 0 || n >= (int)sizeof(fullPath)) return ERR_FILE;
+
+    FRESULT fro = f_open(&fil, fullPath, FA_WRITE | FA_OPEN_EXISTING);
+    if (fro == FR_NO_FILE) return ERR_FILE;
+    if (fro != FR_OK) return ERR_FS;
+    FRESULT fr = f_truncate(&fil);            // at the read/write pointer, which is 0
+    FRESULT fc = f_close(&fil);
+    if (fr == FR_OK && fc == FR_OK) return ERR_OK;
+    return write_result_code(FR_INT_ERR, 0, 1, pdrv);
+}
+
 /* ─── JNI: nativeSetFileTime ─────────────────────────────────────────── */
 /*
  * Stamps a file with the date it had before it was imported. Called after the content

@@ -638,6 +638,11 @@ class VeraCryptEngine @Inject constructor(
     fun writeAt(handle: Long, filePath: String, data: ByteArray, offset: Long): Int =
         marked { nativeWriteAt(handle, filePath, data, offset) }
 
+    /** Cuts an existing file to zero bytes where it stands, so every name a hard-linked file
+     *  has sees it emptied. [ERR_FILE] when there is no such file; nothing is created. */
+    fun emptyFile(handle: Long, filePath: String): Int =
+        marked { nativeEmptyFile(handle, filePath) }
+
     /**
      * Stamps a file with a modification time of the caller's choosing, in epoch
      * milliseconds. Meant for the date a file already had before it was imported: writing
@@ -1034,6 +1039,8 @@ class VeraCryptEngine @Inject constructor(
         data: ByteArray,
         offset: Long
     ): Int
+
+    private external fun nativeEmptyFile(handle: Long, filePath: String): Int
 
     private external fun nativeSetFileTime(
         handle: Long,
