@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.files.VaultPaths
 import zip.arcanum.arcanum.gallery.ExifReader
 import zip.arcanum.arcanum.gallery.JniMediaDataSource
 import zip.arcanum.arcanum.gallery.ThumbnailManager
@@ -90,12 +91,7 @@ class TrackInfoViewModel @Inject constructor(
         /** A tag this app cannot write back without losing part of it, or one it cannot read. */
         UNSUPPORTED_TAG,
         /** Not an MP3: FLAC and the others have no writer yet, and show no pencil. */
-        NO_WRITER,
-        /**
-         * A symbolic link. Reading follows it to the file, but a write in place would land in
-         * the link itself, so its tags are edited on the file it points to instead.
-         */
-        LINK
+        NO_WRITER
     }
 
     /** Why a save did not land. */
@@ -179,7 +175,7 @@ class TrackInfoViewModel @Inject constructor(
             // at all. The platform fills in for everything else - ID3v1, FLAC, M4A.
             val read = readId3(h, size)
             val id3 = read.tag
-            val entry = stat(h)
+            val entry = stat(h)?.second
             val info = TrackInfo(
                 title        = id3?.title ?: tag(MediaMetadataRetriever.METADATA_KEY_TITLE),
                 artist       = id3?.artist ?: tag(MediaMetadataRetriever.METADATA_KEY_ARTIST),
@@ -205,7 +201,6 @@ class TrackInfoViewModel @Inject constructor(
             )
             val editability = when {
                 format != "MP3" -> Editability.NO_WRITER
-                entry?.isSymlink == true -> Editability.LINK
                 repo.isContainerReadOnly(containerId) -> Editability.READ_ONLY
                 read.size > 0 && id3?.rewritable != true -> Editability.UNSUPPORTED_TAG
                 else -> Editability.EDITABLE
@@ -226,7 +221,7 @@ class TrackInfoViewModel @Inject constructor(
         when (s.editability) {
             Editability.EDITABLE -> _editor.value = Editor(shown)
             Editability.READ_ONLY -> notifications.notify(InAppNotification.ReadOnlyError)
-            Editability.UNSUPPORTED_TAG, Editability.LINK -> _refusal.value = s.editability
+            Editability.UNSUPPORTED_TAG -> _refusal.value = s.editability
             Editability.NO_WRITER -> Unit
         }
     }
@@ -336,10 +331,9 @@ class TrackInfoViewModel @Inject constructor(
      */
     private fun write(edited: Id3v2Writer.Values, cover: Id3v2Writer.CoverEdit): SaveFailure? {
         val h = repo.getContainerHandle(containerId) ?: return SaveFailure.WRITE
-        val entry = stat(h) ?: return SaveFailure.WRITE
-        // Checked again here, not only on opening: the size of a link is the link's, and a
-        // write would go into it.
-        if (entry.isSymlink) return SaveFailure.WRITE
+        // Written to the file a link points at: a write in place under the link's own name
+        // would land in the link, and a rewrite would put a plain file where the link was.
+        val (file, entry) = stat(h) ?: return SaveFailure.WRITE
         val size = entry.size
         val read = readId3(h, size)
         val old = read.tag
@@ -348,9 +342,13 @@ class TrackInfoViewModel @Inject constructor(
         val rendered = Id3v2Writer.render(old, values, cover)
         // Written in place, both names see the new tags; rewritten, only this one would.
         if (entry.nameCount > 1 && !rendered.inPlace) return SaveFailure.LINKED
-        val newSize = tagWriter.write(h, path, size, old?.totalSize ?: 0, rendered) ?: return SaveFailure.WRITE
-        if (cover != Id3v2Writer.CoverEdit.Keep) thumbnails.notifyFileChanged(containerId, path)
-        tagEvents.notifySaved(TrackTagEvents.Saved(containerId, path, size, newSize))
+        val newSize = tagWriter.write(h, file, size, old?.totalSize ?: 0, rendered) ?: return SaveFailure.WRITE
+        // Under both names, since the player and the thumbnails know the track by the one
+        // it was opened as, which may be the link.
+        for (p in setOf(path, file)) {
+            if (cover != Id3v2Writer.CoverEdit.Keep) thumbnails.notifyFileChanged(containerId, p)
+            tagEvents.notifySaved(TrackTagEvents.Saved(containerId, p, size, newSize))
+        }
         return null
     }
 
@@ -427,9 +425,15 @@ class TrackInfoViewModel @Inject constructor(
         const val MAX_PICTURE = 64 * 1024 * 1024
     }
 
-    /** The file's entry in its folder: its size as it is now, and its date. */
-    private fun stat(h: Long): NativeFileInfo? {
-        val parent = path.substringBeforeLast('/', "").ifEmpty { "/" }
-        return engine.listFilesOrNull(h, parent)?.firstOrNull { it.name == name }
+    /**
+     * The file this track is, with its entry in its folder: its size as it is now, its date and
+     * its names. For a link, the file the link points at - never the link itself.
+     */
+    private fun stat(h: Long): Pair<String, NativeFileInfo>? {
+        fun entryAt(dir: String, n: String) = engine.listFilesOrNull(h, dir)?.firstOrNull { it.name == n }
+        val file = VaultPaths.resolve(path, ::entryAt) ?: return null
+        val entry = entryAt(file.substringBeforeLast('/', "").ifEmpty { "/" }, file.substringAfterLast('/'))
+            ?: return null
+        return file to entry
     }
 }

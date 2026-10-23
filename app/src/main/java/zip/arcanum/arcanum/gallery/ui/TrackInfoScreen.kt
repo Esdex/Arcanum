@@ -170,12 +170,11 @@ fun TrackInfoScreen(
             }
         )
     }
-    refusal?.let { why ->
-        val link = why == TrackInfoViewModel.Editability.LINK
+    if (refusal != null) {
         AppDialog(
             onDismissRequest = viewModel::dismissRefusal,
-            title = { Text(stringResource(if (link) R.string.track_info_link_title else R.string.track_info_unsupported_title)) },
-            text  = { Text(stringResource(if (link) R.string.track_info_link_message else R.string.track_info_unsupported_message)) },
+            title = { Text(stringResource(R.string.track_info_unsupported_title)) },
+            text  = { Text(stringResource(R.string.track_info_unsupported_message)) },
             confirmButton = {
                 TextButton(onClick = viewModel::dismissRefusal) { Text(stringResource(R.string.common_ok)) }
             }
