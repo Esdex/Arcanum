@@ -27,6 +27,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.files.InPlaceWrite
 import zip.arcanum.arcanum.gallery.ExifReader
 import zip.arcanum.arcanum.gallery.readWholeFile
 import zip.arcanum.arcanum.gallery.ExifTransfer
@@ -592,21 +593,35 @@ class PhotoEditorViewModel @Inject constructor(
                     }
                 }
 
-                // Backup-swap: write tmp → rename original to .bak → swap tmp → delete .bak
-                // Crash at any step leaves either original or .bak intact; never leaves both gone.
                 val tmpPath = file.relativePath + ".tmp"
-                val bakPath = file.relativePath + ".bak"
-                engine.deleteFile(handle, tmpPath)
-                writeChunked(handle, tmpPath, bytes)
-                engine.deleteFile(handle, bakPath)
-                val bakResult = engine.renameFile(handle, file.relativePath, bakPath)
-                if (bakResult != 0) throw IOException("Backup rename failed (error $bakResult)")
-                val swapResult = engine.renameFile(handle, tmpPath, targetPath)
-                if (swapResult != 0) {
-                    engine.renameFile(handle, bakPath, file.relativePath)
-                    throw IOException("Swap rename failed (error $swapResult)")
+                val names = engine.listFilesOrNull(handle, "/" + dir.trimStart('/'))
+                    ?.firstOrNull { it.name == file.fileName }?.nameCount ?: 1
+                if (names > 1) {
+                    /* A photo with other names is written where it stands, or the swap below
+                       would leave those names on the old picture as a file of their own. Only
+                       in its own format: the other names say what kind of file they are. */
+                    if (targetPath != file.relativePath) {
+                        _state.update { it.copy(isSaving = false, error = "This photo has another name and cannot change format. Save a copy instead") }
+                        return@launch
+                    }
+                    if (!InPlaceWrite.write(InPlaceWrite.ops(engine, handle), file.relativePath, tmpPath, bytes, 512 * 1024))
+                        throw IOException("In-place write failed")
+                } else {
+                    // Backup-swap: write tmp → rename original to .bak → swap tmp → delete .bak
+                    // Crash at any step leaves either original or .bak intact; never leaves both gone.
+                    val bakPath = file.relativePath + ".bak"
+                    engine.deleteFile(handle, tmpPath)
+                    writeChunked(handle, tmpPath, bytes)
+                    engine.deleteFile(handle, bakPath)
+                    val bakResult = engine.renameFile(handle, file.relativePath, bakPath)
+                    if (bakResult != 0) throw IOException("Backup rename failed (error $bakResult)")
+                    val swapResult = engine.renameFile(handle, tmpPath, targetPath)
+                    if (swapResult != 0) {
+                        engine.renameFile(handle, bakPath, file.relativePath)
+                        throw IOException("Swap rename failed (error $swapResult)")
+                    }
+                    engine.deleteFile(handle, bakPath)
                 }
-                engine.deleteFile(handle, bakPath)
 
                 mediaFileDao.updateMediaFile(file.copy(
                     fileName     = targetName,
