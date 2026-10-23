@@ -43,6 +43,7 @@ import zip.arcanum.arcanum.containers.ui.VaultScreen
 import zip.arcanum.arcanum.containers.ui.VaultViewModel
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerDirectScreen
 import zip.arcanum.arcanum.gallery.ui.TrackInfoScreen
+import zip.arcanum.arcanum.camera.CameraScreen
 import zip.arcanum.arcanum.files.pdf.PdfViewerScreen
 import zip.arcanum.arcanum.files.text.TextEditorScreen
 import zip.arcanum.arcanum.gallery.ui.AudioPlayerScreen
@@ -398,6 +399,9 @@ fun AppNavigation(
                 onTextFileClick    = { containerId, path, name, size ->
                     navController.navigate(Screen.TextEditor.buildRoute(containerId, path, name, size))
                 },
+                onTakePhoto        = { containerId, dir ->
+                    navController.navigate(Screen.Camera.buildRoute(containerId, dir))
+                },
                 onMediaFileClick   = { fileId ->
                     navController.navigate(Screen.PhotoViewer.buildRoute(fileId, folderScope = true))
                 }
@@ -508,6 +512,16 @@ fun AppNavigation(
             )
         ) {
             TextEditorScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(
+            route     = Screen.Camera.route,
+            arguments = listOf(
+                navArgument(Screen.Camera.ARG_CONTAINER) { type = NavType.StringType },
+                navArgument(Screen.Camera.ARG_DIR)       { type = NavType.StringType }
+            )
+        ) {
+            CameraScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Move vault ────────────────────────────────────────────────────

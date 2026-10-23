@@ -153,6 +153,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import zip.arcanum.R
+import zip.arcanum.arcanum.camera.rememberCameraPermission
 import zip.arcanum.core.components.hazeOrSolid
 import zip.arcanum.core.utils.MediaExtensions
 import zip.arcanum.arcanum.containers.domain.Container
@@ -194,6 +195,8 @@ fun FileManagerScreen(
     onAudioFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
     onPdfFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
     onTextFileClick: ((path: String, name: String, size: Long) -> Unit)? = null,
+    /** Opens the camera on the folder on screen (#145). */
+    onTakePhoto: ((dir: String) -> Unit)? = null,
     onMediaFileClick: ((fileId: String) -> Unit)? = null,
     viewModel: FileManagerViewModel = hiltViewModel()
 ) {
@@ -256,6 +259,11 @@ fun FileManagerScreen(
         promptShown       = viewModel.mediaLocationPromptShown.collectAsState().value,
         onMarkPromptShown = viewModel::markMediaLocationPromptShown
     )
+
+    // The camera's item is there only on a phone that has one; the permission is asked for
+    // when it is first used, not before.
+    val hasCamera = remember { context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY) }
+    val takePhoto = rememberCameraPermission { onTakePhoto?.invoke(state.currentPath) }
 
     // Dialog/sheet visibility
     var showCreateNewSheet     by rememberSaveable { mutableStateOf(false) }
@@ -688,7 +696,10 @@ fun FileManagerScreen(
                         if (openNewInEditor) onTextFileClick?.invoke(path, created, 0L)
                     }
                     showCreateNewSheet = false
-                }
+                },
+                onTakePhoto      = if (onTakePhoto != null && hasCamera) {
+                    { showCreateNewSheet = false; takePhoto() }
+                } else null
             )
         }
     }

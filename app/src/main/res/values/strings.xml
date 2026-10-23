@@ -563,6 +563,22 @@
     <string name="audio_menu_file_info">File info</string>
 
     <!-- Track info (File info from the music player) -->
+    <string name="files_new_photo">Photo</string>
+    <string name="files_new_photo_desc">Take a photo straight into this folder</string>
+    <string name="camera_permission_title">Camera access</string>
+    <string name="camera_permission_message">To take photos, Arcanum needs access to the camera. Each photo goes straight into this vault, encrypted, and is never saved anywhere else on the phone.</string>
+    <string name="camera_permission_off_title">Camera access is off</string>
+    <string name="camera_permission_off_message">Arcanum is not allowed to use the camera. You can allow it in the app\'s settings, under Permissions.</string>
+    <string name="camera_open_settings">Open settings</string>
+    <string name="camera_take_photo">Take photo</string>
+    <string name="camera_switch">Switch camera</string>
+    <string name="camera_flash_off">Flash off</string>
+    <string name="camera_flash_auto">Flash auto</string>
+    <string name="camera_flash_on">Flash on</string>
+    <string name="camera_last_photo">Last photo taken</string>
+    <string name="camera_failed_to_start">The camera could not be started.</string>
+    <string name="camera_not_saved_title">Photo not saved</string>
+    <string name="camera_not_saved_message">The photo could not be written to the vault. The vault may have been closed, or it may be out of space.</string>
     <string name="track_info_title">Track info</string>
     <string name="track_info_tag_title">Title</string>
     <string name="track_info_tag_artist">Artist</string>

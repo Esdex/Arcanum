@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material3.Button
@@ -67,13 +68,15 @@ import zip.arcanum.R
  * sideways and the way back is where it always is - the arrow, or the system's own back.
  *
  * Nothing is written until [onCreateDocument] or [onCreateFolder] is called, so leaving the
- * sheet at any point leaves the vault exactly as it was.
+ * sheet at any point leaves the vault exactly as it was. [onTakePhoto] is null on a phone with
+ * no camera, and the row is not there.
  */
 @Composable
 fun CreateNewSheetContent(
     takenNames: Set<String>,
     onCreateFolder: (String) -> Unit,
-    onCreateDocument: (String) -> Unit
+    onCreateDocument: (String) -> Unit,
+    onTakePhoto: (() -> Unit)? = null
 ) {
     var stage     by rememberSaveable { mutableStateOf(NewStage.CHOICE) }
     var isFolder  by rememberSaveable { mutableStateOf(false) }
@@ -148,6 +151,14 @@ fun CreateNewSheetContent(
                         title = stringResource(R.string.files_new_document)
                     ) {
                         isFolder = false; stage = NewStage.TYPE
+                    }
+                    if (onTakePhoto != null) {
+                        NewRow(
+                            icon     = Icons.Outlined.PhotoCamera,
+                            title    = stringResource(R.string.files_new_photo),
+                            subtitle = stringResource(R.string.files_new_photo_desc),
+                            onClick  = onTakePhoto
+                        )
                     }
                 }
 

@@ -200,6 +200,11 @@ dependencies {
     // Palette (dominant color extraction for audio player)
     implementation(libs.androidx.palette)
 
+    // CameraX: photos taken in the app go straight into the vault, never through another app
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+
     // Image processing (Sharpness + Denoise for photo editor)
     implementation(libs.aire)
 

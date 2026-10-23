@@ -99,6 +99,7 @@ fun ContainerScreen(
     onAudioFileClick: (containerId: String, path: String, name: String, size: Long) -> Unit = { _, _, _, _ -> },
     onPdfFileClick: (containerId: String, path: String, name: String, size: Long) -> Unit = { _, _, _, _ -> },
     onTextFileClick: (containerId: String, path: String, name: String, size: Long) -> Unit = { _, _, _, _ -> },
+    onTakePhoto: (containerId: String, dir: String) -> Unit = { _, _ -> },
     onMediaFileClick: (fileId: String) -> Unit = {},
     viewModel: ContainerScreenViewModel = hiltViewModel(),
     galleryViewModel: GalleryViewModel = hiltViewModel(),
@@ -254,6 +255,7 @@ fun ContainerScreen(
                                     onTextFileClick  = { path, name, size ->
                                         onTextFileClick(viewModel.containerId, path, name, size)
                                     },
+                                    onTakePhoto      = { dir -> onTakePhoto(viewModel.containerId, dir) },
                                     onMediaFileClick = { fileId -> onMediaFileClick(fileId) },
                                     viewModel        = fileManagerViewModel
                                 )

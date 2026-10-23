@@ -81,6 +81,15 @@ sealed class Screen(val route: String) {
     }
 
     /** A text file opened for editing, addressed like the PDF viewer's route (#109). */
+    /** The camera, putting its photos into [ARG_DIR] of the vault (#145). */
+    object Camera : Screen("camera?cid={cid}&dir={dir}") {
+        const val ARG_CONTAINER = "cid"
+        const val ARG_DIR       = "dir"
+
+        fun buildRoute(containerId: String, dir: String): String =
+            "camera?cid=$containerId&dir=${android.net.Uri.encode(dir)}"
+    }
+
     object TextEditor : Screen("text_editor?cid={cid}&path={path}&name={name}&size={size}") {
         const val ARG_CONTAINER = "cid"
         const val ARG_PATH      = "path"

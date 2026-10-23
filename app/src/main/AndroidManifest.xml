@@ -32,6 +32,15 @@
     <!-- USB host — vaults living on a plugged-in USB flash drive -->
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
+    <!-- Photos taken in the app (#145). The frames go from the camera into memory and from
+         there into the vault, so no other app sees them and nothing is written in the clear.
+         Not required: a device without a camera still gets the app, without the Photo item. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <!-- The permission implies a back camera is required, and Play would hide the app from
+         every phone without one; said explicitly so that it is not. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <application
         android:name=".ArcanumApp"
         android:enableOnBackInvokedCallback="true"
