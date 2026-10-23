@@ -1,0 +1,6 @@
+- New: Take photos straight into the vault
+- New: Edit a track's tags and its cover
+- Fix: The music waveform shows the shape of the song
+- Fix: Photos taken sideways stand up
+- Fix: Saving keeps links and second names working
+- Fix: Picking another track plays it

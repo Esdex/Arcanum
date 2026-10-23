@@ -1,7 +1,7 @@
 {
   "versions": [
     {
-      "version": "0.0.0",
+      "version": "1.7.0",
       "versionCode": 12,
       "entries": [
         { "type": "new", "title": "Take photos straight into the vault", "description": "In Files, New now has Photo: a camera inside the app whose photos go into the folder you are in, encrypted, without passing through any other app or being saved anywhere else on the phone. They keep only which way up they go and when they were taken; the phone's make and model, the camera settings and the location are left out. (#145)" },
