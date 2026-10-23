@@ -17,6 +17,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import zip.arcanum.arcanum.containers.data.ContainerRepository
+import zip.arcanum.arcanum.files.InPlaceWrite
+import zip.arcanum.arcanum.files.VaultPaths
 import zip.arcanum.core.navigation.Screen
 import zip.arcanum.core.notifications.InAppNotification
 import zip.arcanum.core.notifications.NotificationCenter
@@ -221,11 +223,27 @@ class TextEditorViewModel @Inject constructor(
      * the original is left exactly as it was; the one case that leaves a stray behind is a
      * delete that succeeds and a rename that does not, and there the new text is the file
      * that survives under the temporary name rather than being thrown away.
+     *
+     * Saved to the file the path names, not to the path. A link opened here was read through,
+     * so it is saved through: swapping a new file in under the link's name would replace the
+     * link with a plain file and leave the file it named as it was. And a file with other names
+     * is written in place ([InPlaceWrite]), because the swap would leave those names on the old
+     * text.
      */
     private fun write(doc: TextDocument, text: String): Boolean {
         val handle = repo.getContainerHandle(containerId) ?: return false
         val bytes  = doc.encode(text)
-        val tmp    = "$path$TMP_SUFFIX"
+        val file   = VaultPaths.resolve(path) { dir, name ->
+            engine.listFilesOrNull(handle, dir)?.firstOrNull { it.name == name }
+        } ?: return false
+        val tmp    = "$file$TMP_SUFFIX"
+
+        val parent = file.substringBeforeLast('/').ifEmpty { "/" }
+        val names  = engine.listFilesOrNull(handle, parent)
+            ?.firstOrNull { it.name == file.substringAfterLast('/') }?.nameCount ?: 1
+        if (names > 1) return runCatching {
+            InPlaceWrite.write(InPlaceWrite.ops(engine, handle), file, tmp, bytes, CHUNK)
+        }.getOrDefault(false)
 
         runCatching { engine.deleteFile(handle, tmp) }   // a leftover from a killed save
 
@@ -248,13 +266,13 @@ class TextEditorViewModel @Inject constructor(
             if (rc != VeraCryptEngine.ERR_OK) return false
         }
 
-        val deleted = runCatching { engine.deleteFile(handle, path) }
+        val deleted = runCatching { engine.deleteFile(handle, file) }
             .getOrDefault(VeraCryptEngine.ERR_FS) == VeraCryptEngine.ERR_OK
         if (!deleted) {
             runCatching { engine.deleteFile(handle, tmp) }
             return false
         }
-        val renamed = runCatching { engine.renameFile(handle, tmp, path) }
+        val renamed = runCatching { engine.renameFile(handle, tmp, file) }
             .getOrDefault(VeraCryptEngine.ERR_FS) == VeraCryptEngine.ERR_OK
         return renamed
     }
