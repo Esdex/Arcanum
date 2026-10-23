@@ -131,4 +131,25 @@ class Id3v2TagTest {
         assertNull(Id3v2Tag.parse(tag(3, F("TIT2", text16("cut"))).copyOf(14)))
         assertEquals(0, Id3v2Tag.sizeFromHeader(ByteArray(10)))
     }
+
+    // ── Malformed tags: never an exception, at worst nothing ──────────────
+
+    @Test
+    fun aFrameSizeNearTheLargestIntIsAnEndNotACrash() {
+        // start + size would overflow and pass a naive bounds check.
+        val ok = tag(3, F("TIT2", text16("Kept")))
+        val bad = ok.copyOfRange(0, ok.size - 4) + "TPE1".toByteArray() + be32(0x7FFFFFF0) + byteArrayOf(0, 0, 1, 2, 3)
+        val fixed = bad.copyOf().also { val n = bad.size - 10; syncsafe(n).copyInto(it, 6) }
+        val t = Id3v2Tag.parse(fixed)!!
+        assertEquals("Kept", t.title)
+        assertFalse(t.rewritable)
+    }
+
+    @Test
+    fun anExtendedHeaderThatDoesNotFitIsNoTag() {
+        // The flag set over an empty body, and sizes that point before or past the tag.
+        assertNull(Id3v2Tag.parse(byteArrayOf('I'.code.toByte(), 'D'.code.toByte(), '3'.code.toByte(), 4, 0, 0x40, 0, 0, 0, 0)))
+        assertNull(Id3v2Tag.parse(tag(3, F("TIT2", text16("x")), flags = 0x40, extended = be32(-8) + ByteArray(4))))
+        assertNull(Id3v2Tag.parse(tag(3, F("TIT2", text16("x")), flags = 0x40, extended = be32(10_000) + ByteArray(4))))
+    }
 }

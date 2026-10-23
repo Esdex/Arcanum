@@ -105,7 +105,10 @@ class Id3v2Tag private constructor(
 
             var pos = 0
             if (extended) {
+                // A size that points outside the tag is not an extended header to skip.
+                if (body.size < 4) return null
                 pos = if (major == 4) syncsafe(body, 0) else 4 + be32(body, 0)
+                if (pos < 0 || pos > body.size) return null
             }
             var rewritable = !unsync && !extended
             val frames = mutableListOf<Frame>()
@@ -116,7 +119,8 @@ class Id3v2Tag private constructor(
                 val size = if (major == 4) syncsafe(body, pos + 4) else be32(body, pos + 4)
                 val frameFlags = ((body[pos + 8].toInt() and 0xFF) shl 8) or (body[pos + 9].toInt() and 0xFF)
                 val start = pos + HEADER_SIZE
-                if (size < 0 || start + size > body.size) { rewritable = false; break }
+                // Compared as a remainder: start + size overflows for a size near Int.MAX_VALUE.
+                if (size < 0 || size > body.size - start) { rewritable = false; break }
                 val raw = body.copyOfRange(start, start + size)
                 val frame: Frame
                 if (major == 4) {
