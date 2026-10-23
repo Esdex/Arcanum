@@ -562,7 +562,7 @@
     <string name="audio_cd_more">More</string>
     <string name="audio_menu_file_info">File info</string>
 
-    <!-- Track info (File info from the music player) -->
+    <!-- In-app camera (#145) -->
     <string name="files_new_photo">Photo</string>
     <string name="files_new_photo_desc">Take a photo straight into this folder</string>
     <string name="camera_permission_title">Camera access</string>
@@ -579,6 +579,8 @@
     <string name="camera_failed_to_start">The camera could not be started.</string>
     <string name="camera_not_saved_title">Photo not saved</string>
     <string name="camera_not_saved_message">The photo could not be written to the vault. The vault may have been closed, or it may be out of space.</string>
+
+    <!-- Track info (File info from the music player) -->
     <string name="track_info_title">Track info</string>
     <string name="track_info_tag_title">Title</string>
     <string name="track_info_tag_artist">Artist</string>
