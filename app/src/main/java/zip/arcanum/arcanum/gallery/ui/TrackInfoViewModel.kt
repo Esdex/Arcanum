@@ -90,7 +90,23 @@ class TrackInfoViewModel @Inject constructor(
         /** A tag this app cannot write back without losing part of it, or one it cannot read. */
         UNSUPPORTED_TAG,
         /** Not an MP3: FLAC and the others have no writer yet, and show no pencil. */
-        NO_WRITER
+        NO_WRITER,
+        /**
+         * A symbolic link. Reading follows it to the file, but a write in place would land in
+         * the link itself, so its tags are edited on the file it points to instead.
+         */
+        LINK
+    }
+
+    /** Why a save did not land. */
+    enum class SaveFailure {
+        /** The write itself failed: the vault closed, or is full. */
+        WRITE,
+        /**
+         * The file has a second name (a hard link) and the new tag does not fit in place.
+         * Rewriting it would give this name a new file and leave the other with the old tags.
+         */
+        LINKED
     }
 
     sealed interface State {
@@ -111,8 +127,8 @@ class TrackInfoViewModel @Inject constructor(
         /** The picked file was not a picture this phone can open. */
         val coverRefused: Boolean = false,
         val saving: Boolean = false,
-        /** The last save did not land. The fields keep what was typed. */
-        val failed: Boolean = false
+        /** The last save did not land, and why. The fields keep what was typed. */
+        val failure: SaveFailure? = null
     )
 
     val containerId: String = savedStateHandle[Screen.TrackInfo.ARG_CONTAINER] ?: ""
@@ -129,9 +145,9 @@ class TrackInfoViewModel @Inject constructor(
     private val _editor = MutableStateFlow<Editor?>(null)
     val editor = _editor.asStateFlow()
 
-    /** Set when the pencil was tapped on a tag that cannot be written back. */
-    private val _unsupportedTag = MutableStateFlow(false)
-    val unsupportedTag = _unsupportedTag.asStateFlow()
+    /** Set when the pencil was tapped on a file whose tags cannot be edited here, and why. */
+    private val _refusal = MutableStateFlow<Editability?>(null)
+    val refusal = _refusal.asStateFlow()
 
     /** The pictures this vault's gallery knows of, newest first, for picking a cover. */
     val vaultImages: StateFlow<List<MediaFile>> = media.getMediaForContainer(containerId)
@@ -163,6 +179,7 @@ class TrackInfoViewModel @Inject constructor(
             // at all. The platform fills in for everything else - ID3v1, FLAC, M4A.
             val read = readId3(h, size)
             val id3 = read.tag
+            val entry = stat(h)
             val info = TrackInfo(
                 title        = id3?.title ?: tag(MediaMetadataRetriever.METADATA_KEY_TITLE),
                 artist       = id3?.artist ?: tag(MediaMetadataRetriever.METADATA_KEY_ARTIST),
@@ -179,7 +196,7 @@ class TrackInfoViewModel @Inject constructor(
                 sampleRateHz = sampleRate,
                 bitrateBps   = tag(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toIntOrNull(),
                 channels     = channels,
-                modifiedMs   = stat(h)?.lastModified?.takeIf { it > 0L }
+                modifiedMs   = entry?.lastModified?.takeIf { it > 0L }
             )
             shown = Id3v2Writer.Values(
                 title = info.title, artist = info.artist, album = info.album, albumArtist = info.albumArtist,
@@ -188,6 +205,7 @@ class TrackInfoViewModel @Inject constructor(
             )
             val editability = when {
                 format != "MP3" -> Editability.NO_WRITER
+                entry?.isSymlink == true -> Editability.LINK
                 repo.isContainerReadOnly(containerId) -> Editability.READ_ONLY
                 read.size > 0 && id3?.rewritable != true -> Editability.UNSUPPORTED_TAG
                 else -> Editability.EDITABLE
@@ -208,12 +226,12 @@ class TrackInfoViewModel @Inject constructor(
         when (s.editability) {
             Editability.EDITABLE -> _editor.value = Editor(shown)
             Editability.READ_ONLY -> notifications.notify(InAppNotification.ReadOnlyError)
-            Editability.UNSUPPORTED_TAG -> _unsupportedTag.value = true
+            Editability.UNSUPPORTED_TAG, Editability.LINK -> _refusal.value = s.editability
             Editability.NO_WRITER -> Unit
         }
     }
 
-    fun dismissUnsupportedTag() { _unsupportedTag.value = false }
+    fun dismissRefusal() { _refusal.value = null }
 
     fun onEdit(values: Id3v2Writer.Values) {
         _editor.update { it?.copy(values = values) }
@@ -286,7 +304,7 @@ class TrackInfoViewModel @Inject constructor(
 
     fun cancelEditing() { _editor.value = null }
 
-    fun dismissSaveFailure() { _editor.update { it?.copy(failed = false) } }
+    fun dismissSaveFailure() { _editor.update { it?.copy(failure = null) } }
 
     /**
      * The save button: writes the tags and calls [onSaved] once they are in the file. Nothing
@@ -296,19 +314,19 @@ class TrackInfoViewModel @Inject constructor(
         val e = _editor.value ?: return
         if (e.saving || e.preparingCover) return
         if (!changed(e)) { _editor.value = null; onSaved(); return }
-        _editor.value = e.copy(saving = true, failed = false)
+        _editor.value = e.copy(saving = true, failure = null)
         saver.launch {
-            val ok = runCatching { write(e.values, e.cover) }.getOrDefault(false)
+            val failure = runCatching { write(e.values, e.cover) }.getOrDefault(SaveFailure.WRITE)
             withContext(Dispatchers.Main) {
-                if (ok) { _editor.value = null; onSaved() }
-                else _editor.update { it?.copy(saving = false, failed = true) }
+                if (failure == null) { _editor.value = null; onSaved() }
+                else _editor.update { it?.copy(saving = false, failure = failure) }
             }
         }
     }
 
     /**
      * Reads the tag again rather than trusting what was read on opening, and writes the edit
-     * into it. Only the fields that were changed are handed on as changed; the others keep
+     * into it; null when it landed. Only the fields that were changed are handed on as changed; the others keep
      * what the tag itself holds, which is not always what was shown - a field the tag lacks is
      * filled in on screen from ID3v1.
      *
@@ -316,18 +334,24 @@ class TrackInfoViewModel @Inject constructor(
      * platform reads either ID3v2 or ID3v1, not a mix, so a new tag holding only the edited
      * title would lose the artist and the album from every other player.
      */
-    private fun write(edited: Id3v2Writer.Values, cover: Id3v2Writer.CoverEdit): Boolean {
-        val h = repo.getContainerHandle(containerId) ?: return false
-        val size = stat(h)?.size ?: return false
+    private fun write(edited: Id3v2Writer.Values, cover: Id3v2Writer.CoverEdit): SaveFailure? {
+        val h = repo.getContainerHandle(containerId) ?: return SaveFailure.WRITE
+        val entry = stat(h) ?: return SaveFailure.WRITE
+        // Checked again here, not only on opening: the size of a link is the link's, and a
+        // write would go into it.
+        if (entry.isSymlink) return SaveFailure.WRITE
+        val size = entry.size
         val read = readId3(h, size)
         val old = read.tag
-        if (read.size > 0 && old?.rewritable != true) return false
+        if (read.size > 0 && old?.rewritable != true) return SaveFailure.WRITE
         val values = if (old == null) edited else merge(Id3v2Writer.valuesOf(old), edited)
         val rendered = Id3v2Writer.render(old, values, cover)
-        val newSize = tagWriter.write(h, path, size, old?.totalSize ?: 0, rendered) ?: return false
+        // Written in place, both names see the new tags; rewritten, only this one would.
+        if (entry.nameCount > 1 && !rendered.inPlace) return SaveFailure.LINKED
+        val newSize = tagWriter.write(h, path, size, old?.totalSize ?: 0, rendered) ?: return SaveFailure.WRITE
         if (cover != Id3v2Writer.CoverEdit.Keep) thumbnails.notifyFileChanged(containerId, path)
         tagEvents.notifySaved(TrackTagEvents.Saved(containerId, path, size, newSize))
-        return true
+        return null
     }
 
     /** [edited] where it differs from what was shown, [base] everywhere else. */

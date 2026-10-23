@@ -112,7 +112,7 @@ fun TrackInfoScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val editor by viewModel.editor.collectAsState()
-    val unsupportedTag by viewModel.unsupportedTag.collectAsState()
+    val refusal by viewModel.refusal.collectAsState()
     var askDiscard by remember { mutableStateOf(false) }
 
     // Back out of the editor, not out of the screen; edits are not dropped on a stray touch,
@@ -145,11 +145,16 @@ fun TrackInfoScreen(
             }
         )
     }
-    if (editor?.failed == true) {
+    editor?.failure?.let { failure ->
         AppDialog(
             onDismissRequest = viewModel::dismissSaveFailure,
             title = { Text(stringResource(R.string.track_info_save_failed_title)) },
-            text  = { Text(stringResource(R.string.track_info_save_failed_message)) },
+            text  = {
+                Text(stringResource(
+                    if (failure == TrackInfoViewModel.SaveFailure.LINKED) R.string.track_info_save_linked_message
+                    else R.string.track_info_save_failed_message
+                ))
+            },
             confirmButton = {
                 TextButton(onClick = viewModel::dismissSaveFailure) { Text(stringResource(R.string.common_ok)) }
             }
@@ -165,13 +170,14 @@ fun TrackInfoScreen(
             }
         )
     }
-    if (unsupportedTag) {
+    refusal?.let { why ->
+        val link = why == TrackInfoViewModel.Editability.LINK
         AppDialog(
-            onDismissRequest = viewModel::dismissUnsupportedTag,
-            title = { Text(stringResource(R.string.track_info_unsupported_title)) },
-            text  = { Text(stringResource(R.string.track_info_unsupported_message)) },
+            onDismissRequest = viewModel::dismissRefusal,
+            title = { Text(stringResource(if (link) R.string.track_info_link_title else R.string.track_info_unsupported_title)) },
+            text  = { Text(stringResource(if (link) R.string.track_info_link_message else R.string.track_info_unsupported_message)) },
             confirmButton = {
-                TextButton(onClick = viewModel::dismissUnsupportedTag) { Text(stringResource(R.string.common_ok)) }
+                TextButton(onClick = viewModel::dismissRefusal) { Text(stringResource(R.string.common_ok)) }
             }
         )
     }

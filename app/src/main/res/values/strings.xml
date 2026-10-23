@@ -616,6 +616,9 @@
     <string name="track_info_cover_vault_empty">There are no pictures in this vault\'s gallery.</string>
     <string name="track_info_cover_refused_title">Not a picture</string>
     <string name="track_info_cover_refused_message">That file could not be opened as a picture, so the cover is as it was.</string>
+    <string name="track_info_save_linked_message">This file also has another name in the vault. The new tags do not fit in the space the old ones had, and writing them would leave the other name with the old ones, so the file is left as it was.</string>
+    <string name="track_info_link_title">This track is a link</string>
+    <string name="track_info_link_message">It points to a file elsewhere. Open that file to edit its tags.</string>
     <string name="track_info_unsupported_title">This tag cannot be edited</string>
     <string name="track_info_unsupported_message">It is stored in a form Arcanum cannot write back without losing part of it, so the file is left as it is.</string>
 
