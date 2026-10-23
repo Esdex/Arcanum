@@ -95,7 +95,9 @@ class VaultDocumentsProvider : DocumentsProvider() {
             addDirRow(cursor, cid, documentId, name)
         } else {
             val info = stat(cid, path) ?: throw FileNotFoundException(documentId)
-            addFileRow(cursor, cid, info.path, info.name, info.size, info.isDirectory, info.lastModified,
+            // opensAsDirectory, as in queryChildDocuments: a link to a folder listed as a folder
+            // there must not turn into a file when it is asked about on its own.
+            addFileRow(cursor, cid, info.path, info.name, info.size, info.opensAsDirectory, info.lastModified,
                        info.isSymlink)
         }
         return cursor
