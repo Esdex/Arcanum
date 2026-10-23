@@ -913,8 +913,17 @@ jint ext4jni_write_at(JNIEnv *env, jlong handle, jstring jFilePath,
         }
         /* Not torn: nothing was written and nothing is wrong with the volume -
          * the caller asked to write into a directory. */
-        if ((rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT) == EXT4_S_IFDIR)
+        uint16_t type = rd16(inode + INODE_MODE_OFF) & EXT4_S_IFMT;
+        if (type == EXT4_S_IFDIR)
             return ERR_FS;
+        /* Nor into a symlink, FIFO or device node, and not torn either. The name is
+         * looked up without following, so a link here is the link's own inode: a
+         * long one keeps its target path in a data block, and writing there replaced
+         * the path with the caller's bytes - a link to nowhere that e2fsck passes,
+         * and whatever the caller saved gone with it. A short link and a device node
+         * keep no extent tree at all, so the write failed and tore a sound volume. */
+        if (type != EXT4_S_IFREG)
+            return ERR_UNSUPPORTED;
     }
 
     jint result = ERR_OK;

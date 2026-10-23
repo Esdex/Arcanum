@@ -95,7 +95,8 @@ class VaultDocumentsProvider : DocumentsProvider() {
             addDirRow(cursor, cid, documentId, name)
         } else {
             val info = stat(cid, path) ?: throw FileNotFoundException(documentId)
-            addFileRow(cursor, cid, info.path, info.name, info.size, info.isDirectory, info.lastModified)
+            addFileRow(cursor, cid, info.path, info.name, info.size, info.isDirectory, info.lastModified,
+                       info.isSymlink)
         }
         return cursor
     }
@@ -118,7 +119,7 @@ class VaultDocumentsProvider : DocumentsProvider() {
              */
             if (info.isSpecial || info.linkBroken) return@forEach
             addFileRow(cursor, cid, info.path, info.name, info.size,
-                       info.opensAsDirectory, info.lastModified)
+                       info.opensAsDirectory, info.lastModified, info.isSymlink)
         }
         return cursor
     }
@@ -156,6 +157,11 @@ class VaultDocumentsProvider : DocumentsProvider() {
         }
 
         if (repo.isContainerReadOnly(cid)) throw FileNotFoundException("Read-only vault: $cid")
+        // A link is read through but not written through: the write would land in the link
+        // itself (see ext4jni_write_at), and a truncating open would delete it and leave a
+        // plain file in its place, with the file it named never changed. Refused before the
+        // truncate below, which is what would delete it.
+        if (stat(cid, path)?.isSymlink == true) throw FileNotFoundException("A link: $documentId")
 
         // "w"/"wt" mean truncate-on-open; "wa" (append) and "rw" do NOT. We have no in-place
         // truncate, so for a truncating open we drop the file first and rebuild it from the incoming
@@ -325,14 +331,18 @@ class VaultDocumentsProvider : DocumentsProvider() {
         name: String,
         size: Long,
         isDir: Boolean,
-        lastModified: Long
+        lastModified: Long,
+        isLink: Boolean
     ) {
         val docId = documentId(cid, path)
         val mime = if (isDir) Document.MIME_TYPE_DIR else mimeOf(name)
         var flags = 0
         if (!repo.isContainerReadOnly(cid)) {
             flags = flags or Document.FLAG_SUPPORTS_DELETE or Document.FLAG_SUPPORTS_RENAME
-            flags = flags or if (isDir) Document.FLAG_DIR_SUPPORTS_CREATE else Document.FLAG_SUPPORTS_WRITE
+            // A link to a folder takes new files (they go in the folder); a link to a file
+            // is not offered for writing, see openDocument.
+            if (isDir) flags = flags or Document.FLAG_DIR_SUPPORTS_CREATE
+            else if (!isLink) flags = flags or Document.FLAG_SUPPORTS_WRITE
         }
         cursor.newRow().apply {
             add(Document.COLUMN_DOCUMENT_ID, docId)
