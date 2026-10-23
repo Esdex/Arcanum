@@ -97,7 +97,7 @@ import zip.arcanum.core.components.SettingsGroup
 import zip.arcanum.core.components.GroupedRow
 import zip.arcanum.core.components.GroupedBox
 
-// Settings / About: version, links, licences, what is new, and the premium page.
+// Settings / About: version, links, licences and what is new.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,7 +105,6 @@ internal fun AboutSubScreen(
     onBack: () -> Unit,
     onLicenses: () -> Unit,
     onWhatsNew: () -> Unit,
-    onDonations: () -> Unit,
     viewModel: SettingsViewModel,
     onDebugUnlocked: () -> Unit
 ) {
@@ -196,31 +195,10 @@ internal fun AboutSubScreen(
                 }
             }
 
-            // ── The three actions ────────────────────────────────────────
-            // Donating in the middle, and marked out the way it was as a row: the gold
-            // sheen slides a repeating gradient by exactly one period, so the loop closes
-            // on itself with no visible jump. It opens the app's own Donations screen
-            // rather than a website - the wallet addresses have nowhere else to live, and
-            // the app has no network permission (#66).
+            // ── The two actions ──────────────────────────────────────────
+            // No donating here: the F-Droid build has it as a row on the main list, and
+            // the Play build has been paid for.
             item {
-                // Donating is a capsule here only where it is not a row on the main list:
-                // the F-Droid build keeps it in Settings, the Play build keeps it here, and
-                // neither shows it twice.
-                val shimmer by rememberInfiniteTransition(label = "donate_border")
-                    .animateFloat(
-                        initialValue  = 0f,
-                        targetValue   = 1f,
-                        animationSpec = infiniteRepeatable(
-                            animation  = tween(2600, easing = LinearEasing),
-                            repeatMode = RepeatMode.Restart
-                        ),
-                        label = "donate_border_shift"
-                    )
-                val gold   = Color(0xFFFFC107)
-                val sheen  = Color(0xFFFFF6C2)
-                val period = 640f
-                val head   = shimmer * period
-
                 Row(
                     modifier              = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
@@ -234,23 +212,6 @@ internal fun AboutSubScreen(
                             )
                         }
                     )
-                    if (!BuildConfig.IS_FDROID) {
-                        ActionCapsule(
-                            icon       = Icons.Filled.Star,
-                            label      = stringResource(R.string.settings_about_capsule_donate),
-                            emphasised = true,
-                            onClick    = onDonations,
-                            border     = BorderStroke(
-                                width = 1.5.dp,
-                                brush = Brush.linearGradient(
-                                    colors   = listOf(gold, sheen, gold),
-                                    start    = Offset(head - period, 0f),
-                                    end      = Offset(head, 0f),
-                                    tileMode = TileMode.Repeated
-                                )
-                            )
-                        )
-                    }
                     ActionCapsule(
                         icon    = Icons.Outlined.Language,
                         label   = stringResource(R.string.settings_about_capsule_website),
@@ -323,28 +284,6 @@ internal fun AboutSubScreen(
                         )
                     }
                 }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun PremiumSubScreen(onBack: () -> Unit) {
-    SubScreenScaffold(title = stringResource(R.string.settings_card_premium), onBack = onBack) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = innerPadding.calculateTopPadding(), bottom = innerPadding.calculateBottomPadding())
-                .verticalScroll(rememberScrollState())
-                .padding(vertical = 8.dp)
-        ) {
-            SubScreenGroup {
-                SettingsRow(
-                    title   = stringResource(R.string.settings_premium_title),
-                    value   = stringResource(R.string.settings_premium_upgrade),
-                    onClick = { /* TODO: show paywall */ }
-                )
             }
         }
     }

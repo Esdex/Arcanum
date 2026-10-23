@@ -172,8 +172,6 @@
     <string name="notif_support_developer_subtitle">Consider supporting development</string>
     <string name="video_enter_fullscreen">Fullscreen</string>
     <string name="video_exit_fullscreen">Exit fullscreen</string>
-    <string name="notif_go_premium">Enjoying Arcanum?</string>
-    <string name="notif_go_premium_subtitle">Unlock the full version</string>
 
     <plurals name="notif_items_copied">
         <item quantity="one">%1$d item copied</item>
@@ -252,7 +250,6 @@
     <string name="common_gb">GB</string>
     <string name="common_this_cannot_be_undone">This cannot be undone.</string>
     <string name="common_open_vault">Open Vault</string>
-    <string name="common_pro">Pro</string>
     <string name="common_continue">Continue</string>
     <string name="common_confirm">Confirm</string>
     <string name="common_coming_soon">Coming soon</string>
@@ -737,8 +734,6 @@
     <string name="settings_card_appearance_desc">Theme, colors, AMOLED</string>
     <string name="settings_card_about">About</string>
     <string name="settings_card_about_desc">Version, licenses, GitHub</string>
-    <string name="settings_card_premium">Premium</string>
-    <string name="settings_card_premium_desc">Unlock all features</string>
     <string name="settings_card_debug">Debug</string>
     <string name="settings_card_debug_desc">Logs and developer tools</string>
     <string name="settings_about_debug_enabled">Debug mode enabled</string>
@@ -889,7 +884,6 @@
     <string name="settings_about_title">About</string>
     <string name="settings_about_app_desc">VeraCrypt-compatible encrypted vault manager for Android</string>
     <string name="settings_about_donate">Support the project</string>
-    <string name="settings_about_capsule_donate">Donate</string>
     <string name="settings_about_capsule_github">GitHub</string>
     <string name="settings_about_capsule_website">Website</string>
     <string name="settings_about_donate_desc">Donation links and wallet addresses</string>
@@ -923,8 +917,6 @@
     <string name="settings_about_privacy">Privacy Policy</string>
     <string name="settings_about_bug_report">Report a bug</string>
     <string name="settings_about_bug_report_desc">Open an issue on GitHub</string>
-    <string name="settings_premium_title">Arcanum Pro</string>
-    <string name="settings_premium_upgrade">Upgrade</string>
     <string name="settings_debug_title">Debug</string>
     <string name="settings_debug_cd_copy_all">Copy all</string>
     <string name="settings_debug_cd_refresh">Refresh</string>
@@ -1249,18 +1241,6 @@
     <string name="move_vault_retry">Retry</string>
 
     <!-- Upgrade / Pro -->
-    <string name="settings_card_premium_unlock">Unlock Pro version</string>
-    <string name="upgrade_dialog_title">Arcanum Pro</string>
-    <string name="upgrade_dialog_subtitle">Unlock the full Arcanum experience.</string>
-    <string name="upgrade_dialog_feature_containers">Unlimited encrypted containers</string>
-    <string name="upgrade_dialog_feature_amoled">AMOLED Glass frosted theme</string>
-    <string name="upgrade_dialog_feature_support">Support continued development</string>
-    <string name="upgrade_dialog_price">One-time purchase · $25</string>
-    <string name="upgrade_dialog_upgrade">Upgrade</string>
-    <string name="upgrade_overlay_cta">Upgrade · $25</string>
-    <string name="upgrade_dialog_later">Maybe Later</string>
-    <string name="upgrade_pro_feature_subtitle">Arcanum Pro feature</string>
-    <string name="upgrade_pro_locked_cd">Pro feature locked</string>
 
     <!-- PIN entry screen (when calculator disguise is disabled) -->
     <string name="pin_entry_title">Enter PIN</string>

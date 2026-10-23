@@ -109,7 +109,6 @@
     <string name="common_gb">GB</string>
     <string name="common_this_cannot_be_undone">Bu işlem geri alınamaz.</string>
     <string name="common_open_vault">Kasayı Aç</string>
-    <string name="common_pro">Pro</string>
     <string name="common_continue">Devam Et</string>
     <string name="common_confirm">Onayla</string>
     <string name="common_coming_soon">Yakında</string>
@@ -359,8 +358,6 @@
     <string name="settings_card_appearance_desc">Tema, renkler, AMOLED</string>
     <string name="settings_card_about">Hakkında</string>
     <string name="settings_card_about_desc">Sürüm, lisanslar, GitHub</string>
-    <string name="settings_card_premium">Premium</string>
-    <string name="settings_card_premium_desc">Tüm özelliklerin kilidini açın</string>
     <string name="settings_card_debug">Hata Ayıklama</string>
     <string name="settings_card_debug_desc">Günlükler ve geliştirici araçları</string>
     <string name="settings_security_title">Güvenlik</string>
@@ -423,8 +420,6 @@
     <string name="settings_about_privacy">Gizlilik Politikası</string>
     <string name="settings_about_bug_report">Hata bildir</string>
     <string name="settings_about_bug_report_desc">GitHub\'da sorun aç</string>
-    <string name="settings_premium_title">Arcanum Pro</string>
-    <string name="settings_premium_upgrade">Yükselt</string>
     <string name="settings_debug_title">Hata Ayıklama</string>
     <string name="settings_debug_cd_copy_all">Tümünü kopyala</string>
     <string name="settings_debug_cd_refresh">Yenile</string>
@@ -773,8 +768,6 @@
     <string name="notif_read_only_error_subtitle">Kasa salt okunur kipte bağlı</string>
     <string name="video_enter_fullscreen">Tam ekran</string>
     <string name="video_exit_fullscreen">Tam ekrandan çık</string>
-    <string name="notif_go_premium">Arcanum hoşunuza gidiyor mu?</string>
-    <string name="notif_go_premium_subtitle">Tam sürümü açın</string>
     <string name="common_next">İleri</string>
     <string name="common_exit">Çık</string>
     <string name="editor_save_copy">Kopya olarak kaydet</string>
@@ -1013,7 +1006,6 @@
     <string name="settings_appearance_default_tab_section">Varsayılan kasa sekmesi</string>
     <string name="settings_appearance_default_tab_desc">Kilidi açıldıktan sonra kasanın hangi sekmeyle açılacağı.</string>
     <string name="settings_about_donate">Projeye destek ol</string>
-    <string name="settings_about_capsule_donate">Bağış yap</string>
     <string name="settings_about_capsule_github">GitHub</string>
     <string name="settings_about_capsule_website">Web sitesi</string>
     <string name="settings_about_donate_desc">Bağış bağlantıları ve cüzdan adresleri</string>
@@ -1101,18 +1093,6 @@
     <string name="nav_storage">Depolama</string>
     <string name="vault_details_title">Kasa ayrıntıları</string>
     <string name="vault_unmount_dialog_title">Kasanın bağlantısı kesilsin mi?</string>
-    <string name="settings_card_premium_unlock">Pro sürümü aç</string>
-    <string name="upgrade_dialog_title">Arcanum Pro</string>
-    <string name="upgrade_dialog_subtitle">Arcanum\'u tümüyle açın.</string>
-    <string name="upgrade_dialog_feature_containers">Sınırsız şifreli kapsayıcı</string>
-    <string name="upgrade_dialog_feature_amoled">AMOLED Glass buzlu tema</string>
-    <string name="upgrade_dialog_feature_support">Sürdürülen geliştirmeye destek</string>
-    <string name="upgrade_dialog_price">Tek seferlik satın alma · 25 $</string>
-    <string name="upgrade_dialog_upgrade">Yükselt</string>
-    <string name="upgrade_overlay_cta">Yükselt · 25 $</string>
-    <string name="upgrade_dialog_later">Belki sonra</string>
-    <string name="upgrade_pro_feature_subtitle">Arcanum Pro özelliği</string>
-    <string name="upgrade_pro_locked_cd">Pro özelliği kilitli</string>
     <string name="pin_entry_title">PIN\'i girin</string>
     <string name="pin_entry_subtitle">Kilidi açmak için PIN\'inizi girin</string>
     <string name="pin_entry_label">PIN</string>

@@ -114,7 +114,6 @@
     <string name="common_gb">GB</string>
     <string name="common_this_cannot_be_undone">Cette action est irréversible.</string>
     <string name="common_open_vault">Ouvrir le coffre</string>
-    <string name="common_pro">Pro</string>
     <string name="common_continue">Continuer</string>
     <string name="common_confirm">Confirmer</string>
     <string name="common_coming_soon">Prochainement</string>
@@ -365,8 +364,6 @@
     <string name="settings_card_appearance_desc">Thème, couleurs, AMOLED</string>
     <string name="settings_card_about">À propos</string>
     <string name="settings_card_about_desc">Version, licences, GitHub</string>
-    <string name="settings_card_premium">Premium</string>
-    <string name="settings_card_premium_desc">Débloquer toutes les fonctionnalités</string>
     <string name="settings_card_debug">Débogage</string>
     <string name="settings_card_debug_desc">Journaux et outils développeur</string>
     <string name="settings_security_title">Sécurité</string>
@@ -429,8 +426,6 @@
     <string name="settings_about_privacy">Politique de confidentialité</string>
     <string name="settings_about_bug_report">Signaler un bug</string>
     <string name="settings_about_bug_report_desc">Ouvrir un ticket sur GitHub</string>
-    <string name="settings_premium_title">Arcanum Pro</string>
-    <string name="settings_premium_upgrade">Mettre à niveau</string>
     <string name="settings_debug_title">Débogage</string>
     <string name="settings_debug_cd_copy_all">Tout copier</string>
     <string name="settings_debug_cd_refresh">Actualiser</string>
@@ -781,8 +776,6 @@
     <string name="notif_read_only_error_subtitle">Le coffre est monté en lecture seule</string>
     <string name="video_enter_fullscreen">Plein écran</string>
     <string name="video_exit_fullscreen">Quitter le plein écran</string>
-    <string name="notif_go_premium">Arcanum vous plaît ?</string>
-    <string name="notif_go_premium_subtitle">Débloquez la version complète</string>
     <string name="common_next">Suivant</string>
     <string name="common_exit">Quitter</string>
     <string name="editor_save_copy">Enregistrer une copie</string>
@@ -1021,7 +1014,6 @@
     <string name="settings_appearance_default_tab_section">Onglet de coffre par défaut</string>
     <string name="settings_appearance_default_tab_desc">L\'onglet sur lequel un coffre s\'ouvre après déverrouillage.</string>
     <string name="settings_about_donate">Soutenir le projet</string>
-    <string name="settings_about_capsule_donate">Faire un don</string>
     <string name="settings_about_capsule_github">GitHub</string>
     <string name="settings_about_capsule_website">Site web</string>
     <string name="settings_about_donate_desc">Liens de don et adresses de portefeuilles</string>
@@ -1109,18 +1101,6 @@
     <string name="nav_storage">Stockage</string>
     <string name="vault_details_title">Détails du coffre</string>
     <string name="vault_unmount_dialog_title">Démonter le coffre ?</string>
-    <string name="settings_card_premium_unlock">Débloquer la version Pro</string>
-    <string name="upgrade_dialog_title">Arcanum Pro</string>
-    <string name="upgrade_dialog_subtitle">Débloquez Arcanum en entier.</string>
-    <string name="upgrade_dialog_feature_containers">Conteneurs chiffrés illimités</string>
-    <string name="upgrade_dialog_feature_amoled">Thème dépoli AMOLED Glass</string>
-    <string name="upgrade_dialog_feature_support">Soutenir le développement continu</string>
-    <string name="upgrade_dialog_price">Achat unique · 25 $</string>
-    <string name="upgrade_dialog_upgrade">Passer à Pro</string>
-    <string name="upgrade_overlay_cta">Passer à Pro · 25 $</string>
-    <string name="upgrade_dialog_later">Peut-être plus tard</string>
-    <string name="upgrade_pro_feature_subtitle">Fonction Arcanum Pro</string>
-    <string name="upgrade_pro_locked_cd">Fonction Pro verrouillée</string>
     <string name="pin_entry_title">Saisissez le PIN</string>
     <string name="pin_entry_subtitle">Saisissez votre PIN pour déverrouiller</string>
     <string name="pin_entry_label">PIN</string>

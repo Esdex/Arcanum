@@ -104,7 +104,6 @@
     <string name="common_gb">GB</string>
     <string name="common_this_cannot_be_undone">この操作は元に戻せません。</string>
     <string name="common_open_vault">ボールトを開く</string>
-    <string name="common_pro">Pro</string>
     <string name="common_continue">続ける</string>
     <string name="common_confirm">確認</string>
     <string name="common_coming_soon">近日公開</string>
@@ -353,8 +352,6 @@
     <string name="settings_card_appearance_desc">テーマ、カラー、AMOLED</string>
     <string name="settings_card_about">バージョン情報</string>
     <string name="settings_card_about_desc">バージョン、ライセンス、GitHub</string>
-    <string name="settings_card_premium">プレミアム</string>
-    <string name="settings_card_premium_desc">すべての機能をアンロック</string>
     <string name="settings_card_debug">デバッグ</string>
     <string name="settings_card_debug_desc">ログと開発者ツール</string>
     <string name="settings_security_title">セキュリティ</string>
@@ -417,8 +414,6 @@
     <string name="settings_about_privacy">プライバシーポリシー</string>
     <string name="settings_about_bug_report">バグを報告</string>
     <string name="settings_about_bug_report_desc">GitHubにIssueを開く</string>
-    <string name="settings_premium_title">Arcanum Pro</string>
-    <string name="settings_premium_upgrade">アップグレード</string>
     <string name="settings_debug_title">デバッグ</string>
     <string name="settings_debug_cd_copy_all">すべてコピー</string>
     <string name="settings_debug_cd_refresh">更新</string>
@@ -765,8 +760,6 @@
     <string name="notif_read_only_error_subtitle">ボールトは読み取り専用でマウントされています</string>
     <string name="video_enter_fullscreen">全画面</string>
     <string name="video_exit_fullscreen">全画面を終了</string>
-    <string name="notif_go_premium">Arcanum は気に入りましたか？</string>
-    <string name="notif_go_premium_subtitle">フル版を解放しましょう</string>
     <string name="common_next">次へ</string>
     <string name="common_exit">終了</string>
     <string name="editor_save_copy">コピーを保存</string>
@@ -1005,7 +998,6 @@
     <string name="settings_appearance_default_tab_section">ボールトの既定タブ</string>
     <string name="settings_appearance_default_tab_desc">ロック解除後にボールトが開くタブです。</string>
     <string name="settings_about_donate">プロジェクトを支援</string>
-    <string name="settings_about_capsule_donate">寄付する</string>
     <string name="settings_about_capsule_github">GitHub</string>
     <string name="settings_about_capsule_website">ウェブサイト</string>
     <string name="settings_about_donate_desc">寄付のリンクとウォレットアドレス</string>
@@ -1093,18 +1085,6 @@
     <string name="nav_storage">ストレージ</string>
     <string name="vault_details_title">ボールトの詳細</string>
     <string name="vault_unmount_dialog_title">ボールトをアンマウントしますか？</string>
-    <string name="settings_card_premium_unlock">Pro 版を解放</string>
-    <string name="upgrade_dialog_title">Arcanum Pro</string>
-    <string name="upgrade_dialog_subtitle">Arcanum のすべてを解放します。</string>
-    <string name="upgrade_dialog_feature_containers">暗号化コンテナを無制限に</string>
-    <string name="upgrade_dialog_feature_amoled">AMOLED Glass のすりガラステーマ</string>
-    <string name="upgrade_dialog_feature_support">開発の継続を支援</string>
-    <string name="upgrade_dialog_price">買い切り · $25</string>
-    <string name="upgrade_dialog_upgrade">アップグレード</string>
-    <string name="upgrade_overlay_cta">アップグレード · $25</string>
-    <string name="upgrade_dialog_later">あとで</string>
-    <string name="upgrade_pro_feature_subtitle">Arcanum Pro の機能</string>
-    <string name="upgrade_pro_locked_cd">Pro 機能はロックされています</string>
     <string name="pin_entry_title">PIN を入力</string>
     <string name="pin_entry_subtitle">ロックを解除するには PIN を入力してください</string>
     <string name="pin_entry_label">PIN</string>

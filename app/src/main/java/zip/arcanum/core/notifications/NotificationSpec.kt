@@ -15,7 +15,6 @@ import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.NewReleases
-import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -52,7 +51,6 @@ private val Grey   = Color(0xFF6B7280)
 private val Amber  = Color(0xFFD97706)
 private val Red    = Color(0xFFDC2626)
 private val Purple = Color(0xFF7C3AED)
-private val Gold   = Color(0xFFF5B301)
 
 /**
  * Severity is a property of the *instance*, not of the type: an export that lost part of a
@@ -103,7 +101,6 @@ val InAppNotification.severity: NotificationSeverity
         is InAppNotification.FilesAlreadyHere,
         is InAppNotification.FilesLinked,
         is InAppNotification.SupportDeveloper,
-        is InAppNotification.GoPremium,
         is InAppNotification.AppUpdated              -> NotificationSeverity.INFO
 
         else                                         -> NotificationSeverity.SUCCESS
@@ -112,7 +109,6 @@ val InAppNotification.severity: NotificationSeverity
 val InAppNotification.behaviour: NotificationBehaviour
     get() = when {
         this is InAppNotification.SupportDeveloper ||
-        this is InAppNotification.GoPremium        ||
         this is InAppNotification.AppUpdated            -> NotificationBehaviour.ANNOUNCEMENT
         /* The drive is still plugged in until the user acts on this one, so it cannot be
          * allowed to time out unseen. */
@@ -136,7 +132,6 @@ val InAppNotification.dwellMillis: Long
 val InAppNotification.color: Color
     get() = when (this) {
         is InAppNotification.SupportDeveloper, is InAppNotification.AppUpdated -> Purple
-        is InAppNotification.GoPremium                                        -> Gold
         else -> when (severity) {
             NotificationSeverity.SUCCESS -> Green
             NotificationSeverity.INFO    -> Grey
@@ -199,7 +194,6 @@ private val InAppNotification.icon: ImageVector
         is InAppNotification.ReadOnlyError           -> Icons.Outlined.AutoStories
         is InAppNotification.AppUpdated              -> Icons.Outlined.NewReleases
         is InAppNotification.SupportDeveloper        -> Icons.Outlined.Favorite
-        is InAppNotification.GoPremium               -> Icons.Outlined.Star
         else                                         -> Icons.Outlined.CheckCircle
     }
 
@@ -234,7 +228,6 @@ private fun InAppNotification.title(ctx: Context): String = when (this) {
     is InAppNotification.ReadOnlyError          -> ctx.getString(R.string.notif_read_only_error)
     is InAppNotification.AppUpdated             -> ctx.getString(R.string.notif_app_updated)
     is InAppNotification.SupportDeveloper       -> ctx.getString(R.string.notif_support_developer)
-    is InAppNotification.GoPremium              -> ctx.getString(R.string.notif_go_premium)
     is InAppNotification.FilesPasteFailed       -> ctx.getString(R.string.notif_paste_failed, failed, total)
     is InAppNotification.FilesPasted   -> ctx.resources.getQuantityString(R.plurals.notif_items_copied, count, count)
     is InAppNotification.FilesMoved    -> ctx.resources.getQuantityString(R.plurals.notif_items_moved, count, count)
@@ -277,7 +270,6 @@ private fun InAppNotification.subtitle(ctx: Context): String = when (this) {
     is InAppNotification.ReadOnlyError          -> ctx.getString(R.string.notif_read_only_error_subtitle)
     is InAppNotification.AppUpdated             -> ctx.getString(R.string.notif_app_updated_subtitle)
     is InAppNotification.SupportDeveloper       -> ctx.getString(R.string.notif_support_developer_subtitle)
-    is InAppNotification.GoPremium              -> ctx.getString(R.string.notif_go_premium_subtitle)
     is InAppNotification.FilesPasteFailed       -> ctx.getString(R.string.notif_paste_failed_subtitle)
     is InAppNotification.ImportCancelled        ->
         ctx.resources.getQuantityString(R.plurals.notif_import_cancelled_body, imported, imported)

@@ -104,7 +104,6 @@
     <string name="common_gb">GB</string>
     <string name="common_this_cannot_be_undone">此操作無法復原。</string>
     <string name="common_open_vault">開啟保險庫</string>
-    <string name="common_pro">Pro</string>
     <string name="common_continue">繼續</string>
     <string name="common_confirm">確認</string>
     <string name="common_coming_soon">即將推出</string>
@@ -353,8 +352,6 @@
     <string name="settings_card_appearance_desc">主題、色彩、AMOLED</string>
     <string name="settings_card_about">關於</string>
     <string name="settings_card_about_desc">版本、授權條款、GitHub</string>
-    <string name="settings_card_premium">進階版</string>
-    <string name="settings_card_premium_desc">解鎖所有功能</string>
     <string name="settings_card_debug">偵錯</string>
     <string name="settings_card_debug_desc">記錄檔和開發人員工具</string>
     <string name="settings_security_title">安全性</string>
@@ -417,8 +414,6 @@
     <string name="settings_about_privacy">隱私權政策</string>
     <string name="settings_about_bug_report">回報錯誤</string>
     <string name="settings_about_bug_report_desc">在 GitHub 上提交問題</string>
-    <string name="settings_premium_title">Arcanum Pro</string>
-    <string name="settings_premium_upgrade">升級</string>
     <string name="settings_debug_title">偵錯</string>
     <string name="settings_debug_cd_copy_all">複製全部</string>
     <string name="settings_debug_cd_refresh">重新整理</string>
@@ -765,8 +760,6 @@
     <string name="notif_read_only_error_subtitle">保險庫以唯讀模式掛載</string>
     <string name="video_enter_fullscreen">全螢幕</string>
     <string name="video_exit_fullscreen">結束全螢幕</string>
-    <string name="notif_go_premium">喜歡 Arcanum 嗎？</string>
-    <string name="notif_go_premium_subtitle">解鎖完整版</string>
     <string name="common_next">下一步</string>
     <string name="common_exit">離開</string>
     <string name="editor_save_copy">儲存副本</string>
@@ -1005,7 +998,6 @@
     <string name="settings_appearance_default_tab_section">保險庫預設分頁</string>
     <string name="settings_appearance_default_tab_desc">解鎖後保險庫開啟時所在的分頁。</string>
     <string name="settings_about_donate">支持這個專案</string>
-    <string name="settings_about_capsule_donate">贊助</string>
     <string name="settings_about_capsule_github">GitHub</string>
     <string name="settings_about_capsule_website">網站</string>
     <string name="settings_about_donate_desc">贊助連結與錢包位址</string>
@@ -1093,18 +1085,6 @@
     <string name="nav_storage">儲存</string>
     <string name="vault_details_title">保險庫詳細資料</string>
     <string name="vault_unmount_dialog_title">要卸載保險庫嗎？</string>
-    <string name="settings_card_premium_unlock">解鎖 Pro 版</string>
-    <string name="upgrade_dialog_title">Arcanum Pro</string>
-    <string name="upgrade_dialog_subtitle">完整解鎖 Arcanum。</string>
-    <string name="upgrade_dialog_feature_containers">不限數量的加密容器</string>
-    <string name="upgrade_dialog_feature_amoled">AMOLED Glass 霧面主題</string>
-    <string name="upgrade_dialog_feature_support">支持持續開發</string>
-    <string name="upgrade_dialog_price">單次購買 · $25</string>
-    <string name="upgrade_dialog_upgrade">升級</string>
-    <string name="upgrade_overlay_cta">升級 · $25</string>
-    <string name="upgrade_dialog_later">以後再說</string>
-    <string name="upgrade_pro_feature_subtitle">Arcanum Pro 功能</string>
-    <string name="upgrade_pro_locked_cd">Pro 功能已鎖定</string>
     <string name="pin_entry_title">輸入 PIN</string>
     <string name="pin_entry_subtitle">請輸入您的 PIN 以解鎖</string>
     <string name="pin_entry_label">PIN</string>

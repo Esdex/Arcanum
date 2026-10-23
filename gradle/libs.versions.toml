@@ -34,7 +34,6 @@ metadataExtractor = "2.19.0"
 palette = "1.0.0"
 aboutlibraries = "14.2.1"
 bouncycastle = "1.79"
-billing = "7.1.1"
 sqlcipher = "4.9.0"
 aire = "0.18.1"
 
@@ -85,7 +84,6 @@ metadata-extractor = { module = "com.drewnoakes:metadata-extractor", version.ref
 androidx-palette = { group = "androidx.palette", name = "palette", version.ref = "palette" }
 aboutlibraries-compose-m3 = { group = "com.mikepenz", name = "aboutlibraries-compose-m3", version.ref = "aboutlibraries" }
 bouncycastle-provider = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
-billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 # net.zetetic:android-database-sqlcipher is the retired artifact, frozen at 4.5.4, whose
 # libsqlcipher.so is aligned to 4 KB pages. Google Play has required 16 KB since November
 # 2025, so it cannot be submitted. sqlcipher-android is the maintained replacement and its

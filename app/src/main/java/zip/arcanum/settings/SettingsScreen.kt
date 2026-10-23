@@ -63,7 +63,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import zip.arcanum.BuildConfig
 import zip.arcanum.R
-import zip.arcanum.core.components.UpgradeOverlay
 import zip.arcanum.core.components.BackButton
 import zip.arcanum.core.components.rememberCollapsedLargeTopBarBehavior
 import zip.arcanum.core.components.SettingsGroup
@@ -74,7 +73,7 @@ import zip.arcanum.core.components.GroupedRoundIcon
 // Each sub-screen lives in a file of its own beside this one.
 
 private enum class SubScreen {
-    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, GALLERY, TEXT_EDITOR, VIDEO_PLAYER, BACKUP, BACKUP_SAVE, ABOUT, LICENSES, WHATS_NEW, DONATIONS, PREMIUM, DEBUG
+    SECURITY, CHANGE_PIN, PANIC_MODE, SET_PANIC_PIN, APPEARANCE, GALLERY, TEXT_EDITOR, VIDEO_PLAYER, BACKUP, BACKUP_SAVE, ABOUT, LICENSES, WHATS_NEW, DONATIONS, DEBUG
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,17 +84,14 @@ fun SettingsScreen(
     panicViewModel: PanicModeViewModel = hiltViewModel(),
     openWhatsNew:   Boolean = false,
     openDonations:  Boolean = false,
-    openPremium:    Boolean = false,
     openAbout:      Boolean = false
 ) {
     var subScreen by remember { mutableStateOf<SubScreen?>(null) }
     // Where a screen with two entrances came from. Null means the main list, which is
     // also where a notification's deep link belongs - it never passed through About.
-    var donationsFrom by remember { mutableStateOf<SubScreen?>(null) }
     var whatsNewFrom  by remember { mutableStateOf<SubScreen?>(null) }
     LaunchedEffect(openWhatsNew)  { if (openWhatsNew)  subScreen = SubScreen.WHATS_NEW }
     LaunchedEffect(openDonations) { if (openDonations) subScreen = SubScreen.DONATIONS }
-    LaunchedEffect(openPremium)   { if (openPremium)   subScreen = SubScreen.PREMIUM }
     LaunchedEffect(openAbout)     { if (openAbout)     subScreen = SubScreen.ABOUT }
     val autoLockEnabled         by viewModel.autoLockEnabled.collectAsState()
     val autoLockDelayIndex      by viewModel.autoLockDelayIndex.collectAsState()
@@ -107,7 +103,6 @@ fun SettingsScreen(
     val screenCaptureProtection by viewModel.screenCaptureProtection.collectAsState()
     val disguiseApplied         by viewModel.disguiseApplied.collectAsState()
     val debugMode               by viewModel.debugMode.collectAsState()
-    val isPro                   by viewModel.isPro.collectAsState()
     BackHandler(enabled = subScreen != null) {
         subScreen = when (subScreen) {
             SubScreen.SET_PANIC_PIN -> SubScreen.PANIC_MODE
@@ -115,10 +110,6 @@ fun SettingsScreen(
             SubScreen.LICENSES      -> SubScreen.ABOUT
             SubScreen.BACKUP_SAVE   -> SubScreen.BACKUP
             SubScreen.WHATS_NEW     -> whatsNewFrom
-            // Not always About: the F-Droid build reaches this from the main list, and a
-            // notification can reach it from nowhere at all. The button on the screen and
-            // the system's own back have to agree, so both read the same thing.
-            SubScreen.DONATIONS     -> donationsFrom
             else                    -> null
         }
     }
@@ -168,7 +159,6 @@ fun SettingsScreen(
                 isAmoledGlass      = isAmoledGlass,
                 isDynamicColor     = isDynamicColor,
                 defaultContainerTab = defaultContainerTab,
-                isPro              = isPro,
                 onThemeMode        = { viewModel.setThemeMode(it) },
                 onAmoledGlass      = { viewModel.setAmoledGlass(it) },
                 onDynamicColor     = { viewModel.setDynamicColor(it) },
@@ -228,29 +218,22 @@ fun SettingsScreen(
                 onBack          = { subScreen = null },
                 onLicenses      = { subScreen = SubScreen.LICENSES },
                 onWhatsNew      = { whatsNewFrom = SubScreen.ABOUT; subScreen = SubScreen.WHATS_NEW },
-                onDonations     = { donationsFrom = SubScreen.ABOUT; subScreen = SubScreen.DONATIONS },
                 viewModel       = viewModel,
                 onDebugUnlocked = { subScreen = SubScreen.DEBUG }
             )
             SubScreen.LICENSES  -> LicensesScreen(onBack = { subScreen = SubScreen.ABOUT })
             SubScreen.WHATS_NEW -> WhatsNewSubScreen(onBack = { subScreen = whatsNewFrom })
 
-            // Back from Donations goes wherever it was opened from: About, or the main
-            // list when the F-Droid row led here.
-            SubScreen.DONATIONS -> DonationsSubScreen(onBack = { subScreen = donationsFrom })
-            SubScreen.PREMIUM -> PremiumSubScreen(onBack = { subScreen = null })
+            // F-Droid only: reached from the main list, or from the support banner.
+            SubScreen.DONATIONS -> DonationsSubScreen(onBack = { subScreen = null })
             SubScreen.DEBUG   -> DebugSubScreen(
                 viewModel = viewModel,
                 onBack    = { subScreen = null }
             )
             null              -> MainSettingsScreen(
                 onBack     = onBack,
-                onNavigate = { target ->
-                    if (target == SubScreen.DONATIONS) donationsFrom = null
-                    subScreen = target
-                },
-                debugMode  = debugMode,
-                isPro      = isPro
+                onNavigate = { subScreen = it },
+                debugMode  = debugMode
             )
         }
     }
@@ -292,10 +275,8 @@ private object SettingsHue {
 private fun MainSettingsScreen(
     onBack: () -> Unit,
     onNavigate: (SubScreen) -> Unit,
-    debugMode: Boolean,
-    isPro: Boolean
+    debugMode: Boolean
 ) {
-    var showUpgradeOverlay by remember { mutableStateOf(false) }
     val scrollBehavior = rememberCollapsedLargeTopBarBehavior()
 
     Scaffold(
@@ -317,9 +298,6 @@ private fun MainSettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            if (!BuildConfig.IS_FDROID && !isPro) {
-                PremiumBannerCard(onClick = { showUpgradeOverlay = true })
-            }
             // Grouped the way Android's own Settings groups its sections: no headings, a
             // round icon of its own colour on each row, and the gap between groups doing the
             // sorting. Protection first, then how it looks, then what it is.
@@ -473,12 +451,8 @@ private fun MainSettingsScreen(
                 }
             }
 
-            // No gold border here: on a list this short the row is loud enough by itself,
-            // and the sheen is kept for the capsule on About, where it has neighbours to
-            // stand out from. Donating lives on the main list only in F-Droid. On Play, an app
-            // that collects donations outside Play Billing is a review risk unless it
-            // belongs to a registered charity, and the first screen a reviewer opens is
-            // not the place to test that - there it stays on About, as before.
+            // Donating is F-Droid only. Someone who got the app from Play has paid for it
+            // already, so the Play build asks for nothing, here or on About.
             if (BuildConfig.IS_FDROID) {
                 Spacer(Modifier.height(16.dp))
 
@@ -502,55 +476,6 @@ private fun MainSettingsScreen(
             }
 
             Spacer(Modifier.height(16.dp))
-        }
-    }
-
-    if (showUpgradeOverlay) {
-        UpgradeOverlay(onDismiss = { showUpgradeOverlay = false })
-    }
-}
-
-@Composable
-private fun PremiumBannerCard(onClick: () -> Unit) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed         by interactionSource.collectIsPressedAsState()
-    val scale             by animateFloatAsState(
-        targetValue   = if (isPressed) 0.97f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label         = "premium_banner_scale"
-    )
-
-    Card(
-        onClick           = onClick,
-        interactionSource = interactionSource,
-        shape             = RoundedCornerShape(16.dp),
-        colors            = CardDefaults.cardColors(containerColor = Color(0xFFF57F17)),
-        elevation         = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier          = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp)
-            .scale(scale)
-    ) {
-        Row(
-            modifier          = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector        = Icons.Outlined.Stars,
-                contentDescription = null,
-                tint               = Color.White,
-                modifier           = Modifier.size(28.dp)
-            )
-            Spacer(Modifier.width(12.dp))
-            Text(
-                text       = stringResource(R.string.settings_card_premium_unlock),
-                style      = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold,
-                color      = Color.White,
-                maxLines   = 1
-            )
         }
     }
 }

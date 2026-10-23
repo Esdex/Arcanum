@@ -119,7 +119,6 @@
     <string name="common_gb">GB</string>
     <string name="common_this_cannot_be_undone">Цю дію не можна скасувати.</string>
     <string name="common_open_vault">Відкрити сховище</string>
-    <string name="common_pro">Pro</string>
     <string name="common_continue">Продовжити</string>
     <string name="common_confirm">Підтвердити</string>
     <string name="common_coming_soon">Незабаром</string>
@@ -371,8 +370,6 @@
     <string name="settings_card_appearance_desc">Тема, кольори, AMOLED</string>
     <string name="settings_card_about">Про додаток</string>
     <string name="settings_card_about_desc">Версія, ліцензії, GitHub</string>
-    <string name="settings_card_premium">Premium</string>
-    <string name="settings_card_premium_desc">Розблокувати всі функції</string>
     <string name="settings_card_debug">Налагодження</string>
     <string name="settings_card_debug_desc">Журнали та інструменти розробника</string>
     <string name="settings_security_title">Безпека</string>
@@ -435,8 +432,6 @@
     <string name="settings_about_privacy">Політика конфіденційності</string>
     <string name="settings_about_bug_report">Повідомити про помилку</string>
     <string name="settings_about_bug_report_desc">Відкрити проблему на GitHub</string>
-    <string name="settings_premium_title">Arcanum Pro</string>
-    <string name="settings_premium_upgrade">Оновити</string>
     <string name="settings_debug_title">Налагодження</string>
     <string name="settings_debug_cd_copy_all">Копіювати все</string>
     <string name="settings_debug_cd_refresh">Оновити</string>
@@ -789,8 +784,6 @@
     <string name="notif_read_only_error_subtitle">Сховище підключене в режимі лише для читання</string>
     <string name="video_enter_fullscreen">На весь екран</string>
     <string name="video_exit_fullscreen">Вийти з повноекранного режиму</string>
-    <string name="notif_go_premium">Подобається Arcanum?</string>
-    <string name="notif_go_premium_subtitle">Відкрийте повну версію</string>
     <string name="common_next">Далі</string>
     <string name="common_exit">Вийти</string>
     <string name="editor_save_copy">Зберегти копію</string>
@@ -1029,7 +1022,6 @@
     <string name="settings_appearance_default_tab_section">Типова вкладка сховища</string>
     <string name="settings_appearance_default_tab_desc">З якої вкладки відкривається сховище після розблокування.</string>
     <string name="settings_about_donate">Підтримати проєкт</string>
-    <string name="settings_about_capsule_donate">Пожертвувати</string>
     <string name="settings_about_capsule_github">GitHub</string>
     <string name="settings_about_capsule_website">Сайт</string>
     <string name="settings_about_donate_desc">Посилання для пожертв та адреси гаманців</string>
@@ -1117,18 +1109,6 @@
     <string name="nav_storage">Зберігання</string>
     <string name="vault_details_title">Відомості про сховище</string>
     <string name="vault_unmount_dialog_title">Відключити сховище?</string>
-    <string name="settings_card_premium_unlock">Відкрити версію Pro</string>
-    <string name="upgrade_dialog_title">Arcanum Pro</string>
-    <string name="upgrade_dialog_subtitle">Відкрийте Arcanum повністю.</string>
-    <string name="upgrade_dialog_feature_containers">Необмежена кількість зашифрованих контейнерів</string>
-    <string name="upgrade_dialog_feature_amoled">Матова тема AMOLED Glass</string>
-    <string name="upgrade_dialog_feature_support">Підтримка подальшої розробки</string>
-    <string name="upgrade_dialog_price">Разова покупка · $25</string>
-    <string name="upgrade_dialog_upgrade">Оновити</string>
-    <string name="upgrade_overlay_cta">Оновити · $25</string>
-    <string name="upgrade_dialog_later">Можливо, пізніше</string>
-    <string name="upgrade_pro_feature_subtitle">Можливість Arcanum Pro</string>
-    <string name="upgrade_pro_locked_cd">Можливість Pro недоступна</string>
     <string name="pin_entry_title">Введіть PIN</string>
     <string name="pin_entry_subtitle">Введіть PIN для розблокування</string>
     <string name="pin_entry_label">PIN</string>

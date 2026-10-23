@@ -51,7 +51,6 @@ import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.LocalHazeState
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.rememberModalBottomSheetState
-import zip.arcanum.core.components.UpgradeOverlay
 import zip.arcanum.core.navigation_components.DefaultContainerTab
 import zip.arcanum.core.theme.ThemeMode
 import androidx.appcompat.app.AppCompatDelegate
@@ -91,14 +90,12 @@ internal fun AppearanceSubScreen(
     isAmoledGlass: Boolean,
     isDynamicColor: Boolean,
     defaultContainerTab: DefaultContainerTab,
-    isPro: Boolean,
     onThemeMode: (ThemeMode) -> Unit,
     onAmoledGlass: (Boolean) -> Unit,
     onDynamicColor: (Boolean) -> Unit,
     onDefaultContainerTab: (DefaultContainerTab) -> Unit,
     onBack: () -> Unit
 ) {
-    var showUpgradeDialog by remember { mutableStateOf(false) }
     val isDark = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.DARK   -> true
@@ -149,29 +146,13 @@ internal fun AppearanceSubScreen(
                 // AMOLED is a dark-theme setting and simply is not there in a light one.
                 if (isDark) {
                     row { shape ->
-                        if (isPro) {
-                            GroupedSwitch(
-                                shape           = shape,
-                                title           = stringResource(R.string.settings_appearance_amoled),
-                                subtitle        = stringResource(R.string.settings_appearance_amoled_desc),
-                                checked         = isAmoledGlass,
-                                onCheckedChange = onAmoledGlass
-                            )
-                        } else {
-                            // Locked rather than absent: the padlock in the switch is the
-                            // whole message, and a tap on the row explains the rest. The row
-                            // takes that tap itself rather than an overlay on top of it, so
-                            // anything else in the row keeps its own taps.
-                            GroupedSwitch(
-                                shape           = shape,
-                                title           = stringResource(R.string.settings_appearance_amoled),
-                                subtitle        = stringResource(R.string.upgrade_pro_feature_subtitle),
-                                checked         = false,
-                                enabled         = false,
-                                onCheckedChange = {},
-                                onDisabledClick = { showUpgradeDialog = true }
-                            )
-                        }
+                        GroupedSwitch(
+                            shape           = shape,
+                            title           = stringResource(R.string.settings_appearance_amoled),
+                            subtitle        = stringResource(R.string.settings_appearance_amoled_desc),
+                            checked         = isAmoledGlass,
+                            onCheckedChange = onAmoledGlass
+                        )
                     }
                 }
                 row { shape ->
@@ -191,10 +172,6 @@ internal fun AppearanceSubScreen(
                     color    = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
                 )
-            }
-
-            if (showUpgradeDialog) {
-                UpgradeOverlay(onDismiss = { showUpgradeDialog = false })
             }
 
             SettingsGroup(title = stringResource(R.string.settings_appearance_language_section)) {

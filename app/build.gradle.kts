@@ -108,13 +108,11 @@ android {
             dimension = "distribution"
             buildConfigField("Boolean", "IS_FDROID", "true")
             buildConfigField("Boolean", "IS_PLAYSTORE", "false")
-            buildConfigField("Boolean", "HAS_BILLING", "false")
         }
         create("playstore") {
             dimension = "distribution"
             buildConfigField("Boolean", "IS_FDROID", "false")
             buildConfigField("Boolean", "IS_PLAYSTORE", "true")
-            buildConfigField("Boolean", "HAS_BILLING", "true")
         }
     }
 
@@ -201,9 +199,6 @@ dependencies {
 
     // Palette (dominant color extraction for audio player)
     implementation(libs.androidx.palette)
-
-    // Play Billing — playstore flavor only (F-Droid must not include this)
-    "playstoreImplementation"(libs.billing.ktx)
 
     // Image processing (Sharpness + Denoise for photo editor)
     implementation(libs.aire)

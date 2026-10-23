@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.core.navigation_components.DefaultContainerTab
 import zip.arcanum.core.security.AppPreferences
 import zip.arcanum.core.security.TextEditorPrefs
@@ -41,7 +40,6 @@ class SettingsViewModel @Inject constructor(
     private val biometricAuth: BiometricAuth,
     private val pinManager: PinManager,
     private val disguiseManager: DisguiseManager,
-    private val billingManager: BillingManagerInterface,
     private val idleMonitor: IdleMonitor,
     private val sessionState: SessionState,
     private val lockController: LockController,
@@ -49,8 +47,6 @@ class SettingsViewModel @Inject constructor(
     private val traceCleaner: zip.arcanum.core.security.VaultTraceCleaner,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
-
-    val isPro = billingManager.isPro
 
     /**
      * The "what's new" notification is answered rather than dismissed: it keeps coming back

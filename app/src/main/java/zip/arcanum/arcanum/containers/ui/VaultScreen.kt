@@ -148,7 +148,6 @@ import zip.arcanum.core.components.groupShape
 import zip.arcanum.core.components.AppSheet
 import zip.arcanum.core.components.EmptyStateView
 import zip.arcanum.core.components.LocalHazeState
-import zip.arcanum.core.components.UpgradeOverlay
 import zip.arcanum.core.icons.ArcanumIcons
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.notifications.InAppNotification
@@ -186,14 +185,12 @@ fun VaultScreen(
     onAutoMountHandled: () -> Unit = {},
     onOpenWhatsNew: () -> Unit = {},
     onOpenDonations: () -> Unit = {},
-    onOpenPremium: () -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context              = LocalContext.current
     val containers           by viewModel.containers.collectAsState()
     val missingIds           by viewModel.missingContainerIds.collectAsState()
     val pendingRelocate      by viewModel.pendingRelocate.collectAsState()
-    val canAddMoreContainers by viewModel.canAddMoreContainers.collectAsState()
     val addVaultResult       by viewModel.addVaultResult.collectAsState()
     val usbLayout            by viewModel.usbLayout.collectAsState()
     val sortState            by viewModel.sortState.collectAsState()
@@ -215,7 +212,6 @@ fun VaultScreen(
     var selectedIds        by remember { mutableStateOf(emptySet<String>()) }
     var showForgetSelectedDialog by remember { mutableStateOf(false) }
     var contextMenuContainerId   by remember { mutableStateOf<String?>(null) }
-    var showUpgradeDialog            by remember { mutableStateOf(false) }
     var containerNotFound            by remember { mutableStateOf<ContainerEntity?>(null) }
     var showRemoveNotFoundConfirm    by remember { mutableStateOf(false) }
     var showOpenVaultSheet           by remember { mutableStateOf(false) }
@@ -300,14 +296,13 @@ fun VaultScreen(
         onAutoMountHandled()
     }
 
-    // Convert add-vault result to notification (or upgrade dialog for limit)
+    // Convert add-vault result to notification
     LaunchedEffect(addVaultResult) {
         val result = addVaultResult ?: return@LaunchedEffect
         when (result) {
             is VaultViewModel.AddVaultResult.Added         -> notifications.notify(InAppNotification.VaultAdded(result.fileName))
             is VaultViewModel.AddVaultResult.AlreadyExists -> notifications.notify(InAppNotification.VaultAlreadyExists(result.fileName))
             VaultViewModel.AddVaultResult.InvalidFile      -> notifications.notify(InAppNotification.VaultInvalidFile)
-            VaultViewModel.AddVaultResult.LimitReached     -> showUpgradeDialog = true
             is VaultViewModel.AddVaultResult.Error         -> notifications.notify(InAppNotification.VaultAddError(result.message))
             is VaultViewModel.AddVaultResult.Relocated     -> notifications.notify(
                 if (result.sizeChanged) InAppNotification.VaultRelocatedSizeDiffers(result.fileName)
@@ -588,7 +583,6 @@ fun VaultScreen(
                 horizontalAlignment  = Alignment.End
             ) {
                 // "Generate keyfile" — top, appears last (100 ms delay).
-                // Not gated by canAddMoreContainers: a keyfile is not a vault.
                 AnimatedVisibility(
                     visible = fabExpanded,
                     enter   = slideInVertically(
@@ -620,8 +614,7 @@ fun VaultScreen(
                         label   = stringResource(R.string.vault_fab_open_existing),
                         onClick = {
                             fabExpanded = false
-                            if (canAddMoreContainers) showOpenVaultSheet = true
-                            else showUpgradeDialog = true
+                            showOpenVaultSheet = true
                         }
                     )
                 }
@@ -639,8 +632,7 @@ fun VaultScreen(
                         label   = stringResource(R.string.vault_fab_create_new),
                         onClick = {
                             fabExpanded = false
-                            if (canAddMoreContainers) onCreateContainer()
-                            else showUpgradeDialog = true
+                            onCreateContainer()
                         }
                     )
                 }
@@ -726,11 +718,6 @@ fun VaultScreen(
                         }
                     }
                 )
-            }
-
-            // ── Upgrade overlay ───────────────────────────────────────────────
-            if (showUpgradeDialog) {
-                UpgradeOverlay(onDismiss = { showUpgradeDialog = false })
             }
 
             // ── Rename ────────────────────────────────────────────────────────

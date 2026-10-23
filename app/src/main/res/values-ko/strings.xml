@@ -104,7 +104,6 @@
     <string name="common_gb">GB</string>
     <string name="common_this_cannot_be_undone">이 작업은 취소할 수 없습니다.</string>
     <string name="common_open_vault">보관함 열기</string>
-    <string name="common_pro">Pro</string>
     <string name="common_continue">계속</string>
     <string name="common_confirm">확인</string>
     <string name="common_coming_soon">곧 출시 예정</string>
@@ -353,8 +352,6 @@
     <string name="settings_card_appearance_desc">테마, 색상, AMOLED</string>
     <string name="settings_card_about">정보</string>
     <string name="settings_card_about_desc">버전, 라이선스, GitHub</string>
-    <string name="settings_card_premium">프리미엄</string>
-    <string name="settings_card_premium_desc">모든 기능 잠금 해제</string>
     <string name="settings_card_debug">디버그</string>
     <string name="settings_card_debug_desc">로그 및 개발자 도구</string>
     <string name="settings_security_title">보안</string>
@@ -417,8 +414,6 @@
     <string name="settings_about_privacy">개인정보 처리방침</string>
     <string name="settings_about_bug_report">버그 신고</string>
     <string name="settings_about_bug_report_desc">GitHub에서 이슈 열기</string>
-    <string name="settings_premium_title">Arcanum Pro</string>
-    <string name="settings_premium_upgrade">업그레이드</string>
     <string name="settings_debug_title">디버그</string>
     <string name="settings_debug_cd_copy_all">모두 복사</string>
     <string name="settings_debug_cd_refresh">새로고침</string>
@@ -765,8 +760,6 @@
     <string name="notif_read_only_error_subtitle">보관함이 읽기 전용으로 마운트되어 있습니다</string>
     <string name="video_enter_fullscreen">전체 화면</string>
     <string name="video_exit_fullscreen">전체 화면 종료</string>
-    <string name="notif_go_premium">Arcanum이 마음에 드시나요?</string>
-    <string name="notif_go_premium_subtitle">정식 버전을 여세요</string>
     <string name="common_next">다음</string>
     <string name="common_exit">나가기</string>
     <string name="editor_save_copy">사본으로 저장</string>
@@ -1005,7 +998,6 @@
     <string name="settings_appearance_default_tab_section">기본 보관함 탭</string>
     <string name="settings_appearance_default_tab_desc">잠금 해제 후 보관함이 열릴 탭입니다.</string>
     <string name="settings_about_donate">프로젝트 후원</string>
-    <string name="settings_about_capsule_donate">후원하기</string>
     <string name="settings_about_capsule_github">GitHub</string>
     <string name="settings_about_capsule_website">웹사이트</string>
     <string name="settings_about_donate_desc">후원 링크와 지갑 주소</string>
@@ -1093,18 +1085,6 @@
     <string name="nav_storage">저장소</string>
     <string name="vault_details_title">보관함 세부 정보</string>
     <string name="vault_unmount_dialog_title">보관함을 마운트 해제할까요?</string>
-    <string name="settings_card_premium_unlock">Pro 버전 열기</string>
-    <string name="upgrade_dialog_title">Arcanum Pro</string>
-    <string name="upgrade_dialog_subtitle">Arcanum을 온전히 여세요.</string>
-    <string name="upgrade_dialog_feature_containers">암호화 컨테이너 무제한</string>
-    <string name="upgrade_dialog_feature_amoled">AMOLED Glass 반투명 테마</string>
-    <string name="upgrade_dialog_feature_support">이어지는 개발을 후원</string>
-    <string name="upgrade_dialog_price">1회 구매 · $25</string>
-    <string name="upgrade_dialog_upgrade">업그레이드</string>
-    <string name="upgrade_overlay_cta">업그레이드 · $25</string>
-    <string name="upgrade_dialog_later">나중에</string>
-    <string name="upgrade_pro_feature_subtitle">Arcanum Pro 기능</string>
-    <string name="upgrade_pro_locked_cd">Pro 기능이 잠겨 있습니다</string>
     <string name="pin_entry_title">PIN 입력</string>
     <string name="pin_entry_subtitle">잠금을 해제하려면 PIN을 입력하세요</string>
     <string name="pin_entry_label">PIN</string>

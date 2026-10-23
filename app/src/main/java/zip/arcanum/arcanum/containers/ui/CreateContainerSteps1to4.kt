@@ -21,7 +21,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Usb
@@ -571,14 +570,11 @@ fun SelectionCard(
     title: String,
     description: String,
     onClick: () -> Unit,
-    /** Premium-gated: draws the lock and the Pro badge. Not the same as unavailable. */
-    locked: Boolean = false,
-    /** Simply not available right now - dimmed, with nothing implied about Pro. */
+    /** Not available right now: dimmed and not tappable. */
     enabled: Boolean = true
 ) {
     val borderColor = when {
         selected -> MaterialTheme.colorScheme.primary
-        locked   -> MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
         else     -> MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
     }
     Card(
@@ -606,12 +602,6 @@ fun SelectionCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (locked) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Outlined.Lock, contentDescription = stringResource(R.string.common_pro), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                    Text(stringResource(R.string.common_pro), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                }
             }
         }
     }

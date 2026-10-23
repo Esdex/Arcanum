@@ -32,7 +32,6 @@ import kotlinx.coroutines.launch
 
 import zip.arcanum.arcanum.containers.data.ContainerRepository
 import zip.arcanum.arcanum.containers.domain.Container
-import zip.arcanum.billing.BillingManagerInterface
 import zip.arcanum.BuildConfig
 import zip.arcanum.core.database.entities.ContainerEntity
 import zip.arcanum.core.security.AppPreferences
@@ -55,7 +54,6 @@ class VaultViewModel @Inject constructor(
     private val cryptoEngine: VeraCryptEngine,
     private val biometricCryptoManager: BiometricCryptoManager,
     private val biometricAuth: BiometricAuth,
-    private val billingManager: BillingManagerInterface,
     private val mountLogger: MountLogger,
     private val prefs: AppPreferences,
     private val usbVolumes: zip.arcanum.usb.UsbVolumeManager,
@@ -114,13 +112,14 @@ class VaultViewModel @Inject constructor(
     }
 
     // ── Support prompt ────────────────────────────────────────────────────
-    // A day after the user first got to the vault list, then once a month. On the Play
-    // flavour the ask is to buy the full version instead of to donate.
+    // A day after the user first got to the vault list, then once a month. F-Droid only:
+    // someone who got the app from Play has already paid for it, and is not asked again.
 
     private val _supportPrompt = MutableStateFlow<InAppNotification?>(null)
     val supportPrompt: StateFlow<InAppNotification?> = _supportPrompt.asStateFlow()
 
     fun checkSupportPrompt() {
+        if (!BuildConfig.IS_FDROID) return
         viewModelScope.launch {
             val now = System.currentTimeMillis()
 
@@ -138,12 +137,7 @@ class VaultViewModel @Inject constructor(
             val lastShown = prefs.lastSupportPromptAt.first()
             if (lastShown != null && now - lastShown < PROMPT_INTERVAL_MS) return@launch
 
-            // Nothing to sell to someone who already bought it.
-            if (BuildConfig.HAS_BILLING && billingManager.isPro.value) return@launch
-
-            _supportPrompt.value =
-                if (BuildConfig.HAS_BILLING) InAppNotification.GoPremium
-                else InAppNotification.SupportDeveloper
+            _supportPrompt.value = InAppNotification.SupportDeveloper
         }
     }
 
@@ -182,10 +176,6 @@ class VaultViewModel @Inject constructor(
             )
         }
     }
-
-    val canAddMoreContainers = combine(repo.getAllContainersRaw(), billingManager.isPro) { list, pro ->
-        pro || list.size < 2
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     val containers = combine(repo.getAllContainersRaw(), _sortState) { list, sort ->
         var sorted = when (sort.sortBy) {
@@ -620,7 +610,6 @@ class VaultViewModel @Inject constructor(
         data class Added(val fileName: String)         : AddVaultResult
         data class AlreadyExists(val fileName: String) : AddVaultResult
         data object InvalidFile                        : AddVaultResult
-        data object LimitReached                       : AddVaultResult
         data class Error(val message: String)          : AddVaultResult
         /** No USB drive is attached; the user is asked to plug one in and retry. */
         data object NoUsbDrive                         : AddVaultResult
@@ -633,10 +622,6 @@ class VaultViewModel @Inject constructor(
 
     fun addContainerFromPath(path: String) {
         viewModelScope.launch {
-            if (!billingManager.isPro.value && repo.getAllContainersRaw().first().size >= 2) {
-                _addVaultResult.value = AddVaultResult.LimitReached
-                return@launch
-            }
             val file = java.io.File(path)
             val size = file.length()
             if (!file.exists() || size < 131072L || size % 512 != 0L) {
@@ -658,10 +643,6 @@ class VaultViewModel @Inject constructor(
 
     fun addContainerFromUri(uri: Uri) {
         viewModelScope.launch {
-            if (!billingManager.isPro.value && repo.getAllContainersRaw().first().size >= 2) {
-                _addVaultResult.value = AddVaultResult.LimitReached
-                return@launch
-            }
             val safUri = zip.arcanum.core.utils.FileUtils.normalizeSafUri(uri).toString()
             val docId  = zip.arcanum.core.utils.FileUtils.safUriDocumentId(uri)
             val alreadyExists = if (docId != null) {
@@ -876,10 +857,6 @@ class VaultViewModel @Inject constructor(
      */
     fun addUsbContainer(partition: zip.arcanum.usb.UsbPartition? = null) {
         viewModelScope.launch {
-            if (!billingManager.isPro.value && repo.getAllContainersRaw().first().size >= 2) {
-                _addVaultResult.value = AddVaultResult.LimitReached
-                return@launch
-            }
             val identity = usbVolumes.identifyAttachedDrive(partition).getOrElse { e ->
                 _addVaultResult.value =
                     if (e is zip.arcanum.usb.UsbVolumeManager.NoDriveException) AddVaultResult.NoUsbDrive

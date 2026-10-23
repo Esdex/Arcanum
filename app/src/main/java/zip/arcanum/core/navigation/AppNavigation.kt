@@ -338,9 +338,6 @@ fun AppNavigation(
                 },
                 onOpenDonations           = {
                     navController.navigate(Screen.Donations.route)
-                },
-                onOpenPremium             = {
-                    navController.navigate(Screen.Premium.route)
                 }
             )
         }
@@ -541,7 +538,7 @@ fun AppNavigation(
             )
         }
 
-        // ── Donations / Premium (Settings opened at the matching subscreen) ──
+        // ── Donations (Settings opened at its subscreen) ──
         composable(
             route             = Screen.Donations.route,
             enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
@@ -563,18 +560,6 @@ fun AppNavigation(
                 onBack    = { navController.popBackStack() },
                 viewModel = settingsViewModel,
                 openAbout = true
-            )
-        }
-
-        composable(
-            route             = Screen.Premium.route,
-            enterTransition   = { slideInHorizontally(tween(350, easing = EaseInOutCubic)) { it } },
-            popExitTransition = { slideOutHorizontally(tween(350, easing = EaseInOutCubic)) { it } }
-        ) {
-            SettingsScreen(
-                onBack        = { navController.popBackStack() },
-                viewModel     = settingsViewModel,
-                openPremium   = true
             )
         }
 
@@ -734,7 +719,6 @@ fun AppNavigation(
                     navController.navigate(Screen.WhatsNew.route)
                 }
                 is InAppNotification.SupportDeveloper -> navController.navigate(Screen.Donations.route)
-                is InAppNotification.GoPremium        -> navController.navigate(Screen.Premium.route)
                 is InAppNotification.KeyfileEmpty     -> if (notif.added) showEmptyKeyfileHelp = true
                 else -> Unit
             }

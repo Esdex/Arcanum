@@ -114,7 +114,6 @@
     <string name="common_gb">GB</string>
     <string name="common_this_cannot_be_undone">Questa azione non può essere annullata.</string>
     <string name="common_open_vault">Apri cassaforte</string>
-    <string name="common_pro">Pro</string>
     <string name="common_continue">Continua</string>
     <string name="common_confirm">Conferma</string>
     <string name="common_coming_soon">Prossimamente</string>
@@ -365,8 +364,6 @@
     <string name="settings_card_appearance_desc">Tema, colori, AMOLED</string>
     <string name="settings_card_about">Informazioni</string>
     <string name="settings_card_about_desc">Versione, licenze, GitHub</string>
-    <string name="settings_card_premium">Premium</string>
-    <string name="settings_card_premium_desc">Sblocca tutte le funzionalità</string>
     <string name="settings_card_debug">Debug</string>
     <string name="settings_card_debug_desc">Log e strumenti sviluppatore</string>
     <string name="settings_security_title">Sicurezza</string>
@@ -429,8 +426,6 @@
     <string name="settings_about_privacy">Informativa sulla privacy</string>
     <string name="settings_about_bug_report">Segnala un bug</string>
     <string name="settings_about_bug_report_desc">Apri un issue su GitHub</string>
-    <string name="settings_premium_title">Arcanum Pro</string>
-    <string name="settings_premium_upgrade">Aggiorna</string>
     <string name="settings_debug_title">Debug</string>
     <string name="settings_debug_cd_copy_all">Copia tutto</string>
     <string name="settings_debug_cd_refresh">Aggiorna</string>
@@ -781,8 +776,6 @@
     <string name="notif_read_only_error_subtitle">La cassaforte è montata in sola lettura</string>
     <string name="video_enter_fullscreen">Schermo intero</string>
     <string name="video_exit_fullscreen">Esci da schermo intero</string>
-    <string name="notif_go_premium">Ti piace Arcanum?</string>
-    <string name="notif_go_premium_subtitle">Sblocca la versione completa</string>
     <string name="common_next">Avanti</string>
     <string name="common_exit">Esci</string>
     <string name="editor_save_copy">Salva una copia</string>
@@ -1021,7 +1014,6 @@
     <string name="settings_appearance_default_tab_section">Scheda predefinita della cassaforte</string>
     <string name="settings_appearance_default_tab_desc">Con quale scheda si apre una cassaforte dopo lo sblocco.</string>
     <string name="settings_about_donate">Sostieni il progetto</string>
-    <string name="settings_about_capsule_donate">Dona</string>
     <string name="settings_about_capsule_github">GitHub</string>
     <string name="settings_about_capsule_website">Sito web</string>
     <string name="settings_about_donate_desc">Link per le donazioni e indirizzi dei portafogli</string>
@@ -1109,18 +1101,6 @@
     <string name="nav_storage">Archiviazione</string>
     <string name="vault_details_title">Dettagli della cassaforte</string>
     <string name="vault_unmount_dialog_title">Smontare la cassaforte?</string>
-    <string name="settings_card_premium_unlock">Sblocca la versione Pro</string>
-    <string name="upgrade_dialog_title">Arcanum Pro</string>
-    <string name="upgrade_dialog_subtitle">Sblocca Arcanum per intero.</string>
-    <string name="upgrade_dialog_feature_containers">Contenitori cifrati illimitati</string>
-    <string name="upgrade_dialog_feature_amoled">Tema smerigliato AMOLED Glass</string>
-    <string name="upgrade_dialog_feature_support">Sostieni lo sviluppo continuo</string>
-    <string name="upgrade_dialog_price">Acquisto unico · 25 $</string>
-    <string name="upgrade_dialog_upgrade">Passa a Pro</string>
-    <string name="upgrade_overlay_cta">Passa a Pro · 25 $</string>
-    <string name="upgrade_dialog_later">Forse più tardi</string>
-    <string name="upgrade_pro_feature_subtitle">Funzione di Arcanum Pro</string>
-    <string name="upgrade_pro_locked_cd">Funzione Pro bloccata</string>
     <string name="pin_entry_title">Inserisci il PIN</string>
     <string name="pin_entry_subtitle">Inserisci il tuo PIN per sbloccare</string>
     <string name="pin_entry_label">PIN</string>
